@@ -17,7 +17,3 @@ We highly recommend you browse existing issues first.
 We will be opening up to accept code contributions in the future, however at present this project is source open.
 
 > NOTE: When we start accepting community code contributions a signed a contribution license agreement will be required for all contributions and will be checked automatically on new pull requests. You will be asked to read and sign the agreement https://cla.microsoft.com/ after submitting a request to this repository.
-
-## Code of Conduct
-
-This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/). For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
