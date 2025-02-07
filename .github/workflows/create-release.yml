@@ -18,9 +18,9 @@ jobs:
     env:
       release: 'dev-proxy-${{ matrix.architecture }}-${{ github.ref_name }}'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@3951f0dfe7a07e2313ec93c75700083e2005cbab # v4.3.0
         with:
           dotnet-version: 9.0.x
       - name: Rename executable for beta
@@ -57,7 +57,7 @@ jobs:
           Get-ChildItem -Filter *.runtimeconfig.json -Recurse | Remove-Item
           popd
       - name: Archive release ${{ env.release }}
-        uses: thedoctor0/zip-release@master
+        uses: thedoctor0/zip-release@a24011d8d445e4da5935a7e73c1f98e22a439464 # master
         with:
           filename: '../${{ env.release }}.zip'
           directory: './${{ env.release }}'
@@ -65,20 +65,20 @@ jobs:
         run: |
           $(Get-FileHash ./${{ env.release }}.zip -Algorithm SHA256).Hash
       - name: Upload release
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
           name: binaries-${{ env.release }}
           path: ./${{ env.release }}.zip
       - name: Archive abstractions
         if: matrix.architecture == 'win-x64'
-        uses: thedoctor0/zip-release@master
+        uses: thedoctor0/zip-release@a24011d8d445e4da5935a7e73c1f98e22a439464 # master
         with:
           filename: '../../../../dev-proxy-abstractions-${{ github.ref_name }}.zip'
           directory: './dev-proxy-abstractions/bin/Release/net9.0'
           exclusions: '*.json'
       - name: Upload abstractions
         if: matrix.architecture == 'win-x64'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
           name: binaries-dev-proxy-abstractions-${{ github.ref_name }}
           path: ./dev-proxy-abstractions-${{ github.ref_name }}.zip
@@ -113,7 +113,7 @@ jobs:
         working-directory: ./${{ env.release }}
       - name: Upload Installer
         if: contains(matrix.architecture, 'win-')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
           name: installer-dev-proxy-${{ github.ref_name }}-${{ matrix.architecture }}
           path: ./${{ env.release }}/dev-proxy-installer-${{ matrix.architecture }}-${{ github.ref_name }}.exe
@@ -130,12 +130,12 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
           path: output
       - name: Release
-        uses: anton-yurchenko/git-release@v6.0
+        uses: anton-yurchenko/git-release@ec9c5b5c36b27eaffc628785b9183eae54601200 # v6.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DRAFT_RELEASE: "false"
