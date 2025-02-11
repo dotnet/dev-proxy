@@ -8,11 +8,11 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Web;
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
-namespace Microsoft.DevProxy.Plugins.Mocks;
+namespace DevProxy.Plugins.Mocks;
 
 class IdToken
 {

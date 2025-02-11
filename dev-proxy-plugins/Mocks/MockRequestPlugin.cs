@@ -6,11 +6,11 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
-namespace Microsoft.DevProxy.Plugins.Mocks;
+namespace DevProxy.Plugins.Mocks;
 
 public class MockRequestConfiguration
 {

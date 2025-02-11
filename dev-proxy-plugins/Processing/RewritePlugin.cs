@@ -4,10 +4,10 @@
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 using System.Text.RegularExpressions;
 
-namespace Microsoft.DevProxy.Plugins.Processing;
+namespace DevProxy.Plugins.Processing;
 
 public class RewriteRule
 {

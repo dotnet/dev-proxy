@@ -4,12 +4,12 @@
 
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
-using Microsoft.DevProxy.Abstractions;
-using Microsoft.DevProxy.Plugins.Mocks;
+using DevProxy.Abstractions;
+using DevProxy.Plugins.Mocks;
 using Titanium.Web.Proxy.EventArguments;
 using Microsoft.Extensions.Logging;
 
-namespace Microsoft.DevProxy.Plugins.RequestLogs;
+namespace DevProxy.Plugins.RequestLogs;
 
 public class MockGeneratorPlugin(IPluginEvents pluginEvents, IProxyContext context, ILogger logger, ISet<UrlToWatch> urlsToWatch, IConfigurationSection? configSection = null) : BaseReportingPlugin(pluginEvents, context, logger, urlsToWatch, configSection)
 {

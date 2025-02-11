@@ -4,7 +4,7 @@
 
 using System.Text.Json.Serialization;
 
-namespace Microsoft.DevProxy.Plugins;
+namespace DevProxy.Plugins;
 
 public class GraphErrorResponseBody(GraphErrorResponseError error)
 {

@@ -4,7 +4,7 @@
 
 using System.Text.Json.Serialization;
 
-namespace Microsoft.DevProxy.Abstractions.LanguageModel;
+namespace DevProxy.Abstractions.LanguageModel;
 
 public abstract class OllamaResponse : ILanguageModelCompletionResponse
 {

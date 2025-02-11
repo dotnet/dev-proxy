@@ -3,12 +3,12 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Text;
-using Microsoft.DevProxy.Abstractions;
-using Microsoft.DevProxy.Plugins.RequestLogs;
+using DevProxy.Abstractions;
+using DevProxy.Plugins.RequestLogs;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
-namespace Microsoft.DevProxy.Plugins.Reporters;
+namespace DevProxy.Plugins.Reporters;
 
 public class MarkdownReporter(IPluginEvents pluginEvents, IProxyContext context, ILogger logger, ISet<UrlToWatch> urlsToWatch, IConfigurationSection? configSection = null) : BaseReporter(pluginEvents, context, logger, urlsToWatch, configSection)
 {

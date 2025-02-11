@@ -4,7 +4,7 @@
 
 using System.Text.Json;
 
-namespace Microsoft.DevProxy.Abstractions;
+namespace DevProxy.Abstractions;
 
 // from https://stackoverflow.com/questions/61553962/getting-nested-properties-with-system-text-json
 public static partial class JsonExtensions

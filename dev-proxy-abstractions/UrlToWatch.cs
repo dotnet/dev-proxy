@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace Microsoft.DevProxy.Abstractions;
+namespace DevProxy.Abstractions;
 
 public class UrlToWatch(Regex url, bool exclude = false)
 {

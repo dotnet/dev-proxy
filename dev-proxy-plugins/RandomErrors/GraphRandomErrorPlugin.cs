@@ -4,7 +4,7 @@
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.Net;
@@ -13,9 +13,9 @@ using System.Text.RegularExpressions;
 using Titanium.Web.Proxy.EventArguments;
 using Titanium.Web.Proxy.Http;
 using Titanium.Web.Proxy.Models;
-using Microsoft.DevProxy.Plugins.Behavior;
+using DevProxy.Plugins.Behavior;
 
-namespace Microsoft.DevProxy.Plugins.RandomErrors;
+namespace DevProxy.Plugins.RandomErrors;
 internal enum GraphRandomErrorFailMode
 {
     Random,

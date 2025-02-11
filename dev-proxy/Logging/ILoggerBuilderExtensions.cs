@@ -2,8 +2,8 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using Microsoft.DevProxy.Abstractions;
-using Microsoft.DevProxy.Logging;
+using DevProxy.Abstractions;
+using DevProxy.Logging;
 
 #pragma warning disable IDE0130
 namespace Microsoft.Extensions.Logging;

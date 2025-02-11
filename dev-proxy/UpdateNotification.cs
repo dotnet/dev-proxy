@@ -5,9 +5,9 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 
-namespace Microsoft.DevProxy;
+namespace DevProxy;
 
 internal class ReleaseInfo
 {

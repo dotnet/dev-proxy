@@ -3,7 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using Microsoft.Extensions.Configuration;
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 using Titanium.Web.Proxy.EventArguments;
 using Microsoft.OpenApi.Models;
 using Microsoft.OpenApi.Extensions;
@@ -15,10 +15,10 @@ using Titanium.Web.Proxy.Http;
 using System.Web;
 using System.Collections.Specialized;
 using Microsoft.Extensions.Logging;
-using Microsoft.DevProxy.Abstractions.LanguageModel;
+using DevProxy.Abstractions.LanguageModel;
 using System.Text.Json.Serialization;
 
-namespace Microsoft.DevProxy.Plugins.RequestLogs;
+namespace DevProxy.Plugins.RequestLogs;
 
 public class OpenApiSpecGeneratorPluginReportItem
 {

@@ -4,7 +4,7 @@
 
 using Microsoft.OpenApi.Models;
 
-namespace Microsoft.DevProxy.Plugins.ApiCenter;
+namespace DevProxy.Plugins.ApiCenter;
 
 internal class Collection<T>()
 {

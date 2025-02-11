@@ -3,14 +3,14 @@
 // See the LICENSE file in the project root for more information.
 
 using Microsoft.Extensions.Configuration;
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 using Microsoft.Extensions.Logging;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.DevProxy.Plugins.MinimalPermissions;
+using DevProxy.Plugins.MinimalPermissions;
 
-namespace Microsoft.DevProxy.Plugins.RequestLogs;
+namespace DevProxy.Plugins.RequestLogs;
 
 public class GraphMinimalPermissionsPluginReport
 {

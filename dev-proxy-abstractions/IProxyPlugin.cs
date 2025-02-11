@@ -4,7 +4,7 @@
 
 using System.CommandLine;
 
-namespace Microsoft.DevProxy.Abstractions;
+namespace DevProxy.Abstractions;
 
 public interface IProxyPlugin
 {

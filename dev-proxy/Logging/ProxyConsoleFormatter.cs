@@ -3,12 +3,12 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Text;
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Console;
 using Microsoft.Extensions.Options;
 
-namespace Microsoft.DevProxy.Logging;
+namespace DevProxy.Logging;
 
 public class ProxyConsoleFormatter : ConsoleFormatter
 {

@@ -15,9 +15,44 @@
     "asSystemProxy": {
       "type": "boolean"
     },
+    "filterByHeaders": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ]
+      }
+    },
     "ipAddress": {
       "type": "string",
       "format": "ipv4"
+    },
+    "languageModel": {
+      "type": "object",
+      "properties": {
+        "cacheResponses": {
+          "type": "boolean"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "model": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
     },
     "logLevel": {
       "type": "string",

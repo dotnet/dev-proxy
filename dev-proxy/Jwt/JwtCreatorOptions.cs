@@ -4,7 +4,7 @@
 
 using System.Security.Cryptography;
 
-namespace Microsoft.DevProxy.Jwt;
+namespace DevProxy.Jwt;
 
 internal sealed record JwtCreatorOptions
 {

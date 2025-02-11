@@ -4,7 +4,7 @@
 
 using Microsoft.Extensions.Logging.Console;
 
-namespace Microsoft.DevProxy.Logging;
+namespace DevProxy.Logging;
 
 public class ProxyConsoleFormatterOptions: ConsoleFormatterOptions
 {

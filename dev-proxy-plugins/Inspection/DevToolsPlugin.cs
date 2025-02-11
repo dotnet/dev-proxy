@@ -8,11 +8,11 @@ using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
-using Microsoft.DevProxy.Abstractions;
-using Microsoft.DevProxy.Plugins.Inspection.CDP;
+using DevProxy.Abstractions;
+using DevProxy.Plugins.Inspection.CDP;
 using Microsoft.Extensions.Logging;
 
-namespace Microsoft.DevProxy.Plugins.Inspection;
+namespace DevProxy.Plugins.Inspection;
 
 public enum PreferredBrowser
 {

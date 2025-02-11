@@ -2,14 +2,14 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using Microsoft.DevProxy.Abstractions;
-using Microsoft.DevProxy.Plugins.MinimalPermissions;
+using DevProxy.Abstractions;
+using DevProxy.Plugins.MinimalPermissions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using Microsoft.OpenApi.Readers;
 
-namespace Microsoft.DevProxy.Plugins.RequestLogs;
+namespace DevProxy.Plugins.RequestLogs;
 
 public class MinimalPermissionsPluginReportApiResult
 {

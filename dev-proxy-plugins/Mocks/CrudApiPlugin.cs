@@ -3,7 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using Microsoft.Extensions.Configuration;
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 using System.Net;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -20,7 +20,7 @@ using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Protocols;
 using System.Security.Claims;
 
-namespace Microsoft.DevProxy.Plugins.Mocks;
+namespace DevProxy.Plugins.Mocks;
 
 public enum CrudApiActionType
 {

@@ -4,14 +4,14 @@
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Titanium.Web.Proxy.Http;
 using Titanium.Web.Proxy.Models;
 
-namespace Microsoft.DevProxy.Plugins.Behavior;
+namespace DevProxy.Plugins.Behavior;
 
 public enum RateLimitResponseWhenLimitExceeded
 {
