@@ -65,19 +65,19 @@
     <None Update="trust-cert.sh">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="presets\m365.json">
+    <None Update="config\m365.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="presets\m365-mocks.json">
+    <None Update="config\m365-mocks.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="presets\microsoft-graph.json">
+    <None Update="config\microsoft-graph.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="presets\microsoft-graph-rate-limiting.json">
+    <None Update="config\microsoft-graph-rate-limiting.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="presets\picture.jpg">
+    <None Update="config\picture.jpg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

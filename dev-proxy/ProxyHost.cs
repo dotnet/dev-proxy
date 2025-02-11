@@ -323,18 +323,16 @@ internal class ProxyHost
         };
         command.Add(msGraphDbCommand);
 
-        var presetCommand = new Command("preset", "Manage Dev Proxy presets");
+        var configCommand = new Command("config", "Manage Dev Proxy configs");
 
-        var presetGetCommand = new Command("get", "Download the specified preset from the Sample Solution Gallery");
-        var presetIdArgument = new Argument<string>("preset-id", "The ID of the preset to download");
-        presetGetCommand.AddArgument(presetIdArgument);
-        presetGetCommand.SetHandler(async presetId => await PresetGetCommandHandler.DownloadPresetAsync(presetId, logger), presetIdArgument);
-        presetCommand.Add(presetGetCommand);
+        var configGetCommand = new Command("get", "Download the specified config from the Sample Solution Gallery");
+        var configIdArgument = new Argument<string>("config-id", "The ID of the config to download");
+        configGetCommand.AddArgument(configIdArgument);
+        configGetCommand.SetHandler(async configId => await ConfigGetCommandHandler.DownloadConfigAsync(configId, logger), configIdArgument);
+        configCommand.Add(configGetCommand);
 
-        command.Add(presetCommand);
-
-        var configCommand = new Command("config", "Open devproxyrc.json");
-        configCommand.SetHandler(() =>
+        var configOpenCommand = new Command("open", "Open devproxyrc.json");
+        configOpenCommand.SetHandler(() =>
         {
             var cfgPsi = new ProcessStartInfo(ConfigFile)
             {
@@ -342,6 +340,8 @@ internal class ProxyHost
             };
             Process.Start(cfgPsi);
         });
+        configCommand.Add(configOpenCommand);
+
         command.Add(configCommand);
 
         var outdatedCommand = new Command("outdated", "Check for new version");
