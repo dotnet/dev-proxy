@@ -2,10 +2,10 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 using Titanium.Web.Proxy;
 
-namespace Microsoft.DevProxy;
+namespace DevProxy;
 
 public class ProxyState : IProxyState
 {

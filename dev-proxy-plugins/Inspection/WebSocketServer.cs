@@ -2,7 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-namespace Microsoft.DevProxy.Plugins.Inspection;
+namespace DevProxy.Plugins.Inspection;
 
 using System;
 using System.Net;
@@ -10,7 +10,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 using Microsoft.Extensions.Logging;
 
 public class WebSocketServer(int port, ILogger logger)

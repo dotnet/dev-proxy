@@ -5,13 +5,13 @@
 using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.DevProxy.Abstractions;
-using Microsoft.DevProxy.Abstractions.LanguageModel;
+using DevProxy.Abstractions;
+using DevProxy.Abstractions.LanguageModel;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Titanium.Web.Proxy.Models;
 
-namespace Microsoft.DevProxy.Plugins.Mocks;
+namespace DevProxy.Plugins.Mocks;
 
 public class OpenAIMockResponsePlugin(IPluginEvents pluginEvents, IProxyContext context, ILogger logger, ISet<UrlToWatch> urlsToWatch, IConfigurationSection? configSection = null) : BaseProxyPlugin(pluginEvents, context, logger, urlsToWatch, configSection)
 {

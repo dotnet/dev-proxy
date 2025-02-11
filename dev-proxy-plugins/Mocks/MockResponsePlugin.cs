@@ -3,7 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using Microsoft.Extensions.Configuration;
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.Net;
@@ -12,11 +12,11 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Titanium.Web.Proxy.Http;
 using Titanium.Web.Proxy.Models;
-using Microsoft.DevProxy.Plugins.Behavior;
+using DevProxy.Plugins.Behavior;
 using System.Text;
 using Microsoft.Extensions.Logging;
 
-namespace Microsoft.DevProxy.Plugins.Mocks;
+namespace DevProxy.Plugins.Mocks;
 
 public class MockResponseConfiguration
 {

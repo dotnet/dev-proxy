@@ -5,7 +5,7 @@
 using Microsoft.Extensions.Logging;
 using System.IdentityModel.Tokens.Jwt;
 
-namespace Microsoft.DevProxy.Plugins.MinimalPermissions;
+namespace DevProxy.Plugins.MinimalPermissions;
 
 public static class MinimalPermissionsUtils
 {

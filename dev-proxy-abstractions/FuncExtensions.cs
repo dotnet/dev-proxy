@@ -7,7 +7,7 @@
 using Titanium.Web.Proxy;
 using Titanium.Web.Proxy.EventArguments;
 
-namespace Microsoft.DevProxy.Abstractions;
+namespace DevProxy.Abstractions;
 
 public static class FuncExtensions
 {

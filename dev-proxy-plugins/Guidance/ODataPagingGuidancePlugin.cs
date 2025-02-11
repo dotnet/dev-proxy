@@ -3,12 +3,12 @@
 // See the LICENSE file in the project root for more information.
 
 using Microsoft.Extensions.Configuration;
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 using System.Text.Json;
 using System.Xml.Linq;
 using Microsoft.Extensions.Logging;
 
-namespace Microsoft.DevProxy.Plugins.Guidance;
+namespace DevProxy.Plugins.Guidance;
 
 public class ODataPagingGuidancePlugin(IPluginEvents pluginEvents, IProxyContext context, ILogger logger, ISet<UrlToWatch> urlsToWatch, IConfigurationSection? configSection = null) : BaseProxyPlugin(pluginEvents, context, logger, urlsToWatch, configSection)
 {

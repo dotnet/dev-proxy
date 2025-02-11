@@ -4,7 +4,7 @@
 
 using Titanium.Web.Proxy.Http;
 
-namespace Microsoft.DevProxy.Plugins;
+namespace DevProxy.Plugins;
 
 internal class MessageUtils
 {

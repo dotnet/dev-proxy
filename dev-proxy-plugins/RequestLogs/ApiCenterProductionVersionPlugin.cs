@@ -4,12 +4,12 @@
 
 using System.Diagnostics;
 using System.Text.Json.Serialization;
-using Microsoft.DevProxy.Abstractions;
-using Microsoft.DevProxy.Plugins.ApiCenter;
+using DevProxy.Abstractions;
+using DevProxy.Plugins.ApiCenter;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
-namespace Microsoft.DevProxy.Plugins.RequestLogs;
+namespace DevProxy.Plugins.RequestLogs;
 
 public enum ApiCenterProductionVersionPluginReportItemStatus
 {

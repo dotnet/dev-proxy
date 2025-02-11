@@ -3,11 +3,11 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Diagnostics;
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Readers;
 
-namespace Microsoft.DevProxy.Plugins.ApiCenter;
+namespace DevProxy.Plugins.ApiCenter;
 
 public static class ModelExtensions
 {

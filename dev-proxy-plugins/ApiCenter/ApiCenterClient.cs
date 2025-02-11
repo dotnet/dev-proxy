@@ -9,10 +9,10 @@ using System.Text.Json;
 using Azure.Core;
 using Azure.Core.Diagnostics;
 using Azure.Identity;
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 using Microsoft.Extensions.Logging;
 
-namespace Microsoft.DevProxy.Plugins.ApiCenter;
+namespace DevProxy.Plugins.ApiCenter;
 
 internal class ApiCenterClientConfiguration
 {

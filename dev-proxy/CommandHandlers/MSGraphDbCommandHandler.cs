@@ -3,10 +3,10 @@
 // See the LICENSE file in the project root for more information.
 
 using System.CommandLine.Invocation;
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 using Microsoft.VisualStudio.Threading;
 
-namespace Microsoft.DevProxy.CommandHandlers;
+namespace DevProxy.CommandHandlers;
 
 public class MSGraphDbCommandHandler(ILogger logger) : ICommandHandler
 {

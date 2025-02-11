@@ -4,7 +4,7 @@
 
 using Titanium.Web.Proxy.EventArguments;
 
-namespace Microsoft.DevProxy.Abstractions;
+namespace DevProxy.Abstractions;
 
 public enum MessageType
 {

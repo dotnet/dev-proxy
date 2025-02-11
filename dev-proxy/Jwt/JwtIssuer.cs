@@ -8,7 +8,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Principal;
 
-namespace Microsoft.DevProxy.Jwt;
+namespace DevProxy.Jwt;
 
 internal sealed class JwtIssuer(string issuer, byte[] signingKeyMaterial)
 {

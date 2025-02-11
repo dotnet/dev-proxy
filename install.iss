@@ -5,7 +5,7 @@
 ; for local use only. In production replaced by a command line arg
 #define MyAppSetupExeName "dev-proxy-installer-win-x64-0.24.0"
 #define MyAppVersion "0.24.0"
-#define MyAppPublisher "Microsoft"
+#define MyAppPublisher ".NET Foundation"
 #define MyAppURL "https://aka.ms/devproxy"
 
 [Setup]

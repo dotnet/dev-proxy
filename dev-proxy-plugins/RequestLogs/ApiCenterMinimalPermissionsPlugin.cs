@@ -3,14 +3,14 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Diagnostics;
-using Microsoft.DevProxy.Abstractions;
-using Microsoft.DevProxy.Plugins.ApiCenter;
-using Microsoft.DevProxy.Plugins.MinimalPermissions;
+using DevProxy.Abstractions;
+using DevProxy.Plugins.ApiCenter;
+using DevProxy.Plugins.MinimalPermissions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 
-namespace Microsoft.DevProxy.Plugins.RequestLogs;
+namespace DevProxy.Plugins.RequestLogs;
 
 public class ApiCenterMinimalPermissionsPluginReportApiResult
 {

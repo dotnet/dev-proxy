@@ -1,4 +1,4 @@
-namespace Microsoft.DevProxy.Plugins;
+namespace DevProxy.Plugins;
 
 internal class MethodAndUrlComparer : IEqualityComparer<(string method, string url)>
 {

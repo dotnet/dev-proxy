@@ -6,7 +6,7 @@ using System.Diagnostics;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 
-namespace Microsoft.DevProxy.Abstractions.LanguageModel;
+namespace DevProxy.Abstractions.LanguageModel;
 
 public class OllamaLanguageModelClient(LanguageModelConfiguration? configuration, ILogger logger) : ILanguageModelClient
 {

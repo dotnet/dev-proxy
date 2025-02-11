@@ -3,11 +3,11 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Text.Json.Serialization;
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 
 // CDP = Chrome DevTools Protocol
 #pragma warning disable IDE0130
-namespace Microsoft.DevProxy.Plugins.Inspection.CDP;
+namespace DevProxy.Plugins.Inspection.CDP;
 #pragma warning restore IDE0130
 
 public class RequestWillBeSentExtraInfoMessage : Message<RequestWillBeSentExtraInfoParams>

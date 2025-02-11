@@ -4,7 +4,7 @@
 
 using System.Text.Json.Serialization;
 
-namespace Microsoft.DevProxy.Plugins.MinimalPermissions;
+namespace DevProxy.Plugins.MinimalPermissions;
 
 internal class GraphPermissionError
 {

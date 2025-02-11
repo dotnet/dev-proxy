@@ -4,9 +4,9 @@
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 
-namespace Microsoft.DevProxy.Plugins.RandomErrors;
+namespace DevProxy.Plugins.RandomErrors;
 
 public class LatencyConfiguration
 {

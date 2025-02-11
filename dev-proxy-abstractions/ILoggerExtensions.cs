@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 
 #pragma warning disable IDE0130
 namespace Microsoft.Extensions.Logging;

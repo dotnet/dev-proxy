@@ -3,9 +3,9 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Collections.Concurrent;
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 
-namespace Microsoft.DevProxy.Logging;
+namespace DevProxy.Logging;
 
 public class RequestLoggerProvider(PluginEvents pluginEvents) : ILoggerProvider
 {

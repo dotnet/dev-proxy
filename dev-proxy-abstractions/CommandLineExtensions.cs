@@ -5,7 +5,7 @@
 using System.CommandLine;
 using System.CommandLine.Parsing;
 
-namespace Microsoft.DevProxy.Abstractions;
+namespace DevProxy.Abstractions;
 
 public static class CommandLineExtensions
 {

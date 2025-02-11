@@ -6,12 +6,12 @@ using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json.Serialization;
-using Microsoft.DevProxy.Abstractions.LanguageModel;
+using DevProxy.Abstractions.LanguageModel;
 using Titanium.Web.Proxy;
 using Titanium.Web.Proxy.EventArguments;
 using Titanium.Web.Proxy.Http;
 
-namespace Microsoft.DevProxy.Abstractions;
+namespace DevProxy.Abstractions;
 
 public interface IProxyContext
 {
