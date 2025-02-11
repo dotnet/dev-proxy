@@ -26,7 +26,7 @@ jobs:
     - name: Restore workloads
       run: dotnet workload restore
     - name: Restore dependencies
-      run: dotnet restore dev-proxy.sln
+      run: dotnet restore dev-proxy.sln --locked-mode
     - name: Build
       run: dotnet build dev-proxy.sln --no-restore
     # We really should have tests, putting these steps here for when we have a build process
