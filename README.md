@@ -65,7 +65,7 @@ Begin with our [tutorial](https://learn.microsoft.com/microsoft-cloud/dev/dev-pr
 
 Fail requests (with a 50% chance) and respond with `429 Too Many Requests` or `503 Service Unavailable`:
 
-```
+```text
 devproxy --failure-rate 50 --no-mocks --allowed-errors 429 503
 ```
 
@@ -98,11 +98,6 @@ devproxy --failure-rate 50 --no-mocks --allowed-errors 429 503
 - detect minimal Microsoft Graph API permissions
 - check for excessive Microsoft Graph API permissions
 
-## Trademarks
+### .NET Foundation
 
-This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft trademarks or logos is subject to and must follow [Microsoft’s Trademark & Brand Guidelines](https://www.microsoft.com/en-us/legal/intellectualproperty/trademarks/usage/general). Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply Microsoft sponsorship. Any use of third-party trademarks or logos are subject to those third-party’s policies.
-
-## A Microsoft Hackathon 2022 Project
-
-The initial build of this project was completed in the week of 5-9 September 2022 by Waldek Mastykarz, Gavin Barron and Garry Trinder
-
+This project is supported by the [.NET Foundation](https://dotnetfoundation.org).

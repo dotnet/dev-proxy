@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-#---------------------------------------------------------------------------------------------
-# Copyright (c) Microsoft Corporation. All rights reserved.
-# Licensed under the MIT License. See License in the project root for license information.
-#---------------------------------------------------------------------------------------------
+# Licensed to the .NET Foundation under one or more agreements.
+# The .NET Foundation licenses this file to you under the MIT license.
+# See the LICENSE file in the project root for more information.
 
 if [ "$(expr substr $(uname -s) 1 5)" != "Linux" ]; then
     echo "Unsupported OS. This script is for installing Dev Proxy on Linux. To install Dev Proxy on macOS or Windows use their installers. For more information, visit https://aka.ms/devproxy/start."
