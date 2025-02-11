@@ -4,13 +4,13 @@
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Microsoft.DevProxy.Plugins.MinimalPermissions;
+using DevProxy.Plugins.MinimalPermissions;
 
-namespace Microsoft.DevProxy.Plugins.RequestLogs;
+namespace DevProxy.Plugins.RequestLogs;
 
 public class GraphMinimalPermissionsGuidancePluginReport
 {

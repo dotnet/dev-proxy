@@ -4,7 +4,7 @@
 
 using Microsoft.Extensions.Logging;
 
-namespace Microsoft.DevProxy.Plugins;
+namespace DevProxy.Plugins;
 
 internal class TracingDelegatingHandler(ILogger logger) : DelegatingHandler
 {

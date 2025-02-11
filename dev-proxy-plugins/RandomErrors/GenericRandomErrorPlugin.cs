@@ -3,17 +3,17 @@
 // See the LICENSE file in the project root for more information.
 
 using Microsoft.Extensions.Configuration;
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 using System.Net;
 using System.Text.Json;
 using Titanium.Web.Proxy.EventArguments;
 using Titanium.Web.Proxy.Http;
 using Titanium.Web.Proxy.Models;
-using Microsoft.DevProxy.Plugins.Behavior;
+using DevProxy.Plugins.Behavior;
 using Microsoft.Extensions.Logging;
 using System.Text.RegularExpressions;
 
-namespace Microsoft.DevProxy.Plugins.RandomErrors;
+namespace DevProxy.Plugins.RandomErrors;
 internal enum GenericRandomErrorFailMode
 {
     Throttled,

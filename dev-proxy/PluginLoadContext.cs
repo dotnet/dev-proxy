@@ -5,7 +5,7 @@
 using System.Reflection;
 using System.Runtime.Loader;
 
-namespace Microsoft.DevProxy;
+namespace DevProxy;
 
 class PluginLoadContext(string pluginPath) : AssemblyLoadContext
 {

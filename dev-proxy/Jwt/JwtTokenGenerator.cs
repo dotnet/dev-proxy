@@ -5,7 +5,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 
-namespace Microsoft.DevProxy.Jwt;
+namespace DevProxy.Jwt;
 
 internal static class JwtTokenGenerator
 {

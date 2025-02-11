@@ -5,13 +5,13 @@
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Microsoft.DevProxy.Abstractions;
-using Microsoft.DevProxy.Plugins.Behavior;
+using DevProxy.Abstractions;
+using DevProxy.Plugins.Behavior;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Titanium.Web.Proxy.Models;
 
-namespace Microsoft.DevProxy.Plugins.Mocks;
+namespace DevProxy.Plugins.Mocks;
 
 public class GraphMockResponsePlugin(IPluginEvents pluginEvents, IProxyContext context, ILogger logger, ISet<UrlToWatch> urlsToWatch, IConfigurationSection? configSection = null) : MockResponsePlugin(pluginEvents, context, logger, urlsToWatch, configSection)
 {

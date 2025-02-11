@@ -4,7 +4,7 @@
 
 using Microsoft.Extensions.Logging;
 
-namespace Microsoft.DevProxy.Abstractions;
+namespace DevProxy.Abstractions;
 
 public interface IProxyConfiguration
 {

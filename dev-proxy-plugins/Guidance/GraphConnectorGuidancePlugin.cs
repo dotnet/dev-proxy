@@ -3,11 +3,11 @@
 // See the LICENSE file in the project root for more information.
 
 using Microsoft.Extensions.Configuration;
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
-namespace Microsoft.DevProxy.Plugins.Guidance;
+namespace DevProxy.Plugins.Guidance;
 
 class ExternalConnectionSchema
 {

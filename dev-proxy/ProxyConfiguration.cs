@@ -4,10 +4,10 @@
 
 using System.Runtime.Serialization;
 using System.Text.Json.Serialization;
-using Microsoft.DevProxy.Abstractions;
-using Microsoft.DevProxy.Abstractions.LanguageModel;
+using DevProxy.Abstractions;
+using DevProxy.Abstractions.LanguageModel;
 
-namespace Microsoft.DevProxy;
+namespace DevProxy;
 
 public enum ReleaseType
 {

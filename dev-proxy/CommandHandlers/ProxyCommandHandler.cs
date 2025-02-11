@@ -2,12 +2,12 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 using Microsoft.VisualStudio.Threading;
 using System.CommandLine;
 using System.CommandLine.Invocation;
 
-namespace Microsoft.DevProxy.CommandHandlers;
+namespace DevProxy.CommandHandlers;
 
 public class ProxyCommandHandler(IPluginEvents pluginEvents,
                            Option[] options,

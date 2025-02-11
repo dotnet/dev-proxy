@@ -3,10 +3,10 @@
 // See the LICENSE file in the project root for more information.
 
 using Microsoft.Extensions.Logging;
-using Microsoft.DevProxy.Abstractions;
+using DevProxy.Abstractions;
 using System.Text.Json;
 
-namespace Microsoft.DevProxy.Plugins.Behavior;
+namespace DevProxy.Plugins.Behavior;
 
 internal class RateLimitingCustomResponseLoader(ILogger logger, RateLimitConfiguration configuration) : IDisposable
 {

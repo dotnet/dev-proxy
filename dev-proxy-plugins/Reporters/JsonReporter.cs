@@ -4,12 +4,12 @@
 
 using System.Text;
 using System.Text.Json;
-using Microsoft.DevProxy.Abstractions;
-using Microsoft.DevProxy.Plugins.RequestLogs;
+using DevProxy.Abstractions;
+using DevProxy.Plugins.RequestLogs;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
-namespace Microsoft.DevProxy.Plugins.Reporters;
+namespace DevProxy.Plugins.Reporters;
 
 public class JsonReporter(IPluginEvents pluginEvents, IProxyContext context, ILogger logger, ISet<UrlToWatch> urlsToWatch, IConfigurationSection? configSection = null) : BaseReporter(pluginEvents, context, logger, urlsToWatch, configSection)
 {

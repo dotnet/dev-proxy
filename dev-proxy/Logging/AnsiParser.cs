@@ -4,7 +4,7 @@
 
 // from https://github.com/dotnet/runtime/blob/e1c671760e23de03ee4be74eeb26831813488100/src/libraries/Microsoft.Extensions.Logging.Console/src/AnsiParser.cs
 
-namespace Microsoft.DevProxy.Logging;
+namespace DevProxy.Logging;
 
 internal static class AnsiParser
 {

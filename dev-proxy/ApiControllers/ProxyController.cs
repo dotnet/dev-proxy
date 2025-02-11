@@ -3,9 +3,9 @@
 // See the LICENSE file in the project root for more information.
 
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.DevProxy.Jwt;
+using DevProxy.Jwt;
 
-namespace Microsoft.DevProxy.ApiControllers;
+namespace DevProxy.ApiControllers;
 
 [ApiController]
 [Route("[controller]")]

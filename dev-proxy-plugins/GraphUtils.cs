@@ -3,11 +3,11 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Net.Http.Json;
-using Microsoft.DevProxy.Plugins.MinimalPermissions;
+using DevProxy.Plugins.MinimalPermissions;
 using Microsoft.Extensions.Logging;
 using Titanium.Web.Proxy.Http;
 
-namespace Microsoft.DevProxy.Plugins;
+namespace DevProxy.Plugins;
 
 public class GraphUtils
 {

@@ -4,7 +4,7 @@
 
 using System.Text.RegularExpressions;
 
-namespace Microsoft.DevProxy;
+namespace DevProxy;
 
 static class Announcement
 {

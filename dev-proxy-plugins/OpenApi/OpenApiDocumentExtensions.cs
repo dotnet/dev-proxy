@@ -3,8 +3,8 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Text.RegularExpressions;
-using Microsoft.DevProxy.Abstractions;
-using Microsoft.DevProxy.Plugins.MinimalPermissions;
+using DevProxy.Abstractions;
+using DevProxy.Plugins.MinimalPermissions;
 using Microsoft.Extensions.Logging;
 
 #pragma warning disable IDE0130

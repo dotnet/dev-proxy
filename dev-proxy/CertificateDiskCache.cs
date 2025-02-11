@@ -6,7 +6,7 @@ using System.Security.Cryptography.X509Certificates;
 using Titanium.Web.Proxy.Certificates.Cache;
 using Titanium.Web.Proxy.Helpers;
 
-namespace Microsoft.DevProxy;
+namespace DevProxy;
 
 // based on https://github.com/justcoding121/titanium-web-proxy/blob/9e71608d204e5b67085656dd6b355813929801e4/src/Titanium.Web.Proxy/Certificates/Cache/DefaultCertificateDiskCache.cs
 public sealed class CertificateDiskCache : ICertificateCache

@@ -3,10 +3,10 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Security.Cryptography.X509Certificates;
-using Microsoft.DevProxy.Abstractions;
-using Microsoft.DevProxy.Abstractions.LanguageModel;
+using DevProxy.Abstractions;
+using DevProxy.Abstractions.LanguageModel;
 
-namespace Microsoft.DevProxy;
+namespace DevProxy;
 
 internal class ProxyContext(IProxyConfiguration configuration, X509Certificate2? certificate, ILanguageModelClient languageModelClient) : IProxyContext
 {

@@ -5,7 +5,7 @@
 using System.Net.Http.Headers;
 using Azure.Core;
 
-namespace Microsoft.DevProxy.Plugins;
+namespace DevProxy.Plugins;
 
 internal class AuthenticationDelegatingHandler(TokenCredential credential, string[] scopes) : DelegatingHandler
 {
