@@ -3,7 +3,7 @@
   "errors": [
     {
       "request": {
-        "url": "https://jsonplaceholder.typicode.com/*"
+        "url": "https://*/*"
       },
       "responses": [
         {
