@@ -8,6 +8,7 @@
     <RunPostBuildEvent>OnOutputUpdated</RunPostBuildEvent>
     <Version>0.24.0</Version>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
     <NoWarn>CS1998</NoWarn>
