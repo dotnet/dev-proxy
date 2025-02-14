@@ -17,7 +17,7 @@ public class VisualStudioCodeSnippet
 
 public static class ConfigNewCommandHandler
 {
-    private static readonly string snippetsFileUrl = "https://aka.ms/devproxy/snippets";
+    private static readonly string snippetsFileUrl = $"https://aka.ms/devproxy/snippets/v{ProxyUtils.ProductVersion}";
     private static readonly string configFileSnippetName = "ConfigFile";
 
     public static async Task CreateConfigFileAsync(string name, ILogger logger)
@@ -71,7 +71,15 @@ public static class ConfigNewCommandHandler
         if (response.IsSuccessStatusCode)
         {
             var content = await response.Content.ReadAsStringAsync();
-            return JsonSerializer.Deserialize<Dictionary<string, VisualStudioCodeSnippet>>(content, ProxyUtils.JsonSerializerOptions);
+            try
+            {
+                return JsonSerializer.Deserialize<Dictionary<string, VisualStudioCodeSnippet>>(content, ProxyUtils.JsonSerializerOptions);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to parse snippets from {Url}", snippetsFileUrl);
+                return null;
+            }
         }
         else
         {
