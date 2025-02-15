@@ -35,6 +35,8 @@ internal class ProxyHost
     private readonly Option<bool?> _installCertOption;
     internal static readonly string UrlsToWatchOptionName = "--urls-to-watch";
     private static Option<IEnumerable<string>?>? _urlsToWatchOption;
+    internal static readonly string TimeoutOptionName = "--timeout";
+    private readonly Option<long?> _timeoutOption;
 
     private static bool _configFileResolved = false;
     private static string _configFile = "devproxyrc.json";
@@ -268,6 +270,19 @@ internal class ProxyHost
             Arity = ArgumentArity.ZeroOrMore
         };
         _urlsToWatchOption.AddAlias("-u");
+        
+        _timeoutOption = new Option<long?>(TimeoutOptionName, "No request shutdown dev-proxy timeout.");
+        _timeoutOption.AddValidator(input =>
+        {
+            try
+            {
+                _ = input.GetValueForOption(_timeoutOption);
+            }
+            catch (InvalidOperationException ex)
+            {
+                input.ErrorMessage = ex.Message;
+            }
+        });
 
         ProxyCommandHandler.Configuration.ConfigFile = ConfigFile;
     }
@@ -291,7 +306,8 @@ internal class ProxyHost
             _installCertOption,
             // _urlsToWatchOption is set while initialize the Program
             // As such, it's always set here
-            _urlsToWatchOption!
+            _urlsToWatchOption!,
+            _timeoutOption
         };
         command.Description = "Dev Proxy is a command line tool for testing Microsoft Graph, SharePoint Online and any other HTTP APIs.";
 
@@ -457,6 +473,7 @@ internal class ProxyHost
             _noFirstRunOption,
             _asSystemProxyOption,
             _installCertOption,
+            _timeoutOption,
             .. optionsFromPlugins,
         ],
         urlsToWatch,

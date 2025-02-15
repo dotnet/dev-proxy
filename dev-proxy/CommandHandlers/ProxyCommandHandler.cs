@@ -135,6 +135,11 @@ public class ProxyCommandHandler(IPluginEvents pluginEvents,
         {
             Configuration.InstallCert = installCert.Value;
         }
+        var timeout = context.ParseResult.GetValueForOption<long?>(ProxyHost.TimeoutOptionName, _options);
+        if (timeout is not null)
+        {
+            Configuration.Timeout = timeout.Value;
+        }
     }
 
     private async Task CheckForNewVersionAsync()
