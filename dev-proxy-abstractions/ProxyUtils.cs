@@ -352,4 +352,107 @@ public static class ProxyUtils
     }
 
     public static JsonSerializerOptions JsonSerializerOptions => jsonSerializerOptions;
+
+    public static bool MatchesUrlToWatch(ISet<UrlToWatch> watchedUrls, string url)
+    {
+        if (url.Contains('*'))
+        {
+            // url contains a wildcard, so convert it to regex and compare
+            var match = watchedUrls.FirstOrDefault(r => {
+                var pattern = RegexToPattern(r.Url);
+                var result = UrlRegexComparer.CompareRegexPatterns(pattern, url);
+                return result != UrlRegexComparisonResult.PatternsMutuallyExclusive;
+            });
+            return match is not null && !match.Exclude;
+        }
+        else
+        {
+            var match = watchedUrls.FirstOrDefault(r => r.Url.IsMatch(url));
+            return match is not null && !match.Exclude;
+        }
+    }
+
+    public static string PatternToRegex(string pattern)
+    {
+        return $"^{Regex.Escape(pattern).Replace("\\*", ".*")}$";
+    }
+
+    public static string RegexToPattern(Regex regex)
+    {
+        return Regex.Unescape(regex.ToString())
+            .Trim('^', '$')
+            .Replace(".*", "*");
+    }
+
+    public static List<string> GetWildcardPatterns(List<string> urls)
+    {
+        return urls
+            .GroupBy(url =>
+            {
+                if (url.Contains('*'))
+                {
+                    return url;
+                }
+
+                var uri = new Uri(url);
+                return $"{uri.Scheme}://{uri.Host}";
+            })
+            .Select(group =>
+            {
+                if (group.Count() == 1)
+                {
+                    var url = group.First();
+                    if (url.Contains('*'))
+                    {
+                        return url;
+                    }
+
+                    // For single URLs, use the URL up to the last segment
+                    var uri = new Uri(url);
+                    var path = uri.AbsolutePath;
+                    var lastSlashIndex = path.LastIndexOf('/');
+                    return $"{group.Key}{path[..lastSlashIndex]}/*";
+                }
+
+                // For multiple URLs, find the common prefix
+                var paths = group.Select(url => {
+                    if (url.Contains('*'))
+                    {
+                        return url;
+                    }
+
+                    return new Uri(url).AbsolutePath;
+                }).ToList();
+                var commonPrefix = GetCommonPrefix(paths);
+                return $"{group.Key}{commonPrefix}*";
+            })
+            .OrderBy(x => x)
+            .ToList();
+    }
+
+    private static string GetCommonPrefix(List<string> paths)
+    {
+        if (paths.Count == 0) return string.Empty;
+
+        var firstPath = paths[0];
+        var commonPrefixLength = firstPath.Length;
+
+        for (var i = 1; i < paths.Count; i++)
+        {
+            commonPrefixLength = Math.Min(commonPrefixLength, paths[i].Length);
+            for (var j = 0; j < commonPrefixLength; j++)
+            {
+                if (firstPath[j] != paths[i][j])
+                {
+                    commonPrefixLength = j;
+                    break;
+                }
+            }
+        }
+
+        // Find the last complete path segment
+        var prefix = firstPath[..commonPrefixLength];
+        var lastSlashIndex = prefix.LastIndexOf('/');
+        return lastSlashIndex >= 0 ? prefix[..(lastSlashIndex + 1)] : prefix;
+    }
 }

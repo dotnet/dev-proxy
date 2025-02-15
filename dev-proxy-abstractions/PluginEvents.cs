@@ -64,11 +64,8 @@ public class ProxyHttpEventArgsBase : ProxyEventArgsBase
 
     public SessionEventArgs Session { get; }
 
-    public bool HasRequestUrlMatch(ISet<UrlToWatch> watchedUrls)
-    {
-        var match = watchedUrls.FirstOrDefault(r => r.Url.IsMatch(Session.HttpClient.Request.RequestUri.AbsoluteUri));
-        return match is not null && !match.Exclude;
-    }
+    public bool HasRequestUrlMatch(ISet<UrlToWatch> watchedUrls) =>
+        ProxyUtils.MatchesUrlToWatch(watchedUrls, Session.HttpClient.Request.RequestUri.AbsoluteUri);
 }
 
 public class ProxyRequestArgs(SessionEventArgs session, ResponseState responseState) : ProxyHttpEventArgsBase(session)
