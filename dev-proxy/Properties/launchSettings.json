@@ -45,6 +45,10 @@
     "Jwt create": {
       "commandName": "Project",
       "commandLineArgs": "jwt create"
+    },
+    "Timeout": {
+      "commandName": "Project",
+      "commandLineArgs": "--timeout 30"
     }
   }
 }
