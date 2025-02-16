@@ -38,6 +38,7 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
     // Dictionary for plugins to store data between requests
     // the key is HashObject of the SessionEventArgs object
     private readonly Dictionary<int, Dictionary<string, object>> _pluginData = [];
+    private Timer? _inactivityTimeoutTimer;
 
     public static X509Certificate2? Certificate => _proxyServer?.CertificateManager.RootCertificate;
 
@@ -51,7 +52,6 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
         // we need to change this to a value lower than 397
         // to avoid the ERR_CERT_VALIDITY_TOO_LONG error in Edge
         _proxyServer.CertificateManager.CertificateValidDays = 365;
-
         var joinableTaskContext = new JoinableTaskContext();
         var joinableTaskFactory = new JoinableTaskFactory(joinableTaskContext);
         _ = joinableTaskFactory.Run(async () => await _proxyServer.CertificateManager.LoadOrCreateRootCertificateAsync());
@@ -81,6 +81,11 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
         process.WaitForExit();
     }
 
+    private static void ResetInactivityTimeoutTimer(Timer timer, long timeout)
+    {
+        timer.Change(TimeSpan.FromSeconds(timeout), TimeSpan.FromSeconds(-1));
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         Debug.Assert(_proxyServer is not null, "Proxy server is not initialized");
@@ -92,7 +97,7 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
         }
 
         LoadHostNamesFromUrls();
-
+        
         _proxyServer.BeforeRequest += OnRequestAsync;
         _proxyServer.BeforeResponse += OnBeforeResponseAsync;
         _proxyServer.AfterResponse += OnAfterResponseAsync;
@@ -160,7 +165,13 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
             StartRecording();
         }
         _pluginEvents.AfterRequestLog += AfterRequestLogAsync;
-
+        
+        if (_config.Timeout.HasValue)
+        {
+            // pass period:TimeSpan.FromMilliseconds(-1) to only execute once
+            _inactivityTimeoutTimer = new Timer(_ => _proxyState.StopProxy(), null, TimeSpan.FromSeconds(_config.Timeout.Value), TimeSpan.FromMilliseconds(-1));
+        }
+        
         if (!isInteractive)
         {
             return;
@@ -453,6 +464,10 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
 
     async Task OnRequestAsync(object sender, SessionEventArgs e)
     {
+        if (_inactivityTimeoutTimer != null && _config.Timeout.HasValue)
+        {
+            ResetInactivityTimeoutTimer(_inactivityTimeoutTimer, _config.Timeout.Value);
+        }
         if (IsProxiedHost(e.HttpClient.Request.RequestUri.Host) &&
             IsIncludedByHeaders(e.HttpClient.Request.Headers))
         {
