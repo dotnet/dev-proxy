@@ -348,6 +348,8 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
                 }
             }
 
+            _inactivityTimer?.Stop();
+
             if (RunTime.IsMac && _config.AsSystemProxy)
             {
                 ToggleSystemProxy(ToggleSystemProxyAction.Off);
