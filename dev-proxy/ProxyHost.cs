@@ -271,18 +271,25 @@ internal class ProxyHost
         };
         _urlsToWatchOption.AddAlias("-u");
         
-        _timeoutOption = new Option<long?>(TimeoutOptionName, "No request shutdown dev-proxy timeout.");
+        _timeoutOption = new Option<long?>(TimeoutOptionName, "Time in seconds after which the proxy quits, resets when a request is being made")
+        {
+            ArgumentHelpName = "inactivityTimeout",
+        };
         _timeoutOption.AddValidator(input =>
         {
             try
             {
-                _ = input.GetValueForOption(_timeoutOption);
+                if (!long.TryParse(input.Tokens[0].Value, out _))
+                {
+                    input.ErrorMessage = $"{input.Tokens[0].Value} is not of type long";
+                }
             }
             catch (InvalidOperationException ex)
             {
                 input.ErrorMessage = ex.Message;
             }
         });
+        _timeoutOption.AddAlias("-t");
 
         ProxyCommandHandler.Configuration.ConfigFile = ConfigFile;
     }
