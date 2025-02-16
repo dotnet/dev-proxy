@@ -281,7 +281,7 @@ internal class ProxyHost
             {
                 if (!long.TryParse(input.Tokens[0].Value, out _))
                 {
-                    input.ErrorMessage = $"{input.Tokens[0].Value} is not of type long";
+                    input.ErrorMessage = $"{input.Tokens[0].Value} is not valid as a timeout value";
                 }
             }
             catch (InvalidOperationException ex)
