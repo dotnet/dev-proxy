@@ -39,6 +39,9 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
     // the key is HashObject of the SessionEventArgs object
     private readonly Dictionary<int, Dictionary<string, object>> _pluginData = [];
     private Timer? _inactivityTimeoutTimer;
+    private TimeSpan? InactivityTimeoutTimeSpan => 
+        _config.Timeout.HasValue ? TimeSpan.FromSeconds(_config.Timeout.Value) : null;
+    private static readonly TimeSpan InfiniteTimeout = TimeSpan.FromMilliseconds(-1);
 
     public static X509Certificate2? Certificate => _proxyServer?.CertificateManager.RootCertificate;
 
@@ -81,9 +84,9 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
         process.WaitForExit();
     }
 
-    private static void ResetInactivityTimeoutTimer(Timer timer, long timeout)
+    private static void ResetInactivityTimeoutTimer(Timer timer, TimeSpan timeout)
     {
-        timer.Change(TimeSpan.FromSeconds(timeout), TimeSpan.FromSeconds(-1));
+        timer.Change(timeout, InfiniteTimeout);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -166,10 +169,10 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
         }
         _pluginEvents.AfterRequestLog += AfterRequestLogAsync;
         
-        if (_config.Timeout.HasValue)
+        if (InactivityTimeoutTimeSpan.HasValue)
         {
             // pass period:TimeSpan.FromMilliseconds(-1) to only execute once
-            _inactivityTimeoutTimer = new Timer(_ => _proxyState.StopProxy(), null, TimeSpan.FromSeconds(_config.Timeout.Value), TimeSpan.FromMilliseconds(-1));
+            _inactivityTimeoutTimer = new Timer(_ => _proxyState.StopProxy(), null, InactivityTimeoutTimeSpan.Value, InfiniteTimeout);
         }
         
         if (!isInteractive)
@@ -464,9 +467,9 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
 
     async Task OnRequestAsync(object sender, SessionEventArgs e)
     {
-        if (_inactivityTimeoutTimer != null && _config.Timeout.HasValue)
+        if (_inactivityTimeoutTimer != null && InactivityTimeoutTimeSpan.HasValue)
         {
-            ResetInactivityTimeoutTimer(_inactivityTimeoutTimer, _config.Timeout.Value);
+            ResetInactivityTimeoutTimer(_inactivityTimeoutTimer, InactivityTimeoutTimeSpan.Value);
         }
         if (IsProxiedHost(e.HttpClient.Request.RequestUri.Host) &&
             IsIncludedByHeaders(e.HttpClient.Request.Headers))
