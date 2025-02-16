@@ -8,29 +8,17 @@ using System.Text.Json;
 
 namespace DevProxy.Plugins.Mocks;
 
-internal class MockResponsesLoader(ILogger logger, MockResponseConfiguration configuration) : IDisposable
+internal class MockResponsesLoader(ILogger logger, MockResponseConfiguration configuration, bool validateSchemas) : BaseLoader(logger, validateSchemas)
 {
     private readonly ILogger _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     private readonly MockResponseConfiguration _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+    protected override string FilePath => Path.Combine(Directory.GetCurrentDirectory(), _configuration.MocksFile);
 
-    private string ResponsesFilePath => Path.Combine(Directory.GetCurrentDirectory(), _configuration.MocksFile);
-    private FileSystemWatcher? _watcher;
-
-    public void LoadResponses()
+    protected override void LoadData(string fileContents)
     {
-        if (!File.Exists(ResponsesFilePath))
-        {
-            _logger.LogWarning("File {configurationFile} not found. No mocks will be provided", _configuration.MocksFile);
-            _configuration.Mocks = [];
-            return;
-        }
-
         try
         {
-            using var stream = new FileStream(ResponsesFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            using var reader = new StreamReader(stream);
-            var responsesString = reader.ReadToEnd();
-            var responsesConfig = JsonSerializer.Deserialize<MockResponseConfiguration>(responsesString, ProxyUtils.JsonSerializerOptions);
+            var responsesConfig = JsonSerializer.Deserialize<MockResponseConfiguration>(fileContents, ProxyUtils.JsonSerializerOptions);
             IEnumerable<MockResponse>? configResponses = responsesConfig?.Mocks;
             if (configResponses is not null)
             {
@@ -42,45 +30,5 @@ internal class MockResponsesLoader(ILogger logger, MockResponseConfiguration con
         {
             _logger.LogError(ex, "An error has occurred while reading {configurationFile}:", _configuration.MocksFile);
         }
-    }
-
-    public void InitResponsesWatcher()
-    {
-        if (_watcher is not null)
-        {
-            return;
-        }
-
-        string path = Path.GetDirectoryName(ResponsesFilePath) ?? throw new InvalidOperationException($"{ResponsesFilePath} is an invalid path");
-        if (!File.Exists(ResponsesFilePath))
-        {
-            _logger.LogWarning("File {configurationFile} not found. No mocks will be provided", _configuration.MocksFile);
-            _configuration.Mocks = [];
-            return;
-        }
-
-        _watcher = new FileSystemWatcher(Path.GetFullPath(path));
-        _watcher.NotifyFilter = NotifyFilters.CreationTime
-                             | NotifyFilters.FileName
-                             | NotifyFilters.LastWrite
-                             | NotifyFilters.Size;
-        _watcher.Filter = Path.GetFileName(ResponsesFilePath);
-        _watcher.Changed += ResponsesFile_Changed;
-        _watcher.Created += ResponsesFile_Changed;
-        _watcher.Deleted += ResponsesFile_Changed;
-        _watcher.Renamed += ResponsesFile_Changed;
-        _watcher.EnableRaisingEvents = true;
-
-        LoadResponses();
-    }
-
-    private void ResponsesFile_Changed(object sender, FileSystemEventArgs e)
-    {
-        LoadResponses();
-    }
-
-    public void Dispose()
-    {
-        _watcher?.Dispose();
     }
 }

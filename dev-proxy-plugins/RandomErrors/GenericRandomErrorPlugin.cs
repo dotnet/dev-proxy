@@ -194,7 +194,7 @@ public class GenericRandomErrorPlugin(IPluginEvents pluginEvents, IProxyContext 
         ConfigSection?.Bind(_configuration);
         _configuration.ErrorsFile = Path.GetFullPath(ProxyUtils.ReplacePathTokens(_configuration.ErrorsFile ?? string.Empty), Path.GetDirectoryName(Context.Configuration.ConfigFile ?? string.Empty) ?? string.Empty);
 
-        _loader = new GenericErrorResponsesLoader(Logger, _configuration);
+        _loader = new GenericErrorResponsesLoader(Logger, _configuration, Context.Configuration.ValidateSchemas);
 
         PluginEvents.Init += OnInit;
         PluginEvents.OptionsLoaded += OnOptionsLoaded;
@@ -236,7 +236,7 @@ public class GenericRandomErrorPlugin(IPluginEvents pluginEvents, IProxyContext 
 
     private void OnInit(object? sender, InitArgs e)
     {
-        _loader?.InitResponsesWatcher();
+        _loader?.InitFileWatcher();
 
         ValidateErrors();
     }

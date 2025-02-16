@@ -24,5 +24,6 @@
   "logLevel": "information",
   "newVersionNotification": "stable",
   "showSkipMessages": true,
-  "showTimestamps": true
+  "showTimestamps": true,
+  "validateSchemas": true
 }

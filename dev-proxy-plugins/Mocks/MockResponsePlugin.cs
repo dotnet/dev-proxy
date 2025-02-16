@@ -65,7 +65,7 @@ public class MockResponsePlugin(IPluginEvents pluginEvents, IProxyContext contex
         await base.RegisterAsync();
 
         ConfigSection?.Bind(_configuration);
-        _loader = new MockResponsesLoader(Logger, _configuration);
+        _loader = new MockResponsesLoader(Logger, _configuration, Context.Configuration.ValidateSchemas);
 
         PluginEvents.OptionsLoaded += OnOptionsLoaded;
         PluginEvents.BeforeRequest += OnRequestAsync;
@@ -99,7 +99,7 @@ public class MockResponsePlugin(IPluginEvents pluginEvents, IProxyContext contex
         _configuration.MocksFile = Path.GetFullPath(ProxyUtils.ReplacePathTokens(_configuration.MocksFile), Path.GetDirectoryName(_proxyConfiguration?.ConfigFile ?? string.Empty) ?? string.Empty);
 
         // load the responses from the configured mocks file
-        _loader?.InitResponsesWatcher();
+        _loader?.InitFileWatcher();
 
         ValidateMocks();
     }

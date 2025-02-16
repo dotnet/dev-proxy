@@ -133,9 +133,9 @@ public class RateLimitingPlugin(IPluginEvents pluginEvents, IProxyContext contex
         if (_configuration.WhenLimitExceeded == RateLimitResponseWhenLimitExceeded.Custom)
         {
             _configuration.CustomResponseFile = Path.GetFullPath(ProxyUtils.ReplacePathTokens(_configuration.CustomResponseFile), Path.GetDirectoryName(Context.Configuration.ConfigFile ?? string.Empty) ?? string.Empty);
-            _loader = new RateLimitingCustomResponseLoader(Logger, _configuration);
+            _loader = new RateLimitingCustomResponseLoader(Logger, _configuration, Context.Configuration.ValidateSchemas);
             // load the responses from the configured mocks file
-            _loader.InitResponsesWatcher();
+            _loader.InitFileWatcher();
         }
 
         PluginEvents.BeforeRequest += OnRequestAsync;

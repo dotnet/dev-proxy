@@ -21,23 +21,24 @@ public enum ReleaseType
 
 public class ProxyConfiguration : IProxyConfiguration
 {
-    public int Port { get; set; } = 8000;
+    public int ApiPort { get; set; } = 8897;
+    public bool AsSystemProxy { get; set; } = true;
+    public string ConfigFile { get; set; } = "devproxyrc.json";
+    public MockRequestHeader[]? FilterByHeaders { get; set; }
     public string? IPAddress { get; set; } = "127.0.0.1";
-    public bool Record { get; set; } = false;
+    public bool InstallCert { get; set; } = true;
+    public LanguageModelConfiguration? LanguageModel { get; set; }
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public LogLevel LogLevel { get; set; } = LogLevel.Information;
-    public IEnumerable<int> WatchPids { get; set; } = new List<int>();
-    public IEnumerable<string> WatchProcessNames { get; set; } = [];
     public bool NoFirstRun { get; set; } = false;
-    public bool AsSystemProxy { get; set; } = true;
-    public bool InstallCert { get; set; } = true;
-    public string ConfigFile { get; set; } = "devproxyrc.json";
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public ReleaseType NewVersionNotification { get; set; } = ReleaseType.Stable;
-    public LanguageModelConfiguration? LanguageModel { get; set; }
-    public MockRequestHeader[]? FilterByHeaders { get; set; }
-    public int ApiPort { get; set; } = 8897;
+    public int Port { get; set; } = 8000;
+    public bool Record { get; set; } = false;
     public bool ShowSkipMessages { get; set; } = true;
     public bool ShowTimestamps { get; set; } = true;
     public long? TimeoutSeconds { get; set; }
+    public bool ValidateSchemas { get; set; } = true;
+    public IEnumerable<int> WatchPids { get; set; } = new List<int>();
+    public IEnumerable<string> WatchProcessNames { get; set; } = [];
 }

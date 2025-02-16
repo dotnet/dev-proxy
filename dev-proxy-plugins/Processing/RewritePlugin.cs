@@ -37,7 +37,7 @@ public class RewritePlugin(IPluginEvents pluginEvents, IProxyContext context, IL
         await base.RegisterAsync();
 
         ConfigSection?.Bind(_configuration);
-        _loader = new RewritesLoader(Logger, _configuration);
+        _loader = new RewritesLoader(Logger, _configuration, Context.Configuration.ValidateSchemas);
 
         PluginEvents.BeforeRequest += BeforeRequestAsync;
 
@@ -47,7 +47,7 @@ public class RewritePlugin(IPluginEvents pluginEvents, IProxyContext context, IL
             Path.GetDirectoryName(Context.Configuration.ConfigFile ?? string.Empty) ?? string.Empty
         );
 
-        _loader?.InitResponsesWatcher();
+        _loader?.InitFileWatcher();
     }
 
     private Task BeforeRequestAsync(object sender, ProxyRequestArgs e)

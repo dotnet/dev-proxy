@@ -2,6 +2,9 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using Microsoft.Extensions.Logging;
+using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Schema;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -454,5 +457,43 @@ public static class ProxyUtils
         var prefix = firstPath[..commonPrefixLength];
         var lastSlashIndex = prefix.LastIndexOf('/');
         return lastSlashIndex >= 0 ? prefix[..(lastSlashIndex + 1)] : prefix;
+    }
+    
+    public static async Task<(bool IsValid, IEnumerable<string> ValidationErrors)> ValidateJson(string? json, string? schemaUrl, ILogger logger)
+    {
+        try
+        {
+            logger.LogDebug("Validating JSON against schema {SchemaUrl}", schemaUrl);
+
+            if (string.IsNullOrEmpty(json))
+            {
+                logger.LogDebug("JSON is empty, skipping validation");
+                return (true, []);
+            }
+            if (string.IsNullOrEmpty(schemaUrl))
+            {
+                logger.LogDebug("Schema URL is empty, skipping validation");
+                return (true, []);
+            }
+
+            logger.LogDebug("Downloading schema from {SchemaUrl}", schemaUrl);
+            using var client = new HttpClient();
+            var schemaContents = await client.GetStringAsync(schemaUrl);
+            
+            logger.LogDebug("Parsing schema");
+            var schema = JSchema.Parse(schemaContents);
+            logger.LogDebug("Parsing JSON");
+            var token = JToken.Parse(json);
+
+            logger.LogDebug("Validating JSON");
+            bool isValid = token.IsValid(schema, out IList<string> errorMessages);
+
+            return (isValid, errorMessages);
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Error validating JSON");
+            return (false, [ex.Message]);
+        }
     }
 }

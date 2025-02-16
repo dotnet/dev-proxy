@@ -31,7 +31,7 @@ public class MockRequestPlugin(IPluginEvents pluginEvents, IProxyContext context
         await base.RegisterAsync();
 
         ConfigSection?.Bind(_configuration);
-        _loader = new MockRequestLoader(Logger, _configuration);
+        _loader = new MockRequestLoader(Logger, _configuration, Context.Configuration.ValidateSchemas);
 
         PluginEvents.MockRequest += OnMockRequestAsync;
 
@@ -39,7 +39,7 @@ public class MockRequestPlugin(IPluginEvents pluginEvents, IProxyContext context
         _configuration.MockFile = Path.GetFullPath(ProxyUtils.ReplacePathTokens(_configuration.MockFile), Path.GetDirectoryName(Context.Configuration.ConfigFile ?? string.Empty) ?? string.Empty);
 
         // load the request from the configured mock file
-        _loader.InitResponsesWatcher();
+        _loader.InitFileWatcher();
     }
 
     protected HttpRequestMessage GetRequestMessage()

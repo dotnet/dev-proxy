@@ -91,8 +91,8 @@ public class CrudApiPlugin(IPluginEvents pluginEvents, IProxyContext context, IL
 
         _configuration.ApiFile = Path.GetFullPath(ProxyUtils.ReplacePathTokens(_configuration.ApiFile), Path.GetDirectoryName(_proxyConfiguration?.ConfigFile ?? string.Empty) ?? string.Empty);
 
-        _loader = new CrudApiDefinitionLoader(Logger, _configuration);
-        _loader?.InitApiDefinitionWatcher();
+        _loader = new CrudApiDefinitionLoader(Logger, _configuration, Context.Configuration.ValidateSchemas);
+        _loader?.InitFileWatcher();
 
         if (_configuration.Auth == CrudApiAuthType.Entra &&
             _configuration.EntraAuthConfig is null)
