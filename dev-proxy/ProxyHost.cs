@@ -22,9 +22,9 @@ internal class ProxyHost
     internal static readonly string RecordOptionName = "--record";
     private readonly Option<bool?> _recordOption;
     internal static readonly string WatchPidsOptionName = "--watch-pids";
-    private readonly Option<IEnumerable<int>?> _watchPidsOption;
+    private readonly Option<IEnumerable<int>> _watchPidsOption;
     internal static readonly string WatchProcessNamesOptionName = "--watch-process-names";
-    private readonly Option<IEnumerable<string>?> _watchProcessNamesOption;
+    private readonly Option<IEnumerable<string>> _watchProcessNamesOption;
     internal static readonly string ConfigFileOptionName = "--config-file";
     private static Option<string?>? _configFileOption;
     internal static readonly string NoFirstRunOptionName = "--no-first-run";
@@ -216,13 +216,13 @@ internal class ProxyHost
 
         _recordOption = new Option<bool?>(RecordOptionName, "Use this option to record all request logs");
 
-        _watchPidsOption = new Option<IEnumerable<int>?>(WatchPidsOptionName, "The IDs of processes to watch for requests")
+        _watchPidsOption = new Option<IEnumerable<int>>(WatchPidsOptionName, "The IDs of processes to watch for requests")
         {
             ArgumentHelpName = "pids",
             AllowMultipleArgumentsPerToken = true
         };
 
-        _watchProcessNamesOption = new Option<IEnumerable<string>?>(WatchProcessNamesOptionName, "The names of processes to watch for requests")
+        _watchProcessNamesOption = new Option<IEnumerable<string>>(WatchProcessNamesOptionName, "The names of processes to watch for requests")
         {
             ArgumentHelpName = "processNames",
             AllowMultipleArgumentsPerToken = true

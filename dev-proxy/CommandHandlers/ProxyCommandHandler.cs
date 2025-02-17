@@ -110,13 +110,13 @@ public class ProxyCommandHandler(IPluginEvents pluginEvents,
         {
             Configuration.Record = record.Value;
         }
-        var watchPids = context.ParseResult.GetValueForOption<IEnumerable<int>?>(ProxyHost.WatchPidsOptionName, _options);
-        if (watchPids is not null)
+        var watchPids = context.ParseResult.GetValueForOption<IEnumerable<int>>(ProxyHost.WatchPidsOptionName, _options);
+        if (watchPids is not null && watchPids.Any())
         {
             Configuration.WatchPids = watchPids;
         }
-        var watchProcessNames = context.ParseResult.GetValueForOption<IEnumerable<string>?>(ProxyHost.WatchProcessNamesOptionName, _options);
-        if (watchProcessNames is not null)
+        var watchProcessNames = context.ParseResult.GetValueForOption<IEnumerable<string>>(ProxyHost.WatchProcessNamesOptionName, _options);
+        if (watchProcessNames is not null && watchProcessNames.Any())
         {
             Configuration.WatchProcessNames = watchProcessNames;
         }
