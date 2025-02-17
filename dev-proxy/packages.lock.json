@@ -446,6 +446,14 @@
         "resolved": "17.8.8",
         "contentHash": "rWXThIpyQd4YIXghNkiv2+VLvzS+MCMKVRDR0GAMlflsdo+YcAN2g2r5U1Ah98OFjQMRexTFtXQQ2LkajxZi3g=="
       },
+      "Newtonsoft.Json.Schema": {
+        "type": "Transitive",
+        "resolved": "4.0.1",
+        "contentHash": "rbHUKp5WTIbqmLEeJ21nTTDGcfR0LA7bVMzm0bYc3yx6NFKiCIHzzvYbwA4Sqgs7+wNldc5nBlkbithWj8IZig==",
+        "dependencies": {
+          "Newtonsoft.Json": "13.0.3"
+        }
+      },
       "SharpYaml": {
         "type": "Transitive",
         "resolved": "2.1.1",
@@ -574,6 +582,7 @@
           "Microsoft.Extensions.Configuration.Json": "[9.0.2, )",
           "Microsoft.Extensions.Logging.Abstractions": "[9.0.2, )",
           "Microsoft.OpenApi.Readers": "[1.6.23, )",
+          "Newtonsoft.Json.Schema": "[4.0.1, )",
           "System.CommandLine": "[2.0.0-beta4.22272.1, )",
           "Unobtanium.Web.Proxy": "[0.1.5, )"
         }
