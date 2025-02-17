@@ -38,6 +38,7 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
     // Dictionary for plugins to store data between requests
     // the key is HashObject of the SessionEventArgs object
     private readonly Dictionary<int, Dictionary<string, object>> _pluginData = [];
+    private InactivityTimer? _inactivityTimer;
 
     public static X509Certificate2? Certificate => _proxyServer?.CertificateManager.RootCertificate;
 
@@ -51,7 +52,6 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
         // we need to change this to a value lower than 397
         // to avoid the ERR_CERT_VALIDITY_TOO_LONG error in Edge
         _proxyServer.CertificateManager.CertificateValidDays = 365;
-
         var joinableTaskContext = new JoinableTaskContext();
         var joinableTaskFactory = new JoinableTaskFactory(joinableTaskContext);
         _ = joinableTaskFactory.Run(async () => await _proxyServer.CertificateManager.LoadOrCreateRootCertificateAsync());
@@ -92,7 +92,7 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
         }
 
         LoadHostNamesFromUrls();
-
+        
         _proxyServer.BeforeRequest += OnRequestAsync;
         _proxyServer.BeforeResponse += OnBeforeResponseAsync;
         _proxyServer.AfterResponse += OnAfterResponseAsync;
@@ -160,7 +160,12 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
             StartRecording();
         }
         _pluginEvents.AfterRequestLog += AfterRequestLogAsync;
-
+        
+        if (config.Timeout.HasValue)
+        {
+            _inactivityTimer = new InactivityTimer(config.Timeout.Value, _proxyState.StopProxy);
+        }
+        
         if (!isInteractive)
         {
             return;
@@ -343,6 +348,8 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
                 }
             }
 
+            _inactivityTimer?.Stop();
+
             if (RunTime.IsMac && _config.AsSystemProxy)
             {
                 ToggleSystemProxy(ToggleSystemProxyAction.Off);
@@ -453,6 +460,10 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
 
     async Task OnRequestAsync(object sender, SessionEventArgs e)
     {
+        if (_inactivityTimer != null)
+        {
+            _inactivityTimer.Reset();
+        }
         if (IsProxiedHost(e.HttpClient.Request.RequestUri.Host) &&
             IsIncludedByHeaders(e.HttpClient.Request.Headers))
         {
