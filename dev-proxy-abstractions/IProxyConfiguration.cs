@@ -10,15 +10,16 @@ public interface IProxyConfiguration
 {
     int ApiPort { get; }
     bool AsSystemProxy { get; }
-    string? IPAddress { get; }
     string ConfigFile { get; }
-    bool InstallCert { get; }
     MockRequestHeader[]? FilterByHeaders { get; }
+    bool InstallCert { get; }
+    string? IPAddress { get; }
     LogLevel LogLevel { get; }
     bool NoFirstRun { get; }
     int Port { get; }
     bool Record { get; }
+    bool ShowTimestamps { get; }
+    bool ValidateSchemas { get; }
     IEnumerable<int> WatchPids { get; }
     IEnumerable<string> WatchProcessNames { get; }
-    bool ShowTimestamps { get; }
 }

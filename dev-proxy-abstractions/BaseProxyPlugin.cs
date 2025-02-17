@@ -3,6 +3,8 @@
 // See the LICENSE file in the project root for more information.
 
 using System.CommandLine;
+using System.Globalization;
+using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -43,8 +45,49 @@ public abstract class BaseProxyPlugin : IProxyPlugin
         PluginEvents = pluginEvents;
     }
 
-    public virtual Task RegisterAsync()
+    public virtual async Task RegisterAsync()
     {
-        return Task.CompletedTask;
+        var (IsValid, ValidationErrors) = await ValidatePluginConfig();
+        if (!IsValid)
+        {
+            Logger.LogError("Plugin configuration validation failed with the following errors: {Errors}", string.Join(", ", ValidationErrors));
+        }
+    }
+
+    protected async Task<(bool IsValid, IEnumerable<string> ValidationErrors)> ValidatePluginConfig()
+    {
+        if (!Context.Configuration.ValidateSchemas || ConfigSection is null)
+        {
+            Logger.LogDebug("Schema validation is disabled or no configuration section specified");
+            return (true, []);
+        }
+
+        try
+        {
+            var schemaUrl = ConfigSection.GetValue<string>("$schema");
+            if (string.IsNullOrWhiteSpace(schemaUrl))
+            {
+                Logger.LogDebug("No schema URL found in configuration file");
+                return (true, []);
+            }
+
+            var configSectionName = ConfigSection.Key;
+            var configFile = await File.ReadAllTextAsync(Context.Configuration.ConfigFile);
+
+            using var document = JsonDocument.Parse(configFile);
+            var root = document.RootElement;
+
+            if (!root.TryGetProperty(configSectionName, out var configSection))
+            {
+                Logger.LogError("Configuration section {SectionName} not found in configuration file", configSectionName);
+                return (false, [string.Format(CultureInfo.InvariantCulture, "Configuration section {0} not found in configuration file", configSectionName)]);
+            }
+
+            return await ProxyUtils.ValidateJson(configSection.GetRawText(), schemaUrl, Logger);
+        }
+        catch (Exception ex)
+        {
+            return (false, [ex.Message]);
+        }
     }
 }
