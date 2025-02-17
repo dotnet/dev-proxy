@@ -237,6 +237,55 @@ public class GenericRandomErrorPlugin(IPluginEvents pluginEvents, IProxyContext 
     private void OnInit(object? sender, InitArgs e)
     {
         _loader?.InitResponsesWatcher();
+
+        ValidateErrors();
+    }
+
+    private void ValidateErrors()
+    {
+        Logger.LogDebug("Validating error responses");
+
+        if (_configuration.Errors is null ||
+            !_configuration.Errors.Any())
+        {
+            Logger.LogDebug("No error responses defined");
+            return;
+        }
+
+        var unmatchedErrorUrls = new List<string>();
+
+        foreach (var error in _configuration.Errors)
+        {
+            if (error.Request is null)
+            {
+                Logger.LogDebug("Error response is missing a request");
+                continue;
+            }
+
+            if (string.IsNullOrEmpty(error.Request.Url))
+            {
+                Logger.LogDebug("Error response is missing a URL");
+                continue;
+            }
+
+            if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, error.Request.Url))
+            {
+                unmatchedErrorUrls.Add(error.Request.Url);
+            }
+        }
+
+        if (unmatchedErrorUrls.Count == 0)
+        {
+            return;
+        }
+
+        var suggestedWildcards = ProxyUtils.GetWildcardPatterns(unmatchedErrorUrls);
+        Logger.LogWarning(
+            "The following URLs in {errorsFile} don't match any URL to watch: {unmatchedMocks}. Add the following URLs to URLs to watch: {urlsToWatch}",
+            _configuration.ErrorsFile,
+            string.Join(", ", unmatchedErrorUrls),
+            string.Join(", ", suggestedWildcards)
+        );
     }
 
     private Task OnRequestAsync(object? sender, ProxyRequestArgs e)
