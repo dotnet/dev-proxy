@@ -76,7 +76,7 @@ public class OllamaLanguageModelClient(LanguageModelConfiguration? configuration
         }
     }
 
-    public async Task<ILanguageModelCompletionResponse?> GenerateCompletionAsync(string prompt)
+    public async Task<ILanguageModelCompletionResponse?> GenerateCompletionAsync(string prompt, CompletionOptions? options = null)
     {
         using var scope = _logger.BeginScope(nameof(OllamaLanguageModelClient));
 
@@ -102,7 +102,7 @@ public class OllamaLanguageModelClient(LanguageModelConfiguration? configuration
             return cachedResponse;
         }
 
-        var response = await GenerateCompletionInternalAsync(prompt);
+        var response = await GenerateCompletionInternalAsync(prompt, options);
         if (response == null)
         {
             return null;
@@ -123,7 +123,7 @@ public class OllamaLanguageModelClient(LanguageModelConfiguration? configuration
         }
     }
 
-    private async Task<OllamaLanguageModelCompletionResponse?> GenerateCompletionInternalAsync(string prompt)
+    private async Task<OllamaLanguageModelCompletionResponse?> GenerateCompletionInternalAsync(string prompt, CompletionOptions? options = null)
     {
         Debug.Assert(_configuration != null, "Configuration is null");
 
@@ -138,7 +138,8 @@ public class OllamaLanguageModelClient(LanguageModelConfiguration? configuration
                 {
                     prompt,
                     model = _configuration.Model,
-                    stream = false
+                    stream = false,
+                    options
                 }
             );
             _logger.LogDebug("Response: {response}", response.StatusCode);
