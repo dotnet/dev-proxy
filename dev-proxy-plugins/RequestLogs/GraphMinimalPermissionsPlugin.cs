@@ -143,7 +143,7 @@ public class GraphMinimalPermissionsPlugin(IPluginEvents pluginEvents, IProxyCon
 
         try
         {
-            var url = $"https://graphexplorerapi.azurewebsites.net/permissions?scopeType={GraphUtils.GetScopeTypeString(_configuration.Type)}";
+            var url = $"https://devxapi-func-prod-eastus.azurewebsites.net/permissions?scopeType={GraphUtils.GetScopeTypeString(_configuration.Type)}";
             using var client = new HttpClient();
             var stringPayload = JsonSerializer.Serialize(payload, ProxyUtils.JsonSerializerOptions);
             Logger.LogDebug("Calling {url} with payload\r\n{stringPayload}", url, stringPayload);
