@@ -459,10 +459,7 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
 
     async Task OnRequestAsync(object sender, SessionEventArgs e)
     {
-        if (_inactivityTimer != null)
-        {
-            _inactivityTimer.Reset();
-        }
+        _inactivityTimer?.Reset();
         if (IsProxiedHost(e.HttpClient.Request.RequestUri.Host) &&
             IsIncludedByHeaders(e.HttpClient.Request.Headers))
         {

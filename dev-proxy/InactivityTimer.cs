@@ -4,29 +4,16 @@
 
 namespace DevProxy
 {
-    public class InactivityTimer
+    public class InactivityTimer(long timeoutSeconds, Action timeoutAction)
     {
-        private Timer? _timer;
-        private readonly TimeSpan _timeout;
-        private static readonly TimeSpan InfiniteTimeout = TimeSpan.FromMilliseconds(-1);
+        private readonly TimeSpan _timeout = TimeSpan.FromSeconds(timeoutSeconds);
+        private readonly Timer _timer = new Timer(_ => timeoutAction.Invoke(), null, TimeSpan.FromSeconds(timeoutSeconds), Timeout.InfiniteTimeSpan);
 
-        public InactivityTimer(long timeoutSeconds, Action timeoutAction)
-        {
-            _timeout = TimeSpan.FromSeconds(timeoutSeconds);
-            Action action = timeoutAction ?? throw new ArgumentNullException(nameof(timeoutAction));
-        
-            _timer = new Timer(_ => action.Invoke(), null, _timeout, InfiniteTimeout);
-        }
-
-        public void Reset()
-        {
-            this._timer?.Change(_timeout, InfiniteTimeout);
-        }
+        public void Reset() => _timer.Change(_timeout, Timeout.InfiniteTimeSpan);
 
         public void Stop()
         {
-            this._timer?.Dispose();
-            _timer = null;
+            _timer.Dispose();
         }
     }
 }
