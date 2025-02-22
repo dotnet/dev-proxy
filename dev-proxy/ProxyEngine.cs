@@ -160,9 +160,9 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
         }
         _pluginEvents.AfterRequestLog += AfterRequestLogAsync;
         
-        if (config.Timeout.HasValue)
+        if (config.TimeoutSeconds.HasValue)
         {
-            _inactivityTimer = new InactivityTimer(config.Timeout.Value, _proxyState.StopProxy);
+            _inactivityTimer = new InactivityTimer(config.TimeoutSeconds.Value, _proxyState.StopProxy);
         }
         
         if (!isInteractive)

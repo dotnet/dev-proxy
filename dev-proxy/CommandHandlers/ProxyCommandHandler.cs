@@ -138,7 +138,7 @@ public class ProxyCommandHandler(IPluginEvents pluginEvents,
         var timeout = context.ParseResult.GetValueForOption<long?>(ProxyHost.TimeoutOptionName, _options);
         if (timeout is not null)
         {
-            Configuration.Timeout = timeout.Value;
+            Configuration.TimeoutSeconds = timeout.Value;
         }
     }
 

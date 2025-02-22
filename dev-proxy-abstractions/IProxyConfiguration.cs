@@ -21,5 +21,5 @@ public interface IProxyConfiguration
     IEnumerable<int> WatchPids { get; }
     IEnumerable<string> WatchProcessNames { get; }
     bool ShowTimestamps { get; }
-    long? Timeout { get; }
+    long? TimeoutSeconds { get; }
 }
