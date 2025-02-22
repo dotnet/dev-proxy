@@ -134,6 +134,10 @@
     },
     "showTimestamps": {
       "type": "boolean"
+    },
+    "timeoutSeconds": {
+      "type": "number",
+      "minimum": 1
     }
   },
   "required": [
