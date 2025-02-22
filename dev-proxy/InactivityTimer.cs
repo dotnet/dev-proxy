@@ -2,11 +2,9 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using DevProxy.Abstractions;
-
 namespace DevProxy
 {
-    public class InactivityTimer : IInactivityTimer
+    public class InactivityTimer
     {
         private Timer? _timer;
         private readonly TimeSpan _timeout;
