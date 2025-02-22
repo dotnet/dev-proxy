@@ -273,7 +273,7 @@ internal class ProxyHost
         
         _timeoutOption = new Option<long?>(TimeoutOptionName, "Time in seconds after which Dev Proxy exits. Resets when Dev Proxy intercepts a request.")
         {
-            ArgumentHelpName = "inactivityTimeout",
+            ArgumentHelpName = "timeout",
         };
         _timeoutOption.AddValidator(input =>
         {
