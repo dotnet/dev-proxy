@@ -279,7 +279,7 @@ internal class ProxyHost
         {
             try
             {
-                if (!long.TryParse(input.Tokens[0].Value, out _))
+                if (!long.TryParse(input.Tokens[0].Value, out long timeoutInput) || timeoutInput < 1)
                 {
                     input.ErrorMessage = $"{input.Tokens[0].Value} is not valid as a timeout value";
                 }
