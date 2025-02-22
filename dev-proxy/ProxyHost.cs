@@ -271,7 +271,7 @@ internal class ProxyHost
         };
         _urlsToWatchOption.AddAlias("-u");
         
-        _timeoutOption = new Option<long?>(TimeoutOptionName, "Time in seconds after which the proxy quits, resets when a request is being made")
+        _timeoutOption = new Option<long?>(TimeoutOptionName, "Time in seconds after which Dev Proxy exits. Resets when Dev Proxy intercepts a request.")
         {
             ArgumentHelpName = "inactivityTimeout",
         };
