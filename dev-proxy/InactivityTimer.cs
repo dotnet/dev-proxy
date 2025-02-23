@@ -7,7 +7,7 @@ namespace DevProxy
     public class InactivityTimer(long timeoutSeconds, Action timeoutAction)
     {
         private readonly TimeSpan _timeout = TimeSpan.FromSeconds(timeoutSeconds);
-        private readonly Timer _timer = new Timer(_ => timeoutAction.Invoke(), null, TimeSpan.FromSeconds(timeoutSeconds), Timeout.InfiniteTimeSpan);
+        private readonly Timer _timer = new(_ => timeoutAction.Invoke(), null, TimeSpan.FromSeconds(timeoutSeconds), Timeout.InfiniteTimeSpan);
 
         public void Reset() => _timer.Change(_timeout, Timeout.InfiniteTimeSpan);
 

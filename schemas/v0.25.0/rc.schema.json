@@ -135,7 +135,7 @@
     "showTimestamps": {
       "type": "boolean"
     },
-    "timeoutSeconds": {
+    "timeout": {
       "type": "number",
       "minimum": 1
     }
