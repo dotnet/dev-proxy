@@ -92,6 +92,7 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
         }
 
         LoadHostNamesFromUrls();
+        
         _proxyServer.BeforeRequest += OnRequestAsync;
         _proxyServer.BeforeResponse += OnBeforeResponseAsync;
         _proxyServer.AfterResponse += OnAfterResponseAsync;
