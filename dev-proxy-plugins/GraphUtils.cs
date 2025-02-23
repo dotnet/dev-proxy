@@ -52,7 +52,7 @@ public class GraphUtils
 
         var newMinimalScopes = new HashSet<string>(minimalScopes);
 
-        var url = $"https://graphexplorerapi.azurewebsites.net/permissions?scopeType={GetScopeTypeString(permissionsType)}";
+        var url = $"https://devxapi-func-prod-eastus.azurewebsites.net/permissions?scopeType={GetScopeTypeString(permissionsType)}";
         using var httpClient = new HttpClient();
         var urls = userEndpoints.Select(e => {
             logger.LogDebug("Getting permissions for {method} {url}", e.method, e.url);
