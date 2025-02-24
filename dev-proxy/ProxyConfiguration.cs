@@ -39,4 +39,5 @@ public class ProxyConfiguration : IProxyConfiguration
     public int ApiPort { get; set; } = 8897;
     public bool ShowSkipMessages { get; set; } = true;
     public bool ShowTimestamps { get; set; } = true;
+    public long? TimeoutSeconds { get; set; }
 }

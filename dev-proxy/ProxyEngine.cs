@@ -38,6 +38,7 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
     // Dictionary for plugins to store data between requests
     // the key is HashObject of the SessionEventArgs object
     private readonly Dictionary<int, Dictionary<string, object>> _pluginData = [];
+    private InactivityTimer? _inactivityTimer;
 
     public static X509Certificate2? Certificate => _proxyServer?.CertificateManager.RootCertificate;
 
@@ -160,7 +161,12 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
             StartRecording();
         }
         _pluginEvents.AfterRequestLog += AfterRequestLogAsync;
-
+        
+        if (config.TimeoutSeconds.HasValue)
+        {
+            _inactivityTimer = new InactivityTimer(config.TimeoutSeconds.Value, _proxyState.StopProxy);
+        }
+        
         if (!isInteractive)
         {
             return;
@@ -343,6 +349,8 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
                 }
             }
 
+            _inactivityTimer?.Stop();
+
             if (RunTime.IsMac && _config.AsSystemProxy)
             {
                 ToggleSystemProxy(ToggleSystemProxyAction.Off);
@@ -453,6 +461,7 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
 
     async Task OnRequestAsync(object sender, SessionEventArgs e)
     {
+        _inactivityTimer?.Reset();
         if (IsProxiedHost(e.HttpClient.Request.RequestUri.Host) &&
             IsIncludedByHeaders(e.HttpClient.Request.Headers))
         {
