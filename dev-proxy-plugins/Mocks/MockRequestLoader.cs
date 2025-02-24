@@ -8,29 +8,17 @@ using System.Text.Json;
 
 namespace DevProxy.Plugins.Mocks;
 
-internal class MockRequestLoader(ILogger logger, MockRequestConfiguration configuration) : IDisposable
+internal class MockRequestLoader(ILogger logger, MockRequestConfiguration configuration, bool validateSchemas) : BaseLoader(logger, validateSchemas)
 {
     private readonly ILogger _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     private readonly MockRequestConfiguration _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+    protected override string FilePath => Path.Combine(Directory.GetCurrentDirectory(), _configuration.MockFile);
 
-    private string RequestFilePath => Path.Combine(Directory.GetCurrentDirectory(), _configuration.MockFile);
-    private FileSystemWatcher? _watcher;
-
-    public void LoadRequest()
+    protected override void LoadData(string fileContents)
     {
-        if (!File.Exists(RequestFilePath))
-        {
-            _logger.LogWarning("File {configurationFile} not found. No mocks request will be issued", _configuration.MockFile);
-            _configuration.Request = null;
-            return;
-        }
-
         try
         {
-            using var stream = new FileStream(RequestFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            using var reader = new StreamReader(stream);
-            var requestString = reader.ReadToEnd();
-            var requestConfig = JsonSerializer.Deserialize<MockRequestConfiguration>(requestString, ProxyUtils.JsonSerializerOptions);
+            var requestConfig = JsonSerializer.Deserialize<MockRequestConfiguration>(fileContents, ProxyUtils.JsonSerializerOptions);
             var configRequest = requestConfig?.Request;
             if (configRequest is not null)
             {
@@ -42,47 +30,5 @@ internal class MockRequestLoader(ILogger logger, MockRequestConfiguration config
         {
             _logger.LogError(ex, "An error has occurred while reading {configurationFile}:", _configuration.MockFile);
         }
-    }
-
-    public void InitResponsesWatcher()
-    {
-        if (_watcher is not null)
-        {
-            return;
-        }
-
-        string path = Path.GetDirectoryName(RequestFilePath) ?? throw new InvalidOperationException($"{RequestFilePath} is an invalid path");
-        if (!File.Exists(RequestFilePath))
-        {
-            _logger.LogWarning("File {configurationFile} not found. No mock request will be issued", _configuration.MockFile);
-            _configuration.Request = null;
-            return;
-        }
-
-        _watcher = new FileSystemWatcher(Path.GetFullPath(path))
-        {
-            NotifyFilter = NotifyFilters.CreationTime
-                             | NotifyFilters.FileName
-                             | NotifyFilters.LastWrite
-                             | NotifyFilters.Size,
-            Filter = Path.GetFileName(RequestFilePath)
-        };
-        _watcher.Changed += RequestFile_Changed;
-        _watcher.Created += RequestFile_Changed;
-        _watcher.Deleted += RequestFile_Changed;
-        _watcher.Renamed += RequestFile_Changed;
-        _watcher.EnableRaisingEvents = true;
-
-        LoadRequest();
-    }
-
-    private void RequestFile_Changed(object sender, FileSystemEventArgs e)
-    {
-        LoadRequest();
-    }
-
-    public void Dispose()
-    {
-        _watcher?.Dispose();
     }
 }
