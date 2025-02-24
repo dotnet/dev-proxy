@@ -9,6 +9,6 @@ public class LanguageModelConfiguration
     public bool Enabled { get; set; } = false;
     // default Ollama URL
     public string? Url { get; set; } = "http://localhost:11434";
-    public string? Model { get; set; } = "phi3";
+    public string? Model { get; set; } = "llama3.2";
     public bool CacheResponses { get; set; } = true;
 }

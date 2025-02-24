@@ -480,11 +480,36 @@ public class OpenApiSpecGeneratorPlugin(IPluginEvents pluginEvents, IProxyContex
 
     private async Task<string> GetOperationIdAsync(string method, string serverUrl, string parametrizedPath)
     {
-        var prompt = $"For the specified request, generate an operation ID, compatible with an OpenAPI spec. Respond with just the ID in plain-text format. For example, for request such as `GET https://api.contoso.com/books/{{books-id}}` you return `getBookById`. For a request like `GET https://api.contoso.com/books/{{books-id}}/authors` you return `getAuthorsForBookById`. Request: {method.ToUpper()} {serverUrl}{parametrizedPath}";
+        var prompt = @"**Prompt:**
+Generate an operation ID for an OpenAPI specification based on the HTTP method and URL provided. Follow these rules:
+- The operation ID should be in camelCase format.
+- Start with a verb that matches the HTTP method (e.g., `get`, `create`, `update`, `delete`).
+- Use descriptive words from the URL path.
+- Replace path parameters (e.g., `{userId}`) with relevant nouns in singular form (e.g., `User`).
+- Do not provide explanations or any other text; respond only with the operation ID.
+
+Example:
+**Request:** `GET https://api.contoso.com/books/{books-id}`
+getBook
+
+Example:
+**Request:** `GET https://api.contoso.com/books/{books-id}/authors`
+getBookAuthors
+
+Example:
+**Request:** `GET https://api.contoso.com/books/{books-id}/authors/{authors-id}`
+getBookAuthor
+
+Example:
+**Request:** `POST https://api.contoso.com/books/{books-id}/authors`
+addBookAuthor
+
+Now, generate the operation ID for the following:
+**Request:** `{request}`".Replace("{request}", $"{method.ToUpper()} {serverUrl}{parametrizedPath}");
         ILanguageModelCompletionResponse? id = null;
         if (await Context.LanguageModelClient.IsEnabledAsync())
         {
-            id = await Context.LanguageModelClient.GenerateCompletionAsync(prompt);
+            id = await Context.LanguageModelClient.GenerateCompletionAsync(prompt, new() { Temperature = 1 });
         }
         return id?.Response ?? $"{method}{parametrizedPath.Replace('/', '.')}";
     }
