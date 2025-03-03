@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy MockRequestPlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "mockFile": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "mockFile"
+  ],
+  "additionalProperties": false
+}

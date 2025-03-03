@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy config",
+  "description": "Configuration for Dev Proxy",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "apiPort": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 65535
+    },
+    "asSystemProxy": {
+      "type": "boolean"
+    },
+    "filterByHeaders": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ]
+      }
+    },
+    "ipAddress": {
+      "type": "string",
+      "format": "ipv4"
+    },
+    "languageModel": {
+      "type": "object",
+      "properties": {
+        "cacheResponses": {
+          "type": "boolean"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "model": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "logLevel": {
+      "type": "string",
+      "enum": [
+        "debug",
+        "information",
+        "warning",
+        "error",
+        "trace"
+      ]
+    },
+    "newVersionNotification": {
+      "type": "string",
+      "enum": [
+        "none",
+        "stable",
+        "beta"
+      ]
+    },
+    "plugins": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "pluginPath": {
+            "type": "string"
+          },
+          "configSection": {
+            "type": "string"
+          },
+          "urlsToWatch": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "enabled",
+          "pluginPath"
+        ]
+      }
+    },
+    "port": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 65535
+    },
+    "record": {
+      "type": "boolean"
+    },
+    "showSkipMessages": {
+      "type": "boolean"
+    },
+    "urlsToWatch": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "validateSchemas": {
+      "type": "boolean"
+    },
+    "watchPids": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      }
+    },
+    "watchProcessNames": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "showTimestamps": {
+      "type": "boolean"
+    },
+    "timeout": {
+      "type": "number",
+      "minimum": 1
+    }
+  },
+  "required": [
+    "plugins"
+  ],
+  "additionalProperties": true
+}
