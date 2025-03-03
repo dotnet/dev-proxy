@@ -87,8 +87,6 @@ public class CrudApiPlugin(IPluginEvents pluginEvents, IProxyContext context, IL
 
         ConfigSection?.Bind(_configuration);
 
-        PluginEvents.BeforeRequest += OnRequestAsync;
-
         _proxyConfiguration = Context.Configuration;
 
         _configuration.ApiFile = Path.GetFullPath(ProxyUtils.ReplacePathTokens(_configuration.ApiFile), Path.GetDirectoryName(_proxyConfiguration?.ConfigFile ?? string.Empty) ?? string.Empty);
@@ -103,8 +101,21 @@ public class CrudApiPlugin(IPluginEvents pluginEvents, IProxyContext context, IL
             _configuration.Auth = CrudApiAuthType.None;
         }
 
+        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, _configuration.BaseUrl))
+        {
+            Logger.LogWarning(
+                "The base URL of the API {baseUrl} does not match any URL to watch. The {plugin} plugin will be disabled. To enable it, add {url}* to the list of URLs to watch and restart Dev Proxy.",
+                _configuration.BaseUrl,
+                Name,
+                _configuration.BaseUrl
+            );
+            return;
+        }
+
         LoadData();
         await SetupOpenIdConnectConfigurationAsync();
+
+        PluginEvents.BeforeRequest += OnRequestAsync;
     }
 
     private async Task SetupOpenIdConnectConfigurationAsync()
