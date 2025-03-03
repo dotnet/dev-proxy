@@ -28,7 +28,7 @@ public class MockResponseConfiguration
     public bool BlockUnmockedRequests { get; set; } = false;
 
     [JsonPropertyName("$schema")]
-    public string Schema { get; set; } = "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.25.0/mockresponseplugin.mocksfile.schema.json";
+    public string Schema { get; set; } = "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.26.0/mockresponseplugin.mocksfile.schema.json";
     public IEnumerable<MockResponse> Mocks { get; set; } = [];
 }
 
@@ -100,6 +100,61 @@ public class MockResponsePlugin(IPluginEvents pluginEvents, IProxyContext contex
 
         // load the responses from the configured mocks file
         _loader?.InitResponsesWatcher();
+
+        ValidateMocks();
+    }
+
+    private void ValidateMocks()
+    {
+        Logger.LogDebug("Validating mock responses");
+
+        if (_configuration.NoMocks)
+        {
+            Logger.LogDebug("Mocks are disabled");
+            return;
+        }
+
+        if (_configuration.Mocks is null ||
+            !_configuration.Mocks.Any())
+        {
+            Logger.LogDebug("No mock responses defined");
+            return;
+        }
+
+        var unmatchedMockUrls = new List<string>();
+
+        foreach (var mock in _configuration.Mocks)
+        {
+            if (mock.Request is null)
+            {
+                Logger.LogDebug("Mock response is missing a request");
+                continue;
+            }
+
+            if (string.IsNullOrEmpty(mock.Request.Url))
+            {
+                Logger.LogDebug("Mock response is missing a URL");
+                continue;
+            }
+
+            if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, mock.Request.Url))
+            {
+                unmatchedMockUrls.Add(mock.Request.Url);
+            }
+        }
+
+        if (unmatchedMockUrls.Count == 0)
+        {
+            return;
+        }
+
+        var suggestedWildcards = ProxyUtils.GetWildcardPatterns(unmatchedMockUrls);
+        Logger.LogWarning(
+            "The following URLs in {mocksFile} don't match any URL to watch: {unmatchedMocks}. Add the following URLs to URLs to watch: {urlsToWatch}",
+            _configuration.MocksFile,
+            string.Join(", ", unmatchedMockUrls),
+            string.Join(", ", suggestedWildcards)
+        );
     }
 
     protected virtual Task OnRequestAsync(object? sender, ProxyRequestArgs e)
@@ -180,9 +235,8 @@ public class MockResponsePlugin(IPluginEvents pluginEvents, IProxyContext contex
                 return false;
             }
 
-            //turn mock URL with wildcard into a regex and match against the request URL
-            var mockResponseUrlRegex = Regex.Escape(mockResponse.Request.Url).Replace("\\*", ".*");
-            return Regex.IsMatch(request.Url, $"^{mockResponseUrlRegex}$") &&
+            // turn mock URL with wildcard into a regex and match against the request URL
+            return Regex.IsMatch(request.Url, ProxyUtils.PatternToRegex(mockResponse.Request.Url)) &&
                 HasMatchingBody(mockResponse, request) &&
                 IsNthRequest(mockResponse);
         });

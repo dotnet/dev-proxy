@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.25.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.26.0/rc.schema.json",
   "plugins": [
     {
       "name": "GraphSelectGuidancePlugin",
@@ -67,7 +67,7 @@
     "https://microsoftgraph.chinacloudapi.cn/beta/*"
   ],
   "graphRandomErrorsPlugin": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.25.0/graphrandomerrorplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.26.0/graphrandomerrorplugin.schema.json",
     "allowedErrors": [
       429,
       500,
@@ -79,7 +79,7 @@
     "rate": 50
   },
   "executionSummaryPlugin": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.25.0/executionsummaryplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.26.0/executionsummaryplugin.schema.json",
     "groupBy": "url"
   },
   "labelMode": "text",
