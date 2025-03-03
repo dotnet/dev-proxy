@@ -291,6 +291,11 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
     {
         foreach (var urlToWatch in _urlsToWatch)
         {
+            if (urlToWatch.Exclude)
+            {
+                continue;
+            }
+
             // extract host from the URL
             string urlToWatchPattern = Regex.Unescape(urlToWatch.Url.ToString()).Replace(".*", "*");
             string hostToWatch;
