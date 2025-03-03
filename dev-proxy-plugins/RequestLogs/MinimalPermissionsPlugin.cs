@@ -102,7 +102,8 @@ public class MinimalPermissionsPlugin(IPluginEvents pluginEvents, IProxyContext 
 
             var result = new MinimalPermissionsPluginReportApiResult
             {
-                ApiName = GetApiName(minimalPermissions.OperationsFromRequests.First().OriginalUrl),
+                ApiName = GetApiName(minimalPermissions.OperationsFromRequests.Count > 0 ?
+                    minimalPermissions.OperationsFromRequests.First().OriginalUrl : null),
                 Requests = minimalPermissions.OperationsFromRequests
                     .Select(o => $"{o.Method} {o.OriginalUrl}")
                     .Distinct()
@@ -243,8 +244,13 @@ public class MinimalPermissionsPlugin(IPluginEvents pluginEvents, IProxyContext 
         return (requestsByApiSpec, unmatchedRequests);
     }
 
-    private static string GetApiName(string url)
+    private static string GetApiName(string? url)
     {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return "Unknown";
+        }
+
         var uri = new Uri(url);
         return uri.Authority;
     }
