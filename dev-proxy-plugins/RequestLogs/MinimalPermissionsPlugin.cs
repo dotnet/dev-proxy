@@ -38,17 +38,22 @@ public class MinimalPermissionsPlugin(IPluginEvents pluginEvents, IProxyContext 
     private readonly MinimalPermissionsPluginConfiguration _configuration = new();
     private Dictionary<string, OpenApiDocument>? _apiSpecsByUrl;
     public override string Name => nameof(MinimalPermissionsPlugin);
+    private IProxyConfiguration? _proxyConfiguration;
 
     public override async Task RegisterAsync()
     {
         await base.RegisterAsync();
 
         ConfigSection?.Bind(_configuration);
+        _proxyConfiguration = Context.Configuration;
 
         if (string.IsNullOrWhiteSpace(_configuration.ApiSpecsFolderPath))
         {
             throw new InvalidOperationException("ApiSpecsFolderPath is required.");
         }
+        _configuration.ApiSpecsFolderPath = Path.GetFullPath(
+            ProxyUtils.ReplacePathTokens(_configuration.ApiSpecsFolderPath),
+            Path.GetDirectoryName(_proxyConfiguration?.ConfigFile ?? string.Empty) ?? string.Empty);
         if (!Path.Exists(_configuration.ApiSpecsFolderPath))
         {
             throw new InvalidOperationException($"ApiSpecsFolderPath '{_configuration.ApiSpecsFolderPath}' does not exist.");
