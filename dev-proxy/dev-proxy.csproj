@@ -8,7 +8,7 @@
     <Nullable>enable</Nullable>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <Title>Dev Proxy</Title>
-    <Version>0.25.0</Version>
+    <Version>0.26.0</Version>
     <Company>.NET Foundation</Company>
     <Product>Dev Proxy</Product>
     <AssemblyName>devproxy</AssemblyName>
