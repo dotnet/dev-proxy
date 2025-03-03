@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <RunPostBuildEvent>OnOutputUpdated</RunPostBuildEvent>
-    <Version>0.25.0</Version>
+    <Version>0.26.0</Version>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
