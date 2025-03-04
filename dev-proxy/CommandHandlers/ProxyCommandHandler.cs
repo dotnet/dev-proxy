@@ -40,6 +40,9 @@ public class ProxyCommandHandler(IPluginEvents pluginEvents,
             var builder = WebApplication.CreateBuilder();
             builder.Logging.AddFilter("Microsoft.Hosting.*", LogLevel.Error);
             builder.Logging.AddFilter("Microsoft.AspNetCore.*", LogLevel.Error);
+            
+            // API controller is registered first and so is the last service to be disposed of when the app is shutdown
+            builder.Services.AddControllers();
 
             builder.Services.AddSingleton<IProxyState, ProxyState>();
             builder.Services.AddSingleton<IProxyConfiguration, ProxyConfiguration>(sp => ConfigurationFactory.Value);
@@ -48,7 +51,6 @@ public class ProxyCommandHandler(IPluginEvents pluginEvents,
             builder.Services.AddSingleton(_urlsToWatch);
             builder.Services.AddHostedService<ProxyEngine>();
 
-            builder.Services.AddControllers();
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen();
 
