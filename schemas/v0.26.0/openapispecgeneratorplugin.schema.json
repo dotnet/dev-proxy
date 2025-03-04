@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy OpenApiSpecGeneratorPlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "includeOptionsRequests": {
+      "type": "boolean"
+    },
+    "specVersion": {
+      "type": "string",
+      "enum": [
+        "v2_0",
+        "v3_0"
+      ]
+    },
+    "specFormat": {
+      "type": "string",
+      "enum": [
+        "Json",
+        "Yaml"
+      ]
+    }
+  },
+  "additionalProperties": false
+}
