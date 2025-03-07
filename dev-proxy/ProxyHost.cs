@@ -361,7 +361,7 @@ internal class ProxyHost
         outdatedCommand.SetHandler(async versionOnly => await OutdatedCommandHandler.CheckVersionAsync(versionOnly, logger), outdatedShortOption);
         command.Add(outdatedCommand);
 
-        var jwtCommand = new Command("jwt", "Manage JSON Web Tokens ");
+        var jwtCommand = new Command("jwt", "Manage JSON Web Tokens");
         var jwtCreateCommand = new Command("create", "Create a new JWT token");
         var jwtNameOption = new Option<string>("--name", "The name of the user to create the token for.");
         jwtNameOption.AddAlias("-n");
@@ -464,6 +464,12 @@ internal class ProxyHost
         jwtCommand.Add(jwtCreateCommand);
 
         command.Add(jwtCommand);
+
+        var certCommand = new Command("cert", "Manage the Dev Proxy certificate");
+        var certEnsureCommand = new Command("ensure", "Ensure certificates are setup (creates root if required). Also makes root certificate trusted.");
+        certEnsureCommand.SetHandler(async () => await CertEnsureCommandHandler.EnsureCertAsync(logger));
+        certCommand.Add(certEnsureCommand);
+        command.Add(certCommand);
 
         return command;
     }

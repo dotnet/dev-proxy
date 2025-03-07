@@ -27,7 +27,8 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
     private readonly IPluginEvents _pluginEvents = pluginEvents ?? throw new ArgumentNullException(nameof(pluginEvents));
     private readonly ILogger _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     private readonly IProxyConfiguration _config = config ?? throw new ArgumentNullException(nameof(config));
-    private static readonly ProxyServer? _proxyServer;
+    private static readonly ProxyServer _proxyServer;
+    internal static ProxyServer ProxyServer => _proxyServer;
     private ExplicitProxyEndPoint? _explicitEndPoint;
     // lists of URLs to watch, used for intercepting requests
     private readonly ISet<UrlToWatch> _urlsToWatch = urlsToWatch ?? throw new ArgumentNullException(nameof(urlsToWatch));
