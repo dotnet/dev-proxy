@@ -41,4 +41,6 @@ WORKDIR /config
 
 USER ${USERNAME}
 
+RUN /app/devproxy/devproxy cert ensure
+
 ENTRYPOINT ["/app/devproxy/devproxy", "--ip-address", "0.0.0.0"]
