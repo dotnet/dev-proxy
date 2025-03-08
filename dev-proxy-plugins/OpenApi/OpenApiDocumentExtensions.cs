@@ -48,7 +48,10 @@ public static class OpenApiDocumentExtensions
                     // and operations and sometimes, parameters are defined only
                     // on the operation. This way, we cover all cases, and we don't
                     // care about the parameter anyway here
-                    urlPathFromSpec = Regex.Replace(urlPathFromSpec, @"\{[^}]+\}", $"([^/]+)");
+                    // we also escape the path to make sure that regex special
+                    // characters are not interpreted so that we won't fail
+                    // on matching URLs that contain ()
+                    urlPathFromSpec = Regex.Replace(Regex.Escape(urlPathFromSpec), @"\\\{[^}]+\}", $"([^/]+)");
 
                     logger.LogDebug("Converted path to Regex: {urlPath}", urlPathFromSpec);
                     var regex = new Regex($"^{urlPathFromSpec}$");
