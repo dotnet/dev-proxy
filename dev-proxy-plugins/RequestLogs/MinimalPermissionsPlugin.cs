@@ -17,8 +17,6 @@ public class MinimalPermissionsPluginReportApiResult
     public required string[] Requests { get; init; }
     public required string[] TokenPermissions { get; init; }
     public required string[] MinimalPermissions { get; init; }
-    public required string[] ExcessivePermissions { get; init; }
-    public required bool UsesMinimalPermissions { get; init; }
 }
 
 public class MinimalPermissionsPluginReport
@@ -109,9 +107,7 @@ public class MinimalPermissionsPlugin(IPluginEvents pluginEvents, IProxyContext 
                     .Distinct()
                     .ToArray(),
                 TokenPermissions = minimalPermissions.TokenPermissions.Distinct().ToArray(),
-                MinimalPermissions = minimalPermissions.MinimalScopes,
-                ExcessivePermissions = minimalPermissions.TokenPermissions.Except(minimalPermissions.MinimalScopes).ToArray(),
-                UsesMinimalPermissions = !minimalPermissions.TokenPermissions.Except(minimalPermissions.MinimalScopes).Any()
+                MinimalPermissions = minimalPermissions.MinimalScopes
             };
             results.Add(result);
 
@@ -120,24 +116,6 @@ public class MinimalPermissionsPlugin(IPluginEvents pluginEvents, IProxyContext 
                 .Select(o => $"{o.Method} {o.OriginalUrl}");
             unmatchedRequests.AddRange(unmatchedApiRequests);
             errors.AddRange(minimalPermissions.Errors);
-
-            if (result.UsesMinimalPermissions)
-            {
-                Logger.LogInformation(
-                    "API {apiName} is called with minimal permissions: {minimalPermissions}",
-                    result.ApiName,
-                    string.Join(", ", result.MinimalPermissions)
-                );
-            }
-            else
-            {
-                Logger.LogWarning(
-                    "Calling API {apiName} with excessive permissions: {excessivePermissions}. Minimal permissions are: {minimalPermissions}",
-                    result.ApiName,
-                    string.Join(", ", result.ExcessivePermissions),
-                    string.Join(", ", result.MinimalPermissions)
-                );
-            }
 
             if (unmatchedApiRequests.Any())
             {
