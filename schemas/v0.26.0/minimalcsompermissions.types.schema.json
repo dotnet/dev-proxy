@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SharePoint CSOM Types and Permissions Schema",
+  "description": "Schema for defining SharePoint CSOM types, return types, and their required permissions",
+  "type": "object",
+  "required": ["types", "returnTypes", "actions"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Reference to the JSON schema definition"
+    },
+    "types": {
+      "type": "object",
+      "description": "Mapping of GUIDs to their corresponding SharePoint CSOM types",
+      "patternProperties": {
+        "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$": {
+          "type": "string",
+          "description": "Fully qualified name of a SharePoint CSOM type"
+        }
+      }
+    },
+    "returnTypes": {
+      "type": "object",
+      "description": "Mapping of method signatures to their return types",
+      "patternProperties": {
+        "^[A-Za-z0-9.]+\\.[A-Za-z0-9.]+$": {
+          "type": "string",
+          "description": "Fully qualified name of the return type"
+        }
+      }
+    },
+    "actions": {
+      "type": "object",
+      "description": "Mapping of method signatures to their required permissions",
+      "patternProperties": {
+        "^[A-Za-z0-9.]+\\.[A-Za-z0-9.]+$": {
+          "type": "object",
+          "properties": {
+            "delegated": {
+              "type": "array",
+              "description": "Required delegated permissions",
+              "items": {
+                "type": "string"
+              }
+            },
+            "application": {
+              "type": "array",
+              "description": "Required application permissions",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
