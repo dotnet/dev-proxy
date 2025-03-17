@@ -14,7 +14,7 @@ internal class PluginLoaderResult(ISet<UrlToWatch> urlsToWatch, IEnumerable<IPro
     public IEnumerable<IProxyPlugin> ProxyPlugins { get; } = proxyPlugins ?? throw new ArgumentNullException(nameof(proxyPlugins));
 }
 
-internal class PluginLoader(ILogger logger, ILoggerFactory loggerFactory)
+internal class PluginLoader(bool isDiscover, ILogger logger, ILoggerFactory loggerFactory)
 {
     private PluginConfig? _pluginConfig;
     private readonly ILogger _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -126,7 +126,25 @@ internal class PluginLoader(ILogger logger, ILoggerFactory loggerFactory)
             if (_pluginConfig == null)
             {
                 _pluginConfig = new PluginConfig();
-                Configuration.Bind(_pluginConfig);
+
+                if (isDiscover)
+                {
+                    _pluginConfig.Plugins.Add(new PluginReference
+                    {
+                        Name = "UrlDiscoveryPlugin",
+                        PluginPath = "~appFolder/plugins/dev-proxy-plugins.dll"
+                    });
+                    _pluginConfig.Plugins.Add(new PluginReference
+                    {
+                        Name = "PlainTextReporter",
+                        PluginPath = "~appFolder/plugins/dev-proxy-plugins.dll"
+                    });
+                    _pluginConfig.UrlsToWatch.Add("https://*/*");
+                }
+                else
+                {
+                    Configuration.Bind(_pluginConfig);
+                }
 
                 if (ProxyHost.UrlsToWatch is not null && ProxyHost.UrlsToWatch.Any())
                 {

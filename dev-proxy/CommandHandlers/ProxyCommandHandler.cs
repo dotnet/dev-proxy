@@ -145,6 +145,11 @@ public class ProxyCommandHandler(IPluginEvents pluginEvents,
         {
             Configuration.TimeoutSeconds = timeout.Value;
         }
+        var isDiscover = context.ParseResult.GetValueForOption<bool?>(ProxyHost.DiscoverOptionName, _options);
+        if (isDiscover is not null)
+        {
+            Configuration.Record = true;
+        }
     }
 
     private async Task CheckForNewVersionAsync()

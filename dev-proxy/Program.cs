@@ -53,8 +53,14 @@ string[] helpOptions = ["--help", "-h", "/h", "-?", "/?"];
 var hasGlobalOption = args.Any(arg => globalOptions.Contains(arg));
 var hasHelpOption = args.Any(arg => helpOptions.Contains(arg));
 
+var isDiscover = args.Contains("--discover", StringComparer.OrdinalIgnoreCase);
+if (isDiscover)
+{
+    logger.LogWarning("Dev Proxy is running in URL discovery mode. Configured plugins and URLs to watch will be ignored.");
+}
+
 // load plugins to get their options and commands
-var pluginLoader = new PluginLoader(logger, loggerFactory);
+var pluginLoader = new PluginLoader(isDiscover, logger, loggerFactory);
 PluginLoaderResult loaderResults = await pluginLoader.LoadPluginsAsync(pluginEvents, context);
 var options = loaderResults.ProxyPlugins
     .SelectMany(p => p.GetOptions())

@@ -37,6 +37,8 @@ internal class ProxyHost
     private static Option<IEnumerable<string>?>? _urlsToWatchOption;
     internal static readonly string TimeoutOptionName = "--timeout";
     private readonly Option<long?> _timeoutOption;
+    internal static readonly string DiscoverOptionName = "--discover";
+    private readonly Option<bool?> _discoverOption;
 
     private static bool _configFileResolved = false;
     private static string _configFile = "devproxyrc.json";
@@ -231,6 +233,7 @@ internal class ProxyHost
         };
 
         _noFirstRunOption = new Option<bool?>(NoFirstRunOptionName, "Skip the first run experience");
+        _discoverOption = new Option<bool?>(DiscoverOptionName, "Run Dev Proxy in discovery mode");
 
         _asSystemProxyOption = new Option<bool?>(AsSystemProxyOptionName, "Set Dev Proxy as the system proxy");
         _asSystemProxyOption.AddValidator(input =>
@@ -314,7 +317,8 @@ internal class ProxyHost
             // _urlsToWatchOption is set while initialize the Program
             // As such, it's always set here
             _urlsToWatchOption!,
-            _timeoutOption
+            _timeoutOption,
+            _discoverOption
         };
         command.Description = "Dev Proxy is a command line tool for testing Microsoft Graph, SharePoint Online and any other HTTP APIs.";
 
@@ -487,6 +491,7 @@ internal class ProxyHost
             _asSystemProxyOption,
             _installCertOption,
             _timeoutOption,
+            _discoverOption,
             .. optionsFromPlugins,
         ],
         urlsToWatch,
