@@ -298,9 +298,11 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
             }
 
             // extract host from the URL
-            string urlToWatchPattern = Regex.Unescape(urlToWatch.Url.ToString()).Replace(".*", "*");
+            string urlToWatchPattern = Regex.Unescape(urlToWatch.Url.ToString())
+                .Trim('^', '$')
+                .Replace(".*", "*");
             string hostToWatch;
-            if (urlToWatchPattern.ToString().Contains("://"))
+            if (urlToWatchPattern.Contains("://"))
             {
                 // if the URL contains a protocol, extract the host from the URL
                 var urlChunks = urlToWatchPattern.Split("://");
