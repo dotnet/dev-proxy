@@ -33,11 +33,13 @@ public class ProxyConfiguration : IProxyConfiguration
     public bool NoFirstRun { get; set; } = false;
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public ReleaseType NewVersionNotification { get; set; } = ReleaseType.Stable;
+    internal List<PluginReference> Plugins { get; set; } = [];
     public int Port { get; set; } = 8000;
     public bool Record { get; set; } = false;
     public bool ShowSkipMessages { get; set; } = true;
     public bool ShowTimestamps { get; set; } = true;
     public long? TimeoutSeconds { get; set; }
+    internal List<string> UrlsToWatch { get; set; } = [];
     public bool ValidateSchemas { get; set; } = true;
     public IEnumerable<int> WatchPids { get; set; } = new List<int>();
     public IEnumerable<string> WatchProcessNames { get; set; } = [];

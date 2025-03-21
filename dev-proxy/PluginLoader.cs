@@ -63,6 +63,11 @@ internal class PluginLoader(bool isDiscover, ILogger logger, ILoggerFactory logg
                     (pluginUrls != null && pluginUrls.Any()) ? pluginUrls : defaultUrlsToWatch,
                     h.ConfigSection is null ? null : Configuration.GetSection(h.ConfigSection)
                 );
+                if (plugin is null)
+                {
+                    _logger?.LogError("Plugin {pluginName} could not be created. Skipping...", h.Name);
+                    continue;
+                }
                 _logger?.LogDebug("Registering plugin {pluginName}...", plugin.Name);
                 await plugin.RegisterAsync();
                 _logger?.LogDebug("Plugin {pluginName} registered.", plugin.Name);
@@ -70,12 +75,10 @@ internal class PluginLoader(bool isDiscover, ILogger logger, ILoggerFactory logg
             }
         }
 
-        return plugins.Count > 0
-            ? new PluginLoaderResult(globallyWatchedUrls.ToHashSet(), plugins)
-            : throw new InvalidDataException("No plugins were loaded");
+        return new PluginLoaderResult(globallyWatchedUrls.ToHashSet(), plugins);
     }
 
-    private IProxyPlugin CreatePlugin(
+    private IProxyPlugin? CreatePlugin(
         Assembly assembly,
         PluginReference pluginReference,
         IPluginEvents pluginEvents,
@@ -84,6 +87,12 @@ internal class PluginLoader(bool isDiscover, ILogger logger, ILoggerFactory logg
         IConfigurationSection? configSection = null
     )
     {
+        if (urlsToWatch is null || urlsToWatch.Count == 0)
+        {
+            _logger.LogError("Plugin {pluginName} must have at least one URL to watch. Please add a URL to watch in the configuration file or use the --urls-to-watch option.", pluginReference.Name);
+            return null;
+        }
+
         foreach (Type type in assembly.GetTypes())
         {
             if (type.Name == pluginReference.Name &&
@@ -150,10 +159,6 @@ internal class PluginLoader(bool isDiscover, ILogger logger, ILoggerFactory logg
                 {
                     _pluginConfig.UrlsToWatch = ProxyHost.UrlsToWatch.ToList();
                 }
-            }
-            if (_pluginConfig == null || _pluginConfig.Plugins.Count == 0)
-            {
-                throw new InvalidDataException("The configuration must contain at least one plugin");
             }
             return _pluginConfig;
         }

@@ -85,9 +85,10 @@ if (hasGlobalOption || hasSubCommand)
 {
     // we don't need to init plugins if the user is using a global option or
     // using a subcommand, so we can exit early
-    await rootCommand.InvokeAsync(args);
+    var exitCode = await rootCommand.InvokeAsync(args);
     // required to output all messages before closing the program
     loggerFactory.Dispose();
+    Environment.Exit(exitCode);
     return;
 }
 
@@ -121,6 +122,7 @@ if (incomingOptions.Length > 0)
     Console.Error.WriteLine("Unknown option(s): {0}", string.Join(" ", incomingOptions));
     Console.Error.WriteLine("TIP: Use --help view available options");
     Console.Error.WriteLine("TIP: Are you missing a plugin? See: https://aka.ms/devproxy/plugins");
+    Environment.Exit(1);
 }
 else
 {
@@ -131,5 +133,7 @@ else
     }
 
     rootCommand.Handler = proxyHost.GetCommandHandler(pluginEvents, [.. options], loaderResults.UrlsToWatch, logger);
-    await rootCommand.InvokeAsync(args);
+    var exitCode = await rootCommand.InvokeAsync(args);
+    loggerFactory.Dispose();
+    Environment.Exit(exitCode);
 }

@@ -32,6 +32,17 @@ public class ProxyCommandHandler(IPluginEvents pluginEvents,
 
     public async Task<int> InvokeAsync(InvocationContext context)
     {
+        if (Configuration.Plugins.Count == 0)
+        {
+            _logger.LogWarning("You haven't configured any plugins. Please add plugins to your configuration file. Dev Proxy will exit.");
+            return 1;
+        }
+        if (Configuration.UrlsToWatch.Count == 0)
+        {
+            _logger.LogWarning("You haven't configured any URLs to watch. Please add URLs to your configuration file or use the --urls-to-watch option. Dev Proxy will exit.");
+            return 1;
+        }
+
         ParseOptions(context);
         _pluginEvents.RaiseOptionsLoaded(new OptionsLoadedArgs(context, _options));
         await CheckForNewVersionAsync();
@@ -173,6 +184,20 @@ public class ProxyCommandHandler(IPluginEvents pluginEvents,
             .Build();
         var configObject = new ProxyConfiguration();
         configuration.Bind(configObject);
+
+        // Custom binding for internal properties, because it's not happening
+        // automatically
+        var pluginsSection = configuration.GetSection("Plugins");
+        if (pluginsSection.Exists())
+        {
+            configObject.Plugins = pluginsSection.Get<List<PluginReference>>() ?? [];
+        }
+
+        var urlsSection = configuration.GetSection("UrlsToWatch");
+        if (urlsSection.Exists())
+        {
+            configObject.UrlsToWatch = urlsSection.Get<List<string>>() ?? [];
+        }
 
         return configObject;
     });
