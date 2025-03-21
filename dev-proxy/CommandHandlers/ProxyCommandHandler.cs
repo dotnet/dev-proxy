@@ -161,6 +161,20 @@ public class ProxyCommandHandler(IPluginEvents pluginEvents,
         {
             Configuration.Record = true;
         }
+        var env = context.ParseResult.GetValueForOption<string[]?>(ProxyHost.EnvOptionName, _options);
+        if (env is not null)
+        {
+            Configuration.Env = env.Select(e =>
+            {
+                // Split on first '=' only
+                var parts = e.Split('=', 2);
+                if (parts.Length != 2)
+                {
+                    throw new ArgumentException($"Invalid env format: {e}. Expected format is 'key=value'.");
+                }
+                return new KeyValuePair<string, string>(parts[0], parts[1]);
+            }).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+        }
     }
 
     private async Task CheckForNewVersionAsync()

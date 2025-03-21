@@ -187,7 +187,10 @@ public class MinimalPermissionsGuidancePlugin(IPluginEvents pluginEvents, IProxy
             Logger.LogDebug("Processing file '{file}'...", file);
             try
             {
-                var apiDefinition = new OpenApiStringReader().Read(File.ReadAllText(file), out _);
+                var fileContents = File.ReadAllText(file);
+                fileContents = ProxyUtils.ReplaceVariables(fileContents, Context.Configuration.Env, v => $"{{{v}}}");
+
+                var apiDefinition = new OpenApiStringReader().Read(fileContents, out _);
                 if (apiDefinition is null)
                 {
                     continue;

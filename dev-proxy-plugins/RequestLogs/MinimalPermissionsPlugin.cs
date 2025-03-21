@@ -68,8 +68,7 @@ public class MinimalPermissionsPlugin(IPluginEvents pluginEvents, IProxyContext 
             .Where(l =>
                 l.MessageType == MessageType.InterceptedRequest &&
                 !l.Message.StartsWith("OPTIONS") &&
-                l.Context?.Session is not null &&
-                l.Context.Session.HttpClient.Request.Headers.Any(h => h.Name.Equals("authorization", StringComparison.OrdinalIgnoreCase))
+                l.Context?.Session is not null
             );
         if (!interceptedRequests.Any())
         {
@@ -165,7 +164,10 @@ public class MinimalPermissionsPlugin(IPluginEvents pluginEvents, IProxyContext 
             Logger.LogDebug("Processing file '{file}'...", file);
             try
             {
-                var apiDefinition = new OpenApiStringReader().Read(File.ReadAllText(file), out _);
+                var fileContents = File.ReadAllText(file);
+                fileContents = ProxyUtils.ReplaceVariables(fileContents, Context.Configuration.Env, v => $"{{{v}}}");
+
+                var apiDefinition = new OpenApiStringReader().Read(fileContents, out _);
                 if (apiDefinition is null)
                 {
                     continue;

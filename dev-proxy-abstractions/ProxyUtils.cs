@@ -496,4 +496,18 @@ public static class ProxyUtils
             return (false, [ex.Message]);
         }
     }
+
+    public static string ReplaceVariables(string s, Dictionary<string, string> variables, Func<string, string>? formatVariableRef = null)
+    {
+        formatVariableRef ??= v => $"@{v}";
+
+        var s1 = s;
+
+        foreach (var variable in variables)
+        {
+            s1 = s1.Replace(formatVariableRef(variable.Key), variable.Value, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return s1;
+    }
 }

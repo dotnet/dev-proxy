@@ -39,6 +39,8 @@ internal class ProxyHost
     private readonly Option<long?> _timeoutOption;
     internal static readonly string DiscoverOptionName = "--discover";
     private readonly Option<bool?> _discoverOption;
+    internal static readonly string EnvOptionName = "--env";
+    private readonly Option<string[]?> _envOption;
 
     private static bool _configFileResolved = false;
     private static string _configFile = "devproxyrc.json";
@@ -273,7 +275,7 @@ internal class ProxyHost
             Arity = ArgumentArity.ZeroOrMore
         };
         _urlsToWatchOption.AddAlias("-u");
-        
+
         _timeoutOption = new Option<long?>(TimeoutOptionName, "Time in seconds after which Dev Proxy exits. Resets when Dev Proxy intercepts a request.")
         {
             ArgumentHelpName = "timeout",
@@ -293,6 +295,40 @@ internal class ProxyHost
             }
         });
         _timeoutOption.AddAlias("-t");
+
+        _envOption = new Option<string[]?>(EnvOptionName, "Variables to set for the Dev Proxy process")
+        {
+            ArgumentHelpName = "env",
+            AllowMultipleArgumentsPerToken = true,
+            Arity = ArgumentArity.ZeroOrMore
+        };
+        _envOption.AddAlias("-e");
+        _envOption.AddValidator(input =>
+        {
+            try
+            {
+                var envVars = input.GetValueForOption(_envOption);
+                if (envVars is null || envVars.Length == 0)
+                {
+                    return;
+                }
+
+                foreach (var envVar in envVars)
+                {
+                    // Split on first '=' only
+                    var parts = envVar.Split('=', 2);
+                    if (parts.Length != 2)
+                    {
+                        input.ErrorMessage = $"Invalid environment variable format: '{envVar}'. Expected format is 'name=value'.";
+                        return;
+                    }
+                }
+            }
+            catch (InvalidOperationException ex)
+            {
+                input.ErrorMessage = ex.Message;
+            }
+        });
 
         ProxyCommandHandler.Configuration.ConfigFile = ConfigFile;
     }
@@ -318,7 +354,8 @@ internal class ProxyHost
             // As such, it's always set here
             _urlsToWatchOption!,
             _timeoutOption,
-            _discoverOption
+            _discoverOption,
+            _envOption
         };
         command.Description = "Dev Proxy is a command line tool for testing Microsoft Graph, SharePoint Online and any other HTTP APIs.";
 
@@ -492,6 +529,7 @@ internal class ProxyHost
             _installCertOption,
             _timeoutOption,
             _discoverOption,
+            _envOption,
             .. optionsFromPlugins,
         ],
         urlsToWatch,
