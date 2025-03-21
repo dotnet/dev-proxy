@@ -11,6 +11,7 @@ public interface IProxyConfiguration
     int ApiPort { get; }
     bool AsSystemProxy { get; }
     string ConfigFile { get; }
+    Dictionary<string, string> Env { get; set; }
     MockRequestHeader[]? FilterByHeaders { get; }
     bool InstallCert { get; }
     string? IPAddress { get; }

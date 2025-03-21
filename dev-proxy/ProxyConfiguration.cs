@@ -24,6 +24,7 @@ public class ProxyConfiguration : IProxyConfiguration
     public int ApiPort { get; set; } = 8897;
     public bool AsSystemProxy { get; set; } = true;
     public string ConfigFile { get; set; } = "devproxyrc.json";
+    public Dictionary<string, string> Env { get; set; } = [];
     public MockRequestHeader[]? FilterByHeaders { get; set; }
     public string? IPAddress { get; set; } = "127.0.0.1";
     public bool InstallCert { get; set; } = true;
