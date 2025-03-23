@@ -25,6 +25,7 @@ public class PlainTextReporter(IPluginEvents pluginEvents, IProxyContext context
         { typeof(HttpFileGeneratorPluginReport), TransformHttpFileGeneratorReport },
         { typeof(GraphMinimalPermissionsGuidancePluginReport), TransformGraphMinimalPermissionsGuidanceReport },
         { typeof(GraphMinimalPermissionsPluginReport), TransformGraphMinimalPermissionsReport },
+        { typeof(MinimalCsomPermissionsPluginReport), TransformMinimalCsomPermissionsReport },
         { typeof(MinimalPermissionsPluginReport), TransformMinimalPermissionsReport },
         { typeof(OpenApiSpecGeneratorPluginReport), TransformOpenApiSpecGeneratorReport },
         { typeof(UrlDiscoveryPluginReport), TransformUrlDiscoveryReport }
@@ -506,6 +507,35 @@ public class PlainTextReporter(IPluginEvents pluginEvents, IProxyContext context
             sb.AppendLine("Couldn't determine minimal permissions for the following requests:");
             sb.AppendLine();
             sb.AppendJoin(Environment.NewLine, minimalPermissionsReport.Errors.Select(e => $"- {e.Request}: {e.Error}"));
+        }
+
+        return sb.ToString();
+    }
+
+    private static string? TransformMinimalCsomPermissionsReport(object report)
+    {
+        var minimalPermissionsReport = (MinimalCsomPermissionsPluginReport)report;
+
+        var sb = new StringBuilder();
+
+        sb.AppendLine($"Minimal CSOM permissions report");
+        sb.AppendLine();
+        sb.AppendLine("Actions:");
+        sb.AppendLine();
+        sb.AppendJoin(Environment.NewLine, minimalPermissionsReport.Actions.Select(a => $"- {a}"));
+        sb.AppendLine();
+        sb.AppendLine();
+        sb.AppendLine("Minimal permissions:");
+        sb.AppendLine();
+        sb.AppendJoin(Environment.NewLine, minimalPermissionsReport.MinimalPermissions.Select(p => $"- {p}"));
+
+        if (minimalPermissionsReport.Errors.Length != 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine();
+            sb.AppendLine("Couldn't determine minimal permissions for the following actions:");
+            sb.AppendLine();
+            sb.AppendJoin(Environment.NewLine, minimalPermissionsReport.Errors.Select(e => $"- {e}"));
         }
 
         return sb.ToString();
