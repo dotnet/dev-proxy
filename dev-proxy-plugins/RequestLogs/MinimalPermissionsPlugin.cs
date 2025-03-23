@@ -136,6 +136,8 @@ public class MinimalPermissionsPlugin(IPluginEvents pluginEvents, IProxyContext 
                     string.Join($"{Environment.NewLine}- ", minimalPermissions.Errors.Select(e => $"{e.Request}: {e.Error}"))
                 );
             }
+
+            Logger.LogInformation("Minimal permissions: {MinimalScopes}", string.Join(", ", result.MinimalPermissions));
         }
 
         var report = new MinimalPermissionsPluginReport()
