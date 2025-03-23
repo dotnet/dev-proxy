@@ -35,9 +35,12 @@ public class UrlDiscoveryPlugin(IPluginEvents pluginEvents, IProxyContext contex
             return Task.CompletedTask;
         }
 
+        var requestLogs = e.RequestLogs
+            .Where(l => ProxyUtils.MatchesUrlToWatch(UrlsToWatch, l.Context?.Session.HttpClient.Request.RequestUri.AbsoluteUri ?? ""));            
+
         UrlDiscoveryPluginReport report = new()
         {
-            Data = [.. e.RequestLogs.Select(log => log.Context?.Session.HttpClient.Request.RequestUri.ToString()).Distinct().Order()]
+            Data = [.. requestLogs.Select(log => log.Context?.Session.HttpClient.Request.RequestUri.ToString()).Distinct().Order()]
         };
 
         StoreReport(report, e);

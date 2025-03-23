@@ -90,7 +90,8 @@ public class ApiCenterProductionVersionPlugin(IPluginEvents pluginEvents, IProxy
         var interceptedRequests = e.RequestLogs
             .Where(
                 l => l.MessageType == MessageType.InterceptedRequest &&
-                l.Context?.Session is not null
+                l.Context?.Session is not null &&
+                ProxyUtils.MatchesUrlToWatch(UrlsToWatch, l.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri)
             );
         if (!interceptedRequests.Any())
         {

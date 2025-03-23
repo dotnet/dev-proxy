@@ -94,6 +94,12 @@ public class GraphMinimalPermissionsGuidancePlugin(IPluginEvents pluginEvents, I
             {
                 continue;
             }
+
+            if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, methodAndUrl.url))
+            {
+                Logger.LogDebug("URL not matched: {url}", methodAndUrl.url);
+                continue;
+            }
             
             var requestsFromBatch = Array.Empty<(string method, string url)>();
 

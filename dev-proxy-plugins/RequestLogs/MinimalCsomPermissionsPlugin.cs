@@ -74,7 +74,6 @@ public class MinimalCsomPermissionsPlugin(IPluginEvents pluginEvents, IProxyCont
             .Where(l =>
                 l.MessageType == MessageType.InterceptedRequest &&
                 l.Message.StartsWith("POST") &&
-                l.Message.Contains(".sharepoint.com", StringComparison.InvariantCultureIgnoreCase) &&
                 l.Message.Contains("/_vti_bin/client.svc/ProcessQuery", StringComparison.InvariantCultureIgnoreCase)
             );
         if (!interceptedRequests.Any())
@@ -92,6 +91,12 @@ public class MinimalCsomPermissionsPlugin(IPluginEvents pluginEvents, IProxyCont
         {
             if (request.Context == null)
             {
+                continue;
+            }
+
+            if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri))
+            {
+                Logger.LogDebug("URL not matched: {url}", request.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri);
                 continue;
             }
 

@@ -39,7 +39,8 @@ public class MockGeneratorPlugin(IPluginEvents pluginEvents, IProxyContext conte
         {
             if (request.MessageType != MessageType.InterceptedResponse ||
               request.Context is null ||
-              request.Context.Session is null)
+              request.Context.Session is null ||
+              !ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri))
             {
                 continue;
             }

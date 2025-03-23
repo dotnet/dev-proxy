@@ -118,7 +118,8 @@ public class ApiCenterOnboardingPlugin(IPluginEvents pluginEvents, IProxyContext
                 var methodAndUrl = request.Message.Split(' ');
                 return (method: methodAndUrl[0], url: methodAndUrl[1]);
             })
-            .Where(r => !r.method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase))
+            .Where(r => !r.method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase) &&
+                ProxyUtils.MatchesUrlToWatch(UrlsToWatch, r.url))
             .Distinct();
 
         var existingApis = new List<ApiCenterOnboardingPluginReportExistingApiInfo>();

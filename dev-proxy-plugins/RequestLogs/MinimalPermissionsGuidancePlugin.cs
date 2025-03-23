@@ -71,6 +71,7 @@ public class MinimalPermissionsGuidancePlugin(IPluginEvents pluginEvents, IProxy
                 l.MessageType == MessageType.InterceptedRequest &&
                 !l.Message.StartsWith("OPTIONS") &&
                 l.Context?.Session is not null &&
+                ProxyUtils.MatchesUrlToWatch(UrlsToWatch, l.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri) &&
                 l.Context.Session.HttpClient.Request.Headers.Any(h => h.Name.Equals("authorization", StringComparison.OrdinalIgnoreCase))
             );
         if (!interceptedRequests.Any())

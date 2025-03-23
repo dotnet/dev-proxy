@@ -68,7 +68,8 @@ public class MinimalPermissionsPlugin(IPluginEvents pluginEvents, IProxyContext 
             .Where(l =>
                 l.MessageType == MessageType.InterceptedRequest &&
                 !l.Message.StartsWith("OPTIONS") &&
-                l.Context?.Session is not null
+                l.Context?.Session is not null &&
+                ProxyUtils.MatchesUrlToWatch(UrlsToWatch, l.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri)
             );
         if (!interceptedRequests.Any())
         {
