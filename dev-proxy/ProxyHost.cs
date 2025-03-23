@@ -338,9 +338,6 @@ internal class ProxyHost
         var command = new RootCommand {
             _portOption,
             _ipAddressOption,
-            // _logLevelOption is set while initializing the Program
-            // As such, it's always set here
-            _logLevelOption!,
             _recordOption,
             _watchPidsOption,
             _watchProcessNamesOption,
@@ -358,6 +355,9 @@ internal class ProxyHost
             _envOption
         };
         command.Description = "Dev Proxy is a command line tool for testing Microsoft Graph, SharePoint Online and any other HTTP APIs.";
+        // _logLevelOption is set while initializing the Program
+        // As such, it's always set here
+        command.AddGlobalOption(_logLevelOption!);
 
         var msGraphDbCommand = new Command("msgraphdb", "Generate a local SQLite database with Microsoft Graph API metadata")
         {
