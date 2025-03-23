@@ -23,8 +23,9 @@ public class PlainTextReporter(IPluginEvents pluginEvents, IProxyContext context
         { typeof(ExecutionSummaryPluginReportByUrl), TransformExecutionSummaryByUrl },
         { typeof(ExecutionSummaryPluginReportByMessageType), TransformExecutionSummaryByMessageType },
         { typeof(HttpFileGeneratorPluginReport), TransformHttpFileGeneratorReport },
-        { typeof(GraphMinimalPermissionsGuidancePluginReport), TransformMinimalPermissionsGuidanceReport },
-        { typeof(GraphMinimalPermissionsPluginReport), TransformMinimalPermissionsReport },
+        { typeof(GraphMinimalPermissionsGuidancePluginReport), TransformGraphMinimalPermissionsGuidanceReport },
+        { typeof(GraphMinimalPermissionsPluginReport), TransformGraphMinimalPermissionsReport },
+        { typeof(MinimalPermissionsPluginReport), TransformMinimalPermissionsReport },
         { typeof(OpenApiSpecGeneratorPluginReport), TransformOpenApiSpecGeneratorReport },
         { typeof(UrlDiscoveryPluginReport), TransformUrlDiscoveryReport }
     };
@@ -269,7 +270,7 @@ public class PlainTextReporter(IPluginEvents pluginEvents, IProxyContext context
 
         sb.AppendLine("Azure API Center minimal permissions report")
             .AppendLine();
-        
+
         sb.AppendLine("APIS")
             .AppendLine();
 
@@ -392,7 +393,7 @@ public class PlainTextReporter(IPluginEvents pluginEvents, IProxyContext context
         return sb.ToString();
     }
 
-    private static string? TransformMinimalPermissionsReport(object report)
+    private static string? TransformGraphMinimalPermissionsReport(object report)
     {
         var minimalPermissionsReport = (GraphMinimalPermissionsPluginReport)report;
 
@@ -420,7 +421,7 @@ public class PlainTextReporter(IPluginEvents pluginEvents, IProxyContext context
         return sb.ToString();
     }
 
-    private static string? TransformMinimalPermissionsGuidanceReport(object report)
+    private static string? TransformGraphMinimalPermissionsGuidanceReport(object report)
     {
         var minimalPermissionsGuidanceReport = (GraphMinimalPermissionsGuidancePluginReport)report;
 
@@ -471,6 +472,40 @@ public class PlainTextReporter(IPluginEvents pluginEvents, IProxyContext context
             sb.AppendLine("Excluded: permissions:");
             sb.AppendLine();
             sb.AppendLine(string.Join(", ", minimalPermissionsGuidanceReport.ExcludedPermissions));
+        }
+
+        return sb.ToString();
+    }
+
+    private static string? TransformMinimalPermissionsReport(object report)
+    {
+        var minimalPermissionsReport = (MinimalPermissionsPluginReport)report;
+
+        var sb = new StringBuilder();
+
+        sb.AppendLine($"Minimal permissions report");
+
+        foreach (var apiResult in minimalPermissionsReport.Results)
+        {
+            sb.AppendLine();
+            sb.AppendLine($"API {apiResult.ApiName}:");
+            sb.AppendLine();
+            sb.AppendLine("Requests:");
+            sb.AppendLine();
+            sb.AppendJoin(Environment.NewLine, apiResult.Requests.Select(r => $"- {r}"));
+            sb.AppendLine();
+            sb.AppendLine();
+            sb.AppendLine("Minimal permissions:");
+            sb.AppendLine();
+            sb.AppendJoin(Environment.NewLine, apiResult.MinimalPermissions.Select(p => $"- {p}"));
+        }
+
+        if (minimalPermissionsReport.Errors.Length != 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("Couldn't determine minimal permissions for the following requests:");
+            sb.AppendLine();
+            sb.AppendJoin(Environment.NewLine, minimalPermissionsReport.Errors.Select(e => $"- {e.Request}: {e.Error}"));
         }
 
         return sb.ToString();
