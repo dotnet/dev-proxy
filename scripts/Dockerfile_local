@@ -1,6 +1,6 @@
 FROM ubuntu:24.04
 
-ARG DEVPROXY_VERSION=0.26.0-beta.1
+ARG DEVPROXY_VERSION=0.26.0-beta.4
 ARG USERNAME=devproxy
 ENV DEVPROXY_VERSION=${DEVPROXY_VERSION}
 
@@ -27,20 +27,21 @@ RUN apt -y update && apt -y upgrade && \
     # Create a new user
     useradd -ms /bin/bash ${USERNAME} && \
     echo "export PATH=$PATH:$(pwd)/devproxy" >> /home/${USERNAME}/.bashrc && \
-    # Create a directory for the configuration
-    mkdir -p /home/${USERNAME}/.config && \
+    # Create a directory for the configuration & root certificate
+    mkdir -p /home/${USERNAME}/.config/dev-proxy/rootCert && \
     chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.config
 
 # Prevents error "Couldn't find a valid ICU package" when running Dev Proxy
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
     # Required for .NET to properly resolve SpecialFolder.ApplicationData
-    XDG_DATA_HOME=/home/${USERNAME}/.config
+    XDG_DATA_HOME=/home/${USERNAME}/.config \
+    # Put the root certificate in a sub folder so that it can be mounted
+    DEV_PROXY_CERT_PATH=rootCert/rootCert.pfx
 
+VOLUME /home/${USERNAME}/.config/dev-proxy/rootCert
 VOLUME /config
 WORKDIR /config
 
 USER ${USERNAME}
-
-RUN /app/devproxy/devproxy cert ensure
 
 ENTRYPOINT ["/app/devproxy/devproxy", "--ip-address", "0.0.0.0"]

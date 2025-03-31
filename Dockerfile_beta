@@ -27,20 +27,21 @@ RUN apt -y update && apt -y upgrade && \
     # Install Dev Proxy
     /bin/bash -c "$(curl -sL https://aka.ms/devproxy/setup-beta.sh)" -- v${DEVPROXY_VERSION} && \
     echo "export PATH=$PATH:$(pwd)/devproxy-beta" >> /home/${USERNAME}/.bashrc && \
-    # Create a directory for the configuration
-    mkdir -p /home/${USERNAME}/.config && \
+    # Create a directory for the configuration & root certificate
+    mkdir -p /home/${USERNAME}/.config/dev-proxy/rootCert && \
     chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.config
 
 # Prevents error "Couldn't find a valid ICU package" when running Dev Proxy
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
     # Required for .NET to properly resolve SpecialFolder.ApplicationData
-    XDG_DATA_HOME=/home/${USERNAME}/.config
+    XDG_DATA_HOME=/home/${USERNAME}/.config \
+    # Put the root certificate in a sub folder so that it can be mounted
+    DEV_PROXY_CERT_PATH=rootCert/rootCert.pfx
 
+VOLUME /home/${USERNAME}/.config/dev-proxy/rootCert
 VOLUME /config
 WORKDIR /config
 
 USER ${USERNAME}
-
-RUN /app/devproxy-beta/devproxy-beta cert ensure
 
 ENTRYPOINT ["/app/devproxy-beta/devproxy-beta", "--ip-address", "0.0.0.0"]

@@ -48,6 +48,7 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
     static ProxyEngine()
     {
         _proxyServer = new ProxyServer();
+        _proxyServer.CertificateManager.PfxFilePath = Environment.GetEnvironmentVariable("DEV_PROXY_CERT_PATH") ?? string.Empty;
         _proxyServer.CertificateManager.RootCertificateName = "Dev Proxy CA";
         _proxyServer.CertificateManager.CertificateStorage = new CertificateDiskCache();
         // we need to change this to a value lower than 397
