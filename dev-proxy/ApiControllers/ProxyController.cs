@@ -4,6 +4,8 @@
 
 using Microsoft.AspNetCore.Mvc;
 using DevProxy.Jwt;
+using System.Security.Cryptography.X509Certificates;
+using System.ComponentModel.DataAnnotations;
 
 namespace DevProxy.ApiControllers;
 
@@ -64,5 +66,34 @@ public class ProxyController(IProxyState proxyState) : ControllerBase
         var token = JwtTokenGenerator.CreateToken(jwtOptions);
 
         return Ok(new JwtInfo { Token = token });
+    }
+
+    [HttpGet("rootCertificate")]
+    public IActionResult GetRootCertificate([FromQuery][Required] string format)
+    {
+        if (!format.Equals("crt", StringComparison.OrdinalIgnoreCase))
+        {
+            ModelState.AddModelError("format", "Invalid format. Supported format is 'crt'.");
+            return ValidationProblem(ModelState);
+        }
+
+        var certificate = ProxyEngine.ProxyServer.CertificateManager.RootCertificate;
+        if (certificate == null)
+        {
+            var problemDetails = new ProblemDetails
+            {
+                Title = "Certificate Not Found",
+                Detail = "No root certificate found.",
+                Status = StatusCodes.Status404NotFound
+            };
+            return NotFound(problemDetails);
+        }
+
+        var certBytes = certificate.Export(X509ContentType.Cert);
+        var base64Cert = Convert.ToBase64String(certBytes, Base64FormattingOptions.InsertLineBreaks);
+        var pem = "-----BEGIN CERTIFICATE-----\n" + base64Cert + "\n-----END CERTIFICATE-----";
+        var pemBytes = System.Text.Encoding.ASCII.GetBytes(pem);
+        
+        return File(pemBytes, "application/x-x509-ca-cert", "devProxy.pem");
     }
 }
