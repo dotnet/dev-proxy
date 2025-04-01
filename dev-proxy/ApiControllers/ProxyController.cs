@@ -23,7 +23,8 @@ public class ProxyController(IProxyState proxyState) : ControllerBase
     {
         if (proxyInfo.ConfigFile != null)
         {
-            return BadRequest("ConfigFile cannot be set");
+            ModelState.AddModelError("ConfigFile", "ConfigFile cannot be set");
+            return ValidationProblem(ModelState);
         }
 
         if (proxyInfo.Recording.HasValue)
@@ -41,7 +42,7 @@ public class ProxyController(IProxyState proxyState) : ControllerBase
         return Ok(ProxyInfo.From(_proxyState));
     }
 
-    [HttpPost("raiseMockRequest")]
+    [HttpPost("mockRequest")]
     public async Task RaiseMockRequestAsync()
     {
         await _proxyState.RaiseMockRequestAsync();
@@ -55,12 +56,18 @@ public class ProxyController(IProxyState proxyState) : ControllerBase
         _proxyState.StopProxy();
     }
 
-    [HttpPost("createJwtToken")]
+    [HttpPost("jwtToken")]
     public IActionResult CreateJwtToken([FromBody] JwtOptions jwtOptions)
     {
         if (jwtOptions.SigningKey != null && jwtOptions.SigningKey.Length < 32)
         {
-            return BadRequest("The specified signing key is too short. A signing key must be at least 32 characters.");
+            var problemDetails = new ProblemDetails
+            {
+                Title = "Key too short",
+                Detail = "The specified signing key is too short. A signing key must be at least 32 characters.",
+                Status = StatusCodes.Status400BadRequest
+            };
+            return BadRequest(problemDetails);
         }
 
         var token = JwtTokenGenerator.CreateToken(jwtOptions);
