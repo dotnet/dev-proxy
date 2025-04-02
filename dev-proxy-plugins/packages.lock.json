@@ -53,9 +53,9 @@
       },
       "Microsoft.OpenApi": {
         "type": "Direct",
-        "requested": "[1.6.23, )",
-        "resolved": "1.6.23",
-        "contentHash": "tZ1I0KXnn98CWuV8cpI247A17jaY+ILS9vvF7yhI0uPPEqF4P1d7BWL5Uwtel10w9NucllHB3nTkfYTAcHAh8g=="
+        "requested": "[1.6.24, )",
+        "resolved": "1.6.24",
+        "contentHash": "fZhncz3BmI2pJk589qHvvR3gGYMol5u98Yk9zRQiDjZac8Uq5NG/dYEFJbW/DBvJf5e8utXt5fN/58XCgjNqyQ=="
       },
       "Newtonsoft.Json": {
         "type": "Direct",
