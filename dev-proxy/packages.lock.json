@@ -87,11 +87,11 @@
       },
       "Microsoft.OpenApi.Readers": {
         "type": "Direct",
-        "requested": "[1.6.23, )",
-        "resolved": "1.6.23",
-        "contentHash": "z2XwO4MUHGWK8dWUyM236pbkm1g+s5diE0dafLe6894mmq2v7cC3A4wLW8UmqBHo1Xx54xYz583jSpw6ZRBFwQ==",
+        "requested": "[1.6.24, )",
+        "resolved": "1.6.24",
+        "contentHash": "dWcqm4L/M9/HcPmDv5RJob7hdW1lmiABZUZu03lYyReLn4zSwZ4iIF07ziBcWfuf49dNR/R3HOR7fPHVArXEeg==",
         "dependencies": {
-          "Microsoft.OpenApi": "1.6.23",
+          "Microsoft.OpenApi": "1.6.24",
           "SharpYaml": "2.1.1"
         }
       },
@@ -434,8 +434,8 @@
       },
       "Microsoft.OpenApi": {
         "type": "Transitive",
-        "resolved": "1.6.23",
-        "contentHash": "tZ1I0KXnn98CWuV8cpI247A17jaY+ILS9vvF7yhI0uPPEqF4P1d7BWL5Uwtel10w9NucllHB3nTkfYTAcHAh8g=="
+        "resolved": "1.6.24",
+        "contentHash": "fZhncz3BmI2pJk589qHvvR3gGYMol5u98Yk9zRQiDjZac8Uq5NG/dYEFJbW/DBvJf5e8utXt5fN/58XCgjNqyQ=="
       },
       "Microsoft.VisualStudio.Threading.Analyzers": {
         "type": "Transitive",
@@ -590,7 +590,7 @@
           "Microsoft.Extensions.Configuration.Binder": "[9.0.3, )",
           "Microsoft.Extensions.Configuration.Json": "[9.0.3, )",
           "Microsoft.Extensions.Logging.Abstractions": "[9.0.3, )",
-          "Microsoft.OpenApi.Readers": "[1.6.23, )",
+          "Microsoft.OpenApi.Readers": "[1.6.24, )",
           "Newtonsoft.Json.Schema": "[4.0.1, )",
           "System.CommandLine": "[2.0.0-beta4.22272.1, )",
           "Unobtanium.Web.Proxy": "[0.1.5, )"
