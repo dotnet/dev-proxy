@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy AuthPlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "apiKey": {
+      "type": "object",
+      "properties": {
+        "allowedKeys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "in": {
+                "type": "string",
+                "enum": [
+                  "header",
+                  "query",
+                  "cookie"
+                ]
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "in",
+              "name"
+            ]
+          }
+        }
+      },
+      "required": [
+        "allowedKeys",
+        "parameters"
+      ]
+    },
+    "oauth2": {
+      "type": "object",
+      "properties": {
+        "metadataUrl": {
+          "type": "string"
+        },
+        "allowedApplications": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "allowedAudiences": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "allowedPrincipals": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "allowedTenants": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "issuer": {
+          "type": "string"
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "validateLifetime": {
+          "type": "boolean"
+        },
+        "validateSigningKey": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "metadataUrl"
+      ]
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "apiKey",
+        "oauth2"
+      ]
+    }
+  },
+  "required": [
+    "type"
+  ],
+  "additionalProperties": false
+}

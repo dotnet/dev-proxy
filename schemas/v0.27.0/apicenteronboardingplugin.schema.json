@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy ApiCenterOnboardingPlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "createApicEntryForNewApis": {
+      "type": "boolean"
+    },
+    "resourceGroupName": {
+      "type": "string"
+    },
+    "serviceName": {
+      "type": "string"
+    },
+    "subscriptionId": {
+      "type": "string"
+    },
+    "workspace": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "resourceGroupName",
+    "serviceName",
+    "subscriptionId"
+  ],
+  "additionalProperties": false
+}

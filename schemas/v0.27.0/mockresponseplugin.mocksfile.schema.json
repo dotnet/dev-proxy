@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy MockResponsePlugin mocks",
+  "description": "Mocks for the Dev Proxy MockResponsePlugin",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "mocks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string"
+              },
+              "method": {
+                "type": "string",
+                "enum": [
+                  "GET",
+                  "POST",
+                  "PUT",
+                  "PATCH",
+                  "DELETE",
+                  "HEAD",
+                  "OPTIONS",
+                  "CONNECT",
+                  "TRACE"
+                ]
+              },
+              "nth": {
+                "type": "integer"
+              },
+              "bodyFragment": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "url"
+            ]
+          },
+          "response": {
+            "type": "object",
+            "properties": {
+              "body": {
+                "type": [
+                  "object",
+                  "array",
+                  "string"
+                ]
+              },
+              "statusCode": {
+                "type": "integer"
+              },
+              "headers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "value"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "request",
+          "response"
+        ]
+      }
+    }
+  },
+  "required": [
+    "mocks"
+  ],
+  "additionalProperties": false
+}

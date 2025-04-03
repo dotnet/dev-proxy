@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy GenericRandomErrorPlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "errorsFile": {
+      "type": "string"
+    },
+    "rate": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "retryAfterInSeconds": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "required": [
+    "errorsFile"
+  ],
+  "additionalProperties": false
+}
