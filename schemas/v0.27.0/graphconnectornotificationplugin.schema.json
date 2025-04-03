@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy GraphConnectorNotificationPlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "audience": {
+      "type": "string"
+    },
+    "mockFile": {
+      "type": "string"
+    },
+    "tenant": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "audience",
+    "mockFile",
+    "tenant"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy RateLimitingPlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "headerLimit": {
+      "type": "string"
+    },
+    "headerRemaining": {
+      "type": "string"
+    },
+    "headerReset": {
+      "type": "string"
+    },
+    "headerRetryAfter": {
+      "type": "string"
+    },
+    "costPerRequest": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "resetTimeWindowSeconds": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "warningThresholdPercent": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "rateLimit": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "whenLimitExceeded": {
+      "type": "string",
+      "enum": [
+        "Throttle",
+        "Custom"
+      ]
+    },
+    "resetFormat": {
+      "type": "string",
+      "enum": [
+        "SecondsLeft",
+        "UtcEpochSeconds"
+      ]
+    },
+    "customResponseFile": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

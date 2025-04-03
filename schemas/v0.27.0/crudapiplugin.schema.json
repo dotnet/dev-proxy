@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy CrudApiPlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "apiFile": {
+      "type": "string"
+    },
+    "required": [
+      "apiFile"
+    ]
+  },
+  "additionalProperties": false
+}

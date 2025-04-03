@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CRUD API plugin API definition",
+  "description": "API definition for use with the CRUD API Dev Proxy plugin",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "baseUrl": {
+      "type": "string"
+    },
+    "dataFile": {
+      "type": "string"
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "create",
+              "getAll",
+              "getOne",
+              "getMany",
+              "merge",
+              "update",
+              "delete"
+            ]
+          },
+          "url": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE"
+            ]
+          },
+          "auth": {
+            "type": "string",
+            "enum": [
+              "none",
+              "entra"
+            ]
+          },
+          "entraAuthConfig": {
+            "type": "object",
+            "properties": {
+              "audience": {
+                "type": "string"
+              },
+              "issuer": {
+                "type": "string"
+              },
+              "scopes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "roles": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "validateLifetime": {
+                "type": "boolean"
+              },
+              "validateSigningKey": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "auth": {
+      "type": "string",
+      "enum": [
+        "none",
+        "entra"
+      ]
+    },
+    "entraAuthConfig": {
+      "type": "object",
+      "properties": {
+        "audience": {
+          "type": "string"
+        },
+        "issuer": {
+          "type": "string"
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "validateLifetime": {
+          "type": "boolean"
+        },
+        "validateSigningKey": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "required": [
+    "baseUrl",
+    "dataFile",
+    "actions"
+  ],
+  "additionalProperties": false
+}

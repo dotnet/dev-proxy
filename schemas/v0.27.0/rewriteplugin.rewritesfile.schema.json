@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy RewritePlugin rewrite rules",
+  "description": "Rewrite rules for the Dev Proxy RewritePlugin",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "rewrites": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "in": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string",
+                "pattern": "^.+$"
+              }
+            },
+            "required": ["url"]
+          },
+          "out": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string",
+                "pattern": "^.*$"
+              }
+            },
+            "required": ["url"]
+          }
+        },
+        "required": ["in", "out"]
+      }
+    }
+  },
+  "required": [
+    "rewrites"
+  ],
+  "additionalProperties": false
+}
