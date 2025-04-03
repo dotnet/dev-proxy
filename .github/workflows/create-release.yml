@@ -6,12 +6,19 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  IMAGE_DESCRIPTION: Dev Proxy is an API simulator that helps you effortlessly test your app beyond the happy path.
+  APP_DESCRIPTION: Dev Proxy is an API simulator that helps you effortlessly test your app beyond the happy path.
+  APP_PUBLISHER: Dev Proxy
+  APP_DESCRIPTION_URL: https://aka.ms/devproxy
 
 jobs:
   publish_binaries:
     name: Publish binaries
     runs-on: [windows-latest]
+    environment:
+      name: gh_releases
+    permissions:
+      id-token: write
+      contents: read
     strategy:
       matrix:
         architecture:
@@ -60,7 +67,33 @@ jobs:
           Get-ChildItem -Filter *.pdb -Recurse | Remove-Item
           Get-ChildItem -Filter *.deps.json -Recurse | Remove-Item
           Get-ChildItem -Filter *.runtimeconfig.json -Recurse | Remove-Item
+          Get-ChildItem -Filter *.staticwebassets.endpoints.json -Recurse | Remove-Item
+          Get-ChildItem -Filter web.config -Recurse | Remove-Item
           popd
+      - name: Install Sign CLI tool
+        run: dotnet tool install --tool-path . sign --version 0.9.1-beta.25181.2
+      - name: Azure CLI Login
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
+        with:
+          client-id: ${{ secrets.DOTNET_APPLICATION_ID }}
+          tenant-id: ${{ secrets.DOTNET_TENANT_ID }}
+          allow-no-subscriptions: true
+      - name: Sign binaries
+        if: contains(matrix.architecture, 'win-')
+        working-directory: ./${{ env.release }}
+        shell: pwsh
+        run: >
+          ../sign code azure-key-vault
+          **/dev*proxy*
+          --publisher-name "${{ env.APP_PUBLISHER }}"
+          --description "${{ env.APP_DESCRIPTION }}"
+          --description-url "${{ env.APP_DESCRIPTION_URL }}"
+          --azure-key-vault-tenant-id "${{ secrets.DOTNET_TENANT_ID }}"
+          --azure-key-vault-client-id "${{ secrets.DOTNET_APPLICATION_ID }}"
+          --azure-key-vault-certificate "${{ secrets.DOTNET_CERTIFICATE_NAME }}"
+          --azure-key-vault-url "${{ secrets.DOTNET_VAULT_URL }}"
+          --timestamp-url http://timestamp.digicert.com
+          --verbosity Debug
       - name: Archive release ${{ env.release }}
         uses: thedoctor0/zip-release@a24011d8d445e4da5935a7e73c1f98e22a439464 # master
         with:
@@ -74,6 +107,21 @@ jobs:
         with:
           name: binaries-${{ env.release }}
           path: ./${{ env.release }}.zip
+      - name: Sign abstractions
+        if: matrix.architecture == 'win-x64'
+        shell: pwsh
+        run: >
+          ./sign code azure-key-vault
+          ./dev-proxy-abstractions/bin/Release/net9.0/dev-proxy-abstractions.dll
+          --publisher-name "${{ env.APP_PUBLISHER }}"
+          --description "${{ env.APP_DESCRIPTION }}"
+          --description-url "${{ env.APP_DESCRIPTION_URL }}"
+          --azure-key-vault-tenant-id "${{ secrets.DOTNET_TENANT_ID }}"
+          --azure-key-vault-client-id "${{ secrets.DOTNET_APPLICATION_ID }}"
+          --azure-key-vault-certificate "${{ secrets.DOTNET_CERTIFICATE_NAME }}"
+          --azure-key-vault-url "${{ secrets.DOTNET_VAULT_URL }}"
+          --timestamp-url http://timestamp.digicert.com
+          --verbosity Debug
       - name: Archive abstractions
         if: matrix.architecture == 'win-x64'
         uses: thedoctor0/zip-release@a24011d8d445e4da5935a7e73c1f98e22a439464 # master
@@ -114,8 +162,24 @@ jobs:
         run: cp ./${{ steps.installer.outputs.filename }} ./${{ env.release }}
       - name: Build Installer
         if: contains(matrix.architecture, 'win-')
-        run: ISCC.exe ${{ steps.installer.outputs.filename }} /F"dev-proxy-installer-${{ matrix.architecture }}-${{ github.ref_name }}"
+        run: ISCC.exe ${{ steps.installer.outputs.filename }} /F"dev-proxy-installer-${{ matrix.architecture }}-${{ github.ref_name }}" 
         working-directory: ./${{ env.release }}
+      - name: Sign installer
+        if: contains(matrix.architecture, 'win-')
+        working-directory: ./${{ env.release }}
+        shell: pwsh
+        run: >
+          ../sign code azure-key-vault
+          ./dev-proxy-installer-*.exe
+          --publisher-name "${{ env.APP_PUBLISHER }}"
+          --description "${{ env.APP_DESCRIPTION }}"
+          --description-url "${{ env.APP_DESCRIPTION_URL }}"
+          --azure-key-vault-tenant-id "${{ secrets.DOTNET_TENANT_ID }}"
+          --azure-key-vault-client-id "${{ secrets.DOTNET_APPLICATION_ID }}"
+          --azure-key-vault-certificate "${{ secrets.DOTNET_CERTIFICATE_NAME }}"
+          --azure-key-vault-url "${{ secrets.DOTNET_VAULT_URL }}"
+          --timestamp-url http://timestamp.digicert.com
+          --verbosity Debug
       - name: Upload Installer
         if: contains(matrix.architecture, 'win-')
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
@@ -189,9 +253,9 @@ jobs:
             type=raw,value=latest,enable=${{ !contains(github.ref_name, '-beta') }}
             type=raw,value=beta,enable=${{ contains(github.ref_name, '-beta') }}
           labels: |
-            org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION }}
+            org.opencontainers.image.description=${{ env.APP_DESCRIPTION }}
           annotations: |
-            org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION }}
+            org.opencontainers.image.description=${{ env.APP_DESCRIPTION }}
       - name: Build and push Docker image
         if: "!contains(github.ref_name, '-beta')"
         id: push

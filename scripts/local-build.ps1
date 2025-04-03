@@ -17,4 +17,6 @@ cd ../bld
 Get-ChildItem -Filter *.pdb -Recurse | Remove-Item
 Get-ChildItem -Filter *.deps.json -Recurse | Remove-Item
 Get-ChildItem -Filter *.runtimeconfig.json -Recurse | Remove-Item
+Get-ChildItem -Filter *.staticwebassets.endpoints.json -Recurse | Remove-Item
+Get-ChildItem -Filter web.config -Recurse | Remove-Item
 popd
