@@ -268,7 +268,7 @@ public class GenericRandomErrorPlugin(IPluginEvents pluginEvents, IProxyContext 
                 continue;
             }
 
-            if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, error.Request.Url))
+            if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, error.Request.Url, true))
             {
                 unmatchedErrorUrls.Add(error.Request.Url);
             }

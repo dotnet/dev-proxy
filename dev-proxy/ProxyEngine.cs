@@ -293,11 +293,6 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
     {
         foreach (var urlToWatch in _urlsToWatch)
         {
-            if (urlToWatch.Exclude)
-            {
-                continue;
-            }
-
             // extract host from the URL
             string urlToWatchPattern = Regex.Unescape(urlToWatch.Url.ToString())
                 .Trim('^', '$')
@@ -329,7 +324,7 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
             // don't add the same host twice
             if (!_hostsToWatch.Any(h => h.Url.ToString() == hostRegex.ToString()))
             {
-                _hostsToWatch.Add(new UrlToWatch(hostRegex));
+                _hostsToWatch.Add(new UrlToWatch(hostRegex, urlToWatch.Exclude));
             }
         }
     }
@@ -520,7 +515,18 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
 
     private static void AddProxyHeader(Request r) => r.Headers?.AddHeader("Via", $"{r.HttpVersion} dev-proxy/{ProxyUtils.ProductVersion}");
 
-    private bool IsProxiedHost(string hostName) => _hostsToWatch.Any(h => h.Url.IsMatch(hostName));
+    private bool IsProxiedHost(string hostName)
+    {
+        var urlMatch = _hostsToWatch.FirstOrDefault(h => h.Url.IsMatch(hostName));
+        if (urlMatch is null)
+        {
+            return false;
+        }
+        else
+        {
+            return !urlMatch.Exclude;
+        }
+    }
 
     private bool IsIncludedByHeaders(HeaderCollection requestHeaders)
     {

@@ -356,9 +356,9 @@ public static class ProxyUtils
 
     public static JsonSerializerOptions JsonSerializerOptions => jsonSerializerOptions;
 
-    public static bool MatchesUrlToWatch(ISet<UrlToWatch> watchedUrls, string url)
+    public static bool MatchesUrlToWatch(ISet<UrlToWatch> watchedUrls, string url, bool evaluateWildcards = false)
     {
-        if (url.Contains('*'))
+        if (evaluateWildcards && url.Contains('*'))
         {
             // url contains a wildcard, so convert it to regex and compare
             var match = watchedUrls.FirstOrDefault(r => {

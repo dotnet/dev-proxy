@@ -101,7 +101,7 @@ public class CrudApiPlugin(IPluginEvents pluginEvents, IProxyContext context, IL
             _configuration.Auth = CrudApiAuthType.None;
         }
 
-        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, _configuration.BaseUrl))
+        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, _configuration.BaseUrl, true))
         {
             Logger.LogWarning(
                 "The base URL of the API {baseUrl} does not match any URL to watch. The {plugin} plugin will be disabled. To enable it, add {url}* to the list of URLs to watch and restart Dev Proxy.",

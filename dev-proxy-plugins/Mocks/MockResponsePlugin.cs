@@ -137,7 +137,7 @@ public class MockResponsePlugin(IPluginEvents pluginEvents, IProxyContext contex
                 continue;
             }
 
-            if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, mock.Request.Url))
+            if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, mock.Request.Url, true))
             {
                 unmatchedMockUrls.Add(mock.Request.Url);
             }
