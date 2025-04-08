@@ -43,12 +43,12 @@
       },
       "Microsoft.IdentityModel.Protocols.OpenIdConnect": {
         "type": "Direct",
-        "requested": "[8.7.0, )",
-        "resolved": "8.7.0",
-        "contentHash": "nUifCAs2E9cvBiYBC3/L9PoftSxTVpdUdoIu7VV9M9aw7mogsdFRUn5v23c5Jl9u93jdUc0PCagrItLHncG8Qg==",
+        "requested": "[8.8.0, )",
+        "resolved": "8.8.0",
+        "contentHash": "bSlRyHuZqG1vDZTqsSFE+t2yNIpgVsDBqu1lLhMiFPBnsXz3YUk/OScAveSQDtq4pd37+aIdNJv6EPvN4Cn0Kg==",
         "dependencies": {
-          "Microsoft.IdentityModel.Protocols": "8.7.0",
-          "System.IdentityModel.Tokens.Jwt": "8.7.0"
+          "Microsoft.IdentityModel.Protocols": "8.8.0",
+          "System.IdentityModel.Tokens.Jwt": "8.8.0"
         }
       },
       "Microsoft.OpenApi": {
@@ -71,12 +71,12 @@
       },
       "System.IdentityModel.Tokens.Jwt": {
         "type": "Direct",
-        "requested": "[8.7.0, )",
-        "resolved": "8.7.0",
-        "contentHash": "8dKL3A9pVqYCJIXHd4H2epQqLxSvKeNxGonR0e5g89yMchyvsM/NLuB06otx29BicUd6+LUJZgNZmvYjjPsPGg==",
+        "requested": "[8.8.0, )",
+        "resolved": "8.8.0",
+        "contentHash": "/oIQ5jhVxpzutFOPYIxmvkVMCLLDwpN0CLcXjyxPflVRQGZRYi5x2IqHeJw+xJ2k2HUPmeTaM18La5wDbhJcQA==",
         "dependencies": {
-          "Microsoft.IdentityModel.JsonWebTokens": "8.7.0",
-          "Microsoft.IdentityModel.Tokens": "8.7.0"
+          "Microsoft.IdentityModel.JsonWebTokens": "8.8.0",
+          "Microsoft.IdentityModel.Tokens": "8.8.0"
         }
       },
       "Unobtanium.Web.Proxy": {
@@ -322,40 +322,40 @@
       },
       "Microsoft.IdentityModel.Abstractions": {
         "type": "Transitive",
-        "resolved": "8.7.0",
-        "contentHash": "OQd5aVepYvh5evOmBMeAYjMIpEcTf1ZCBZaU7Nh/RlhhdXefjFDJeP1L2F2zeNT1unFr+wUu/h3Ac2Xb4BXU6w=="
+        "resolved": "8.8.0",
+        "contentHash": "0lKw+f3vkmV9t3PLe6sY3xPrYrHYiMRFxuOse5CMkKPxhQYiabpfJsuk6wX2RrVQ86Dn+t/8poHpH0nbp6sFvA=="
       },
       "Microsoft.IdentityModel.JsonWebTokens": {
         "type": "Transitive",
-        "resolved": "8.7.0",
-        "contentHash": "uzsSAWhNhbrkWbQKBTE8QhzviU6sr3bJ1Bkv7gERlhswfSKOp7HsxTRLTPBpx/whQ/GRRHEwMg8leRIPbMrOgw==",
+        "resolved": "8.8.0",
+        "contentHash": "lepOkZZTMfJCPSnWITXxV+4Wxb54g+9oIybs9YovlOzZWuR1i2DOpzaDgSe+piDJaGtnSrcUlcB9fZ5Swur7Uw==",
         "dependencies": {
-          "Microsoft.IdentityModel.Tokens": "8.7.0"
+          "Microsoft.IdentityModel.Tokens": "8.8.0"
         }
       },
       "Microsoft.IdentityModel.Logging": {
         "type": "Transitive",
-        "resolved": "8.7.0",
-        "contentHash": "Bs0TznPAu+nxa9rAVHJ+j3CYECHJkT3tG8AyBfhFYlT5ldsDhoxFT7J+PKxJHLf+ayqWfvDZHHc4639W2FQCxA==",
+        "resolved": "8.8.0",
+        "contentHash": "sUyoxzg/WBZobbFLJK8loT9IILKtS9ePmWu5B11ogQqhSHppE6SRZKw0fhI6Fd16X6ey52cbbWc2rvMBC98EQA==",
         "dependencies": {
-          "Microsoft.IdentityModel.Abstractions": "8.7.0"
+          "Microsoft.IdentityModel.Abstractions": "8.8.0"
         }
       },
       "Microsoft.IdentityModel.Protocols": {
         "type": "Transitive",
-        "resolved": "8.7.0",
-        "contentHash": "4r4H8LCCoNFlJHRrWCqaNtzJPM4Bfi9ARdl7Gd+OoIZqc1rsp9z60USIf00o5YwAwXwKffPUPrvufkbgR69jYA==",
+        "resolved": "8.8.0",
+        "contentHash": "Hr/Eoh48nbSAKt4K52R5Sc34rzlDoSNAjmI5uWqCRZwYDSx64m8f0EZ2LOhW8j4PBLY4ud43xRln406ACZ4SSw==",
         "dependencies": {
-          "Microsoft.IdentityModel.Tokens": "8.7.0"
+          "Microsoft.IdentityModel.Tokens": "8.8.0"
         }
       },
       "Microsoft.IdentityModel.Tokens": {
         "type": "Transitive",
-        "resolved": "8.7.0",
-        "contentHash": "5Z6voXjRXAnGklhmZd1mKz89UhcF5ZQQZaZc2iKrOuL4Li1UihG2vlJx8IbiFAOIxy/xdbsAm0A+WZEaH5fxng==",
+        "resolved": "8.8.0",
+        "contentHash": "09hnbUJh/18gUmu5nCVFMvyzAFC4l1qyc4bwSJaKzUBqHN7aNDwmSx8dE3/MMJImbvnKq9rEtkkgnrS/OUBtjA==",
         "dependencies": {
           "Microsoft.Extensions.Logging.Abstractions": "8.0.2",
-          "Microsoft.IdentityModel.Logging": "8.7.0"
+          "Microsoft.IdentityModel.Logging": "8.8.0"
         }
       },
       "Microsoft.OpenApi.Readers": {
