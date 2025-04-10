@@ -95,7 +95,7 @@ jobs:
           --timestamp-url http://timestamp.digicert.com
           --verbosity Debug
       - name: Archive release ${{ env.release }}
-        uses: thedoctor0/zip-release@a24011d8d445e4da5935a7e73c1f98e22a439464 # master
+        uses: thedoctor0/zip-release@b57d897cb5d60cb78b51a507f63fa184cfe35554 # master
         with:
           filename: '../${{ env.release }}.zip'
           directory: './${{ env.release }}'
@@ -124,7 +124,7 @@ jobs:
           --verbosity Debug
       - name: Archive abstractions
         if: matrix.architecture == 'win-x64'
-        uses: thedoctor0/zip-release@a24011d8d445e4da5935a7e73c1f98e22a439464 # master
+        uses: thedoctor0/zip-release@b57d897cb5d60cb78b51a507f63fa184cfe35554 # master
         with:
           filename: '../../../../dev-proxy-abstractions-${{ github.ref_name }}.zip'
           directory: './dev-proxy-abstractions/bin/Release/net9.0'
