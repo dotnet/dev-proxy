@@ -103,7 +103,7 @@ jobs:
         run: |
           $(Get-FileHash ./${{ env.release }}.zip -Algorithm SHA256).Hash
       - name: Upload release
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: binaries-${{ env.release }}
           path: ./${{ env.release }}.zip
@@ -131,7 +131,7 @@ jobs:
           exclusions: '*.json'
       - name: Upload abstractions
         if: matrix.architecture == 'win-x64'
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: binaries-dev-proxy-abstractions-${{ github.ref_name }}
           path: ./dev-proxy-abstractions-${{ github.ref_name }}.zip
@@ -182,7 +182,7 @@ jobs:
           --verbosity Debug
       - name: Upload Installer
         if: contains(matrix.architecture, 'win-')
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: installer-dev-proxy-${{ github.ref_name }}-${{ matrix.architecture }}
           path: ./${{ env.release }}/dev-proxy-installer-${{ matrix.architecture }}-${{ github.ref_name }}.exe
