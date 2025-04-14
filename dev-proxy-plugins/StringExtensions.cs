@@ -23,6 +23,22 @@ internal static class StringExtensions
         return char.ToUpper(input[0]) + input[1..];
     }
 
+    internal static string ToCamelCase(this string str)
+    {
+        if (string.IsNullOrEmpty(str))
+            return str;
+
+        return char.ToLowerInvariant(str[0]) + str[1..];
+    }
+
+    internal static string ToKebabCase(this string str)
+    {
+        if (string.IsNullOrEmpty(str))
+            return str;
+
+        return string.Concat(str.Select((x, i) => i > 0 && char.IsUpper(x) ? "-" + x : x.ToString())).ToLower();
+    }
+
     internal static string Replace(this string input, string oldValue, string newValue, int startIndex)
     {
         if (string.IsNullOrEmpty(input) || string.IsNullOrEmpty(oldValue))
