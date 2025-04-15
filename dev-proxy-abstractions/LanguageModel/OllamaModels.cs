@@ -12,6 +12,7 @@ public abstract class OllamaResponse : ILanguageModelCompletionResponse
     public DateTime CreatedAt { get; set; } = DateTime.MinValue;
     public bool Done { get; set; } = false;
     public string? Error { get; set; }
+    public string? ErrorMessage => Error;
     [JsonPropertyName("eval_count")]
     public long EvalCount { get; set; }
     [JsonPropertyName("eval_duration")]
@@ -26,13 +27,61 @@ public abstract class OllamaResponse : ILanguageModelCompletionResponse
     public virtual string? Response { get; set; }
     [JsonPropertyName("total_duration")]
     public long TotalDuration { get; set; }
-    // custom property added to log in the mock output
-    public string RequestUrl { get; set; } = string.Empty;
+    public string? RequestUrl { get; set; }
+
+    public abstract OpenAIResponse ConvertToOpenAIResponse();
 }
 
 public class OllamaLanguageModelCompletionResponse : OllamaResponse
 {
     public int[] Context { get; set; } = [];
+
+    public override OpenAIResponse ConvertToOpenAIResponse()
+    {
+        return new OpenAICompletionResponse
+        {
+            Id = Guid.NewGuid().ToString(),
+            Object = "text_completion",
+            Created = ((DateTimeOffset)CreatedAt).ToUnixTimeSeconds(),
+            Model = Model,
+            PromptFilterResults =
+            [
+                new OpenAIResponsePromptFilterResult
+                {
+                    PromptIndex = 0,
+                    ContentFilterResults = new Dictionary<string, OpenAIResponseContentFilterResult>
+                    {
+                        { "hate", new() { Filtered = false, Severity = "safe" } },
+                        { "self_harm", new() { Filtered = false, Severity = "safe" } },
+                        { "sexual", new() { Filtered = false, Severity = "safe" } },
+                        { "violence", new() { Filtered = false, Severity = "safe" } }
+                    }
+                }
+            ],
+            Choices =
+            [
+                new OpenAICompletionResponseChoice
+                {
+                    Text = Response ?? string.Empty,
+                    Index = 0,
+                    FinishReason = "length",
+                    ContentFilterResults = new Dictionary<string, OpenAIResponseContentFilterResult>
+                    {
+                        { "hate", new() { Filtered = false, Severity = "safe" } },
+                        { "self_harm", new() { Filtered = false, Severity = "safe" } },
+                        { "sexual", new() { Filtered = false, Severity = "safe" } },
+                        { "violence", new() { Filtered = false, Severity = "safe" } }
+                    }
+                }
+            ],
+            Usage = new OpenAIResponseUsage
+            {
+                PromptTokens = PromptEvalCount,
+                CompletionTokens = EvalCount,
+                TotalTokens = PromptEvalCount + EvalCount
+            }
+        };
+    }
 }
 
 public class OllamaLanguageModelChatCompletionResponse : OllamaResponse
@@ -50,6 +99,54 @@ public class OllamaLanguageModelChatCompletionResponse : OllamaResponse
 
             Message = new() { Content = value };
         }
+    }
+
+    public override OpenAIResponse ConvertToOpenAIResponse()
+    {
+        return new OpenAIChatCompletionResponse
+        {
+            Choices = [new OpenAIChatCompletionResponseChoice
+            {
+                ContentFilterResults = new Dictionary<string, OpenAIResponseContentFilterResult>
+                {
+                    { "hate", new() { Filtered = false, Severity = "safe" } },
+                    { "self_harm", new() { Filtered = false, Severity = "safe" } },
+                    { "sexual", new() { Filtered = false, Severity = "safe" } },
+                    { "violence", new() { Filtered = false, Severity = "safe" } }
+                },
+                FinishReason = "stop",
+                Index = 0,
+                Message = new()
+                {
+                    Content = Message.Content,
+                    Role = Message.Role
+                }
+            }],
+            Created = ((DateTimeOffset)CreatedAt).ToUnixTimeSeconds(),
+            Id = Guid.NewGuid().ToString(),
+            Model = Model,
+            Object = "chat.completion",
+            PromptFilterResults =
+            [
+                new OpenAIResponsePromptFilterResult
+                {
+                    PromptIndex = 0,
+                    ContentFilterResults = new Dictionary<string, OpenAIResponseContentFilterResult>
+                    {
+                        { "hate", new() { Filtered = false, Severity = "safe" } },
+                        { "self_harm", new() { Filtered = false, Severity = "safe" } },
+                        { "sexual", new() { Filtered = false, Severity = "safe" } },
+                        { "violence", new() { Filtered = false, Severity = "safe" } }
+                    }
+                }
+            ],
+            Usage = new OpenAIResponseUsage
+            {
+                PromptTokens = PromptEvalCount,
+                CompletionTokens = EvalCount,
+                TotalTokens = PromptEvalCount + EvalCount
+            }
+        };
     }
 }
 

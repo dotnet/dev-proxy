@@ -37,7 +37,7 @@ PluginEvents pluginEvents = new();
 
 var (logger, loggerFactory) = BuildLogger();
 
-var lmClient = new OllamaLanguageModelClient(ProxyCommandHandler.Configuration.LanguageModel, logger);
+var lmClient = LanguageModelClientFactory.Create(ProxyCommandHandler.Configuration.LanguageModel, logger);
 IProxyContext context = new ProxyContext(ProxyCommandHandler.Configuration, ProxyEngine.Certificate, lmClient);
 ProxyHost proxyHost = new();
 

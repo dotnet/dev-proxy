@@ -4,11 +4,18 @@
 
 namespace DevProxy.Abstractions.LanguageModel;
 
+public enum LanguageModelClient
+{
+    LMStudio,
+    Ollama
+}
+
 public class LanguageModelConfiguration
 {
-    public bool Enabled { get; set; } = false;
-    // default Ollama URL
-    public string? Url { get; set; } = "http://localhost:11434";
-    public string? Model { get; set; } = "llama3.2";
     public bool CacheResponses { get; set; } = true;
+    public bool Enabled { get; set; } = false;
+    public LanguageModelClient Client { get; set; } = LanguageModelClient.Ollama;
+    // default Ollama URL
+    public string? Model { get; set; } = "llama3.2";
+    public string? Url { get; set; } = "http://localhost:11434";
 }

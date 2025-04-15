@@ -6,6 +6,10 @@ namespace DevProxy.Abstractions.LanguageModel;
 
 public interface ILanguageModelCompletionResponse
 {
-    string? Error { get; set; }
-    string? Response { get; set; }
+    string? ErrorMessage { get; }
+    string? Response { get; }
+    // custom property added to log in the mock output
+    string? RequestUrl { get; set; }
+
+    OpenAIResponse ConvertToOpenAIResponse();
 }
