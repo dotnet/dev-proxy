@@ -43,6 +43,13 @@
         "cacheResponses": {
           "type": "boolean"
         },
+        "client": {
+          "type": "string",
+          "enum": [
+            "LMStudio",
+            "Ollama"
+          ]
+        },
         "enabled": {
           "type": "boolean"
         },
