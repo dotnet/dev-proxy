@@ -4,53 +4,65 @@
   "type": "object",
   "properties": {
     "$schema": {
-      "type": "string"
+      "type": "string",
+      "description": "The URL of the JSON schema used to validate this configuration file."
     },
     "headerLimit": {
-      "type": "string"
+      "type": "string",
+      "description": "Name of the response header that communicates the rate-limiting limit (e.g., 'RateLimit-Limit')."
     },
     "headerRemaining": {
-      "type": "string"
+      "type": "string",
+      "description": "Name of the response header that communicates the remaining number of resources before the reset (e.g., 'RateLimit-Remaining')."
     },
     "headerReset": {
-      "type": "string"
+      "type": "string",
+      "description": "Name of the response header that communicates the time remaining until the reset (e.g., 'RateLimit-Reset')."
     },
     "headerRetryAfter": {
-      "type": "string"
+      "type": "string",
+      "description": "Name of the response header that communicates the retry-after period (e.g., 'Retry-After')."
     },
     "costPerRequest": {
       "type": "integer",
-      "minimum": 1
+      "minimum": 1,
+      "description": "How many resources a single request costs."
     },
     "resetTimeWindowSeconds": {
       "type": "integer",
-      "minimum": 1
+      "minimum": 1,
+      "description": "How long in seconds until the next rate limit reset."
     },
     "warningThresholdPercent": {
       "type": "integer",
       "minimum": 0,
-      "maximum": 100
+      "maximum": 100,
+      "description": "The percentage of the rate limit after which warning headers are returned."
     },
     "rateLimit": {
       "type": "integer",
-      "minimum": 1
+      "minimum": 1,
+      "description": "Number of resources allowed per time window."
     },
     "whenLimitExceeded": {
       "type": "string",
       "enum": [
         "Throttle",
         "Custom"
-      ]
+      ],
+      "description": "Behavior when the rate limit is exceeded: 'Throttle' (default throttling) or 'Custom' (custom response)."
     },
     "resetFormat": {
       "type": "string",
       "enum": [
         "SecondsLeft",
         "UtcEpochSeconds"
-      ]
+      ],
+      "description": "Format for the reset header: 'SecondsLeft' (seconds until reset) or 'UtcEpochSeconds' (UTC epoch seconds)."
     },
     "customResponseFile": {
-      "type": "string"
+      "type": "string",
+      "description": "Path to a file containing a custom error response to use when the rate limit is exceeded."
     }
   },
   "additionalProperties": false

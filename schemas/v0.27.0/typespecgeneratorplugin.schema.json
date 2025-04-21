@@ -4,10 +4,12 @@
   "type": "object",
   "properties": {
     "$schema": {
-      "type": "string"
+      "type": "string",
+      "description": "The URL of the JSON schema used to validate this configuration file."
     },
     "ignoreResponseTypes": {
-      "type": "boolean"
+      "type": "boolean",
+      "description": "Determines whether to generate types for API responses (false) or to set them to 'string' (true)."
     }
   },
   "additionalProperties": false

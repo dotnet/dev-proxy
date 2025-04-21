@@ -5,18 +5,22 @@
   "type": "object",
   "properties": {
     "$schema": {
-      "type": "string"
+      "type": "string",
+      "description": "The JSON schema reference for validation."
     },
     "errors": {
       "type": "array",
+      "description": "List of error response definitions to simulate. Each entry defines a request pattern and possible error responses.",
       "items": {
         "type": "object",
         "properties": {
           "request": {
             "type": "object",
+            "description": "Request pattern to match for simulating an error.",
             "properties": {
               "url": {
-                "type": "string"
+                "type": "string",
+                "description": "URL pattern to match for the request. Supports wildcards."
               },
               "method": {
                 "type": "string",
@@ -30,10 +34,12 @@
                   "OPTIONS",
                   "CONNECT",
                   "TRACE"
-                ]
+                ],
+                "description": "HTTP method to match for the request. Optional."
               },
               "bodyFragment": {
-                "type": "string"
+                "type": "string",
+                "description": "Fragment of the request body to match. Optional."
               }
             },
             "required": [
@@ -42,6 +48,7 @@
           },
           "responses": {
             "type": "array",
+            "description": "Possible error responses to return for the matched request.",
             "items": {
               "type": "object",
               "properties": {
@@ -50,21 +57,26 @@
                     "object",
                     "array",
                     "string"
-                  ]
+                  ],
+                  "description": "Response body to return. Can be an object, array, or string."
                 },
                 "statusCode": {
-                  "type": "integer"
+                  "type": "integer",
+                  "description": "HTTP status code to return."
                 },
                 "headers": {
                   "type": "array",
+                  "description": "List of headers to include in the response.",
                   "items": {
                     "type": "object",
                     "properties": {
                       "name": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "Header name."
                       },
                       "value": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "Header value."
                       }
                     },
                     "required": [

@@ -4,10 +4,12 @@
   "type": "object",
   "properties": {
     "$schema": {
-      "type": "string"
+      "type": "string",
+      "description": "The JSON schema reference for validation."
     },
     "cacheThresholdSeconds": {
-      "type": "integer"
+      "type": "integer",
+      "description": "The number of seconds between the same request that triggers the guidance warning. Default is 5."
     }
   },
   "additionalProperties": false

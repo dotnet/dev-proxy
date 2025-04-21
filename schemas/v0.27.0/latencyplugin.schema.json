@@ -4,16 +4,19 @@
   "type": "object",
   "properties": {
     "$schema": {
-      "type": "string"
+      "type": "string",
+      "description": "Reference to the JSON schema definition."
     },
     "minMs": {
       "type": "integer",
-      "minimum": 0
+      "minimum": 0,
+      "description": "The minimum amount of delay (in milliseconds) added to a request. Default: 0."
     },
     "maxMs": {
       "type": "integer",
       "minimum": 0,
-      "maximum": 10000
+      "maximum": 10000,
+      "description": "The maximum amount of delay (in milliseconds) added to a request. Max value is 10000 (10 seconds). Default: 5000."
     }
   },
   "additionalProperties": false

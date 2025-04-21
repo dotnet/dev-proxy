@@ -4,22 +4,28 @@
   "type": "object",
   "properties": {
     "$schema": {
-      "type": "string"
+      "type": "string",
+      "description": "The JSON schema reference for validation."
     },
     "createApicEntryForNewApis": {
-      "type": "boolean"
+      "type": "boolean",
+      "description": "Set to true to have Dev Proxy create new API entries for APIs detected but not yet registered in API Center. When false, Dev Proxy only lists unregistered APIs. Default is true."
     },
     "resourceGroupName": {
-      "type": "string"
+      "type": "string",
+      "description": "Name of the resource group where the Azure API Center is located."
     },
     "serviceName": {
-      "type": "string"
+      "type": "string",
+      "description": "Name of the Azure API Center instance that Dev Proxy should use to check if the APIs used in the app are registered."
     },
     "subscriptionId": {
-      "type": "string"
+      "type": "string",
+      "description": "ID of the Azure subscription where the Azure API Center instance is located."
     },
     "workspace": {
-      "type": "string"
+      "type": "string",
+      "description": "Name of the Azure API Center workspace to use. Default is 'default'."
     }
   },
   "required": [

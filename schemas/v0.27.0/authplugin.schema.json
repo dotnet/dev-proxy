@@ -4,19 +4,23 @@
   "type": "object",
   "properties": {
     "$schema": {
-      "type": "string"
+      "type": "string",
+      "description": "The JSON schema reference for validation."
     },
     "apiKey": {
       "type": "object",
+      "description": "Configuration for API key authentication and authorization.",
       "properties": {
         "allowedKeys": {
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "List of allowed API keys."
         },
         "parameters": {
           "type": "array",
+          "description": "List of parameters that contain the API key.",
           "items": {
             "type": "object",
             "properties": {
@@ -26,10 +30,12 @@
                   "header",
                   "query",
                   "cookie"
-                ]
+                ],
+                "description": "Where the parameter is expected to be found. Allowed values: header, query, cookie."
               },
               "name": {
-                "type": "string"
+                "type": "string",
+                "description": "Name of the parameter."
               }
             },
             "required": [
@@ -46,54 +52,65 @@
     },
     "oauth2": {
       "type": "object",
+      "description": "Configuration for OAuth2 authentication and authorization.",
       "properties": {
         "metadataUrl": {
-          "type": "string"
+          "type": "string",
+          "description": "URL to the OpenID Connect metadata document."
         },
         "allowedApplications": {
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "List of allowed application IDs. Leave empty to not validate the application (appid or azp claim) for which the token is issued."
         },
         "allowedAudiences": {
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "List of allowed audiences. Leave empty to not validate the audience (aud claim) for which the token is issued."
         },
         "allowedPrincipals": {
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "List of allowed principals. Leave empty to not validate the principal (oid claim) for which the token is issued."
         },
         "allowedTenants": {
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "List of allowed tenants. Leave empty to not validate the tenant (tid claim) for which the token is issued."
         },
         "issuer": {
-          "type": "string"
+          "type": "string",
+          "description": "Allowed token issuer. Leave empty to not validate the token issuer."
         },
         "roles": {
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "List of allowed roles. Leave empty to not validate the roles (roles claim) on the token."
         },
         "scopes": {
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "List of allowed scopes. Leave empty to not validate the scopes (scp claim) on the token."
         },
         "validateLifetime": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "Set to false to disable validating the token lifetime. Default is true."
         },
         "validateSigningKey": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "Set to false to disable validating the token signature. Default is true."
         }
       },
       "required": [
@@ -105,7 +122,8 @@
       "enum": [
         "apiKey",
         "oauth2"
-      ]
+      ],
+      "description": "Type of authentication and authorization that Dev Proxy should use. Allowed values: apiKey, oauth2."
     }
   },
   "required": [

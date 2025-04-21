@@ -5,18 +5,22 @@
   "type": "object",
   "properties": {
     "$schema": {
-      "type": "string"
+      "type": "string",
+      "description": "The JSON schema reference for validation."
     },
     "mocks": {
       "type": "array",
+      "description": "Array of mock definitions.",
       "items": {
         "type": "object",
         "properties": {
           "request": {
             "type": "object",
+            "description": "The request to match.",
             "properties": {
               "url": {
-                "type": "string"
+                "type": "string",
+                "description": "The URL to match. Supports wildcards."
               },
               "method": {
                 "type": "string",
@@ -30,13 +34,16 @@
                   "OPTIONS",
                   "CONNECT",
                   "TRACE"
-                ]
+                ],
+                "description": "HTTP method to match."
               },
               "nth": {
-                "type": "integer"
+                "type": "integer",
+                "description": "(Optional) Match the nth occurrence of the request."
               },
               "bodyFragment": {
-                "type": "string"
+                "type": "string",
+                "description": "(Optional) A fragment of the request body to match."
               }
             },
             "required": [
@@ -45,27 +52,33 @@
           },
           "response": {
             "type": "object",
+            "description": "The response to return.",
             "properties": {
               "body": {
                 "type": [
                   "object",
                   "array",
                   "string"
-                ]
+                ],
+                "description": "The response body (object, array, or string; can reference a file with '@filename')."
               },
               "statusCode": {
-                "type": "integer"
+                "type": "integer",
+                "description": "HTTP status code to return."
               },
               "headers": {
                 "type": "array",
+                "description": "Array of response headers (name/value pairs).",
                 "items": {
                   "type": "object",
                   "properties": {
                     "name": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Header name."
                     },
                     "value": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Header value."
                     }
                   },
                   "required": [

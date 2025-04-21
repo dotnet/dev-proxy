@@ -4,19 +4,23 @@
   "type": "object",
   "properties": {
     "$schema": {
-      "type": "string"
+      "type": "string",
+      "description": "The JSON schema reference for validation."
     },
     "errorsFile": {
-      "type": "string"
+      "type": "string",
+      "description": "Path to the file that contains error responses."
     },
     "rate": {
       "type": "number",
       "minimum": 0,
-      "maximum": 100
+      "maximum": 100,
+      "description": "The percentage of requests to fail with a random error. Value between 0 and 100."
     },
     "retryAfterInSeconds": {
       "type": "integer",
-      "minimum": 1
+      "minimum": 1,
+      "description": "The number of seconds to wait before retrying the request. Included on the Retry-After response header for dynamic throttling. Default: 5."
     }
   },
   "required": [

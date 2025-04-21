@@ -4,14 +4,16 @@
   "type": "object",
   "properties": {
     "$schema": {
-      "type": "string"
+      "type": "string",
+      "description": "Reference to the JSON schema definition."
     },
     "type": {
       "type": "string",
       "enum": [
         "Delegated",
         "Application"
-      ]
+      ],
+      "description": "Determines which type of permission scopes to return. Can be 'Delegated' or 'Application'. Default: 'Delegated'."
     }
   },
   "additionalProperties": false

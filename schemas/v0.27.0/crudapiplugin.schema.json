@@ -4,10 +4,12 @@
   "type": "object",
   "properties": {
     "$schema": {
-      "type": "string"
+      "type": "string",
+      "description": "The JSON schema reference for validation."
     },
     "apiFile": {
-      "type": "string"
+      "type": "string",
+      "description": "Path to the file that contains the definition of the CRUD API."
     },
     "required": [
       "apiFile"

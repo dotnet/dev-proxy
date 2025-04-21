@@ -4,10 +4,12 @@
   "type": "object",
   "properties": {
     "$schema": {
-      "type": "string"
+      "type": "string",
+      "description": "The URL of the JSON schema used to validate this configuration file."
     },
     "rewritesFile": {
-      "type": "string"
+      "type": "string",
+      "description": "Path to the file containing rewrite definitions (e.g., 'rewrites.json')."
     }
   },
   "required": [

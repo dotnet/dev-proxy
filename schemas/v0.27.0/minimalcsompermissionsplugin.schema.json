@@ -4,10 +4,12 @@
   "type": "object",
   "properties": {
     "$schema": {
-      "type": "string"
+      "type": "string",
+      "description": "Reference to the JSON schema definition."
     },
     "typesFilePath": {
-      "type": "string"
+      "type": "string",
+      "description": "Path to the file that lists permissions required to call SharePoint CSOM APIs. Default: ~appFolder/config/spo-csom-types.json."
     }
   },
   "additionalProperties": false

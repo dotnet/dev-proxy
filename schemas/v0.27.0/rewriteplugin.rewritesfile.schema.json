@@ -5,29 +5,35 @@
   "type": "object",
   "properties": {
     "$schema": {
-      "type": "string"
+      "type": "string",
+      "description": "The URL of the JSON schema used to validate this rewrite rules file."
     },
     "rewrites": {
       "type": "array",
+      "description": "Array of rewrite rule objects that define the list of rewrite rules the RewritePlugin applies.",
       "items": {
         "type": "object",
         "properties": {
           "in": {
             "type": "object",
+            "description": "Pattern to match the incoming request.",
             "properties": {
               "url": {
                 "type": "string",
-                "pattern": "^.+$"
+                "pattern": "^.+$",
+                "description": "Regular expression to match the incoming request URL."
               }
             },
             "required": ["url"]
           },
           "out": {
             "type": "object",
+            "description": "Pattern to rewrite the request.",
             "properties": {
               "url": {
                 "type": "string",
-                "pattern": "^.*$"
+                "pattern": "^.*$",
+                "description": "URL to rewrite the request to. Can use capture groups from the 'in' pattern."
               }
             },
             "required": ["url"]

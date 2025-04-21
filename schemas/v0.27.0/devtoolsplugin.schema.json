@@ -4,7 +4,8 @@
   "type": "object",
   "properties": {
     "$schema": {
-      "type": "string"
+      "type": "string",
+      "description": "The JSON schema reference for validation."
     },
     "preferredBrowser": {
       "type": "string",
@@ -12,7 +13,8 @@
         "Edge",
         "EdgeDev",
         "Chrome"
-      ]
+      ],
+      "description": "Which browser to use to launch Dev Tools. Supported values: Edge, EdgeDev, Chrome. Default: Edge."
     }
   },
   "additionalProperties": false

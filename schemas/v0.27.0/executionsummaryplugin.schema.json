@@ -4,14 +4,16 @@
   "type": "object",
   "properties": {
     "$schema": {
-      "type": "string"
+      "type": "string",
+      "description": "The JSON schema reference for validation."
     },
     "groupBy": {
       "type": "string",
       "enum": [
         "url",
         "messageType"
-      ]
+      ],
+      "description": "How proxy should group the information in the summary. Available options: url, messageType. Default: url."
     }
   },
   "additionalProperties": false

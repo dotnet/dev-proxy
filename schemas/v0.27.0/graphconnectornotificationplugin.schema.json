@@ -4,16 +4,20 @@
   "type": "object",
   "properties": {
     "$schema": {
-      "type": "string"
+      "type": "string",
+      "description": "The JSON schema reference for validation."
     },
     "audience": {
-      "type": "string"
+      "type": "string",
+      "description": "The Microsoft Entra app registration ID that the Microsoft Graph connector uses to authenticate the notification request."
     },
     "mockFile": {
-      "type": "string"
+      "type": "string",
+      "description": "Path to the file containing the mock request."
     },
     "tenant": {
-      "type": "string"
+      "type": "string",
+      "description": "The tenant ID where the Microsoft Graph connector creates the external connection."
     }
   },
   "required": [

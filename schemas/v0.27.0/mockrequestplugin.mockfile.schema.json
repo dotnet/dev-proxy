@@ -5,14 +5,17 @@
   "type": "object",
   "properties": {
     "$schema": {
-      "type": "string"
+      "type": "string",
+      "description": "The JSON schema reference for validation."
     },
     "request": {
       "type": "object",
+      "description": "The request to issue.",
       "properties": {
         "url": {
           "type": "string",
-          "format": "uri"
+          "format": "uri",
+          "description": "URL to call."
         },
         "method": {
           "type": "string",
@@ -26,21 +29,26 @@
             "OPTIONS",
             "CONNECT",
             "TRACE"
-          ]
+          ],
+          "description": "HTTP method to use (default: POST)."
         },
         "body": {
-          "type": "object"
+          "type": "object",
+          "description": "Body of the request (object or string)."
         },
         "headers": {
           "type": "array",
+          "description": "Array of request headers (name/value pairs).",
           "items": {
             "type": "object",
             "properties": {
               "name": {
-                "type": "string"
+                "type": "string",
+                "description": "Request header name."
               },
               "value": {
-                "type": "string"
+                "type": "string",
+                "description": "Request header value."
               }
             },
             "required": [

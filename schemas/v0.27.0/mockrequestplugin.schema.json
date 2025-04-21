@@ -4,10 +4,12 @@
   "type": "object",
   "properties": {
     "$schema": {
-      "type": "string"
+      "type": "string",
+      "description": "The JSON schema reference for validation."
     },
     "mockFile": {
-      "type": "string"
+      "type": "string",
+      "description": "Path to the file containing the mock request."
     }
   },
   "required": [
