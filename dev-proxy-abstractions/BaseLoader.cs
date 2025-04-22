@@ -12,6 +12,9 @@ public abstract class BaseLoader(ILogger logger, bool validateSchemas) : IDispos
     private readonly ILogger _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     private readonly bool _validateSchemas = validateSchemas;
     private FileSystemWatcher? _watcher;
+    private Timer? _debounceTimer;
+    private readonly Lock _debounceLock = new();
+    private readonly int _debounceDelay = 300; // milliseconds
     protected abstract string FilePath { get; }
 
     protected abstract void LoadData(string fileContents);
@@ -63,7 +66,11 @@ public abstract class BaseLoader(ILogger logger, bool validateSchemas) : IDispos
 
     private void File_Changed(object sender, FileSystemEventArgs e)
     {
-        LoadFileContents();
+        lock (_debounceLock)
+        {
+            _debounceTimer?.Dispose();
+            _debounceTimer = new Timer(_ => LoadFileContents(), null, _debounceDelay, Timeout.Infinite);
+        }
     }
 
     public void InitFileWatcher()
@@ -89,9 +96,6 @@ public abstract class BaseLoader(ILogger logger, bool validateSchemas) : IDispos
             Filter = Path.GetFileName(FilePath)
         };
         _watcher.Changed += File_Changed;
-        _watcher.Created += File_Changed;
-        _watcher.Deleted += File_Changed;
-        _watcher.Renamed += File_Changed;
         _watcher.EnableRaisingEvents = true;
 
         LoadFileContents();
@@ -100,6 +104,7 @@ public abstract class BaseLoader(ILogger logger, bool validateSchemas) : IDispos
     public void Dispose()
     {
         _watcher?.Dispose();
+        _debounceTimer?.Dispose();
         GC.SuppressFinalize(this);
     }
 }
