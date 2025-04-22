@@ -9,16 +9,17 @@ namespace DevProxy.Abstractions.LanguageModel;
 public abstract class OpenAIRequest
 {
     [JsonPropertyName("frequency_penalty")]
-    public long FrequencyPenalty { get; set; }
+    public long? FrequencyPenalty { get; set; }
     [JsonPropertyName("max_tokens")]
-    public long MaxTokens { get; set; }
+    public long? MaxTokens { get; set; }
+    public string Model { get; set; } = string.Empty;
     [JsonPropertyName("presence_penalty")]
-    public long PresencePenalty { get; set; }
+    public long? PresencePenalty { get; set; }
     public object? Stop { get; set; }
-    public bool Stream { get; set; }
-    public long Temperature { get; set; }
+    public bool? Stream { get; set; }
+    public double? Temperature { get; set; }
     [JsonPropertyName("top_p")]
-    public double TopP { get; set; }
+    public double? TopP { get; set; }
 }
 
 public class OpenAICompletionRequest : OpenAIRequest
@@ -33,10 +34,8 @@ public class OpenAIChatCompletionRequest : OpenAIRequest
 
 public class OpenAIError
 {
-    public string? Message { get; set; }
-    public string? Type { get; set; }
     public string? Code { get; set; }
-    public string? Param { get; set; }
+    public string? Message { get; set; }
 }
 
 public abstract class OpenAIResponse: ILanguageModelCompletionResponse
@@ -77,10 +76,10 @@ public abstract class OpenAIResponseChoice
     [JsonPropertyName("content_filter_results")]
     public Dictionary<string, OpenAIResponseContentFilterResult> ContentFilterResults { get; set; } = new();
     [JsonPropertyName("finish_reason")]
-    public string FinishReason { get; set; } = "length";
+    public string FinishReason { get; set; } = "stop";
     public long Index { get; set; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public object? Logprobs { get; set; }
+    [JsonPropertyName("logprobs")]
+    public int? LogProbabilities { get; set; }
 }
 
 public class OpenAIResponsePromptFilterResult

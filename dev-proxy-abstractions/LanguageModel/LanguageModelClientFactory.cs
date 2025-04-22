@@ -12,9 +12,9 @@ public static class LanguageModelClientFactory
     {
         return config?.Client switch
         {
-            LanguageModelClient.LMStudio => new LMStudioLanguageModelClient(config, logger),
             LanguageModelClient.Ollama => new OllamaLanguageModelClient(config, logger),
-            _ => new OllamaLanguageModelClient(config, logger)
+            LanguageModelClient.OpenAI => new OpenAILanguageModelClient(config, logger),
+            _ => new OpenAILanguageModelClient(config, logger)
         };
     }
 }

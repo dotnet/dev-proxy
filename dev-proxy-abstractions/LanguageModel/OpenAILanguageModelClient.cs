@@ -8,12 +8,11 @@ using Microsoft.Extensions.Logging;
 
 namespace DevProxy.Abstractions.LanguageModel;
 
-public class LMStudioLanguageModelClient(LanguageModelConfiguration? configuration, ILogger logger) : ILanguageModelClient
+public class OpenAILanguageModelClient(LanguageModelConfiguration? configuration, ILogger logger) : ILanguageModelClient
 {
     private readonly LanguageModelConfiguration? _configuration = configuration;
     private readonly ILogger _logger = logger;
     private bool? _lmAvailable;
-    private readonly Dictionary<string, OpenAICompletionResponse> _cacheCompletion = [];
     private readonly Dictionary<ILanguageModelChatCompletionMessage[], OpenAIChatCompletionResponse> _cacheChatCompletion = [];
 
     public async Task<bool> IsEnabledAsync()
@@ -29,6 +28,8 @@ public class LMStudioLanguageModelClient(LanguageModelConfiguration? configurati
 
     private async Task<bool> IsEnabledInternalAsync()
     {
+        using var scope = _logger.BeginScope(nameof(OpenAILanguageModelClient));
+
         if (_configuration is null || !_configuration.Enabled)
         {
             return false;
@@ -50,20 +51,14 @@ public class LMStudioLanguageModelClient(LanguageModelConfiguration? configurati
 
         try
         {
-            // check if lm is on
-            using var client = new HttpClient();
-            var response = await client.GetAsync($"{_configuration.Url}/v1/models");
-            _logger.LogDebug("Response: {response}", response.StatusCode);
-
-            if (!response.IsSuccessStatusCode)
+            var testCompletion = await GenerateChatCompletionInternalAsync([new()
             {
-                return false;
-            }
-
-            var testCompletion = await GenerateCompletionInternalAsync("Are you there? Reply with a yes or no.");
-            if (testCompletion?.Error is not null)
+                Content = "Are you there? Reply with a yes or no.",
+                Role = "user"
+            }]);
+            if (testCompletion?.ErrorMessage is not null)
             {
-                _logger.LogError("Error: {error}. Param: {param}", testCompletion.Error.Message, testCompletion.Error.Param);
+                _logger.LogError("Error: {error}", testCompletion.ErrorMessage);
                 return false;
             }
 
@@ -78,90 +73,41 @@ public class LMStudioLanguageModelClient(LanguageModelConfiguration? configurati
 
     public async Task<ILanguageModelCompletionResponse?> GenerateCompletionAsync(string prompt, CompletionOptions? options = null)
     {
-        using var scope = _logger.BeginScope(nameof(LMStudioLanguageModelClient));
-
-        if (_configuration is null)
-        {
-            return null;
-        }
-
-        if (!_lmAvailable.HasValue)
-        {
-            _logger.LogError("Language model availability is not checked. Call {isEnabled} first.", nameof(IsEnabledAsync));
-            return null;
-        }
-
-        if (!_lmAvailable.Value)
-        {
-            return null;
-        }
-
-        if (_configuration.CacheResponses && _cacheCompletion.TryGetValue(prompt, out var cachedResponse))
-        {
-            _logger.LogDebug("Returning cached response for prompt: {prompt}", prompt);
-            return cachedResponse;
-        }
-
-        var response = await GenerateCompletionInternalAsync(prompt, options);
+        var response = await GenerateChatCompletionAsync([new OpenAIChatCompletionMessage() { Content = prompt, Role = "user" }], options);
         if (response == null)
         {
             return null;
         }
-        if (response.Error is not null)
+        if (response.ErrorMessage is not null)
         {
-            _logger.LogError("Error: {error}. Param: {param}", response.Error.Message, response.Error.Param);
+            _logger.LogError("Error: {error}", response.ErrorMessage);
             return null;
         }
-        else
-        {
-            if (_configuration.CacheResponses && response.Response is not null)
-            {
-                _cacheCompletion[prompt] = response;
-            }
+        var openAIResponse = (OpenAIChatCompletionResponse)response;
 
-            return response;
-        }
+        return new OpenAICompletionResponse
+        {
+            Choices = openAIResponse.Choices?.Select(c => new OpenAICompletionResponseChoice
+            {
+                ContentFilterResults = c.ContentFilterResults,
+                FinishReason = c.FinishReason,
+                Index = c.Index,
+                LogProbabilities = c.LogProbabilities,
+                Text = c.Message.Content
+            }).ToArray(),
+            Created = openAIResponse.Created,
+            Error = openAIResponse.Error,
+            Id = openAIResponse.Id,
+            Model = openAIResponse.Model,
+            Object = openAIResponse.Object,
+            PromptFilterResults = openAIResponse.PromptFilterResults,
+            Usage = openAIResponse.Usage,
+        };
     }
 
-    private async Task<OpenAICompletionResponse?> GenerateCompletionInternalAsync(string prompt, CompletionOptions? options = null)
+    public async Task<ILanguageModelCompletionResponse?> GenerateChatCompletionAsync(ILanguageModelChatCompletionMessage[] messages, CompletionOptions? options = null)
     {
-        Debug.Assert(_configuration != null, "Configuration is null");
-
-        try
-        {
-            using var client = new HttpClient();
-            var url = $"{_configuration.Url}/v1/completions";
-            _logger.LogDebug("Requesting completion. Prompt: {prompt}", prompt);
-
-            var response = await client.PostAsJsonAsync(url,
-                new
-                {
-                    prompt,
-                    model = _configuration.Model,
-                    stream = false,
-                    temperature = options?.Temperature ?? 0.8,
-                }
-            );
-            _logger.LogDebug("Response: {response}", response.StatusCode);
-
-            var res = await response.Content.ReadFromJsonAsync<OpenAICompletionResponse>();
-            if (res is null)
-            {
-                return res;
-            }
-            res.RequestUrl = url;
-            return res;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to generate completion");
-            return null;
-        }
-    }
-
-    public async Task<ILanguageModelCompletionResponse?> GenerateChatCompletionAsync(ILanguageModelChatCompletionMessage[] messages)
-    {
-        using var scope = _logger.BeginScope(nameof(LMStudioLanguageModelClient));
+        using var scope = _logger.BeginScope(nameof(OpenAILanguageModelClient));
 
         if (_configuration is null)
         {
@@ -185,14 +131,14 @@ public class LMStudioLanguageModelClient(LanguageModelConfiguration? configurati
             return cachedResponse;
         }
 
-        var response = await GenerateChatCompletionInternalAsync(messages);
+        var response = await GenerateChatCompletionInternalAsync([.. messages.Select(m => (OpenAIChatCompletionMessage)m)], options);
         if (response == null)
         {
             return null;
         }
         if (response.Error is not null)
         {
-            _logger.LogError("Error: {error}. Param: {param}", response.Error.Message, response.Error.Param);
+            _logger.LogError("Error: {error}. Code: {code}", response.Error.Message, response.Error.Code);
             return null;
         }
         else
@@ -206,24 +152,25 @@ public class LMStudioLanguageModelClient(LanguageModelConfiguration? configurati
         }
     }
 
-    private async Task<OpenAIChatCompletionResponse?> GenerateChatCompletionInternalAsync(ILanguageModelChatCompletionMessage[] messages)
+    private async Task<OpenAIChatCompletionResponse?> GenerateChatCompletionInternalAsync(OpenAIChatCompletionMessage[] messages, CompletionOptions? options = null)
     {
         Debug.Assert(_configuration != null, "Configuration is null");
 
         try
         {
             using var client = new HttpClient();
-            var url = $"{_configuration.Url}/v1/chat/completions";
+            var url = $"{_configuration.Url}/chat/completions";
             _logger.LogDebug("Requesting chat completion. Message: {lastMessage}", messages.Last().Content);
 
-            var response = await client.PostAsJsonAsync(url,
-                new
-                {
-                    messages,
-                    model = _configuration.Model,
-                    stream = false
-                }
-            );
+            var payload = new OpenAIChatCompletionRequest
+            {
+                Messages = messages,
+                Model = _configuration.Model,
+                Stream = false,
+                Temperature = options?.Temperature
+            };
+
+            var response = await client.PostAsJsonAsync(url, payload);
             _logger.LogDebug("Response: {response}", response.StatusCode);
 
             var res = await response.Content.ReadFromJsonAsync<OpenAIChatCompletionResponse>();
@@ -243,7 +190,7 @@ public class LMStudioLanguageModelClient(LanguageModelConfiguration? configurati
     }
 }
 
-internal static class CacheChatCompletionExtensions
+internal static class OpenAICacheChatCompletionExtensions
 {
     public static OpenAIChatCompletionMessage[]? GetKey(
         this Dictionary<OpenAIChatCompletionMessage[], OpenAIChatCompletionResponse> cache,

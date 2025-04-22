@@ -213,6 +213,8 @@ public class ProxyCommandHandler(IPluginEvents pluginEvents,
             configObject.UrlsToWatch = urlsSection.Get<List<string>>() ?? [];
         }
 
+        configObject.LanguageModel?.Url?.TrimEnd('/');
+
         return configObject;
     });
 }

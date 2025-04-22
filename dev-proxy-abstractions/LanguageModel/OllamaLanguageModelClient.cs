@@ -50,16 +50,6 @@ public class OllamaLanguageModelClient(LanguageModelConfiguration? configuration
 
         try
         {
-            // check if lm is on
-            using var client = new HttpClient();
-            var response = await client.GetAsync(_configuration.Url);
-            _logger.LogDebug("Response: {response}", response.StatusCode);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                return false;
-            }
-
             var testCompletion = await GenerateCompletionInternalAsync("Are you there? Reply with a yes or no.");
             if (testCompletion?.Error is not null)
             {
@@ -160,7 +150,7 @@ public class OllamaLanguageModelClient(LanguageModelConfiguration? configuration
         }
     }
 
-    public async Task<ILanguageModelCompletionResponse?> GenerateChatCompletionAsync(ILanguageModelChatCompletionMessage[] messages)
+    public async Task<ILanguageModelCompletionResponse?> GenerateChatCompletionAsync(ILanguageModelChatCompletionMessage[] messages, CompletionOptions? options = null)
     {
         using var scope = _logger.BeginScope(nameof(OllamaLanguageModelClient));
 
@@ -186,7 +176,7 @@ public class OllamaLanguageModelClient(LanguageModelConfiguration? configuration
             return cachedResponse;
         }
 
-        var response = await GenerateChatCompletionInternalAsync(messages);
+        var response = await GenerateChatCompletionInternalAsync(messages, options);
         if (response == null)
         {
             return null;
@@ -207,7 +197,7 @@ public class OllamaLanguageModelClient(LanguageModelConfiguration? configuration
         }
     }
 
-    private async Task<OllamaLanguageModelChatCompletionResponse?> GenerateChatCompletionInternalAsync(ILanguageModelChatCompletionMessage[] messages)
+    private async Task<OllamaLanguageModelChatCompletionResponse?> GenerateChatCompletionInternalAsync(ILanguageModelChatCompletionMessage[] messages, CompletionOptions? options = null)
     {
         Debug.Assert(_configuration != null, "Configuration is null");
 
@@ -222,7 +212,8 @@ public class OllamaLanguageModelClient(LanguageModelConfiguration? configuration
                 {
                     messages,
                     model = _configuration.Model,
-                    stream = false
+                    stream = false,
+                    options
                 }
             );
             _logger.LogDebug("Response: {response}", response.StatusCode);
