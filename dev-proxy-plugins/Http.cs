@@ -234,7 +234,7 @@ internal static class Http
         "secret",
         "x-secret",
         "access-key",
-        "api-key",
-        "apikey"
+        "apikey",
+        "code"
     ];
 }

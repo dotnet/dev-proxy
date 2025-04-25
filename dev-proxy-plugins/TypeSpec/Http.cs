@@ -72,12 +72,20 @@ internal class Namespace
     public List<Model> Models { get; init; } = [];
     public required string Name { get; init; }
     public List<Operation> Operations { get; init; } = [];
+    public OAuth2Auth? Auth { get; set; }
 
     override public string ToString()
     {
         var sb = new StringBuilder();
+
         sb.Append($"namespace {Name}");
         sb.AppendLine(";");
+
+        if (Auth is not null)
+        {
+            sb.AppendLine();
+            sb.AppendLine(Auth.WriteAlias());
+        }
 
         foreach (var model in Models.Where(m => !m.IsArray))
         {
@@ -146,7 +154,9 @@ internal class ModelProperty
 
 internal class Operation
 {
+    public Auth? Auth { get; set; }
     public string? Description { get; set; }
+    public required TypeSpecFile Doc { get; init; }
     public HttpVerb Method { get; set; }
     public required string Name { get; set; }
     public List<Parameter> Parameters { get; init; } = [];
@@ -155,7 +165,7 @@ internal class Operation
 
     override public string ToString()
     {
-        var sb = new StringBuilder(); 
+        var sb = new StringBuilder();
         if (!string.IsNullOrEmpty(Route))
         {
             sb.AppendLine($"@route(\"{Route}\")");
@@ -164,6 +174,10 @@ internal class Operation
         if (!string.IsNullOrEmpty(Description))
         {
             sb.AppendLine($"@doc(\"{Description}\")");
+        }
+        if (Auth is not null)
+        {
+            sb.AppendLine($"@useAuth({Auth.ToString()})");
         }
         sb.Append($"op {Name}(");
         sb.AppendJoin(", ", Parameters.Select(p => p.ToString()));
@@ -252,19 +266,21 @@ internal class Parameter
     public required string Name { get; init; }
     public string? Value { get; init; }
 
-    public static string GetHeaderName(string name)
-    {
-        var words = name.Split('-');
-        var headerName = string.Join("", words.Select(w => w.ToPascalCase()));
-        return headerName.ToCamelCase();
-    }
-
     override public string ToString()
     {
         var value = Value?.IndexOfAny([' ', '/', '-', ';']) == -1
             ? Value
             : $"\"{Value}\"";
-        return $"@{In.ToString().ToLower()} {Name}: {value}";
+        if (Name.IndexOf('-') > -1)
+        {
+            var target = Name;
+            var name = Name.ToCamelFromKebabCase();
+            return $"@{In.ToString().ToLower()}(\"{target}\") {name}: {value}";
+        }
+        else
+        {
+            return $"@{In.ToString().ToLower()} {Name.ToCamelCase()}: {value}";
+        }
     }
 }
 

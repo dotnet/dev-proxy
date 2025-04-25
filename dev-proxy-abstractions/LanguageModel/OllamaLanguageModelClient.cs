@@ -134,6 +134,13 @@ public class OllamaLanguageModelClient(LanguageModelConfiguration? configuration
             );
             _logger.LogDebug("Response status: {response}", response.StatusCode);
 
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorResponse = await response.Content.ReadAsStringAsync();
+                _logger.LogDebug("LM error: {errorResponse}", errorResponse);
+                return null;
+            }
+
             var res = await response.Content.ReadFromJsonAsync<OllamaLanguageModelCompletionResponse>();
             if (res is null)
             {
@@ -173,7 +180,7 @@ public class OllamaLanguageModelClient(LanguageModelConfiguration? configuration
             return null;
         }
 
-        if (_configuration.CacheResponses && _cacheChatCompletion.TryGetValue(messages, out var cachedResponse))
+        if (_configuration.CacheResponses && _cacheChatCompletion.TryGetCacheValue(messages, out var cachedResponse))
         {
             _logger.LogDebug("Returning cached response for message: {lastMessage}", messages.Last().Content);
             return cachedResponse;
@@ -221,9 +228,17 @@ public class OllamaLanguageModelClient(LanguageModelConfiguration? configuration
             );
             _logger.LogDebug("Response: {response}", response.StatusCode);
 
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorResponse = await response.Content.ReadAsStringAsync();
+                _logger.LogDebug("LM error: {errorResponse}", errorResponse);
+                return null;
+            }
+
             var res = await response.Content.ReadFromJsonAsync<OllamaLanguageModelChatCompletionResponse>();
             if (res is null)
             {
+                _logger.LogDebug("Response: null");
                 return res;
             }
 
@@ -240,15 +255,15 @@ public class OllamaLanguageModelClient(LanguageModelConfiguration? configuration
 
 internal static class OllamaCacheChatCompletionExtensions
 {
-    public static OllamaLanguageModelChatCompletionMessage[]? GetKey(
-        this Dictionary<OllamaLanguageModelChatCompletionMessage[], OllamaLanguageModelChatCompletionResponse> cache,
+    public static ILanguageModelChatCompletionMessage[]? GetKey(
+        this Dictionary<ILanguageModelChatCompletionMessage[], OllamaLanguageModelChatCompletionResponse> cache,
         ILanguageModelChatCompletionMessage[] messages)
     {
         return cache.Keys.FirstOrDefault(k => k.SequenceEqual(messages));
     }
 
-    public static bool TryGetValue(
-        this Dictionary<OllamaLanguageModelChatCompletionMessage[], OllamaLanguageModelChatCompletionResponse> cache,
+    public static bool TryGetCacheValue(
+        this Dictionary<ILanguageModelChatCompletionMessage[], OllamaLanguageModelChatCompletionResponse> cache,
         ILanguageModelChatCompletionMessage[] messages, out OllamaLanguageModelChatCompletionResponse? value)
     {
         var key = cache.GetKey(messages);
