@@ -45,7 +45,7 @@ public class OllamaLanguageModelClient(LanguageModelConfiguration? configuration
             _logger.LogError("Model is not set. Language model will be disabled");
             return false;
         }
-        
+
         _logger.LogDebug("Checking LM availability at {url}...", _configuration.Url);
 
         try
@@ -132,13 +132,16 @@ public class OllamaLanguageModelClient(LanguageModelConfiguration? configuration
                     options
                 }
             );
-            _logger.LogDebug("Response: {response}", response.StatusCode);
+            _logger.LogDebug("Response status: {response}", response.StatusCode);
 
             var res = await response.Content.ReadFromJsonAsync<OllamaLanguageModelCompletionResponse>();
             if (res is null)
             {
+                _logger.LogDebug("Response: null");
                 return res;
             }
+
+            _logger.LogDebug("Response: {response}", res.Response);
 
             res.RequestUrl = url;
             return res;
@@ -217,7 +220,7 @@ public class OllamaLanguageModelClient(LanguageModelConfiguration? configuration
                 }
             );
             _logger.LogDebug("Response: {response}", response.StatusCode);
-            
+
             var res = await response.Content.ReadFromJsonAsync<OllamaLanguageModelChatCompletionResponse>();
             if (res is null)
             {

@@ -17,9 +17,14 @@ static class TypeSpecExtensions
 
         foreach (var prop in model.Properties)
         {
-            if (!existingModel.Properties.Any(p => p.Name == prop.Name))
+            var existingProp = existingModel.Properties.FirstOrDefault(p => p.Name == prop.Name);
+            if (existingProp is null)
             {
                 existingModel.Properties.Add(prop);
+            }
+            else if (existingProp.Type == "null")
+            {
+                existingProp.Type = prop.Type;
             }
         }
 

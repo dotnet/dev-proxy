@@ -136,7 +136,7 @@ internal class Model
 internal class ModelProperty
 {
     public required string Name { get; init; }
-    public required string Type { get; init; }
+    public required string Type { get; set; }
 
     override public string ToString()
     {

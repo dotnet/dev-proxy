@@ -8,6 +8,7 @@ using DevProxy.Plugins.TypeSpec;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Web;
 
 namespace DevProxy.Plugins.RequestLogs;
@@ -113,7 +114,7 @@ public class TypeSpecGeneratorPlugin(IPluginEvents pluginEvents, IProxyContext c
                     var rootModel = models.Last();
                     op.Parameters.Add(new()
                     {
-                        Name = (rootModel.IsArray ? (await MakeSingular(rootModel.Name)) : rootModel.Name).ToCamelCase(),
+                        Name = await GetParameterName(rootModel),
                         Value = rootModel.Name,
                         In = ParameterLocation.Body
                     });
@@ -170,7 +171,7 @@ public class TypeSpecGeneratorPlugin(IPluginEvents pluginEvents, IProxyContext c
                         var rootModel = models.Last();
                         if (rootModel.IsArray)
                         {
-                            res.BodyType = $"{await MakeSingular(rootModel.Name)}[]";
+                            res.BodyType = $"{rootModel.Name}[]";
                             op.Name = await GetOperationName("list", url);
                         }
                         else
@@ -210,6 +211,22 @@ public class TypeSpecGeneratorPlugin(IPluginEvents pluginEvents, IProxyContext c
         // store the generated TypeSpec files in the global data
         // for use by other plugins
         e.GlobalData[GeneratedTypeSpecFilesKey] = generatedTypeSpecFiles;
+    }
+
+    private async Task<string> GetParameterName(Model model)
+    {
+        Logger.LogTrace("Entered GetParameterName");
+
+        var name = model.IsArray ? SanitizeName(await MakeSingular(model.Name)) : model.Name;
+        if (string.IsNullOrEmpty(name))
+        {
+            name = model.Name;
+        }
+
+        Logger.LogDebug("Parameter name: {name}", name);
+        Logger.LogTrace("Left GetParameterName");
+
+        return name;
     }
 
     private async Task<TypeSpecFile> GetOrCreateTypeSpecFile(List<TypeSpecFile> files, Uri url)
@@ -252,7 +269,11 @@ public class TypeSpecGeneratorPlugin(IPluginEvents pluginEvents, IProxyContext c
     {
         Logger.LogTrace("Entered GetRootNamespaceName");
 
-        var ns = string.Join("", url.Host.Split('.').Select(x => x.ToPascalCase()));
+        var ns = SanitizeName(string.Join("", url.Host.Split('.').Select(x => x.ToPascalCase())));
+        if (string.IsNullOrEmpty(ns))
+        {
+            ns = GetRandomName();
+        }
 
         Logger.LogDebug("Root namespace name: {ns}", ns);
         Logger.LogTrace("Left GetRootNamespaceName");
@@ -268,12 +289,45 @@ public class TypeSpecGeneratorPlugin(IPluginEvents pluginEvents, IProxyContext c
         Logger.LogDebug("Url: {url}", url);
         Logger.LogDebug("Last non-parametrizable segment: {lastSegment}", lastSegment);
 
-        var operationName = $"{method.ToLowerInvariant()}{(method == "list" ? lastSegment : await MakeSingular(lastSegment)).ToPascalCase()}";
+        var name = method == "list" ? lastSegment : await MakeSingular(lastSegment);
+        if (string.IsNullOrEmpty(name))
+        {
+            name = lastSegment;
+        }
+        name = SanitizeName(name);
+        if (string.IsNullOrEmpty(name))
+        {
+            name = SanitizeName(lastSegment);
+            if (string.IsNullOrEmpty(name))
+            {
+                name = GetRandomName();
+            }
+        }
+
+        var operationName = $"{method.ToLowerInvariant()}{name.ToPascalCase()}";
+        var sanitizedName = SanitizeName(operationName);
+        if (!string.IsNullOrEmpty(sanitizedName))
+        {
+            Logger.LogDebug("Sanitized operation name: {sanitizedName}", sanitizedName);
+            operationName = sanitizedName;
+        }
 
         Logger.LogDebug("Operation name: {operationName}", operationName);
         Logger.LogTrace("Left GetOperationName");
 
         return operationName;
+    }
+
+    private string GetRandomName()
+    {
+        Logger.LogTrace("Entered GetRandomName");
+
+        var name = Guid.NewGuid().ToString("N");
+
+        Logger.LogDebug("Random name: {name}", name);
+        Logger.LogTrace("Left GetRandomName");
+
+        return name;
     }
 
     private async Task<string> GetOperationDescription(string method, Uri url)
@@ -392,7 +446,16 @@ public class TypeSpecGeneratorPlugin(IPluginEvents pluginEvents, IProxyContext c
             }
             else
             {
-                previousSegment = (await MakeSingular(segmentTrimmed)).ToCamelCase();
+                previousSegment = SanitizeName(await MakeSingular(segmentTrimmed));
+                if (string.IsNullOrEmpty(previousSegment))
+                {
+                    previousSegment = SanitizeName(segmentTrimmed);
+                    if (previousSegment.Length == 0)
+                    {
+                        previousSegment = GetRandomName();
+                    }
+                }
+                previousSegment = previousSegment.ToCamelCase();
                 route.Add(segmentTrimmed);
             }
         }
@@ -457,12 +520,6 @@ public class TypeSpecGeneratorPlugin(IPluginEvents pluginEvents, IProxyContext c
     {
         Logger.LogTrace("Entered AddModelFromJsonElement");
 
-        var model = new Model
-        {
-            Name = await MakeSingular(name),
-            IsError = isError
-        };
-
         switch (jsonElement.ValueKind)
         {
             case JsonValueKind.String:
@@ -483,6 +540,12 @@ public class TypeSpecGeneratorPlugin(IPluginEvents pluginEvents, IProxyContext c
                     return "Empty";
                 }
 
+                var model = new Model
+                {
+                    Name = await GetModelName(name),
+                    IsError = isError
+                };
+
                 foreach (var p in jsonElement.EnumerateObject())
                 {
                     var property = new ModelProperty
@@ -495,14 +558,48 @@ public class TypeSpecGeneratorPlugin(IPluginEvents pluginEvents, IProxyContext c
                 models.Add(model);
                 return model.Name;
             case JsonValueKind.Array:
-                await AddModelFromJsonElement(jsonElement.EnumerateArray().FirstOrDefault(), name, isError, models);
-                model.IsArray = true;
-                model.Name = name;
-                models.Add(model);
-                return $"{name}[]";
+                // we need to create a model for each item in the array
+                // in case some items have null values or different shapes
+                // we'll merge them later
+                var modelName = string.Empty;
+                foreach (var item in jsonElement.EnumerateArray())
+                {
+                    modelName = await AddModelFromJsonElement(item, name, isError, models);
+                }
+                models.Add(new Model
+                {
+                    Name = modelName,
+                    IsError = isError,
+                    IsArray = true,
+                });
+                return $"{modelName}[]";
+            case JsonValueKind.Null:
+                return "null";
             default:
                 return string.Empty;
         }
+    }
+
+    private async Task<string> GetModelName(string name)
+    {
+        Logger.LogTrace("Entered GetModelName");
+
+        var modelName = SanitizeName(await MakeSingular(name));
+        if (string.IsNullOrEmpty(modelName))
+        {
+            modelName = SanitizeName(name);
+            if (string.IsNullOrEmpty(modelName))
+            {
+                modelName = GetRandomName();
+            }
+        }
+
+        modelName = modelName.ToPascalCase();
+
+        Logger.LogDebug("Model name: {modelName}", modelName);
+        Logger.LogTrace("Left GetModelName");
+
+        return modelName;
     }
 
     private async Task<string> MakeSingular(string noun)
@@ -517,11 +614,26 @@ public class TypeSpecGeneratorPlugin(IPluginEvents pluginEvents, IProxyContext c
         }
         var singular = singularNoun?.Response;
 
-        if (singular is null ||
-            string.IsNullOrEmpty(singular) ||
+        if (string.IsNullOrEmpty(singular) ||
             singular.Contains(' '))
         {
-            singular = noun.EndsWith('s') && !noun.EndsWith("ss") ? noun[0..^1] : noun;
+            if (noun.EndsWith("ies"))
+            {
+                singular = noun[0..^3] + 'y';
+            }
+            else if (noun.EndsWith("es"))
+            {
+                singular = noun[0..^2];
+            }
+            else if (noun.EndsWith('s') && !noun.EndsWith("ss"))
+            {
+                singular = noun[0..^1];
+            }
+            else
+            {
+                singular = noun;
+            }
+
             Logger.LogDebug("Failed to get singular form of {noun} from LLM. Using fallback: {singular}", noun, singular);
         }
 
@@ -529,5 +641,17 @@ public class TypeSpecGeneratorPlugin(IPluginEvents pluginEvents, IProxyContext c
         Logger.LogTrace("Left MakeSingular");
 
         return singular;
+    }
+
+    private string SanitizeName(string name)
+    {
+        Logger.LogTrace("Entered SanitizeName");
+
+        var sanitized = Regex.Replace(name, "[^a-zA-Z0-9_]", "");
+
+        Logger.LogDebug("Sanitized name: {name} to: {sanitized}", name, sanitized);
+        Logger.LogTrace("Left SanitizeName");
+
+        return sanitized;
     }
 }
