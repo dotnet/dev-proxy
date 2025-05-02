@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy MockResponsePlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "The JSON schema reference for validation."
+    },
+    "mocksFile": {
+      "type": "string",
+      "description": "Path to the file containing the mock responses."
+    }
+  },
+  "required": [
+    "mocksFile"
+  ],
+  "additionalProperties": false
+}
