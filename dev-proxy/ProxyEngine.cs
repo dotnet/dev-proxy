@@ -472,7 +472,7 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
         {
             if (!_pluginData.TryAdd(e.GetHashCode(), []))
             {
-                throw new Exception($"Unable to initialize the plugin data storate for hash key {e.GetHashCode()}");
+                throw new Exception($"Unable to initialize the plugin data storage for hash key {e.GetHashCode()}");
             }
             var responseState = new ResponseState();
             var proxyRequestArgs = new ProxyRequestArgs(e, responseState)
