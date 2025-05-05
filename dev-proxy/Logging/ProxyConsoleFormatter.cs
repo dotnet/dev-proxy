@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System.Collections.Concurrent;
 using System.Text;
 using DevProxy.Abstractions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -17,7 +18,7 @@ public class ProxyConsoleFormatter : ConsoleFormatter
     private const string _boxBottomLeft = "\u2570 ";
     // used to align single-line messages
     private const string _boxSpacing = "  ";
-    private readonly Dictionary<int, List<RequestLog>> _requestLogs = [];
+    private readonly ConcurrentDictionary<int, List<RequestLog>> _requestLogs = [];
     private readonly ProxyConsoleFormatterOptions _options;
     const string labelSpacing = " ";
     // label length + 2
@@ -68,7 +69,7 @@ public class ProxyConsoleFormatter : ConsoleFormatter
                 {
                     WriteLogMessageBoxedWithInvertedLabels(log, scopeProvider, textWriter, log == lastMessage);
                 }
-                _requestLogs.Remove(requestId.Value);
+                _requestLogs.Remove(requestId.Value, out _);
             }
             else
             {
