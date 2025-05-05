@@ -63,24 +63,21 @@ public class ProxyConsoleFormatter : ConsoleFormatter
         {
             if (messageType == MessageType.FinishedProcessingRequest)
             {
-                var lastMessage = _requestLogs[requestId.Value].Last();
                 // log all request logs for the request
-                foreach (var log in _requestLogs[requestId.Value])
+                var currentRequestLogs = _requestLogs[requestId.Value];
+                var lastIndex = currentRequestLogs.Count - 1;
+                for (var i = 0; i < currentRequestLogs.Count; ++i)
                 {
-                    WriteLogMessageBoxedWithInvertedLabels(log, scopeProvider, textWriter, log == lastMessage);
+                    var log = currentRequestLogs[i];
+                    WriteLogMessageBoxedWithInvertedLabels(log, scopeProvider, textWriter, i == lastIndex);
                 }
                 _requestLogs.Remove(requestId.Value, out _);
             }
             else
             {
                 // buffer request logs until the request is finished processing
-                if (!_requestLogs.TryGetValue(requestId.Value, out List<RequestLog>? value))
-                {
-                    value = ([]);
-                    _requestLogs[requestId.Value] = value;
-                }
-
                 requestLog.PluginName = category == DefaultCategoryName ? null : category;
+                var value = _requestLogs.GetOrAdd(requestId.Value, []);
                 value.Add(requestLog);
             }
         }
