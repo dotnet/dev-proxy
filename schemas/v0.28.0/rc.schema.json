@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy config",
+  "description": "Configuration for Dev Proxy",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "The URL of the JSON schema used to validate this configuration file. Should match the Dev Proxy version."
+    },
+    "apiPort": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 65535,
+      "description": "Port for the Dev Proxy API server."
+    },
+    "asSystemProxy": {
+      "type": "boolean",
+      "description": "Whether to set Dev Proxy as the system proxy."
+    },
+    "filterByHeaders": {
+      "type": "array",
+      "description": "List of headers to filter requests by. Each object specifies a header name and value.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Header name to filter by."
+          },
+          "value": {
+            "type": "string",
+            "description": "Header value to filter by."
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ]
+      }
+    },
+    "ipAddress": {
+      "type": "string",
+      "format": "ipv4",
+      "description": "IP address for Dev Proxy to listen on."
+    },
+    "languageModel": {
+      "type": "object",
+      "description": "Configuration for using a local language model with Dev Proxy.",
+      "properties": {
+        "cacheResponses": {
+          "type": "boolean",
+          "description": "Whether to cache responses from the language model."
+        },
+        "client": {
+          "type": "string",
+          "enum": [
+            "LMStudio",
+            "Ollama"
+          ],
+          "description": "The client to use for the local language model."
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether the language model integration is enabled."
+        },
+        "model": {
+          "type": "string",
+          "description": "The name of the language model to use."
+        },
+        "url": {
+          "type": "string",
+          "description": "URL of the local language model server."
+        }
+      }
+    },
+    "logLevel": {
+      "type": "string",
+      "enum": [
+        "debug",
+        "information",
+        "warning",
+        "error",
+        "trace"
+      ],
+      "description": "The minimum log level for Dev Proxy output."
+    },
+    "newVersionNotification": {
+      "type": "string",
+      "enum": [
+        "none",
+        "stable",
+        "beta"
+      ],
+      "description": "Controls notifications about new Dev Proxy versions."
+    },
+    "plugins": {
+      "type": "array",
+      "description": "List of plugins to load. Each object defines a plugin instance.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the plugin."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether the plugin is enabled."
+          },
+          "pluginPath": {
+            "type": "string",
+            "description": "Path to the plugin DLL."
+          },
+          "configSection": {
+            "type": "string",
+            "description": "Name of the configuration section for this plugin instance."
+          },
+          "urlsToWatch": {
+            "type": "array",
+            "description": "List of URL patterns for the plugin to watch.",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "enabled",
+          "pluginPath"
+        ]
+      }
+    },
+    "port": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 65535,
+      "description": "Port for Dev Proxy to listen on."
+    },
+    "record": {
+      "type": "boolean",
+      "description": "Whether to record requests and responses."
+    },
+    "showSkipMessages": {
+      "type": "boolean",
+      "description": "Show messages for skipped requests."
+    },
+    "urlsToWatch": {
+      "type": "array",
+      "description": "List of URL patterns for Dev Proxy to intercept.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "validateSchemas": {
+      "type": "boolean",
+      "description": "Whether to validate configuration files against their schemas."
+    },
+    "watchPids": {
+      "type": "array",
+      "description": "List of process IDs to watch for network traffic.",
+      "items": {
+        "type": "number"
+      }
+    },
+    "watchProcessNames": {
+      "type": "array",
+      "description": "List of process names to watch for network traffic.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "showTimestamps": {
+      "type": "boolean",
+      "description": "Show timestamps in log output."
+    },
+    "timeout": {
+      "type": "number",
+      "minimum": 1,
+      "description": "Timeout in seconds for requests passing through Dev Proxy."
+    }
+  },
+  "required": [
+    "plugins"
+  ],
+  "additionalProperties": true
+}

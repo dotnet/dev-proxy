@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CRUD API plugin API definition",
+  "description": "API definition for use with the CRUD API Dev Proxy plugin",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "The JSON schema reference for validation."
+    },
+    "baseUrl": {
+      "type": "string",
+      "description": "Base URL where Dev Proxy exposes the API. Dev Proxy prepends this base URL to the URLs defined in actions."
+    },
+    "dataFile": {
+      "type": "string",
+      "description": "Path to the file that contains the data for the API. The file must define a JSON array."
+    },
+    "actions": {
+      "type": "array",
+      "description": "List of actions that the API supports. Each action defines how Dev Proxy interacts with the data.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "create",
+              "getAll",
+              "getOne",
+              "getMany",
+              "merge",
+              "update",
+              "delete"
+            ],
+            "description": "Defines the type of action. Possible values: getAll, getOne, getMany, create, merge, update, delete."
+          },
+          "url": {
+            "type": "string",
+            "description": "URL where Dev Proxy exposes the action. Appended to the baseUrl. Can contain parameters in curly braces."
+          },
+          "query": {
+            "type": "string",
+            "description": "JSONPath query (using Newtonsoft.Json) that Dev Proxy uses to find the data in the data file. Parameters can be referenced using curly braces."
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE"
+            ],
+            "description": "HTTP method that Dev Proxy uses to expose the action. Defaults depend on the action type."
+          },
+          "auth": {
+            "type": "string",
+            "enum": [
+              "none",
+              "entra"
+            ],
+            "description": "Determines if the action is secured. Allowed values: none, entra. Default is none."
+          },
+          "entraAuthConfig": {
+            "type": "object",
+            "description": "Configuration for Microsoft Entra authentication for this action. Overrides the root entraAuthConfig if specified.",
+            "properties": {
+              "audience": {
+                "type": "string",
+                "description": "Valid audience for the token. If specified, the token's audience must match."
+              },
+              "issuer": {
+                "type": "string",
+                "description": "Valid token issuer. If specified, the token's issuer must match."
+              },
+              "scopes": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Array of valid scopes. At least one must be present in the token."
+              },
+              "roles": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Array of valid roles. At least one must be present in the token."
+              },
+              "validateLifetime": {
+                "type": "boolean",
+                "description": "Set to true to validate that the token hasn't expired."
+              },
+              "validateSigningKey": {
+                "type": "boolean",
+                "description": "Set to true to validate the token's signature."
+              }
+            }
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "auth": {
+      "type": "string",
+      "enum": [
+        "none",
+        "entra"
+      ],
+      "description": "Determines if the API is secured. Allowed values: none, entra. Default is none."
+    },
+    "entraAuthConfig": {
+      "type": "object",
+      "description": "Configuration for Microsoft Entra authentication. Applies to all actions unless overridden at the action level.",
+      "properties": {
+        "audience": {
+          "type": "string",
+          "description": "Valid audience for the token. If specified, the token's audience must match."
+        },
+        "issuer": {
+          "type": "string",
+          "description": "Valid token issuer. If specified, the token's issuer must match."
+        },
+        "scopes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Array of valid scopes. At least one must be present in the token."
+        },
+        "roles": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Array of valid roles. At least one must be present in the token."
+        },
+        "validateLifetime": {
+          "type": "boolean",
+          "description": "Set to true to validate that the token hasn't expired. Default is false."
+        },
+        "validateSigningKey": {
+          "type": "boolean",
+          "description": "Set to true to validate the token's signature. Default is false."
+        }
+      }
+    }
+  },
+  "required": [
+    "baseUrl",
+    "dataFile",
+    "actions"
+  ],
+  "additionalProperties": false
+}
