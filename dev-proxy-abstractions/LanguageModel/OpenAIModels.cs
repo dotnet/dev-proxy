@@ -143,3 +143,106 @@ public class OpenAIChatCompletionResponseChoiceMessage
     public string Content { get; set; } = string.Empty;
     public string Role { get; set; } = string.Empty;
 }
+
+public class OpenAIAudioRequest : OpenAIRequest
+{
+    public string File { get; set; } = string.Empty;
+    [JsonPropertyName("response_format")]
+    public string? ResponseFormat { get; set; }
+    public string? Prompt { get; set; }
+    public string? Language { get; set; }
+}
+
+public class OpenAIAudioSpeechRequest : OpenAIRequest
+{
+    public string Input { get; set; } = string.Empty;
+    public string Voice { get; set; } = string.Empty;
+    [JsonPropertyName("response_format")]
+    public string? ResponseFormat { get; set; }
+    public double? Speed { get; set; }
+}
+
+public class OpenAIAudioTranscriptionResponse : OpenAIResponse
+{
+    public string Text { get; set; } = string.Empty;
+    public override string? Response => Text;
+}
+
+public class OpenAIEmbeddingRequest : OpenAIRequest
+{
+    public string? Input { get; set; }
+    [JsonPropertyName("encoding_format")]
+    public string? EncodingFormat { get; set; }
+    public int? Dimensions { get; set; }
+}
+
+public class OpenAIEmbeddingResponse : OpenAIResponse
+{
+    public OpenAIEmbeddingData[]? Data { get; set; }
+    public override string? Response => null; // Embeddings don't have a text response
+}
+
+public class OpenAIEmbeddingData
+{
+    public float[]? Embedding { get; set; }
+    public int Index { get; set; }
+    public string? Object { get; set; }
+}
+
+public class OpenAIFineTuneRequest : OpenAIRequest
+{
+    [JsonPropertyName("training_file")]
+    public string TrainingFile { get; set; } = string.Empty;
+    [JsonPropertyName("validation_file")]
+    public string? ValidationFile { get; set; }
+    public int? Epochs { get; set; }
+    [JsonPropertyName("batch_size")]
+    public int? BatchSize { get; set; }
+    [JsonPropertyName("learning_rate_multiplier")]
+    public double? LearningRateMultiplier { get; set; }
+    public string? Suffix { get; set; }
+}
+
+public class OpenAIFineTuneResponse : OpenAIResponse
+{    
+    [JsonPropertyName("fine_tuned_model")]
+    public string? FineTunedModel { get; set; }   
+    public string Status { get; set; } = string.Empty;    
+    public string? Organization { get; set; }    
+    public long CreatedAt { get; set; }    
+    public long UpdatedAt { get; set; }    
+    [JsonPropertyName("training_file")]
+    public string TrainingFile { get; set; } = string.Empty;
+    [JsonPropertyName("validation_file")]
+    public string? ValidationFile { get; set; }
+    [JsonPropertyName("result_files")]
+    public object[]? ResultFiles { get; set; }
+    public override string? Response => FineTunedModel;
+}
+
+public class OpenAIImageRequest : OpenAIRequest
+{
+    public string Prompt { get; set; } = string.Empty;
+    public int? N { get; set; }
+    public string? Size { get; set; }
+    [JsonPropertyName("response_format")]
+    public string? ResponseFormat { get; set; }
+    public string? User { get; set; }
+    public string? Quality { get; set; }
+    public string? Style { get; set; }
+}
+
+public class OpenAIImageResponse : OpenAIResponse
+{    
+    public OpenAIImageData[]? Data { get; set; }   
+    public override string? Response => null; // Image responses don't have a text response
+}
+
+public class OpenAIImageData
+{
+    public string? Url { get; set; }    
+    [JsonPropertyName("b64_json")]
+    public string? Base64Json { get; set; }    
+    [JsonPropertyName("revised_prompt")]
+    public string? RevisedPrompt { get; set; }
+}
