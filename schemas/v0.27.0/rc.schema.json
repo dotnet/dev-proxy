@@ -55,8 +55,8 @@
         "client": {
           "type": "string",
           "enum": [
-            "LMStudio",
-            "Ollama"
+            "Ollama",
+            "OpenAI"
           ],
           "description": "The client to use for the local language model."
         },
