@@ -12,6 +12,7 @@ public class OllamaLanguageModelClient(LanguageModelConfiguration? configuration
 {
     private readonly LanguageModelConfiguration? _configuration = configuration;
     private readonly ILogger _logger = logger;
+    private readonly HttpClient _httpClient = new();
     private bool? _lmAvailable;
     private readonly Dictionary<string, OllamaLanguageModelCompletionResponse> _cacheCompletion = [];
     private readonly Dictionary<ILanguageModelChatCompletionMessage[], OllamaLanguageModelChatCompletionResponse> _cacheChatCompletion = [];
@@ -119,11 +120,10 @@ public class OllamaLanguageModelClient(LanguageModelConfiguration? configuration
 
         try
         {
-            using var client = new HttpClient();
             var url = $"{_configuration.Url}/api/generate";
             _logger.LogDebug("Requesting completion. Prompt: {prompt}", prompt);
 
-            var response = await client.PostAsJsonAsync(url,
+            var response = await _httpClient.PostAsJsonAsync(url,
                 new
                 {
                     prompt,
@@ -213,11 +213,10 @@ public class OllamaLanguageModelClient(LanguageModelConfiguration? configuration
 
         try
         {
-            using var client = new HttpClient();
             var url = $"{_configuration.Url}/api/chat";
             _logger.LogDebug("Requesting chat completion. Message: {lastMessage}", messages.Last().Content);
 
-            var response = await client.PostAsJsonAsync(url,
+            var response = await _httpClient.PostAsJsonAsync(url,
                 new
                 {
                     messages,

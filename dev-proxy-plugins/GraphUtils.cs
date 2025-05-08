@@ -11,6 +11,8 @@ namespace DevProxy.Plugins;
 
 public class GraphUtils
 {
+    private static readonly HttpClient _httpClient = new();
+
     // throttle requests per workload
     public static string BuildThrottleKey(Request r) => BuildThrottleKey(r.RequestUri);
 
@@ -53,14 +55,13 @@ public class GraphUtils
         var newMinimalScopes = new HashSet<string>(minimalScopes);
 
         var url = $"https://devxapi-func-prod-eastus.azurewebsites.net/permissions?scopeType={GetScopeTypeString(permissionsType)}";
-        using var httpClient = new HttpClient();
         var urls = userEndpoints.Select(e => {
             logger.LogDebug("Getting permissions for {method} {url}", e.method, e.url);
             return $"{url}&requesturl={e.url}&method={e.method}";
         });
         var tasks = urls.Select(u => {
             logger.LogTrace("Calling {url}...", u);
-            return httpClient.GetFromJsonAsync<GraphPermissionInfo[]>(u);
+            return _httpClient.GetFromJsonAsync<GraphPermissionInfo[]>(u);
         });
         await Task.WhenAll(tasks);
 
