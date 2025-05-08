@@ -24,6 +24,7 @@ public class GraphConnectorNotificationPlugin(IPluginEvents pluginEvents, IProxy
 {
     private string? _ticket = null;
     private readonly GraphConnectorNotificationConfiguration _graphConnectorConfiguration = new();
+    private readonly HttpClient _httpClient = new();
 
     public override string Name => nameof(GraphConnectorNotificationPlugin);
 
@@ -99,7 +100,6 @@ public class GraphConnectorNotificationPlugin(IPluginEvents pluginEvents, IProxy
             return;
         }
 
-        using var httpClient = new HttpClient();
         var requestMessage = GetRequestMessage();
         if (requestMessage.Content is null)
         {
@@ -115,7 +115,7 @@ public class GraphConnectorNotificationPlugin(IPluginEvents pluginEvents, IProxy
         {
             Logger.LogRequest("Sending Graph connector notification", MessageType.Mocked, _configuration.Request.Method, _configuration.Request.Url);
 
-            var response = await httpClient.SendAsync(requestMessage);
+            var response = await _httpClient.SendAsync(requestMessage);
 
             if (response.StatusCode != HttpStatusCode.Accepted)
             {

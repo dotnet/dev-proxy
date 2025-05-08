@@ -23,6 +23,7 @@ public class MockRequestPlugin(IPluginEvents pluginEvents, IProxyContext context
 {
     protected MockRequestConfiguration _configuration = new();
     private MockRequestLoader? _loader = null;
+    private readonly HttpClient _httpClient = new();
 
     public override string Name => nameof(MockRequestPlugin);
 
@@ -95,14 +96,13 @@ public class MockRequestPlugin(IPluginEvents pluginEvents, IProxyContext context
             return;
         }
 
-        using var httpClient = new HttpClient();
         var requestMessage = GetRequestMessage();
 
         try
         {
             Logger.LogRequest("Sending mock request", MessageType.Mocked, _configuration.Request.Method, _configuration.Request.Url);
 
-            await httpClient.SendAsync(requestMessage);
+            await _httpClient.SendAsync(requestMessage);
         }
         catch (Exception ex)
         {
