@@ -333,9 +333,10 @@ internal class ProxyHost
         ProxyCommandHandler.Configuration.ConfigFile = ConfigFile;
     }
 
-    public RootCommand GetRootCommand(ILogger logger)
+    public RootCommand GetRootCommand(ILogger logger, Option[] pluginOptions, Command[] pluginCommands)
     {
-        var command = new RootCommand {
+        var command = new RootCommand("Dev Proxy is a command line tool for testing Microsoft Graph, SharePoint Online and any other HTTP APIs.");
+        var options = (Option[])[
             _portOption,
             _ipAddressOption,
             _recordOption,
@@ -352,86 +353,87 @@ internal class ProxyHost
             _urlsToWatchOption!,
             _timeoutOption,
             _discoverOption,
-            _envOption
-        };
-        command.Description = "Dev Proxy is a command line tool for testing Microsoft Graph, SharePoint Online and any other HTTP APIs.";
+            _envOption,
+            ..pluginOptions
+        ];
+
+        command.AddOptions(options.OrderByName());
+
         // _logLevelOption is set while initializing the Program
         // As such, it's always set here
         command.AddGlobalOption(_logLevelOption!);
 
-        var msGraphDbCommand = new Command("msgraphdb", "Generate a local SQLite database with Microsoft Graph API metadata")
-        {
-            Handler = new MSGraphDbCommandHandler(logger)
-        };
-        command.Add(msGraphDbCommand);
+        var commands = (Command[])[
+            CreateMsGraphDbCommand(logger),
+            CreateConfigCommand(logger),
+            CreateOutdatedCommand(logger),
+            CreateJwtCommand(),
+            CreateCertCommand(logger),
+            ..pluginCommands
+        ];
 
-        var configCommand = new Command("config", "Manage Dev Proxy configs");
+        command.AddCommands(commands.OrderByName());
+        return command;
+    }
 
-        var configGetCommand = new Command("get", "Download the specified config from the Sample Solution Gallery");
-        var configIdArgument = new Argument<string>("config-id", "The ID of the config to download");
-        configGetCommand.AddArgument(configIdArgument);
-        configGetCommand.SetHandler(async configId => await ConfigGetCommandHandler.DownloadConfigAsync(configId, logger), configIdArgument);
-        configCommand.Add(configGetCommand);
+    private static Command CreateCertCommand(ILogger logger)
+    {
+        var certCommand = new Command("cert", "Manage the Dev Proxy certificate");
 
-        var configNewCommand = new Command("new", "Create new Dev Proxy configuration file");
-        var nameArgument = new Argument<string>("name", "Name of the configuration file")
-        {
-            Arity = ArgumentArity.ZeroOrOne
-        };
-        nameArgument.SetDefaultValue("devproxyrc.json");
-        configNewCommand.AddArgument(nameArgument);
-        configNewCommand.SetHandler(async name => await ConfigNewCommandHandler.CreateConfigFileAsync(name, logger), nameArgument);
-        configCommand.Add(configNewCommand);
+        var sortedCommands = new[]{
+            CreateCertEnsureCommand(logger)
+        }.OrderByName();
 
-        var configOpenCommand = new Command("open", "Open devproxyrc.json");
-        configOpenCommand.SetHandler(() =>
-        {
-            var cfgPsi = new ProcessStartInfo(ConfigFile)
-            {
-                UseShellExecute = true
-            };
-            Process.Start(cfgPsi);
-        });
-        configCommand.Add(configOpenCommand);
+        certCommand.AddCommands(sortedCommands);
+        return certCommand;
+    }
 
-        command.Add(configCommand);
+    private static Command CreateCertEnsureCommand(ILogger logger)
+    {
+        var certEnsureCommand = new Command("ensure", "Ensure certificates are setup (creates root if required). Also makes root certificate trusted.");
+        certEnsureCommand.SetHandler(async () => await CertEnsureCommandHandler.EnsureCertAsync(logger));
+        return certEnsureCommand;
+    }
 
-        var outdatedCommand = new Command("outdated", "Check for new version");
-        var outdatedShortOption = new Option<bool>("--short", "Return version only");
-        outdatedCommand.AddOption(outdatedShortOption);
-        outdatedCommand.SetHandler(async versionOnly => await OutdatedCommandHandler.CheckVersionAsync(versionOnly, logger), outdatedShortOption);
-        command.Add(outdatedCommand);
-
+    private static Command CreateJwtCommand()
+    {
         var jwtCommand = new Command("jwt", "Manage JSON Web Tokens");
+
+        var sortedCommands = new[]{
+            CreateJwtCreateCommand()
+        }.OrderByName();
+
+        jwtCommand.AddCommands(sortedCommands);
+        return jwtCommand;
+    }
+
+    private static Command CreateJwtCreateCommand()
+    {
         var jwtCreateCommand = new Command("create", "Create a new JWT token");
+
         var jwtNameOption = new Option<string>("--name", "The name of the user to create the token for.");
         jwtNameOption.AddAlias("-n");
-        jwtCreateCommand.AddOption(jwtNameOption);
 
         var jwtAudienceOption = new Option<IEnumerable<string>>("--audience", "The audiences to create the token for. Specify once for each audience")
         {
             AllowMultipleArgumentsPerToken = true
         };
         jwtAudienceOption.AddAlias("-a");
-        jwtCreateCommand.AddOption(jwtAudienceOption);
 
         var jwtIssuerOption = new Option<string>("--issuer", "The issuer of the token.");
         jwtIssuerOption.AddAlias("-i");
-        jwtCreateCommand.AddOption(jwtIssuerOption);
 
         var jwtRolesOption = new Option<IEnumerable<string>>("--roles", "A role claim to add to the token. Specify once for each role.")
         {
             AllowMultipleArgumentsPerToken = true
         };
         jwtRolesOption.AddAlias("-r");
-        jwtCreateCommand.AddOption(jwtRolesOption);
 
         var jwtScopesOption = new Option<IEnumerable<string>>("--scopes", "A scope claim to add to the token. Specify once for each scope.")
         {
             AllowMultipleArgumentsPerToken = true
         };
         jwtScopesOption.AddAlias("-s");
-        jwtCreateCommand.AddOption(jwtScopesOption);
 
         var jwtClaimsOption = new Option<Dictionary<string, string>>("--claims",
             description: "Claims to add to the token. Specify once for each claim in the format \"name:value\".",
@@ -464,11 +466,9 @@ internal class ProxyHost
         {
             AllowMultipleArgumentsPerToken = true,
         };
-        jwtCreateCommand.AddOption(jwtClaimsOption);
 
         var jwtValidForOption = new Option<double>("--valid-for", "The duration for which the token is valid. Duration is set in minutes.");
         jwtValidForOption.AddAlias("-v");
-        jwtCreateCommand.AddOption(jwtValidForOption);
 
         var jwtSigningKeyOption = new Option<string>("--signing-key", "The signing key to sign the token. Minimum length is 32 characters.");
         jwtSigningKeyOption.AddAlias("-k");
@@ -487,7 +487,6 @@ internal class ProxyHost
                 input.ErrorMessage = ex.Message;
             }
         });
-        jwtCreateCommand.AddOption(jwtSigningKeyOption);
 
         jwtCreateCommand.SetHandler(
             JwtCommandHandler.GetToken,
@@ -502,17 +501,92 @@ internal class ProxyHost
                 jwtSigningKeyOption
             )
         );
-        jwtCommand.Add(jwtCreateCommand);
 
-        command.Add(jwtCommand);
+        var sortedOptions = new Option[]{
+            jwtNameOption,
+            jwtAudienceOption,
+            jwtIssuerOption,
+            jwtRolesOption,
+            jwtScopesOption,
+            jwtClaimsOption,
+            jwtValidForOption,
+            jwtSigningKeyOption
+        }.OrderByName();
 
-        var certCommand = new Command("cert", "Manage the Dev Proxy certificate");
-        var certEnsureCommand = new Command("ensure", "Ensure certificates are setup (creates root if required). Also makes root certificate trusted.");
-        certEnsureCommand.SetHandler(async () => await CertEnsureCommandHandler.EnsureCertAsync(logger));
-        certCommand.Add(certEnsureCommand);
-        command.Add(certCommand);
+        jwtCreateCommand.AddOptions(sortedOptions);
+        return jwtCreateCommand;
+    }
 
-        return command;
+    private static Command CreateOutdatedCommand(ILogger logger)
+    {
+        var outdatedCommand = new Command("outdated", "Check for new version");
+        var outdatedShortOption = new Option<bool>("--short", "Return version only");
+        outdatedCommand.SetHandler(async versionOnly => await OutdatedCommandHandler.CheckVersionAsync(versionOnly, logger), outdatedShortOption);
+
+        var sortedOptions = new[]{
+            outdatedShortOption
+        }.OrderByName();
+
+        outdatedCommand.AddOptions(sortedOptions);
+        return outdatedCommand;
+    }
+
+    private static Command CreateConfigCommand(ILogger logger)
+    {
+        var configCommand = new Command("config", "Manage Dev Proxy configs");
+
+        var sortedCommands = new[] {
+            CreateConfigGetCommand(logger),
+            CreateConfigNewCommand(logger),
+            CreateConfigOpenCommand()
+        }.OrderByName();
+
+        configCommand.AddCommands(sortedCommands);
+        return configCommand;
+    }
+
+    private static Command CreateConfigGetCommand(ILogger logger)
+    {
+        var configGetCommand = new Command("get", "Download the specified config from the Sample Solution Gallery");
+        var configIdArgument = new Argument<string>("config-id", "The ID of the config to download");
+        configGetCommand.AddArgument(configIdArgument);
+        configGetCommand.SetHandler(async configId => await ConfigGetCommandHandler.DownloadConfigAsync(configId, logger), configIdArgument);
+        return configGetCommand;
+    }
+
+    private static Command CreateConfigNewCommand(ILogger logger)
+    {
+        var configNewCommand = new Command("new", "Create new Dev Proxy configuration file");
+        var nameArgument = new Argument<string>("name", "Name of the configuration file")
+        {
+            Arity = ArgumentArity.ZeroOrOne
+        };
+        nameArgument.SetDefaultValue("devproxyrc.json");
+        configNewCommand.AddArgument(nameArgument);
+        configNewCommand.SetHandler(async name => await ConfigNewCommandHandler.CreateConfigFileAsync(name, logger), nameArgument);
+        return configNewCommand;
+    }
+
+    private static Command CreateConfigOpenCommand()
+    {
+        var configOpenCommand = new Command("open", "Open devproxyrc.json");
+        configOpenCommand.SetHandler(() =>
+        {
+            var cfgPsi = new ProcessStartInfo(ConfigFile)
+            {
+                UseShellExecute = true
+            };
+            Process.Start(cfgPsi);
+        });
+        return configOpenCommand;
+    }
+
+    private static Command CreateMsGraphDbCommand(ILogger logger)
+    {
+        return new Command("msgraphdb", "Generate a local SQLite database with Microsoft Graph API metadata")
+        {
+            Handler = new MSGraphDbCommandHandler(logger)
+        };
     }
 
     public ProxyCommandHandler GetCommandHandler(PluginEvents pluginEvents, Option[] optionsFromPlugins, ISet<UrlToWatch> urlsToWatch, ILogger logger) => new(

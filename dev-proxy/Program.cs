@@ -41,9 +41,6 @@ var lmClient = LanguageModelClientFactory.Create(ProxyCommandHandler.Configurati
 IProxyContext context = new ProxyContext(ProxyCommandHandler.Configuration, ProxyEngine.Certificate, lmClient);
 ProxyHost proxyHost = new();
 
-// this is where the root command is created which contains all commands and subcommands
-RootCommand rootCommand = proxyHost.GetRootCommand(logger);
-
 // store the global options that are created automatically for us
 // rootCommand doesn't return the global options, so we have to store them manually
 string[] globalOptions = ["--version"];
@@ -62,20 +59,22 @@ if (isDiscover)
 // load plugins to get their options and commands
 var pluginLoader = new PluginLoader(isDiscover, logger, loggerFactory);
 PluginLoaderResult loaderResults = await pluginLoader.LoadPluginsAsync(pluginEvents, context);
-var options = loaderResults.ProxyPlugins
+
+var pluginOptions = loaderResults.ProxyPlugins
     .SelectMany(p => p.GetOptions())
     // remove duplicates by comparing the option names
     .GroupBy(o => o.Name)
     .Select(g => g.First())
-    .ToList();
-options.ForEach(rootCommand.AddOption);
-// register all plugin commands
-loaderResults.ProxyPlugins
-    .SelectMany(p => p.GetCommands())
-    .ToList()
-    .ForEach(rootCommand.AddCommand);
+    .ToArray();
 
-// get the list of available subcommands
+var pluginCommands = loaderResults.ProxyPlugins
+    .SelectMany(p => p.GetCommands())
+    .ToArray();
+
+// this is where the root command is created which contains all commands and subcommands
+RootCommand rootCommand = proxyHost.GetRootCommand(logger, pluginOptions, pluginCommands);
+
+// get the list of available subcommand's names
 var subCommands = rootCommand.Children.OfType<Command>().Select(c => c.Name).ToArray();
 
 // check if any of the subcommands are present
@@ -132,7 +131,7 @@ else
         pluginEvents.RaiseInit(new InitArgs());
     }
 
-    rootCommand.Handler = proxyHost.GetCommandHandler(pluginEvents, [.. options], loaderResults.UrlsToWatch, logger);
+    rootCommand.Handler = proxyHost.GetCommandHandler(pluginEvents, [.. pluginOptions], loaderResults.UrlsToWatch, logger);
     var exitCode = await rootCommand.InvokeAsync(args);
     loggerFactory.Dispose();
     Environment.Exit(exitCode);
