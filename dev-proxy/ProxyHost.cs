@@ -333,7 +333,7 @@ internal class ProxyHost
         ProxyCommandHandler.Configuration.ConfigFile = ConfigFile;
     }
 
-    public RootCommand GetRootCommand(ILogger logger, Option[] pluginOptions, Command[] pluginCommands)
+    public RootCommand CreateRootCommand(ILogger logger, Option[] pluginOptions, Command[] pluginCommands)
     {
         var command = new RootCommand("Dev Proxy is a command line tool for testing Microsoft Graph, SharePoint Online and any other HTTP APIs.");
         var options = (Option[])[

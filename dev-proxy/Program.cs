@@ -72,7 +72,7 @@ var pluginCommands = loaderResults.ProxyPlugins
     .ToArray();
 
 // this is where the root command is created which contains all commands and subcommands
-RootCommand rootCommand = proxyHost.GetRootCommand(logger, pluginOptions, pluginCommands);
+RootCommand rootCommand = proxyHost.CreateRootCommand(logger, pluginOptions, pluginCommands);
 
 // get the list of available subcommand's names
 var subCommands = rootCommand.Children.OfType<Command>().Select(c => c.Name).ToArray();
