@@ -148,23 +148,14 @@ public class DevToolsPlugin(IPluginEvents pluginEvents, IProxyContext context, I
             return;
         }
 
-        // find if the process is already running
-        var processes = GetBrowserProcesses(browserPath);
-
-        if (processes.Any())
-        {
-            var ids = string.Join(", ", processes.Select(p => p.Id.ToString()));
-            Logger.LogError("Found existing browser process {processName} with IDs {processIds}. Could not start {plugin}. Please close existing browser processes and restart Dev Proxy", browserPath, ids, Name);
-            return;
-        }
-
         var port = GetFreePort();
         webSocket = new WebSocketServer(port, Logger);
         webSocket.MessageReceived += SocketMessageReceived;
         _ = webSocket.StartAsync();
 
         var inspectionUrl = $"http://localhost:9222/devtools/inspector.html?ws=localhost:{port}";
-        var args = $"{inspectionUrl} --remote-debugging-port=9222 --profile-directory=devproxy";
+        var profilePath = Path.Combine(Path.GetTempPath(), "devtools-devproxy");
+        var args = $"{inspectionUrl} --remote-debugging-port=9222 --user-data-dir=\"{profilePath}\"";
 
         Logger.LogInformation("{name} available at {inspectionUrl}", Name, inspectionUrl);
 
