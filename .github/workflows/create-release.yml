@@ -39,27 +39,27 @@ jobs:
         if: contains(github.ref_name, '-beta')
         run: |
           pushd
-          cd ./dev-proxy
-          $content = Get-Content dev-proxy.csproj
-          $content -replace '<AssemblyName>devproxy</AssemblyName>', '<AssemblyName>devproxy-beta</AssemblyName>' | Set-Content dev-proxy.csproj
+          cd ./DevProxy
+          $content = Get-Content DevProxy.csproj
+          $content -replace '<AssemblyName>devproxy</AssemblyName>', '<AssemblyName>devproxy-beta</AssemblyName>' | Set-Content DevProxy.csproj
           popd
       - name: Set newVersionNotification for beta
         if: contains(github.ref_name, '-beta')
         run: |
           pushd
-          cd ./dev-proxy
+          cd ./DevProxy
           $content = Get-Content devproxyrc.json
           $content -replace '"newVersionNotification": "stable"', '"newVersionNotification": "beta"' | Set-Content devproxyrc.json
           popd
       - name: Publish ${{ matrix.architecture }}
-        run: dotnet publish ./dev-proxy/dev-proxy.csproj -c Release -p:PublishSingleFile=true -p:InformationalVersion=$("${{ github.ref_name }}".Substring(1)) -r ${{ matrix.architecture }} --self-contained -o ./${{ env.release }}
+        run: dotnet publish ./DevProxy/DevProxy.csproj -c Release -p:PublishSingleFile=true -p:InformationalVersion=$("${{ github.ref_name }}".Substring(1)) -r ${{ matrix.architecture }} --self-contained -o ./${{ env.release }}
       - name: Build plugins
-        run: dotnet build ./dev-proxy-plugins/dev-proxy-plugins.csproj -p:InformationalVersion=$("${{ github.ref_name }}".Substring(1)) -c Release -r ${{ matrix.architecture }} --no-self-contained
+        run: dotnet build ./DevProxy.Plugins/DevProxy.Plugins.csproj -p:InformationalVersion=$("${{ github.ref_name }}".Substring(1)) -c Release -r ${{ matrix.architecture }} --no-self-contained
       - name: Build abstractions
         if: matrix.architecture == 'win-x64'
-        run: dotnet build ./dev-proxy-abstractions/dev-proxy-abstractions.csproj -p:InformationalVersion=$("${{ github.ref_name }}".Substring(1)) -c Release --no-self-contained
+        run: dotnet build ./DevProxy.Abstractions/DevProxy.Abstractions.csproj -p:InformationalVersion=$("${{ github.ref_name }}".Substring(1)) -c Release --no-self-contained
       - name: Add plugins to output
-        run: cp ./dev-proxy/bin/Release/net9.0/${{ matrix.architecture }}/plugins ./${{ env.release }} -r
+        run: cp ./DevProxy/bin/Release/net9.0/${{ matrix.architecture }}/plugins ./${{ env.release }} -r
       - name: Remove unnecessary files
         run: |
           pushd
@@ -84,7 +84,7 @@ jobs:
         shell: pwsh
         run: >
           ../sign code azure-key-vault
-          **/dev*proxy*
+          **/DevProxy*
           --publisher-name "${{ env.APP_PUBLISHER }}"
           --description "${{ env.APP_DESCRIPTION }}"
           --description-url "${{ env.APP_DESCRIPTION_URL }}"
@@ -112,7 +112,7 @@ jobs:
         shell: pwsh
         run: >
           ./sign code azure-key-vault
-          ./dev-proxy-abstractions/bin/Release/net9.0/dev-proxy-abstractions.dll
+          ./DevProxy.Abstractions/bin/Release/net9.0/DevProxy.Abstractions.dll
           --publisher-name "${{ env.APP_PUBLISHER }}"
           --description "${{ env.APP_DESCRIPTION }}"
           --description-url "${{ env.APP_DESCRIPTION_URL }}"
@@ -126,15 +126,15 @@ jobs:
         if: matrix.architecture == 'win-x64'
         uses: thedoctor0/zip-release@b57d897cb5d60cb78b51a507f63fa184cfe35554 # master
         with:
-          filename: '../../../../dev-proxy-abstractions-${{ github.ref_name }}.zip'
-          directory: './dev-proxy-abstractions/bin/Release/net9.0'
+          filename: '../../../../DevProxy.Abstractions-${{ github.ref_name }}.zip'
+          directory: './DevProxy.Abstractions/bin/Release/net9.0'
           exclusions: '*.json'
       - name: Upload abstractions
         if: matrix.architecture == 'win-x64'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: binaries-dev-proxy-abstractions-${{ github.ref_name }}
-          path: ./dev-proxy-abstractions-${{ github.ref_name }}.zip
+          path: ./DevProxy.Abstractions-${{ github.ref_name }}.zip
       - name: Add installer icon
         if: contains(matrix.architecture, 'win-')
         run: |
