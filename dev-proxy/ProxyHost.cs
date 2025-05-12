@@ -380,7 +380,8 @@ internal class ProxyHost
     {
         var certCommand = new Command("cert", "Manage the Dev Proxy certificate");
 
-        var sortedCommands = new[]{
+        var sortedCommands = new[]
+        {
             CreateCertEnsureCommand(logger)
         }.OrderByName();
 
@@ -399,7 +400,8 @@ internal class ProxyHost
     {
         var jwtCommand = new Command("jwt", "Manage JSON Web Tokens");
 
-        var sortedCommands = new[]{
+        var sortedCommands = new[]
+        {
             CreateJwtCreateCommand()
         }.OrderByName();
 
@@ -502,7 +504,8 @@ internal class ProxyHost
             )
         );
 
-        var sortedOptions = new Option[]{
+        var sortedOptions = new Option[]
+        {
             jwtNameOption,
             jwtAudienceOption,
             jwtIssuerOption,
@@ -523,7 +526,8 @@ internal class ProxyHost
         var outdatedShortOption = new Option<bool>("--short", "Return version only");
         outdatedCommand.SetHandler(async versionOnly => await OutdatedCommandHandler.CheckVersionAsync(versionOnly, logger), outdatedShortOption);
 
-        var sortedOptions = new[]{
+        var sortedOptions = new[]
+        {
             outdatedShortOption
         }.OrderByName();
 
@@ -535,7 +539,8 @@ internal class ProxyHost
     {
         var configCommand = new Command("config", "Manage Dev Proxy configs");
 
-        var sortedCommands = new[] {
+        var sortedCommands = new[]
+        {
             CreateConfigGetCommand(logger),
             CreateConfigNewCommand(logger),
             CreateConfigOpenCommand()
