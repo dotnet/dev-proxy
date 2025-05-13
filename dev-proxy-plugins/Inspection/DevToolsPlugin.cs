@@ -231,7 +231,8 @@ public class DevToolsPlugin(IPluginEvents pluginEvents, IProxyContext context, I
 
         var requestId = GetRequestId(e.Session.HttpClient.Request);
         var headers = e.Session.HttpClient.Request.Headers
-            .ToDictionary(h => h.Name, h => h.Value);
+            .GroupBy(h => h.Name)
+            .ToDictionary(g => g.Key, g => string.Join(", ", g.Select(h => h.Value)));
 
         var requestWillBeSentMessage = new RequestWillBeSentMessage
         {
@@ -314,7 +315,8 @@ public class DevToolsPlugin(IPluginEvents pluginEvents, IProxyContext context, I
                     Status = e.Session.HttpClient.Response.StatusCode,
                     StatusText = e.Session.HttpClient.Response.StatusDescription,
                     Headers = e.Session.HttpClient.Response.Headers
-                        .ToDictionary(h => h.Name, h => h.Value),
+                        .GroupBy(h => h.Name)
+                        .ToDictionary(g => g.Key, g => string.Join(", ", g.Select(h => h.Value))),
                     MimeType = e.Session.HttpClient.Response.ContentType
                 }
             }
