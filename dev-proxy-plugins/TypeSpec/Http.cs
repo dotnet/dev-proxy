@@ -180,7 +180,7 @@ internal class Operation
             sb.AppendLine($"@useAuth({Auth.ToString()})");
         }
         sb.Append($"op {Name}(");
-        sb.AppendJoin(", ", Parameters.Select(p => p.ToString()));
+        sb.AppendJoin(", ", Parameters.Select(p => p.ToString(this)));
         sb.Append("): ");
         sb.AppendJoin(" | ", Responses.Select(r => r.GetModelName()));
         sb.Append(';');
@@ -266,11 +266,19 @@ internal class Parameter
     public required string Name { get; init; }
     public string? Value { get; init; }
 
-    override public string ToString()
+    public override string ToString()
+    {
+        throw new NotImplementedException("Use ToString(Operation op) instead.");
+    }
+
+    public string ToString(Operation op)
     {
         var value = Value?.IndexOfAny([' ', '/', '-', ';']) == -1
             ? Value
             : $"\"{Value}\"";
+        value = op.Method == HttpVerb.Patch && In == ParameterLocation.Body
+            ? $"MergePatchUpdate<{value}>"
+            : value;
         if (Name.IndexOf('-') > -1)
         {
             var target = Name;
