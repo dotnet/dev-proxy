@@ -4,6 +4,7 @@
 
 using DevProxy.Abstractions;
 using Microsoft.VisualStudio.Threading;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
@@ -38,7 +39,7 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
     private readonly IProxyState _proxyState = proxyState ?? throw new ArgumentNullException(nameof(proxyState));
     // Dictionary for plugins to store data between requests
     // the key is HashObject of the SessionEventArgs object
-    private readonly Dictionary<int, Dictionary<string, object>> _pluginData = [];
+    private readonly ConcurrentDictionary<int, Dictionary<string, object>> _pluginData = [];
     private InactivityTimer? _inactivityTimer;
 
     public static X509Certificate2? Certificate => _proxyServer?.CertificateManager.RootCertificate;
@@ -469,7 +470,10 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
         if (IsProxiedHost(e.HttpClient.Request.RequestUri.Host) &&
             IsIncludedByHeaders(e.HttpClient.Request.Headers))
         {
-            _pluginData.Add(e.GetHashCode(), []);
+            if (!_pluginData.TryAdd(e.GetHashCode(), []))
+            {
+                throw new Exception($"Unable to initialize the plugin data storage for hash key {e.GetHashCode()}");
+            }
             var responseState = new ResponseState();
             var proxyRequestArgs = new ProxyRequestArgs(e, responseState)
             {
@@ -607,7 +611,7 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
             if (!proxyResponseArgs.HasRequestUrlMatch(_urlsToWatch))
             {
                 // clean up
-                _pluginData.Remove(e.GetHashCode());
+                _pluginData.Remove(e.GetHashCode(), out _);
                 return;
             }
 
@@ -623,7 +627,7 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
             _logger.LogRequest(message, MessageType.FinishedProcessingRequest, new LoggingContext(e));
 
             // clean up
-            _pluginData.Remove(e.GetHashCode());
+            _pluginData.Remove(e.GetHashCode(), out _);
         }
     }
 

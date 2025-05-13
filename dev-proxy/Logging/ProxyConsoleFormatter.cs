@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System.Collections.Concurrent;
 using System.Text;
 using DevProxy.Abstractions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -17,7 +18,7 @@ public class ProxyConsoleFormatter : ConsoleFormatter
     private const string _boxBottomLeft = "\u2570 ";
     // used to align single-line messages
     private const string _boxSpacing = "  ";
-    private readonly Dictionary<int, List<RequestLog>> _requestLogs = [];
+    private readonly ConcurrentDictionary<int, List<RequestLog>> _requestLogs = [];
     private readonly ProxyConsoleFormatterOptions _options;
     const string labelSpacing = " ";
     // label length + 2
@@ -62,24 +63,21 @@ public class ProxyConsoleFormatter : ConsoleFormatter
         {
             if (messageType == MessageType.FinishedProcessingRequest)
             {
-                var lastMessage = _requestLogs[requestId.Value].Last();
                 // log all request logs for the request
-                foreach (var log in _requestLogs[requestId.Value])
+                var currentRequestLogs = _requestLogs[requestId.Value];
+                var lastIndex = currentRequestLogs.Count - 1;
+                for (var i = 0; i < currentRequestLogs.Count; ++i)
                 {
-                    WriteLogMessageBoxedWithInvertedLabels(log, scopeProvider, textWriter, log == lastMessage);
+                    var log = currentRequestLogs[i];
+                    WriteLogMessageBoxedWithInvertedLabels(log, scopeProvider, textWriter, i == lastIndex);
                 }
-                _requestLogs.Remove(requestId.Value);
+                _requestLogs.Remove(requestId.Value, out _);
             }
             else
             {
                 // buffer request logs until the request is finished processing
-                if (!_requestLogs.TryGetValue(requestId.Value, out List<RequestLog>? value))
-                {
-                    value = ([]);
-                    _requestLogs[requestId.Value] = value;
-                }
-
                 requestLog.PluginName = category == DefaultCategoryName ? null : category;
+                var value = _requestLogs.GetOrAdd(requestId.Value, []);
                 value.Add(requestLog);
             }
         }
