@@ -21,4 +21,37 @@ public static class CommandLineExtensions
 
         return parseResult.GetValueForOption(option);
     }
+
+    private static string ByName<T>(T symbol) where T : Symbol => symbol.Name;
+
+    public static IEnumerable<T> OrderByName<T>(this IEnumerable<T> symbols) where T : Symbol
+    {
+        ArgumentNullException.ThrowIfNull(symbols);
+
+        return symbols.OrderBy(ByName, StringComparer.Ordinal);
+    }
+
+    public static Command AddCommands(this Command command, IEnumerable<Command> subcommands)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        ArgumentNullException.ThrowIfNull(subcommands);
+
+        foreach (var subcommand in subcommands)
+        {
+            command.AddCommand(subcommand);
+        }
+        return command;
+    }
+
+    public static Command AddOptions(this Command command, IEnumerable<Option> options)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        ArgumentNullException.ThrowIfNull(options);
+
+        foreach (var option in options)
+        {
+            command.AddOption(option);
+        }
+        return command;
+    }
 }

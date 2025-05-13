@@ -15,6 +15,7 @@ using Titanium.Web.Proxy.Models;
 using DevProxy.Plugins.Behavior;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
 
 namespace DevProxy.Plugins.Mocks;
 
@@ -42,7 +43,7 @@ public class MockResponsePlugin(IPluginEvents pluginEvents, IProxyContext contex
     private IProxyConfiguration? _proxyConfiguration;
     // tracks the number of times a mock has been applied
     // used in combination with mocks that have an Nth property
-    private readonly Dictionary<string, int> _appliedMocks = [];
+    private readonly ConcurrentDictionary<string, int> _appliedMocks = [];
 
     public override Option[] GetOptions()
     {
@@ -243,12 +244,7 @@ public class MockResponsePlugin(IPluginEvents pluginEvents, IProxyContext contex
 
         if (mockResponse is not null && mockResponse.Request is not null)
         {
-            if (!_appliedMocks.TryGetValue(mockResponse.Request.Url, out int value))
-            {
-                value = 0;
-                _appliedMocks.Add(mockResponse.Request.Url, value);
-            }
-            _appliedMocks[mockResponse.Request.Url] = ++value;
+            _appliedMocks.AddOrUpdate(mockResponse.Request.Url, 1, (_, value) => ++value);
         }
 
         return mockResponse;
