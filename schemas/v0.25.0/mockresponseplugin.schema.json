@@ -4,10 +4,16 @@
   "type": "object",
   "properties": {
     "$schema": {
-      "type": "string"
+      "type": "string",
+      "description": "The JSON schema reference for validation."
     },
     "mocksFile": {
-      "type": "string"
+      "type": "string",
+      "description": "Path to the file containing the mock responses."
+    },
+    "blockUnmockedRequests": {
+      "type": "boolean",
+      "description": "Set to true to return 502 Bad Gateway response for requests that aren't mocked. Default is false."
     }
   },
   "required": [
