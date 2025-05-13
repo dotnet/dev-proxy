@@ -31,7 +31,7 @@ public class OpenAITelemetryPluginConfiguration : LanguageModelPricesPluginConfi
     public string ExporterEndpoint { get; set; } = "http://localhost:4318";
     public bool IncludePrompt { get; set; } = true;
     public bool IncludeCompletion { get; set; } = true;
-    public bool IncludeCosts { get; set; } = true;
+    public bool IncludeCosts { get; set; } = false;
 }
 
 public class OpenAITelemetryPlugin(IPluginEvents pluginEvents, IProxyContext context, ILogger logger, ISet<UrlToWatch> urlsToWatch, IConfigurationSection? configSection = null) : BaseProxyPlugin(pluginEvents, context, logger, urlsToWatch, configSection), IDisposable
