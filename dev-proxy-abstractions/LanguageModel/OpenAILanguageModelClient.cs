@@ -12,6 +12,7 @@ public class OpenAILanguageModelClient(LanguageModelConfiguration? configuration
 {
     private readonly LanguageModelConfiguration? _configuration = configuration;
     private readonly ILogger _logger = logger;
+    private readonly HttpClient _httpClient = new();
     private bool? _lmAvailable;
     private readonly Dictionary<ILanguageModelChatCompletionMessage[], OpenAIChatCompletionResponse> _cacheChatCompletion = [];
 
@@ -158,7 +159,6 @@ public class OpenAILanguageModelClient(LanguageModelConfiguration? configuration
 
         try
         {
-            using var client = new HttpClient();
             var url = $"{_configuration.Url}/chat/completions";
             _logger.LogDebug("Requesting chat completion. Message: {lastMessage}", messages.Last().Content);
 
@@ -170,7 +170,7 @@ public class OpenAILanguageModelClient(LanguageModelConfiguration? configuration
                 Temperature = options?.Temperature
             };
 
-            var response = await client.PostAsJsonAsync(url, payload);
+            var response = await _httpClient.PostAsJsonAsync(url, payload);
             _logger.LogDebug("Response: {response}", response.StatusCode);
 
             if (!response.IsSuccessStatusCode)
