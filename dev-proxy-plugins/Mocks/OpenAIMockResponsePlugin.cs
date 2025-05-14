@@ -34,6 +34,13 @@ public class OpenAIMockResponsePlugin(IPluginEvents pluginEvents, IProxyContext 
 
     private async Task OnRequestAsync(object sender, ProxyRequestArgs e)
     {
+        if (UrlsToWatch is null ||
+            !e.HasRequestUrlMatch(UrlsToWatch))
+        {
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
+            return;
+        }
+
         var request = e.Session.HttpClient.Request;
         if (request.Method is null ||
             !request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase) ||

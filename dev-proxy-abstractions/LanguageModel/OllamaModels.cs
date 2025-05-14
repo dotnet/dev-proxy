@@ -89,7 +89,7 @@ public class OllamaLanguageModelChatCompletionResponse : OllamaResponse
     public OllamaLanguageModelChatCompletionMessage Message { get; set; } = new();
     public override string? Response
     {
-        get => Message.Content;
+        get => Message.Content.ToString();
         set
         {
             if (value is null)
@@ -118,7 +118,7 @@ public class OllamaLanguageModelChatCompletionResponse : OllamaResponse
                 Index = 0,
                 Message = new()
                 {
-                    Content = Message.Content,
+                    Content = Message.Content.ToString() ?? string.Empty,
                     Role = Message.Role
                 }
             }],
@@ -152,7 +152,7 @@ public class OllamaLanguageModelChatCompletionResponse : OllamaResponse
 
 public class OllamaLanguageModelChatCompletionMessage : ILanguageModelChatCompletionMessage
 {
-    public string Content { get; set; } = string.Empty;
+    public object Content { get; set; } = string.Empty;
     public string Role { get; set; } = string.Empty;
 
     public override bool Equals(object? obj)

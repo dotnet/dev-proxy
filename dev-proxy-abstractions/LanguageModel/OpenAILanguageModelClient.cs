@@ -2,9 +2,9 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Net.Http.Json;
-using Microsoft.Extensions.Logging;
 
 namespace DevProxy.Abstractions.LanguageModel;
 
@@ -170,7 +170,9 @@ public class OpenAILanguageModelClient(LanguageModelConfiguration? configuration
                 Temperature = options?.Temperature
             };
 
-            var response = await _httpClient.PostAsJsonAsync(url, payload);
+            // var payloadString = JsonSerializer.Serialize(payload, ProxyUtils.JsonSerializerOptions);
+
+            var response = await _httpClient.PostAsJsonAsync(url, payload, ProxyUtils.JsonSerializerOptions);
             _logger.LogDebug("Response: {response}", response.StatusCode);
 
             if (!response.IsSuccessStatusCode)

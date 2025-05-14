@@ -6,6 +6,6 @@ namespace DevProxy.Abstractions.LanguageModel;
 
 public interface ILanguageModelChatCompletionMessage
 {
-    string Content { get; set; }
+    object Content { get; set; }
     string Role { get; set; }
 }

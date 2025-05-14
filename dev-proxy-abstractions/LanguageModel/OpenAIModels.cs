@@ -38,7 +38,7 @@ public class OpenAIError
     public string? Message { get; set; }
 }
 
-public abstract class OpenAIResponse: ILanguageModelCompletionResponse
+public abstract class OpenAIResponse : ILanguageModelCompletionResponse
 {
     public long Created { get; set; }
     public OpenAIError? Error { get; set; }
@@ -106,9 +106,63 @@ public class OpenAICompletionResponseChoice : OpenAIResponseChoice
     public string Text { get; set; } = string.Empty;
 }
 
-public class OpenAIChatCompletionMessage: ILanguageModelChatCompletionMessage
+#region content parts
+
+public abstract class OpenAIContentPart
 {
-    public string Content { get; set; } = string.Empty;
+    public string? Type { get; set; }
+}
+
+public class OpenAITextContentPart : OpenAIContentPart
+{
+    public string? Text { get; set; }
+}
+
+public class OpenAIImageContentPartUrl
+{
+    public string? Detail { get; set; } = "auto";
+    public string? Url { get; set; }
+}
+
+public class OpenAIImageContentPart : OpenAIContentPart
+{
+    [JsonPropertyName("image_url")]
+    public OpenAIImageContentPartUrl? Url { get; set; }
+}
+
+public class OpenAIAudioContentPartInputAudio
+{
+    public string? Data { get; set; }
+    public string? Format { get; set; }
+}
+
+public class OpenAIAudioContentPart : OpenAIContentPart
+{
+    [JsonPropertyName("input_audio")]
+    public OpenAIAudioContentPartInputAudio? InputAudio { get; set; }
+}
+
+public class OpenAIFileContentPartFile
+{
+    [JsonPropertyName("file_data")]
+    public string? Data { get; set; }
+    [JsonPropertyName("file_id")]
+    public string? Id { get; set; }
+    [JsonPropertyName("filename")]
+    public string? Name { get; set; }
+}
+
+public class OpenAIFileContentPart : OpenAIContentPart
+{
+    public OpenAIFileContentPartFile? File { get; set; }
+}
+
+#endregion
+
+public class OpenAIChatCompletionMessage : ILanguageModelChatCompletionMessage
+{
+    [JsonConverter(typeof(OpenAIContentPartJsonConverter))]
+    public object Content { get; set; } = string.Empty;
     public string Role { get; set; } = string.Empty;
 
     public override bool Equals(object? obj)
@@ -204,13 +258,13 @@ public class OpenAIFineTuneRequest : OpenAIRequest
 }
 
 public class OpenAIFineTuneResponse : OpenAIResponse
-{    
+{
     [JsonPropertyName("fine_tuned_model")]
-    public string? FineTunedModel { get; set; }   
-    public string Status { get; set; } = string.Empty;    
-    public string? Organization { get; set; }    
-    public long CreatedAt { get; set; }    
-    public long UpdatedAt { get; set; }    
+    public string? FineTunedModel { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string? Organization { get; set; }
+    public long CreatedAt { get; set; }
+    public long UpdatedAt { get; set; }
     [JsonPropertyName("training_file")]
     public string TrainingFile { get; set; } = string.Empty;
     [JsonPropertyName("validation_file")]
@@ -233,16 +287,16 @@ public class OpenAIImageRequest : OpenAIRequest
 }
 
 public class OpenAIImageResponse : OpenAIResponse
-{    
-    public OpenAIImageData[]? Data { get; set; }   
+{
+    public OpenAIImageData[]? Data { get; set; }
     public override string? Response => null; // Image responses don't have a text response
 }
 
 public class OpenAIImageData
 {
-    public string? Url { get; set; }    
+    public string? Url { get; set; }
     [JsonPropertyName("b64_json")]
-    public string? Base64Json { get; set; }    
+    public string? Base64Json { get; set; }
     [JsonPropertyName("revised_prompt")]
     public string? RevisedPrompt { get; set; }
 }
