@@ -416,7 +416,7 @@ internal class ProxyHost
         var jwtNameOption = new Option<string>("--name", "The name of the user to create the token for.");
         jwtNameOption.AddAlias("-n");
 
-        var jwtAudienceOption = new Option<IEnumerable<string>>("--audience", "The audiences to create the token for. Specify once for each audience")
+        var jwtAudienceOption = new Option<IEnumerable<string>>("--audiences", "The audiences to create the token for. Specify once for each audience")
         {
             AllowMultipleArgumentsPerToken = true
         };
