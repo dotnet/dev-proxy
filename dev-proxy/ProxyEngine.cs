@@ -91,7 +91,7 @@ public class ProxyEngine(IProxyConfiguration config, ISet<UrlToWatch> urlsToWatc
 
         if (!_urlsToWatch.Any())
         {
-            _logger.LogInformation("No URLs to watch configured. Please add URLs to watch in the devproxyrc.json config file.");
+            _logger.LogError("No URLs to watch configured. Please add URLs to watch in the devproxyrc.json config file.");
             return;
         }
 
