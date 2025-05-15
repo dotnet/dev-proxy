@@ -8,10 +8,10 @@
     },
     "apiFile": {
       "type": "string"
-    },
-    "required": [
-      "apiFile"
-    ]
+    }
   },
+  "required": [
+    "apiFile"
+  ],
   "additionalProperties": false
 }
