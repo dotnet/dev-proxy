@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy PowerPlatformSpecGeneratorPlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "The JSON schema reference for validation."
+    },
+    "includeOptionsRequests": {
+      "type": "boolean",
+      "description": "Determines whether to include OPTIONS requests in the generated OpenAPI spec. Default: false."
+    },
+    "specFormat": {
+      "type": "string",
+      "enum": [
+        "Json",
+        "Yaml"
+      ],
+      "description": "Specifies the format of the generated OpenAPI spec. Allowed values: 'Json' or 'Yaml'. Default: 'Json'."
+    },
+    "includeRequestHeaders": {
+      "type": "boolean",
+      "description": "Determines whether to include request headers in the generated OpenAPI spec. Default: false."
+    },
+    "contact": {
+      "type": "object",
+      "description": "Contact information for the API.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the contact person or organization."
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "The URL pointing to the contact information."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "The email address of the contact person or organization."
+        }
+      },      
+      "additionalProperties": false
+    },
+    "connectorMetadata": {
+      "type": "object",
+      "description": "Optional metadata for the connector.",
+      "properties": {
+        "website": {
+          "type": "string",
+          "format": "uri",
+          "description": "The corporate website URL for the API."
+        },
+        "privacyPolicy": {
+          "type": "string",
+          "format": "uri",
+          "description": "The privacy policy URL for the API."
+        },
+        "categories": {
+          "type": "string",
+          "description": "Comma-separated categories for the API."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
