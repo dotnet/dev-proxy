@@ -67,7 +67,7 @@ public class OpenAITelemetryPlugin(IPluginEvents pluginEvents, IProxyContext con
         InitializeOpenTelemetryExporter();
 
         PluginEvents.BeforeRequest += OnRequestAsync;
-        PluginEvents.BeforeResponse += OnResponseAsync;
+        PluginEvents.AfterResponse += OnResponseAsync;
     }
 
     private void InitializeOpenTelemetryExporter()
