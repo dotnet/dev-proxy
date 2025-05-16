@@ -396,8 +396,9 @@ public class CrudApiPlugin(IPluginEvents pluginEvents, IProxyContext context, IL
     {
         try
         {
-            _data?.Add(JObject.Parse(e.HttpClient.Request.BodyString));
-            SendJsonResponse(JsonConvert.SerializeObject(e.HttpClient.Request.BodyString, Formatting.Indented), HttpStatusCode.Created, e);
+            var data = JObject.Parse(e.HttpClient.Request.BodyString);
+            _data?.Add(data);
+            SendJsonResponse(JsonConvert.SerializeObject(data, Formatting.Indented), HttpStatusCode.Created, e);
             Logger.LogRequest($"201 {action.Url}", MessageType.Mocked, new LoggingContext(e));
         }
         catch (Exception ex)
