@@ -709,7 +709,7 @@ public class TypeSpecGeneratorPlugin(IPluginEvents pluginEvents, IProxyContext c
 
         try
         {
-            using var doc = JsonDocument.Parse(str);
+            using var doc = JsonDocument.Parse(str, ProxyUtils.JsonDocumentOptions);
             JsonElement root = doc.RootElement;
             await AddModelFromJsonElementAsync(root, name, isError, models);
         }

@@ -21,7 +21,7 @@ public abstract class BaseLoader(ILogger logger, bool validateSchemas) : IDispos
 
     private async Task<bool> ValidateFileContents(string fileContents)
     {
-        using var document = JsonDocument.Parse(fileContents);
+        using var document = JsonDocument.Parse(fileContents, ProxyUtils.JsonDocumentOptions);
         var root = document.RootElement;
 
         if (!root.TryGetProperty("$schema", out var schemaUrl))
