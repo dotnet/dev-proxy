@@ -548,38 +548,47 @@ public static class ProxyUtils
     /// </summary>
     /// <param name="a">ver1</param>
     /// <param name="b">ver2</param>
-    /// <returns>Returns 0 if the versions are equal, -1 if a is less than b, and 1 if a is greater than b.</returns>
-    private static int CompareSemVer(string? a, string? b)
+    /// <returns>
+    /// Returns 0 if the versions are equal, -1 if a is less than b, and 1 if a is greater than b.
+    /// An invalid argument is "rounded" to a minimal version.
+    /// </returns>
+    public static int CompareSemVer(string? a, string? b)
     {
-        if (a == null && b == null)
+        if (string.IsNullOrWhiteSpace(a) && string.IsNullOrWhiteSpace(b))
         {
             return 0;
         }
-        else if (a == null)
+        else if (string.IsNullOrWhiteSpace(a))
         {
             return -1;
         }
-        else if (b == null)
+        else if (string.IsNullOrWhiteSpace(b))
         {
             return 1;
         }
 
-        if (a.StartsWith('v'))
-        {
-            a = a[1..];
-        }
-        if (b.StartsWith('v'))
-        {
-            b = b[1..];
-        }
+        a = a.TrimStart('v');
+        b = b.TrimStart('v');
 
         var aParts = a.Split('-');
         var bParts = b.Split('-');
 
-        var aVersion = new Version(aParts[0]);
-        var bVersion = new Version(bParts[0]);
+        var aParsed = Version.TryParse(aParts[0], out var aVersion);
+        var bParsed = Version.TryParse(bParts[0], out var bVersion);
+        if (!aParsed && !bParsed)
+        {
+            return 0;
+        }
+        else if (!aParsed)
+        {
+            return -1;
+        }
+        else if (!bParsed)
+        {
+            return 1;
+        }
 
-        var compare = aVersion.CompareTo(bVersion);
+        var compare = aVersion!.CompareTo(bVersion);
         if (compare != 0)
         {
             // if the versions are different, return the comparison result
