@@ -21,7 +21,7 @@ internal class LanguageModelPricesLoader(ILogger logger, LanguageModelPricesPlug
         {
             // we need to deserialize manually because standard deserialization
             // doesn't support nested dictionaries
-            using JsonDocument document = JsonDocument.Parse(fileContents);
+            using JsonDocument document = JsonDocument.Parse(fileContents, ProxyUtils.JsonDocumentOptions);
 
             if (document.RootElement.TryGetProperty("prices", out JsonElement pricesElement))
             {

@@ -355,13 +355,20 @@ public static class ProxyUtils
     }
 
     public static JsonSerializerOptions JsonSerializerOptions => jsonSerializerOptions;
+    
+    public static JsonDocumentOptions JsonDocumentOptions { get; } = new()
+    {
+        AllowTrailingCommas = true,
+        CommentHandling = JsonCommentHandling.Skip
+    };
 
     public static bool MatchesUrlToWatch(ISet<UrlToWatch> watchedUrls, string url, bool evaluateWildcards = false)
     {
         if (evaluateWildcards && url.Contains('*'))
         {
             // url contains a wildcard, so convert it to regex and compare
-            var match = watchedUrls.FirstOrDefault(r => {
+            var match = watchedUrls.FirstOrDefault(r =>
+            {
                 var pattern = RegexToPattern(r.Url);
                 var result = UrlRegexComparer.CompareRegexPatterns(pattern, url);
                 return result != UrlRegexComparisonResult.PatternsMutuallyExclusive;
