@@ -83,6 +83,7 @@ public abstract class BaseProxyPlugin : IProxyPlugin
                 return (false, [string.Format(CultureInfo.InvariantCulture, "Configuration section {0} not found in configuration file", configSectionName)]);
             }
 
+            ProxyUtils.ValidateSchemaVersion(schemaUrl, Logger);
             return await ProxyUtils.ValidateJson(configSection.GetRawText(), schemaUrl, Logger);
         }
         catch (Exception ex)
