@@ -510,4 +510,107 @@ public static class ProxyUtils
 
         return s1;
     }
+
+    public static void ValidateSchemaVersion(string schemaUrl, ILogger logger)
+    {
+        if (string.IsNullOrWhiteSpace(schemaUrl))
+        {
+            logger.LogDebug("Schema is empty, skipping schema version validation.");
+            return;
+        }
+        try
+        {
+            var uri = new Uri(schemaUrl);
+            if (uri.Segments.Length > 2)
+            {
+                var schemaVersion = uri.Segments[^2]
+                    .TrimStart('v')
+                    .TrimEnd('/');
+                if (CompareSemVer(ProductVersion, schemaVersion) != 0)
+                {
+                    var currentSchemaUrl = uri.ToString().Replace($"/v{schemaVersion}/", $"/v{ProductVersion}/");
+                    logger.LogWarning("The version of schema does not match the installed Dev Proxy version, the expected schema is {schema}", currentSchemaUrl);
+                }
+            }
+            else
+            {
+                logger.LogDebug("Invalid schema {schemaUrl}, skipping schema version validation.", schemaUrl);
+            }
+        }
+        catch(Exception ex)
+        {
+            logger.LogWarning("Invalid schema {schemaUrl}, skipping schema version validation. Error: {error}", schemaUrl, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Compares two semantic versions strings.
+    /// </summary>
+    /// <param name="a">ver1</param>
+    /// <param name="b">ver2</param>
+    /// <returns>Returns 0 if the versions are equal, -1 if a is less than b, and 1 if a is greater than b.</returns>
+    private static int CompareSemVer(string? a, string? b)
+    {
+        if (a == null && b == null)
+        {
+            return 0;
+        }
+        else if (a == null)
+        {
+            return -1;
+        }
+        else if (b == null)
+        {
+            return 1;
+        }
+
+        if (a.StartsWith('v'))
+        {
+            a = a[1..];
+        }
+        if (b.StartsWith('v'))
+        {
+            b = b[1..];
+        }
+
+        var aParts = a.Split('-');
+        var bParts = b.Split('-');
+
+        var aVersion = new Version(aParts[0]);
+        var bVersion = new Version(bParts[0]);
+
+        var compare = aVersion.CompareTo(bVersion);
+        if (compare != 0)
+        {
+            // if the versions are different, return the comparison result
+            return compare;
+        }
+
+        // if the versions are the same, compare the prerelease tags
+        if (aParts.Length == 1 && bParts.Length == 1)
+        {
+            // if both versions are stable, they are equal
+            return 0;
+        }
+        else if (aParts.Length == 1)
+        {
+            // if a is stable and b is not, a is greater
+            return 1;
+        }
+        else if (bParts.Length == 1)
+        {
+            // if b is stable and a is not, b is greater
+            return -1;
+        }
+        else if (aParts[1] == bParts[1])
+        {
+            // if both versions are prerelease and the tags are the same, they are equal
+            return 0;
+        }
+        else
+        {
+            // if both versions are prerelease, b is greater
+            return -1;
+        }
+    }
 }
