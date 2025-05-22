@@ -177,7 +177,10 @@ public class MockResponsePlugin(IPluginEvents pluginEvents, IProxyContext contex
         var matchingResponse = GetMatchingMockResponse(request);
         if (matchingResponse is not null)
         {
-            ProcessMockResponseInternal(e, matchingResponse);
+            // we need to clone the response so that we're not modifying
+            // the original that might be used in other requests
+            var clonedResponse = (MockResponse)matchingResponse.Clone();
+            ProcessMockResponseInternal(e, clonedResponse);
             state.HasBeenSet = true;
             return Task.CompletedTask;
         }
