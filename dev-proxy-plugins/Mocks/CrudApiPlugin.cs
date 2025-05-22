@@ -218,7 +218,8 @@ public class CrudApiPlugin(IPluginEvents pluginEvents, IProxyContext context, IL
 
         headers.Add(new HttpHeader("access-control-allow-origin", origin));
 
-        if (_configuration.EntraAuthConfig is not null)
+        if (_configuration.EntraAuthConfig is not null ||
+            _configuration.Actions.Any(a => a.Auth == CrudApiAuthType.Entra))
         {
             headers.Add(new HttpHeader("access-control-allow-headers", "authorization"));
         }
