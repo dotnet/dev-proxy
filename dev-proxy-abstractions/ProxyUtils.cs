@@ -536,7 +536,8 @@ public static class ProxyUtils
                     .TrimEnd('/');
                 if (CompareSemVer(ProductVersion, schemaVersion) != 0)
                 {
-                    var currentSchemaUrl = uri.ToString().Replace($"/v{schemaVersion}/", $"/v{ProductVersion}/");
+                    var currentVersion = GetVersionString(ProductVersion);
+                    var currentSchemaUrl = uri.ToString().Replace($"/v{schemaVersion}/", $"/v{currentVersion}/");
                     logger.LogWarning("The version of schema does not match the installed Dev Proxy version, the expected schema is {schema}", currentSchemaUrl);
                 }
             }
