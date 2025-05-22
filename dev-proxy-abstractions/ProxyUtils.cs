@@ -355,7 +355,7 @@ public static class ProxyUtils
     }
 
     public static JsonSerializerOptions JsonSerializerOptions => jsonSerializerOptions;
-    
+
     public static JsonDocumentOptions JsonDocumentOptions { get; } = new()
     {
         AllowTrailingCommas = true,
@@ -425,7 +425,8 @@ public static class ProxyUtils
                 }
 
                 // For multiple URLs, find the common prefix
-                var paths = group.Select(url => {
+                var paths = group.Select(url =>
+                {
                     if (url.Contains('*'))
                     {
                         return url;
@@ -544,7 +545,7 @@ public static class ProxyUtils
                 logger.LogDebug("Invalid schema {schemaUrl}, skipping schema version validation.", schemaUrl);
             }
         }
-        catch(Exception ex)
+        catch (Exception ex)
         {
             logger.LogWarning("Invalid schema {schemaUrl}, skipping schema version validation. Error: {error}", schemaUrl, ex.Message);
         }
@@ -628,6 +629,7 @@ public static class ProxyUtils
             // if both versions are prerelease, b is greater
             return -1;
         }
+    }
 
     public static string GetVersionString(string productVersion)
     {
