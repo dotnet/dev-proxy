@@ -465,7 +465,7 @@ public static class ProxyUtils
         var lastSlashIndex = prefix.LastIndexOf('/');
         return lastSlashIndex >= 0 ? prefix[..(lastSlashIndex + 1)] : prefix;
     }
-    
+
     public static async Task<(bool IsValid, IEnumerable<string> ValidationErrors)> ValidateJson(string? json, string? schemaUrl, ILogger logger)
     {
         try
@@ -486,7 +486,7 @@ public static class ProxyUtils
             logger.LogDebug("Downloading schema from {SchemaUrl}", schemaUrl);
             using var client = new HttpClient();
             var schemaContents = await client.GetStringAsync(schemaUrl);
-            
+
             logger.LogDebug("Parsing schema");
             var schema = JSchema.Parse(schemaContents);
             logger.LogDebug("Parsing JSON");
@@ -628,5 +628,11 @@ public static class ProxyUtils
             // if both versions are prerelease, b is greater
             return -1;
         }
+
+    public static string GetVersionString(string productVersion)
+    {
+        return productVersion.Contains("-beta")
+            ? productVersion.Split("-")[0]
+            : productVersion;
     }
 }

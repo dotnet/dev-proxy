@@ -34,8 +34,13 @@ public class OpenAIMockResponsePlugin(IPluginEvents pluginEvents, IProxyContext 
 
     private async Task OnRequestAsync(object sender, ProxyRequestArgs e)
     {
+        if (e.ResponseState.HasBeenSet)
+        {
+            Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.Session));
+            return;
+        }
         if (UrlsToWatch is null ||
-            !e.HasRequestUrlMatch(UrlsToWatch))
+            !e.ShouldExecute(UrlsToWatch))
         {
             Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
             return;
