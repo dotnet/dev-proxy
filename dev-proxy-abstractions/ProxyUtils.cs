@@ -536,7 +536,7 @@ public static class ProxyUtils
                     .TrimEnd('/');
                 if (CompareSemVer(ProductVersion, schemaVersion) != 0)
                 {
-                    var currentVersion = GetVersionString(ProductVersion);
+                    var currentVersion = NormalizeVersion(ProductVersion);
                     var currentSchemaUrl = uri.ToString().Replace($"/v{schemaVersion}/", $"/v{currentVersion}/");
                     logger.LogWarning("The version of schema does not match the installed Dev Proxy version, the expected schema is {schema}", currentSchemaUrl);
                 }
@@ -632,10 +632,13 @@ public static class ProxyUtils
         }
     }
 
-    public static string GetVersionString(string productVersion)
+    /// <summary>
+    /// Produces major.minor.patch version dropping a pre-release suffix.
+    /// </summary>
+    /// <param name="version">A version looks like "0.28.1", "0.28.1-alpha", "0.28.10-beta.1", "0.28.10-rc.1", or "0.28.0-preview-1", etc.</param>
+    public static string NormalizeVersion(string version)
     {
-        return productVersion.Contains("-beta")
-            ? productVersion.Split("-")[0]
-            : productVersion;
+        version ??= string.Empty;
+        return version.Split('-', StringSplitOptions.None)[0];
     }
 }
