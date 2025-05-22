@@ -221,7 +221,7 @@ public class CrudApiPlugin(IPluginEvents pluginEvents, IProxyContext context, IL
         if (_configuration.EntraAuthConfig is not null ||
             _configuration.Actions.Any(a => a.Auth == CrudApiAuthType.Entra))
         {
-            headers.Add(new HttpHeader("access-control-allow-headers", "authorization"));
+            headers.Add(new HttpHeader("access-control-allow-headers", "authorization, content-type"));
         }
 
         var methods = string.Join(", ", _configuration.Actions
