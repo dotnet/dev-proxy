@@ -134,6 +134,16 @@ internal class PluginLoader(bool isDiscover, ILogger logger, ILoggerFactory logg
         {
             if (_pluginConfig == null)
             {
+                var schemaUrl = Configuration.GetValue<string>("$schema");
+                if (string.IsNullOrWhiteSpace(schemaUrl))
+                {
+                    _logger.LogDebug("No schema URL found in configuration file, skipping schema version validation");
+                }
+                else
+                {
+                    ProxyUtils.ValidateSchemaVersion(schemaUrl, _logger);
+                }
+
                 _pluginConfig = new PluginConfig();
 
                 if (isDiscover)
