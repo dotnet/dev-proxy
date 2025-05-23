@@ -7,6 +7,7 @@
 #define MyAppVersion "0.28.0-beta.1"
 #define MyAppPublisher ".NET Foundation"
 #define MyAppURL "https://aka.ms/devproxy"
+#define DevProxyExecutable "devproxy.exe"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
@@ -44,6 +45,9 @@ Source: ".\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsu
 
 [UninstallDelete]
 Type:files;Name:"{app}\rootCert.pfx"
+
+[UninstallRun]
+Filename: "{app}\{#DevProxyExecutable}"; Parameters: "cert remove"; RunOnceId: "DelService"; Flags: runhidden; 
 
 [Code]
 procedure RemovePath(Path: string);
