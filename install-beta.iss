@@ -7,7 +7,7 @@
 #define MyAppVersion "0.28.0-beta.1"
 #define MyAppPublisher ".NET Foundation"
 #define MyAppURL "https://aka.ms/devproxy"
-#define DevProxyExecutable "devproxy.exe"
+#define DevProxyExecutable "devproxy-beta.exe"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
