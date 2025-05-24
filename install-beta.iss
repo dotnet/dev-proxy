@@ -47,7 +47,7 @@ Source: ".\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsu
 Type:files;Name:"{app}\rootCert.pfx"
 
 [UninstallRun]
-Filename: "{app}\{#DevProxyExecutable}"; Parameters: "cert remove"; RunOnceId: "DelService"; Flags: runhidden; 
+Filename: "{app}\{#DevProxyExecutable}"; Parameters: "cert remove"; RunOnceId: "RemoveCert"; Flags: runhidden; 
 
 [Code]
 procedure RemovePath(Path: string);
