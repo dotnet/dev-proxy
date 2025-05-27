@@ -320,7 +320,6 @@ public static class ProxyUtils
                 }
             }
 
-
             return _productVersion;
         }
     }
@@ -638,7 +637,6 @@ public static class ProxyUtils
     /// <param name="version">A version looks like "0.28.1", "0.28.1-alpha", "0.28.10-beta.1", "0.28.10-rc.1", or "0.28.0-preview-1", etc.</param>
     public static string NormalizeVersion(string version)
     {
-        version ??= string.Empty;
         return version.Split('-', StringSplitOptions.None)[0];
     }
 }
