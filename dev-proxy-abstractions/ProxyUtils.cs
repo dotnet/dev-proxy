@@ -525,6 +525,7 @@ public static class ProxyUtils
             logger.LogDebug("Schema is empty, skipping schema version validation.");
             return;
         }
+        
         try
         {
             var uri = new Uri(schemaUrl);

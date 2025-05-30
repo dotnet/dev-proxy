@@ -29,9 +29,11 @@ public abstract class BaseLoader(ILogger logger, bool validateSchemas) : IDispos
             _logger.LogDebug("Schema reference not found in file {File}. Skipping schema validation", FilePath);
             return true;
         }
+
         var schemaUrl = schemaUrlElement.GetString() ?? "";
         ProxyUtils.ValidateSchemaVersion(schemaUrl, _logger);
         var (IsValid, ValidationErrors) = await ProxyUtils.ValidateJson(fileContents, schemaUrl, _logger);
+
         if (!IsValid)
         {
             _logger.LogError("Schema validation failed for {File} with the following errors: {Errors}", FilePath, string.Join(", ", ValidationErrors));
