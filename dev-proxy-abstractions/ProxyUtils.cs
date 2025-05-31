@@ -525,7 +525,7 @@ public static class ProxyUtils
             logger.LogDebug("Schema is empty, skipping schema version validation.");
             return;
         }
-        
+
         try
         {
             var uri = new Uri(schemaUrl);
@@ -534,9 +534,9 @@ public static class ProxyUtils
                 var schemaVersion = uri.Segments[^2]
                     .TrimStart('v')
                     .TrimEnd('/');
-                if (CompareSemVer(ProductVersion, schemaVersion) != 0)
+                var currentVersion = NormalizeVersion(ProductVersion);
+                if (CompareSemVer(currentVersion, schemaVersion) != 0)
                 {
-                    var currentVersion = NormalizeVersion(ProductVersion);
                     var currentSchemaUrl = uri.ToString().Replace($"/v{schemaVersion}/", $"/v{currentVersion}/");
                     logger.LogWarning("The version of schema does not match the installed Dev Proxy version, the expected schema is {schema}", currentSchemaUrl);
                 }
