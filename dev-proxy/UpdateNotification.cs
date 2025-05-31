@@ -40,7 +40,7 @@ internal static class UpdateNotification
             }
 
             var latestReleaseVersion = latestRelease.Version;
-            var currentVersion = ProxyUtils.NormalizeVersion(ProxyUtils.ProductVersion);
+            var currentVersion = ProxyUtils.ProductVersion;
 
             // -1 = latest release is greater
             // 0 = versions are equal
