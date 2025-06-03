@@ -17,7 +17,7 @@ public class VisualStudioCodeSnippet
 
 public static class ConfigNewCommandHandler
 {
-    private static readonly string snippetsFileUrl = $"https://aka.ms/devproxy/snippets/v{ProxyUtils.GetVersionString(ProxyUtils.ProductVersion)}";
+    private static readonly string snippetsFileUrl = $"https://aka.ms/devproxy/snippets/v{ProxyUtils.NormalizeVersion(ProxyUtils.ProductVersion)}";
     private static readonly string configFileSnippetName = "ConfigFile";
 
     public static async Task CreateConfigFileAsync(string name, ILogger logger)

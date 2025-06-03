@@ -320,7 +320,6 @@ public static class ProxyUtils
                 }
             }
 
-
             return _productVersion;
         }
     }
@@ -355,7 +354,7 @@ public static class ProxyUtils
     }
 
     public static JsonSerializerOptions JsonSerializerOptions => jsonSerializerOptions;
-    
+
     public static JsonDocumentOptions JsonDocumentOptions { get; } = new()
     {
         AllowTrailingCommas = true,
@@ -425,7 +424,8 @@ public static class ProxyUtils
                 }
 
                 // For multiple URLs, find the common prefix
-                var paths = group.Select(url => {
+                var paths = group.Select(url =>
+                {
                     if (url.Contains('*'))
                     {
                         return url;
@@ -518,10 +518,126 @@ public static class ProxyUtils
         return s1;
     }
 
-    public static string GetVersionString(string productVersion)
+    public static void ValidateSchemaVersion(string schemaUrl, ILogger logger)
     {
-        return productVersion.Contains("-beta")
-            ? productVersion.Split("-")[0]
-            : productVersion;
+        if (string.IsNullOrWhiteSpace(schemaUrl))
+        {
+            logger.LogDebug("Schema is empty, skipping schema version validation.");
+            return;
+        }
+
+        try
+        {
+            var uri = new Uri(schemaUrl);
+            if (uri.Segments.Length > 2)
+            {
+                var schemaVersion = uri.Segments[^2]
+                    .TrimStart('v')
+                    .TrimEnd('/');
+                var currentVersion = NormalizeVersion(ProductVersion);
+                if (CompareSemVer(currentVersion, schemaVersion) != 0)
+                {
+                    var currentSchemaUrl = uri.ToString().Replace($"/v{schemaVersion}/", $"/v{currentVersion}/");
+                    logger.LogWarning("The version of schema does not match the installed Dev Proxy version, the expected schema is {schema}", currentSchemaUrl);
+                }
+            }
+            else
+            {
+                logger.LogDebug("Invalid schema {schemaUrl}, skipping schema version validation.", schemaUrl);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning("Invalid schema {schemaUrl}, skipping schema version validation. Error: {error}", schemaUrl, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Compares two semantic versions strings.
+    /// </summary>
+    /// <param name="a">ver1</param>
+    /// <param name="b">ver2</param>
+    /// <returns>
+    /// Returns 0 if the versions are equal, -1 if a is less than b, and 1 if a is greater than b.
+    /// An invalid argument is "rounded" to a minimal version.
+    /// </returns>
+    public static int CompareSemVer(string? a, string? b)
+    {
+        if (string.IsNullOrWhiteSpace(a) && string.IsNullOrWhiteSpace(b))
+        {
+            return 0;
+        }
+        else if (string.IsNullOrWhiteSpace(a))
+        {
+            return -1;
+        }
+        else if (string.IsNullOrWhiteSpace(b))
+        {
+            return 1;
+        }
+
+        a = a.TrimStart('v');
+        b = b.TrimStart('v');
+
+        var aParts = a.Split('-');
+        var bParts = b.Split('-');
+
+        var aParsed = Version.TryParse(aParts[0], out var aVersion);
+        var bParsed = Version.TryParse(bParts[0], out var bVersion);
+        if (!aParsed && !bParsed)
+        {
+            return 0;
+        }
+        else if (!aParsed)
+        {
+            return -1;
+        }
+        else if (!bParsed)
+        {
+            return 1;
+        }
+
+        var compare = aVersion!.CompareTo(bVersion);
+        if (compare != 0)
+        {
+            // if the versions are different, return the comparison result
+            return compare;
+        }
+
+        // if the versions are the same, compare the prerelease tags
+        if (aParts.Length == 1 && bParts.Length == 1)
+        {
+            // if both versions are stable, they are equal
+            return 0;
+        }
+        else if (aParts.Length == 1)
+        {
+            // if a is stable and b is not, a is greater
+            return 1;
+        }
+        else if (bParts.Length == 1)
+        {
+            // if b is stable and a is not, b is greater
+            return -1;
+        }
+        else if (aParts[1] == bParts[1])
+        {
+            // if both versions are prerelease and the tags are the same, they are equal
+            return 0;
+        }
+        else
+        {
+            // if both versions are prerelease, b is greater
+            return -1;
+        }
+    }
+
+    /// <summary>
+    /// Produces major.minor.patch version dropping a pre-release suffix.
+    /// </summary>
+    /// <param name="version">A version looks like "0.28.1", "0.28.1-alpha", "0.28.10-beta.1", "0.28.10-rc.1", or "0.28.0-preview-1", etc.</param>
+    public static string NormalizeVersion(string version)
+    {
+        return version.Split('-', StringSplitOptions.None)[0];
     }
 }
