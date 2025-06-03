@@ -399,8 +399,13 @@ internal class ProxyHost
 
     private static Command CreateCertRemoveCommand(ILogger logger)
     {
+        var forceOption = new Option<bool>("--force", "Force the root certificate removal");
+        forceOption.AddAlias("-f");
+
         var certRemoveCommand = new Command("remove", "Remove the certificate from Root Store");
-        certRemoveCommand.SetHandler(() => CertRemoveCommandHandler.RemoveCert(logger));
+        certRemoveCommand.SetHandler((context) => CertRemoveCommandHandler.RemoveCert(logger, context, forceOption));
+
+        certRemoveCommand.AddOptions(new[] { forceOption }.OrderByName());
         return certRemoveCommand;
     }
 
