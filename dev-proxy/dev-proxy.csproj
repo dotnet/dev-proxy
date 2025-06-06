@@ -62,6 +62,9 @@
     <None Update="devproxy-errors.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="remove-cert.sh">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="toggle-proxy.sh">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

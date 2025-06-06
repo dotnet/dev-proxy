@@ -2,8 +2,11 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Abstractions;
 using System.CommandLine;
 using System.CommandLine.Invocation;
+using System.Diagnostics;
+using Titanium.Web.Proxy.Helpers;
 
 namespace DevProxy.CommandHandlers;
 
@@ -30,6 +33,7 @@ public static class CertRemoveCommandHandler
 
             logger.LogInformation("Uninstalling the root certificate...");
 
+            RemoveTrustedCertificateOnMac();
             ProxyEngine.ProxyServer.CertificateManager.RemoveTrustedRootCertificate(machineTrusted: false);
 
             logger.LogInformation("DONE");
@@ -64,5 +68,26 @@ public static class CertRemoveCommandHandler
                 return false;
             }
         }
+    }
+
+    private static void RemoveTrustedCertificateOnMac()
+    {
+        if (!RunTime.IsMac)
+        {
+            return;
+        }
+
+        var bashScriptPath = Path.Join(ProxyUtils.AppFolder, "remove-cert.sh");
+        ProcessStartInfo startInfo = new()
+        {
+            FileName = "/bin/bash",
+            Arguments = bashScriptPath,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+
+        var process = new Process() { StartInfo = startInfo };
+        process.Start();
+        process.WaitForExit();
     }
 }
