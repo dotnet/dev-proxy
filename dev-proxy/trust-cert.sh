@@ -1,9 +1,10 @@
+#!/bin/bash
 set -e
 
-echo -e "\nDev Proxy uses a self-signed certificate to intercept and inspect HTTPS traffic.\nUpdate the certificate in your Keychain so that it's trusted by your browser? (Y/n)? \c"
-read -n 1 answer
+echo -e "\nDev Proxy uses a self-signed certificate to intercept and inspect HTTPS traffic."
+read -r -p "Update the certificate in your Keychain so that it's trusted by your browser? (Y/n): " answer
 
-if [ "$answer" = "n" ]; then
+if [ "$answer" = "n" ] || [ "$answer" = "N" ]; then
     echo -e "\n\033[1;33mTrust the certificate in your Keychain manually to avoid errors.\033[0m\n"
     exit 1
 fi
