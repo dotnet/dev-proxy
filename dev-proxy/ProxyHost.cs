@@ -382,7 +382,8 @@ internal class ProxyHost
 
         var sortedCommands = new[]
         {
-            CreateCertEnsureCommand(logger)
+            CreateCertEnsureCommand(logger),
+            CreateCertRemoveCommand(logger),
         }.OrderByName();
 
         certCommand.AddCommands(sortedCommands);
@@ -394,6 +395,18 @@ internal class ProxyHost
         var certEnsureCommand = new Command("ensure", "Ensure certificates are setup (creates root if required). Also makes root certificate trusted.");
         certEnsureCommand.SetHandler(async () => await CertEnsureCommandHandler.EnsureCertAsync(logger));
         return certEnsureCommand;
+    }
+
+    private static Command CreateCertRemoveCommand(ILogger logger)
+    {
+        var forceOption = new Option<bool>("--force", "Force the root certificate removal");
+        forceOption.AddAlias("-f");
+
+        var certRemoveCommand = new Command("remove", "Remove the certificate from Root Store");
+        certRemoveCommand.SetHandler((context) => CertRemoveCommandHandler.RemoveCert(logger, context, forceOption));
+
+        certRemoveCommand.AddOptions(new[] { forceOption }.OrderByName());
+        return certRemoveCommand;
     }
 
     private static Command CreateJwtCommand()
