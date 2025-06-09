@@ -1,8 +1,14 @@
-<h1 align="center">
-    <img alt="Dev Proxy" src="./media/icon.png" width="125" />
-  <br>
-  Dev Proxy
+<h1 style="
+  align: center;
+  padding-left: 0.3em;
+  background-image: url('media/banner.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;">
+  <img alt="Dev Proxy" src="./media/icon.png" width="125" style="font-color:white" />
+  <p>Dev Proxy</p>  
 </h1>
+
 <h4 align="center">
   Test the untestable
 </h4>
@@ -15,9 +21,6 @@
    <a href="https://youtube.com/@devproxy">
     <img alt="YouTube" src="https://img.shields.io/badge/youTube-%40devproxy%E2%80%AC-red?style=social&logo=youtube&link=https%3A%2F%2Fyoutube.com%2F%40devproxy" />
   </a>
-</p>
- 
-<p align="center">
 </p>
 
 # What is Dev Proxy?
