@@ -1,5 +1,5 @@
 <h1 align="center"> 
-  <img alt="Dev Proxy" src="./media/icon.png" width="125" style="font-color:white" />
+  <img alt="Dev Proxy" src="./media/icon.png" width="125" />
   <p>Dev Proxy</p>  
 </h1>
 
@@ -14,6 +14,10 @@
   <br />
    <a href="https://youtube.com/@devproxy">
     <img alt="YouTube" src="https://img.shields.io/badge/youTube-%40devproxy%E2%80%AC-red?style=social&logo=youtube&link=https%3A%2F%2Fyoutube.com%2F%40devproxy" />
+  </a>
+  <br />
+  <a href="https://aka.ms/devproxy">
+    Documentation
   </a>
 </p>
 
