@@ -39,6 +39,7 @@ public class EntraMockResponsePlugin(IPluginEvents pluginEvents, IProxyContext c
 
     public override string Name => nameof(EntraMockResponsePlugin);
 
+    // Running on POST requests with a body
     protected override void ProcessMockResponse(ref byte[] body, IList<MockResponseHeader> headers, ProxyRequestArgs e, MockResponse? matchingResponse)
     {
         base.ProcessMockResponse(ref body, headers, e, matchingResponse);
@@ -47,7 +48,7 @@ public class EntraMockResponsePlugin(IPluginEvents pluginEvents, IProxyContext c
         var changed = false;
 
         StoreLastNonce(e);
-        UpdateMsalState(ref bodyString, e, ref changed);
+        UpdateMsalStateInBody(ref bodyString, e, ref changed);
         UpdateIdToken(ref bodyString, e, ref changed);
         UpdateDevProxyKeyId(ref bodyString, ref changed);
         UpdateDevProxyCertificateChain(ref bodyString, ref changed);
@@ -56,6 +57,15 @@ public class EntraMockResponsePlugin(IPluginEvents pluginEvents, IProxyContext c
         {
             body = Encoding.UTF8.GetBytes(bodyString);
         }
+    }
+
+    // Running on GET requests without a body
+    protected override void ProcessMockResponse(ref string? body, IList<MockResponseHeader> headers, ProxyRequestArgs e, MockResponse? matchingResponse)
+    {
+        base.ProcessMockResponse(ref body, headers, e, matchingResponse);
+
+        StoreLastNonce(e);
+        UpdateMsalStateInHeaders(headers, e);
     }
 
     private void UpdateDevProxyCertificateChain(ref string bodyString, ref bool changed)
@@ -127,7 +137,22 @@ public class EntraMockResponsePlugin(IPluginEvents pluginEvents, IProxyContext c
         return base64 + padding;
     }
 
-    private void UpdateMsalState(ref string body, ProxyRequestArgs e, ref bool changed)
+    private static void UpdateMsalStateInHeaders(IList<MockResponseHeader> headers, ProxyRequestArgs e)
+    {
+        var locationHeader = headers.FirstOrDefault(h => h.Name.Equals("Location", StringComparison.OrdinalIgnoreCase));
+
+        if (locationHeader is null ||
+            !e.Session.HttpClient.Request.RequestUri.Query.Contains("state="))
+        {
+            return;
+        }
+
+        var queryString = HttpUtility.ParseQueryString(e.Session.HttpClient.Request.RequestUri.Query);
+        var msalState = queryString["state"];
+        locationHeader.Value = locationHeader.Value.Replace("state=@dynamic", $"state={msalState}");
+    }
+
+    private static void UpdateMsalStateInBody(ref string body, ProxyRequestArgs e, ref bool changed)
     {
         if (!body.Contains("state=@dynamic") ||
           !e.Session.HttpClient.Request.RequestUri.Query.Contains("state="))

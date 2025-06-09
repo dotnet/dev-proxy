@@ -2,34 +2,90 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Collections.Concurrent;
-using System.Text;
 using DevProxy.Abstractions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Console;
 using Microsoft.Extensions.Options;
+using System.Collections.Concurrent;
+using System.Text;
 
 namespace DevProxy.Logging;
 
-public class ProxyConsoleFormatter : ConsoleFormatter
+sealed class ProxyConsoleFormatter : ConsoleFormatter
 {
+    public const string DefaultCategoryName = "devproxy";
+
     private const string _boxTopLeft = "\u256d ";
     private const string _boxLeft = "\u2502 ";
     private const string _boxBottomLeft = "\u2570 ";
-    // used to align single-line messages
     private const string _boxSpacing = "  ";
-    private readonly ConcurrentDictionary<int, List<RequestLog>> _requestLogs = [];
+    private const string _labelSpacing = " ";
+
+    // Cached lookup tables for better performance
+    private static readonly Dictionary<LogLevel, string> _logLevelStrings = new()
+    {
+        [LogLevel.Trace] = "trce",
+        [LogLevel.Debug] = "dbug",
+        [LogLevel.Information] = "info",
+        [LogLevel.Warning] = "warn",
+        [LogLevel.Error] = "fail",
+        [LogLevel.Critical] = "crit"
+    };
+    private static readonly Dictionary<LogLevel, (ConsoleColor bg, ConsoleColor fg)> _logLevelColors = new()
+    {
+        [LogLevel.Information] = (Console.BackgroundColor, ConsoleColor.Blue),
+        [LogLevel.Warning] = (ConsoleColor.DarkYellow, Console.ForegroundColor),
+        [LogLevel.Error] = (ConsoleColor.DarkRed, Console.ForegroundColor),
+        [LogLevel.Debug] = (Console.BackgroundColor, ConsoleColor.Gray),
+        [LogLevel.Trace] = (Console.BackgroundColor, ConsoleColor.Gray)
+    };
+    private static readonly Dictionary<MessageType, string> _messageTypeStrings = new()
+    {
+        [MessageType.InterceptedRequest] = "req",
+        [MessageType.InterceptedResponse] = "res",
+        [MessageType.PassedThrough] = "pass",
+        [MessageType.Chaos] = "oops",
+        [MessageType.Warning] = "warn",
+        [MessageType.Mocked] = "mock",
+        [MessageType.Failed] = "fail",
+        [MessageType.Tip] = "tip",
+        [MessageType.Skipped] = "skip",
+        [MessageType.Processed] = "proc",
+        [MessageType.Timestamp] = "time",
+        [MessageType.FinishedProcessingRequest] = "    "
+    };
+    private static readonly Dictionary<MessageType, (ConsoleColor bg, ConsoleColor fg)> _messageTypeColors = new()
+    {
+        [MessageType.InterceptedRequest] = (Console.BackgroundColor, ConsoleColor.Gray),
+        [MessageType.PassedThrough] = (ConsoleColor.Gray, Console.ForegroundColor),
+        [MessageType.Skipped] = (Console.BackgroundColor, ConsoleColor.Gray),
+        [MessageType.Processed] = (ConsoleColor.DarkGreen, Console.ForegroundColor),
+        [MessageType.Chaos] = (ConsoleColor.DarkRed, Console.ForegroundColor),
+        [MessageType.Warning] = (ConsoleColor.DarkYellow, Console.ForegroundColor),
+        [MessageType.Mocked] = (ConsoleColor.DarkMagenta, Console.ForegroundColor),
+        [MessageType.Failed] = (ConsoleColor.DarkRed, Console.ForegroundColor),
+        [MessageType.Tip] = (ConsoleColor.DarkBlue, Console.ForegroundColor),
+        [MessageType.Timestamp] = (Console.BackgroundColor, ConsoleColor.Gray)
+    };
+
+    private readonly ConcurrentDictionary<int, List<object>> _messages = [];
     private readonly ProxyConsoleFormatterOptions _options;
-    const string labelSpacing = " ";
-    // label length + 2
-    private readonly static string noLabelSpacing = new(' ', 4 + 2);
-    public static readonly string DefaultCategoryName = "devproxy";
+    private readonly HashSet<MessageType> _filteredMessageTypes;
 
     public ProxyConsoleFormatter(IOptions<ProxyConsoleFormatterOptions> options) : base(DefaultCategoryName)
     {
-        // needed to properly required rounded corners in the box
         Console.OutputEncoding = Encoding.UTF8;
         _options = options.Value;
+
+        _filteredMessageTypes = [MessageType.InterceptedResponse];
+        if (!_options.ShowSkipMessages)
+        {
+            _ = _filteredMessageTypes.Add(MessageType.Skipped);
+        }
+        if (!_options.ShowTimestamps)
+        {
+            _ = _filteredMessageTypes.Add(MessageType.Timestamp);
+        }
     }
 
     public override void Write<TState>(in LogEntry<TState> logEntry, IExternalScopeProvider? scopeProvider, TextWriter textWriter)
@@ -40,7 +96,7 @@ public class ProxyConsoleFormatter : ConsoleFormatter
         }
         else
         {
-            LogMessage(logEntry, scopeProvider, textWriter);
+            LogRegularLogMessage(logEntry, scopeProvider, textWriter);
         }
     }
 
@@ -48,77 +104,89 @@ public class ProxyConsoleFormatter : ConsoleFormatter
     {
         var messageType = requestLog.MessageType;
 
-        // don't log intercepted response to console
-        if (messageType == MessageType.InterceptedResponse ||
-            (messageType == MessageType.Skipped && !_options.ShowSkipMessages) ||
-                (messageType == MessageType.Timestamp && !_options.ShowTimestamps)
-            )
+        if (_filteredMessageTypes.Contains(messageType))
         {
             return;
         }
 
         var requestId = GetRequestIdScope(scopeProvider);
-
-        if (requestId is not null)
+        if (requestId is null)
         {
-            if (messageType == MessageType.FinishedProcessingRequest)
-            {
-                // log all request logs for the request
-                var currentRequestLogs = _requestLogs[requestId.Value];
-                var lastIndex = currentRequestLogs.Count - 1;
-                for (var i = 0; i < currentRequestLogs.Count; ++i)
-                {
-                    var log = currentRequestLogs[i];
-                    WriteLogMessageBoxedWithInvertedLabels(log, scopeProvider, textWriter, i == lastIndex);
-                }
-                _requestLogs.Remove(requestId.Value, out _);
-            }
-            else
-            {
-                // buffer request logs until the request is finished processing
-                requestLog.PluginName = category == DefaultCategoryName ? null : category;
-                var value = _requestLogs.GetOrAdd(requestId.Value, []);
-                value.Add(requestLog);
-            }
+            return;
+        }
+
+        if (messageType == MessageType.FinishedProcessingRequest)
+        {
+            FlushLogsForRequest(requestId.Value, textWriter);
+        }
+        else
+        {
+            BufferRequestLog(requestLog, category, requestId.Value);
         }
     }
 
-    private static int? GetRequestIdScope(IExternalScopeProvider? scopeProvider)
+    private void FlushLogsForRequest(int requestId, TextWriter textWriter)
     {
-        int? requestId = null;
-
-        scopeProvider?.ForEachScope((scope, state) =>
+        if (!_messages.TryGetValue(requestId, out var messages))
         {
-            if (scope is Dictionary<string, object> dictionary)
-            {
-                if (dictionary.TryGetValue(nameof(requestId), out var req))
-                {
-                    requestId = (int)req;
-                }
-            }
-        }, "");
+            return;
+        }
 
-        return requestId;
+        var lastIndex = messages.Count - 1;
+        for (var i = 0; i < messages.Count; i++)
+        {
+            var isLast = i == lastIndex;
+            switch (messages[i])
+            {
+                case RequestLog log:
+                    WriteRequestLogMessage(log, textWriter, isLast);
+                    break;
+                case LogEntry logEntry:
+                    WriteRegularLogMessage(logEntry, textWriter, isLast);
+                    break;
+                default:
+                    // noop
+                    break;
+            }
+        }
+        _ = _messages.TryRemove(requestId, out _);
     }
 
-    private void LogMessage<TState>(in LogEntry<TState> logEntry, IExternalScopeProvider? scopeProvider, TextWriter textWriter)
+    private void BufferRequestLog(RequestLog requestLog, string category, int requestId)
     {
-        // regular messages
-        var logLevel = logEntry.LogLevel;
-        var message = logEntry.Formatter(logEntry.State, logEntry.Exception);
-        var category = logEntry.Category == DefaultCategoryName ? null : logEntry.Category;
+        requestLog.PluginName = category == DefaultCategoryName ? null : category;
+        var messages = _messages.GetOrAdd(requestId, _ => []);
+        messages.Add(requestLog);
+    }
 
-        WriteMessageBoxedWithInvertedLabels(message, logLevel, category, scopeProvider, textWriter);
+    private void LogRegularLogMessage<TState>(in LogEntry<TState> logEntry, IExternalScopeProvider? scopeProvider, TextWriter textWriter)
+    {
+        var requestId = GetRequestIdScope(scopeProvider);
+        if (requestId is null)
+        {
+            WriteRegularLogMessage(logEntry, scopeProvider, textWriter);
+        }
+        else
+        {
+            var message = LogEntry.FromLogEntry(logEntry);
+            var messages = _messages.GetOrAdd(requestId.Value, _ => []);
+            messages.Add(message);
+        }
+    }
+
+    private void WriteRegularLogMessage<TState>(in LogEntry<TState> logEntry, IExternalScopeProvider? scopeProvider, TextWriter textWriter)
+    {
+        var message = logEntry.Formatter(logEntry.State, logEntry.Exception);
+        WriteMessageWithLabel(message, logEntry.LogLevel, scopeProvider, textWriter);
 
         if (logEntry.Exception is not null)
         {
             textWriter.Write($" Exception Details: {logEntry.Exception}");
         }
-
         textWriter.WriteLine();
     }
 
-    private void WriteMessageBoxedWithInvertedLabels(string? message, LogLevel logLevel, string? category, IExternalScopeProvider? scopeProvider, TextWriter textWriter)
+    private void WriteMessageWithLabel(string? message, LogLevel logLevel, IExternalScopeProvider? scopeProvider, TextWriter textWriter)
     {
         if (message is null)
         {
@@ -128,140 +196,120 @@ public class ProxyConsoleFormatter : ConsoleFormatter
         var label = GetLogLevelString(logLevel);
         var (bgColor, fgColor) = GetLogLevelColor(logLevel);
 
-        textWriter.WriteColoredMessage($" {label} ", bgColor, fgColor);
-        textWriter.Write($"{labelSpacing}{_boxSpacing}{(logLevel == LogLevel.Debug ? $"[{DateTime.Now:T}] " : "")}");
+        WriteLabel(textWriter, label, bgColor, fgColor);
+        textWriter.Write($"{_labelSpacing}{_boxSpacing}");
 
-        if (_options.IncludeScopes && scopeProvider is not null)
+        if (logLevel == LogLevel.Debug)
         {
-            scopeProvider.ForEachScope((scope, state) =>
-            {
-                if (scope is null)
-                {
-                    return;
-                }
-
-                if (scope is string scopeString)
-                {
-                    textWriter.Write(scopeString);
-                    textWriter.Write(": ");
-                }
-                else if (scope.GetType().Name == "FormattedLogValues")
-                {
-                    textWriter.Write(scope.ToString());
-                    textWriter.Write(": ");
-                }
-            }, textWriter);
+            textWriter.Write($"[{DateTime.Now:T}] ");
         }
 
-        if (!string.IsNullOrEmpty(category))
-        {
-            textWriter.Write($"{category}: ");
-        }
-
+        WriteScopes(scopeProvider, textWriter);
         textWriter.Write(message);
     }
 
-    private void WriteLogMessageBoxedWithInvertedLabels(RequestLog log, IExternalScopeProvider? scopeProvider, TextWriter textWriter, bool lastMessage = false)
+    private void WriteRequestLogMessage(RequestLog log, TextWriter textWriter, bool isLast)
     {
         var label = GetMessageTypeString(log.MessageType);
         var (bgColor, fgColor) = GetMessageTypeColor(log.MessageType);
+        var boxChar = GetBoxCharacter(log.MessageType, isLast);
 
-        void writePluginName()
+        if (log.MessageType == MessageType.InterceptedRequest)
         {
-            if (_options.IncludeScopes && log.PluginName is not null)
+            textWriter.WriteLine();
+        }
+
+        WriteLabel(textWriter, label, bgColor, fgColor);
+        textWriter.Write($"{GetLabelPadding(label)}{_labelSpacing}{boxChar}");
+        WritePluginName(textWriter, log.PluginName);
+        textWriter.WriteLine(log.Message);
+    }
+
+    private void WriteRegularLogMessage(LogEntry log, TextWriter textWriter, bool isLast)
+    {
+        var label = GetLogLevelString(log.LogLevel);
+        var (bgColor, fgColor) = GetLogLevelColor(log.LogLevel);
+        var boxChar = isLast ? _boxBottomLeft : _boxLeft;
+
+        WriteLabel(textWriter, label, bgColor, fgColor);
+        textWriter.Write($"{GetLabelPadding(label)}{_labelSpacing}{boxChar}");
+        WritePluginName(textWriter, log.Category);
+        textWriter.WriteLine(log.Message);
+    }
+
+    private void WritePluginName(TextWriter textWriter, string? categoryOrPluginName)
+    {
+        if (!_options.IncludeScopes || categoryOrPluginName is null)
+        {
+            return;
+        }
+
+        var pluginName = categoryOrPluginName[(categoryOrPluginName.LastIndexOf('.') + 1)..];
+        if (pluginName != nameof(ProxyEngine))
+        {
+            textWriter.Write($"{pluginName}: ");
+        }
+    }
+
+    private void WriteScopes(IExternalScopeProvider? scopeProvider, TextWriter textWriter)
+    {
+        if (!_options.IncludeScopes || scopeProvider is null)
+        {
+            return;
+        }
+
+        scopeProvider.ForEachScope((scope, state) =>
+        {
+            if (scope is null)
             {
-                textWriter.Write($"{log.PluginName}: ");
+                return;
             }
-        }
 
-        switch (log.MessageType)
-        {
-            case MessageType.InterceptedRequest:
-                // always one line (method + URL)
-                // print label and top of the box
-                textWriter.WriteLine();
-                textWriter.WriteColoredMessage($" {label} ", bgColor, fgColor);
-                textWriter.Write($"{(label.Length < 4 ? " " : "")}{labelSpacing}{_boxTopLeft}");
-                writePluginName();
-                textWriter.WriteLine(log.Message);
-                break;
-            default:
-                textWriter.WriteColoredMessage($" {label} ", bgColor, fgColor);
-                textWriter.Write($"{(label.Length < 4 ? " " : "")}{labelSpacing}{(lastMessage ? _boxBottomLeft : _boxLeft)}");
-                writePluginName();
-                textWriter.WriteLine(log.Message);
-                break;
-        }
+            var scopeText = scope is string scopeString ? scopeString :
+                          scope.GetType().Name == "FormattedLogValues" ? scope.ToString() : null;
+
+            if (scopeText is not null)
+            {
+                textWriter.Write($"{scopeText}: ");
+            }
+        }, textWriter);
     }
 
-    // from https://github.com/dotnet/runtime/blob/198a2596229f69b8e02902bfb4ffc2a30be3b339/src/libraries/Microsoft.Extensions.Logging.Console/src/SimpleConsoleFormatter.cs#L154
-    private static string GetLogLevelString(LogLevel logLevel)
+    private static string GetLogLevelString(LogLevel logLevel) =>
+        _logLevelStrings.TryGetValue(logLevel, out var str) ? str : throw new ArgumentOutOfRangeException(nameof(logLevel));
+
+    private static (ConsoleColor bg, ConsoleColor fg) GetLogLevelColor(LogLevel logLevel) =>
+        _logLevelColors.TryGetValue(logLevel, out var color) ? color : (Console.BackgroundColor, Console.ForegroundColor);
+
+    private static string GetMessageTypeString(MessageType messageType) =>
+        _messageTypeStrings.TryGetValue(messageType, out var str) ? str : "    ";
+
+    private static (ConsoleColor bg, ConsoleColor fg) GetMessageTypeColor(MessageType messageType) =>
+        _messageTypeColors.TryGetValue(messageType, out var color) ? color : (Console.BackgroundColor, Console.ForegroundColor);
+
+    private static int? GetRequestIdScope(IExternalScopeProvider? scopeProvider)
     {
-        return logLevel switch
+        int? requestId = null;
+        scopeProvider?.ForEachScope((scope, _) =>
         {
-            LogLevel.Trace => "trce",
-            LogLevel.Debug => "dbug",
-            LogLevel.Information => "info",
-            LogLevel.Warning => "warn",
-            LogLevel.Error => "fail",
-            LogLevel.Critical => "crit",
-            _ => throw new ArgumentOutOfRangeException(nameof(logLevel))
-        };
+            if (scope is Dictionary<string, object> dictionary &&
+                dictionary.TryGetValue(nameof(requestId), out var req))
+            {
+                requestId = (int)req;
+            }
+        }, "");
+        return requestId;
     }
 
-    private static (ConsoleColor bg, ConsoleColor fg) GetLogLevelColor(LogLevel logLevel)
+    private static void WriteLabel(TextWriter textWriter, string label, ConsoleColor bgColor, ConsoleColor fgColor)
     {
-        var fgColor = Console.ForegroundColor;
-        var bgColor = Console.BackgroundColor;
-
-        return logLevel switch
-        {
-            LogLevel.Information => (bgColor, ConsoleColor.Blue),
-            LogLevel.Warning => (ConsoleColor.DarkYellow, fgColor),
-            LogLevel.Error => (ConsoleColor.DarkRed, fgColor),
-            LogLevel.Debug => (bgColor, ConsoleColor.Gray),
-            LogLevel.Trace => (bgColor, ConsoleColor.Gray),
-            _ => (bgColor, fgColor)
-        };
+        textWriter.WriteColoredMessage($" {label} ", bgColor, fgColor);
     }
 
-    private static string GetMessageTypeString(MessageType messageType)
-    {
-        return messageType switch
-        {
-            MessageType.InterceptedRequest => "req",
-            MessageType.InterceptedResponse => "res",
-            MessageType.PassedThrough => "pass",
-            MessageType.Chaos => "oops",
-            MessageType.Warning => "warn",
-            MessageType.Mocked => "mock",
-            MessageType.Failed => "fail",
-            MessageType.Tip => "tip",
-            MessageType.Skipped => "skip",
-            MessageType.Processed => "proc",
-            MessageType.Timestamp => "time",
-            _ => "    "
-        };
-    }
+    private static string GetLabelPadding(string label) =>
+        label.Length < 4 ? " " : "";
 
-    private static (ConsoleColor bg, ConsoleColor fg) GetMessageTypeColor(MessageType messageType)
-    {
-        var fgColor = Console.ForegroundColor;
-        var bgColor = Console.BackgroundColor;
-
-        return messageType switch
-        {
-            MessageType.InterceptedRequest => (bgColor, ConsoleColor.Gray),
-            MessageType.PassedThrough => (ConsoleColor.Gray, fgColor),
-            MessageType.Skipped => (bgColor, ConsoleColor.Gray),
-            MessageType.Processed => (ConsoleColor.DarkGreen, fgColor),
-            MessageType.Chaos => (ConsoleColor.DarkRed, fgColor),
-            MessageType.Warning => (ConsoleColor.DarkYellow, fgColor),
-            MessageType.Mocked => (ConsoleColor.DarkMagenta, fgColor),
-            MessageType.Failed => (ConsoleColor.DarkRed, fgColor),
-            MessageType.Tip => (ConsoleColor.DarkBlue, fgColor),
-            MessageType.Timestamp => (bgColor, ConsoleColor.Gray),
-            _ => (bgColor, fgColor)
-        };
-    }
+    private static string GetBoxCharacter(MessageType messageType, bool isLast) =>
+        messageType == MessageType.InterceptedRequest ? _boxTopLeft :
+        isLast ? _boxBottomLeft : _boxLeft;
 }

@@ -37,9 +37,9 @@ public class ProxyCommandHandler(IPluginEvents pluginEvents,
             _logger.LogWarning("You haven't configured any plugins. Please add plugins to your configuration file. Dev Proxy will exit.");
             return 1;
         }
-        if (Configuration.UrlsToWatch.Count == 0)
+        if (_urlsToWatch.Count == 0)
         {
-            _logger.LogWarning("You haven't configured any URLs to watch. Please add URLs to your configuration file or use the --urls-to-watch option. Dev Proxy will exit.");
+            _logger.LogError("You haven't configured any URLs to watch. Please add URLs to your configuration file or use the --urls-to-watch option. Dev Proxy will exit.");
             return 1;
         }
 

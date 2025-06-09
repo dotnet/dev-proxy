@@ -416,11 +416,11 @@ internal class ProxyHost
         var jwtNameOption = new Option<string>("--name", "The name of the user to create the token for.");
         jwtNameOption.AddAlias("-n");
 
-        var jwtAudienceOption = new Option<IEnumerable<string>>("--audience", "The audiences to create the token for. Specify once for each audience")
+        var jwtAudiencesOption = new Option<IEnumerable<string>>("--audiences", "The audiences to create the token for. Specify once for each audience")
         {
             AllowMultipleArgumentsPerToken = true
         };
-        jwtAudienceOption.AddAlias("-a");
+        jwtAudiencesOption.AddAlias("-a");
 
         var jwtIssuerOption = new Option<string>("--issuer", "The issuer of the token.");
         jwtIssuerOption.AddAlias("-i");
@@ -494,7 +494,7 @@ internal class ProxyHost
             JwtCommandHandler.GetToken,
             new JwtBinder(
                 jwtNameOption,
-                jwtAudienceOption,
+                jwtAudiencesOption,
                 jwtIssuerOption,
                 jwtRolesOption,
                 jwtScopesOption,
@@ -507,7 +507,7 @@ internal class ProxyHost
         var sortedOptions = new Option[]
         {
             jwtNameOption,
-            jwtAudienceOption,
+            jwtAudiencesOption,
             jwtIssuerOption,
             jwtRolesOption,
             jwtScopesOption,

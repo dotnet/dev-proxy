@@ -65,6 +65,8 @@ public class CrudApiConfiguration
 {
     public string ApiFile { get; set; } = "api.json";
     public string BaseUrl { get; set; } = string.Empty;
+    [JsonPropertyName("enableCors")]
+    public bool EnableCORS { get; set; } = true;
     public string DataFile { get; set; } = string.Empty;
     public IEnumerable<CrudApiAction> Actions { get; set; } = [];
     [System.Text.Json.Serialization.JsonConverter(typeof(JsonStringEnumConverter))]
@@ -165,6 +167,13 @@ public class CrudApiPlugin(IPluginEvents pluginEvents, IProxyContext context, IL
             return Task.CompletedTask;
         }
 
+        if (IsCORSPreflightRequest(request) && _configuration.EnableCORS)
+        {
+            SendEmptyResponse(HttpStatusCode.NoContent, e.Session);
+            Logger.LogRequest("CORS preflight request", MessageType.Mocked, new LoggingContext(e.Session));
+            return Task.CompletedTask;
+        }
+
         if (!AuthorizeRequest(e))
         {
             SendUnauthorizedResponse(e.Session);
@@ -191,6 +200,36 @@ public class CrudApiPlugin(IPluginEvents pluginEvents, IProxyContext context, IL
         }
 
         return Task.CompletedTask;
+    }
+
+    private static bool IsCORSPreflightRequest(Request request)
+    {
+        return request.Method == "OPTIONS" &&
+               request.Headers.Any(h => h.Name.Equals("Origin", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void AddCORSHeaders(Request request, List<HttpHeader> headers)
+    {
+        var origin = request.Headers.FirstOrDefault(h => h.Name.Equals("Origin", StringComparison.OrdinalIgnoreCase))?.Value;
+        if (string.IsNullOrEmpty(origin))
+        {
+            return;
+        }
+
+        headers.Add(new HttpHeader("access-control-allow-origin", origin));
+
+        if (_configuration.EntraAuthConfig is not null ||
+            _configuration.Actions.Any(a => a.Auth == CrudApiAuthType.Entra))
+        {
+            headers.Add(new HttpHeader("access-control-allow-headers", "authorization, content-type"));
+        }
+
+        var methods = string.Join(", ", _configuration.Actions
+            .Where(a => a.Method is not null)
+            .Select(a => a.Method)
+            .Distinct());
+
+        headers.Add(new HttpHeader("access-control-allow-methods", methods));
     }
 
     private bool AuthorizeRequest(ProxyRequestArgs e, CrudApiAction? action = null)
@@ -304,12 +343,12 @@ public class CrudApiPlugin(IPluginEvents pluginEvents, IProxyContext context, IL
         return permissions.Contains(permission, StringComparer.OrdinalIgnoreCase);
     }
 
-    private static void SendUnauthorizedResponse(SessionEventArgs e)
+    private void SendUnauthorizedResponse(SessionEventArgs e)
     {
         SendJsonResponse("{\"error\":{\"message\":\"Unauthorized\"}}", HttpStatusCode.Unauthorized, e);
     }
 
-    private static void SendNotFoundResponse(SessionEventArgs e)
+    private void SendNotFoundResponse(SessionEventArgs e)
     {
         SendJsonResponse("{\"error\":{\"message\":\"Not found\"}}", HttpStatusCode.NotFound, e);
     }
@@ -327,25 +366,19 @@ public class CrudApiPlugin(IPluginEvents pluginEvents, IProxyContext context, IL
         return result;
     }
 
-    private static void SendEmptyResponse(HttpStatusCode statusCode, SessionEventArgs e)
+    private void SendEmptyResponse(HttpStatusCode statusCode, SessionEventArgs e)
     {
         var headers = new List<HttpHeader>();
-        if (e.HttpClient.Request.Headers.Any(h => h.Name == "Origin"))
-        {
-            headers.Add(new HttpHeader("access-control-allow-origin", "*"));
-        }
+        AddCORSHeaders(e.HttpClient.Request, headers);
         e.GenericResponse("", statusCode, headers);
     }
 
-    private static void SendJsonResponse(string body, HttpStatusCode statusCode, SessionEventArgs e)
+    private void SendJsonResponse(string body, HttpStatusCode statusCode, SessionEventArgs e)
     {
         var headers = new List<HttpHeader> {
             new("content-type", "application/json; charset=utf-8")
         };
-        if (e.HttpClient.Request.Headers.Any(h => h.Name == "Origin"))
-        {
-            headers.Add(new HttpHeader("access-control-allow-origin", "*"));
-        }
+        AddCORSHeaders(e.HttpClient.Request, headers);
         e.GenericResponse(body, statusCode, headers);
     }
 
@@ -396,8 +429,9 @@ public class CrudApiPlugin(IPluginEvents pluginEvents, IProxyContext context, IL
     {
         try
         {
-            _data?.Add(JObject.Parse(e.HttpClient.Request.BodyString));
-            SendJsonResponse(JsonConvert.SerializeObject(e.HttpClient.Request.BodyString, Formatting.Indented), HttpStatusCode.Created, e);
+            var data = JObject.Parse(e.HttpClient.Request.BodyString);
+            _data?.Add(data);
+            SendJsonResponse(JsonConvert.SerializeObject(data, Formatting.Indented), HttpStatusCode.Created, e);
             Logger.LogRequest($"201 {action.Url}", MessageType.Mocked, new LoggingContext(e));
         }
         catch (Exception ex)

@@ -41,6 +41,12 @@ public class OpenAIMockResponsePlugin(IPluginEvents pluginEvents, IProxyContext 
             return;
         }
 
+        if (e.ResponseState.HasBeenSet)
+        {
+            Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.Session));
+            return;
+        }
+
         var request = e.Session.HttpClient.Request;
         if (request.Method is null ||
             !request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase) ||

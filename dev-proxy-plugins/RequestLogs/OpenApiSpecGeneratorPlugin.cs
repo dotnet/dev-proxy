@@ -747,7 +747,7 @@ Now, generate the operation ID for the following:
     {
         try
         {
-            using var doc = JsonDocument.Parse(jsonString);
+            using var doc = JsonDocument.Parse(jsonString, ProxyUtils.JsonDocumentOptions);
             JsonElement root = doc.RootElement;
             var schema = GetSchemaFromJsonElement(root);
             return schema;

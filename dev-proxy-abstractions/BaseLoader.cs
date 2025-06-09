@@ -21,16 +21,19 @@ public abstract class BaseLoader(ILogger logger, bool validateSchemas) : IDispos
 
     private async Task<bool> ValidateFileContents(string fileContents)
     {
-        using var document = JsonDocument.Parse(fileContents);
+        using var document = JsonDocument.Parse(fileContents, ProxyUtils.JsonDocumentOptions);
         var root = document.RootElement;
 
-        if (!root.TryGetProperty("$schema", out var schemaUrl))
+        if (!root.TryGetProperty("$schema", out var schemaUrlElement))
         {
             _logger.LogDebug("Schema reference not found in file {File}. Skipping schema validation", FilePath);
             return true;
         }
 
-        var (IsValid, ValidationErrors) = await ProxyUtils.ValidateJson(fileContents, schemaUrl.GetString(), _logger);
+        var schemaUrl = schemaUrlElement.GetString() ?? "";
+        ProxyUtils.ValidateSchemaVersion(schemaUrl, _logger);
+        var (IsValid, ValidationErrors) = await ProxyUtils.ValidateJson(fileContents, schemaUrl, _logger);
+
         if (!IsValid)
         {
             _logger.LogError("Schema validation failed for {File} with the following errors: {Errors}", FilePath, string.Join(", ", ValidationErrors));

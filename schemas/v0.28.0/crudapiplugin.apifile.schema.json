@@ -12,6 +12,10 @@
       "type": "string",
       "description": "Base URL where Dev Proxy exposes the API. Dev Proxy prepends this base URL to the URLs defined in actions."
     },
+    "enableCors": {
+      "type": "boolean",
+      "description": "Set to true to enable CORS for the API. Default is true."
+    },
     "dataFile": {
       "type": "string",
       "description": "Path to the file that contains the data for the API. The file must define a JSON array."

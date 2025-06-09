@@ -74,7 +74,7 @@ public abstract class BaseProxyPlugin : IProxyPlugin
             var configSectionName = ConfigSection.Key;
             var configFile = await File.ReadAllTextAsync(Context.Configuration.ConfigFile);
 
-            using var document = JsonDocument.Parse(configFile);
+            using var document = JsonDocument.Parse(configFile, ProxyUtils.JsonDocumentOptions);
             var root = document.RootElement;
 
             if (!root.TryGetProperty(configSectionName, out var configSection))
@@ -83,6 +83,7 @@ public abstract class BaseProxyPlugin : IProxyPlugin
                 return (false, [string.Format(CultureInfo.InvariantCulture, "Configuration section {0} not found in configuration file", configSectionName)]);
             }
 
+            ProxyUtils.ValidateSchemaVersion(schemaUrl, Logger);
             return await ProxyUtils.ValidateJson(configSection.GetRawText(), schemaUrl, Logger);
         }
         catch (Exception ex)
