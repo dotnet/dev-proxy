@@ -1,10 +1,4 @@
-<h1 style="
-  align: center;
-  padding-left: 0.3em;
-  background-image: url('media/banner.png');
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;">
+<h1 align="center"> 
   <img alt="Dev Proxy" src="./media/icon.png" width="125" style="font-color:white" />
   <p>Dev Proxy</p>  
 </h1>
@@ -25,7 +19,11 @@
 
 # What is Dev Proxy?
 
-Dev Proxy is an API simulator that helps you effortlessly test your app beyond the happy path.
+Dev Proxy is an API simulator that helps you effortlessly test your app beyond the happy path. Dev Proxy is a command-line tool that works on any platform. Because it intercepts network requests, it works with any type of app and tech stack.
+
+Dev Proxy is **open source** and **free to use**.
+
+![Dev Proxy](./media/banner.png)
 
 You test your app to make sure it works as intended. But what if the APIs you use fail? Will your app lose your customer's data? How do you test for this? Simulating API failures is hard. You end up writing code that you won't be shipping or worse: not testing at all. That's why we built Dev Proxy, to simulate API errors so that you can easily test your app without changing your code.
 
@@ -37,16 +35,11 @@ With Dev Proxy you:
 - **Quickly stand-up mock APIs** without writing a line of code, so that you can **focus on building your app instead of writing code you won't be shipping**.
 - Improve your app with contextual guidance on how you use APIs, to **make your app even better**.
 
-Dev Proxy is a command-line tool that works on any platform. Because it intercepts network requests, it works with any type of app and tech stack.
-
-Dev Proxy is **open source** and **free to use**.
-
 ## Get started
 
 To get started with Dev Proxy, follow our [tutorial](https://aka.ms/devproxy/setup) to install and run Dev Proxy for the first time.
 
 [![Getting started with Dev Proxy](https://img.youtube.com/vi/HVTJlGSxhcw/0.jpg)](https://www.youtube.com/watch?v=HVTJlGSxhcw)
-
 
 ## .NET Foundation
 
