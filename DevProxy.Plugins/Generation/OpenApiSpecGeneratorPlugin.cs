@@ -106,7 +106,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
                 continue;
             }
 
-            var methodAndUrlString = request.Message.First();
+            var methodAndUrlString = request.Message;
             Logger.LogDebug("Processing request {MethodAndUrlString}...", methodAndUrlString);
 
             try

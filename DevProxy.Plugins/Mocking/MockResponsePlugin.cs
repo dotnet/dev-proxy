@@ -148,6 +148,7 @@ public class MockResponsePlugin(
             var clonedResponse = (MockResponse)matchingResponse.Clone();
             ProcessMockResponseInternal(e, clonedResponse);
             state.HasBeenSet = true;
+            return Task.CompletedTask;
         }
         else if (Configuration.BlockUnmockedRequests)
         {
@@ -169,6 +170,7 @@ public class MockResponsePlugin(
                 }
             });
             state.HasBeenSet = true;
+            return Task.CompletedTask;
         }
 
         Logger.LogRequest("No matching mock response found", MessageType.Skipped, new(e.Session));

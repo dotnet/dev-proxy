@@ -2,7 +2,6 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using DevProxy.Abstractions.LanguageModel;
 using DevProxy.Abstractions.Models;
 using DevProxy.Abstractions.Proxy;
 using System.Text.Json.Serialization;
@@ -34,7 +33,6 @@ sealed class ProxyConfiguration : IProxyConfiguration
     public IEnumerable<MockRequestHeader>? FilterByHeaders { get; set; }
     public string? IPAddress { get; set; } = "127.0.0.1";
     public bool InstallCert { get; set; } = true;
-    public LanguageModelConfiguration? LanguageModel { get; set; }
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public LogLevel LogLevel { get; set; } = LogLevel.Information;
     public bool NoFirstRun { get; set; }

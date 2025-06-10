@@ -419,6 +419,8 @@ sealed class DevProxyCommand : RootCommand
             _recordOption,
             _watchPidsOption,
             _watchProcessNamesOption,
+            // _configFileOption is set during DI, so it's always set here
+            _configFileOption!,
             _noFirstRunOption,
             _asSystemProxyOption,
             _installCertOption,

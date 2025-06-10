@@ -163,7 +163,7 @@ public sealed class OpenAILanguageModelClient(
 
         try
         {
-            var url = $"{_configuration.Url}/chat/completions";
+            var url = $"{_configuration.Url?.TrimEnd('/')}/chat/completions";
             _logger.LogDebug("Requesting chat completion. Message: {LastMessage}", messages.Last().Content);
 
             var payload = new OpenAIChatCompletionRequest

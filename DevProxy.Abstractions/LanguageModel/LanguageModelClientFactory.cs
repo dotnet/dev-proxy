@@ -14,14 +14,14 @@ public static class LanguageModelClientFactory
         ArgumentNullException.ThrowIfNull(serviceProvider);
         ArgumentNullException.ThrowIfNull(configuration);
 
-        var lmSection = configuration.GetSection("LanguageModelClient");
-        var config = lmSection?.Get<LanguageModelConfiguration>();
+        var lmSection = configuration.GetSection("LanguageModel");
+        var config = lmSection?.Get<LanguageModelConfiguration>() ?? new();
 
-        return config?.Client switch
+        return config.Client switch
         {
-            LanguageModelClient.Ollama => ActivatorUtilities.CreateInstance<OllamaLanguageModelClient>(serviceProvider),
-            LanguageModelClient.OpenAI => ActivatorUtilities.CreateInstance<OpenAILanguageModelClient>(serviceProvider),
-            _ => ActivatorUtilities.CreateInstance<OpenAILanguageModelClient>(serviceProvider)
+            LanguageModelClient.Ollama => ActivatorUtilities.CreateInstance<OllamaLanguageModelClient>(serviceProvider, config),
+            LanguageModelClient.OpenAI => ActivatorUtilities.CreateInstance<OpenAILanguageModelClient>(serviceProvider, config),
+            _ => ActivatorUtilities.CreateInstance<OpenAILanguageModelClient>(serviceProvider, config)
         };
     }
 }

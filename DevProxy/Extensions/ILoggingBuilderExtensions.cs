@@ -13,7 +13,7 @@ static class ILoggingBuilderExtensions
 {
     public static ILoggingBuilder AddRequestLogger(this ILoggingBuilder builder)
     {
-        _ = builder.Services.AddSingleton<ILogger, RequestLogger>();
+        _ = builder.Services.AddSingleton<ILoggerProvider, RequestLoggerProvider>();
 
         return builder;
     }

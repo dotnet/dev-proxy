@@ -9,10 +9,10 @@ using Microsoft.VisualStudio.Threading;
 
 namespace DevProxy.Logging;
 
-sealed class RequestLogger(IEnumerable<IPlugin> plugins, IProxyState proxyState) : ILogger
+sealed class RequestLogger(IServiceProvider serviceProvider, IProxyState proxyState) : ILogger
 {
-    private readonly IEnumerable<IPlugin> _plugins = plugins;
     private readonly IProxyState _proxyState = proxyState;
+    private readonly IServiceProvider _serviceProvider = serviceProvider;
 
     public bool IsEnabled(LogLevel logLevel) => true;
 
@@ -32,7 +32,10 @@ sealed class RequestLogger(IEnumerable<IPlugin> plugins, IProxyState proxyState)
             using var joinableTaskContext = new JoinableTaskContext();
             var joinableTaskFactory = new JoinableTaskFactory(joinableTaskContext);
 
-            foreach (var plugin in _plugins.Where(p => p.Enabled))
+            // Lazily resolve plugins to avoid circular dependency
+            var plugins = _serviceProvider.GetRequiredService<IEnumerable<IPlugin>>();
+
+            foreach (var plugin in plugins.Where(p => p.Enabled))
             {
                 joinableTaskFactory.Run(async () => await plugin.AfterRequestLogAsync(requestLogArgs));
             }

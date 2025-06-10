@@ -170,7 +170,7 @@ public sealed class OllamaLanguageModelClient(
 
         try
         {
-            var url = $"{_configuration.Url}/api/generate";
+            var url = $"{_configuration.Url?.TrimEnd('/')}/api/generate";
             _logger.LogDebug("Requesting completion. Prompt: {Prompt}", prompt);
 
             var response = await _httpClient.PostAsJsonAsync(url,
@@ -216,7 +216,7 @@ public sealed class OllamaLanguageModelClient(
 
         try
         {
-            var url = $"{_configuration.Url}/api/chat";
+            var url = $"{_configuration.Url?.TrimEnd('/')}/api/chat";
             _logger.LogDebug("Requesting chat completion. Message: {LastMessage}", messages.Last().Content);
 
             var response = await _httpClient.PostAsJsonAsync(url,
