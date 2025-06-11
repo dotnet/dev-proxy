@@ -8,9 +8,9 @@ $platform = "linux-arm64"
 
 Remove-Item ../bld -Recurse -Force
 
-dotnet publish ../dev-proxy/dev-proxy.csproj -c Release -p:PublishSingleFile=true -r $platform --self-contained -o ../bld -p:InformationalVersion=$version
-dotnet build ../dev-proxy-plugins/dev-proxy-plugins.csproj -c Release -r $platform --no-self-contained -p:InformationalVersion=$version
-cp -R ../dev-proxy/bin/Release/net9.0/$platform/plugins ../bld
+dotnet publish ../DevProxy/DevProxy.csproj -c Release -p:PublishSingleFile=true -r $platform --self-contained -o ../bld -p:InformationalVersion=$version
+dotnet build ../DevProxy.Plugins/DevProxy.Plugins.csproj -c Release -r $platform --no-self-contained -p:InformationalVersion=$version
+cp -R ../DevProxy/bin/Release/net9.0/$platform/plugins ../bld
 pushd
 
 cd ../bld

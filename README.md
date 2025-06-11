@@ -1,103 +1,50 @@
-<h1 align="center">
-    <img alt="Dev Proxy" src="./media/icon.png" width="125" />
-  <br>Dev Proxy<br>
+<h1 align="center"> 
+  <img alt="Dev Proxy" src="./media/icon.png" width="125" />
+  <p>Dev Proxy</p>  
 </h1>
 
 <h4 align="center">
   Test the untestable
 </h4>
- 
-<p align="center">
-    <a href="https://aka.ms/devproxy/download">
-        <img alt="Download Now" src="https://img.shields.io/badge/download-now-green?style=for-the-badge">
-    </a>
-</p>
-<p align="center">
-    <a href="https://aka.ms/devproxy/discord">
-        <img alt="Discord" src="https://img.shields.io/badge/discord-chat-green?style=for-the-badge&logo=discord">
-    </a>
-</p>
 
 <p align="center">
-  <a href="#get-started">Get started</a> |
-  <a href="https://aka.ms/devproxy/docs">Documentation</a>
+  <a href="https://bsky.app/profile/devproxy.bsky.social">
+    <img alt="Bluesky" src="https://img.shields.io/badge/bluesky-%40devproxy.bsky.social%E2%80%AC-blue?style=social&logo=bluesky&link=https%3A%2F%2Fbsky.app%2Fprofile%2Fdevproxy.bsky.social" />
+  </a>
+  <br />
+   <a href="https://youtube.com/@devproxy">
+    <img alt="YouTube" src="https://img.shields.io/badge/youTube-%40devproxy%E2%80%AC-red?style=social&logo=youtube&link=https%3A%2F%2Fyoutube.com%2F%40devproxy" />
+  </a>
+  <br />
+  <a href="https://aka.ms/devproxy">
+    Documentation
+  </a>
 </p>
 
-<p align="center">
-  <a href="#example">Example</a> |
-  <a href="#features">Features</a> |
-  <a href="#trademarks">Trademarks</a>
-</p>
+# What is Dev Proxy?
 
-<p align="center">
-    <details class="details-reset border rounded-2" open="">
-  <summary class="px-3 py-2">
-    <svg aria-hidden="true" height="16" viewBox="0 0 16 16" version="1.1" width="16" data-view-component="true" class="octicon octicon-device-camera-video">
-    <path d="M16 3.75v8.5a.75.75 0 0 1-1.136.643L11 10.575v.675A1.75 1.75 0 0 1 9.25 13h-7.5A1.75 1.75 0 0 1 0 11.25v-6.5C0 3.784.784 3 1.75 3h7.5c.966 0 1.75.784 1.75 1.75v.675l3.864-2.318A.75.75 0 0 1 16 3.75Zm-6.5 1a.25.25 0 0 0-.25-.25h-7.5a.25.25 0 0 0-.25.25v6.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-6.5ZM11 8.825l3.5 2.1v-5.85l-3.5 2.1Z"></path>
-</svg>
-    <span aria-label="" class="m-1">📽️ Simulate throttling using Dev Proxy</span>
-    <span class="dropdown-caret"></span>
-  </summary>
+Dev Proxy is an API simulator that helps you effortlessly test your app beyond the happy path. Dev Proxy is a command-line tool that works on any platform. Because it intercepts network requests, it works with any type of app and tech stack.
 
-  <video src="https://user-images.githubusercontent.com/11563347/249426565-412849a4-15bb-446d-acd8-40b9d64ef8bc.mp4" data-canonical-src="https://user-images.githubusercontent.com/11563347/249426565-412849a4-15bb-446d-acd8-40b9d64ef8bc.mp4" controls="controls" muted="muted" class="d-block rounded-bottom-2 border-top width-fit" style="max-height:640px; min-height: 200px">
+Dev Proxy is **open source** and **free to use**.
 
-  </video>
-</details>
-</p>
+![Dev Proxy](./media/banner.png)
 
-Dev Proxy is a command line tool for simulating APIs for testing apps.
+You test your app to make sure it works as intended. But what if the APIs you use fail? Will your app lose your customer's data? How do you test for this? Simulating API failures is hard. You end up writing code that you won't be shipping or worse: not testing at all. That's why we built Dev Proxy, to simulate API errors so that you can easily test your app without changing your code.
 
-It aims to provide a better way to test applications.
+With Dev Proxy you:
 
-Use the proxy to:
-
-- simulate errors
-- simulate API behaviours
-- mock responses
-
-Identify and fix issues in your code before they reach production.
+- **See how your app responds to API errors**, without changing your app’s code, so that you can **build more robust apps and don't lose customers' data**.
+- **Verify how your app handles API rate limits**, so that you can avoid getting throttled and **improve the user experience for your customers**.
+- **See how your app handles slow APIs**, so that you can implement the necessary affordances, and **make your app more user-friendly**.
+- **Quickly stand-up mock APIs** without writing a line of code, so that you can **focus on building your app instead of writing code you won't be shipping**.
+- Improve your app with contextual guidance on how you use APIs, to **make your app even better**.
 
 ## Get started
 
-Begin with our [tutorial](https://learn.microsoft.com/microsoft-cloud/dev/dev-proxy/get-started/). It will guide you through the installation process and running the proxy for the first time.
+To get started with Dev Proxy, follow our [tutorial](https://aka.ms/devproxy/setup) to install and run Dev Proxy for the first time.
 
-## Example
+[![Getting started with Dev Proxy](https://img.youtube.com/vi/HVTJlGSxhcw/0.jpg)](https://www.youtube.com/watch?v=HVTJlGSxhcw)
 
-Fail requests (with a 50% chance) and respond with `429 Too Many Requests` or `503 Service Unavailable`:
-
-```text
-devproxy --failure-rate 50 --no-mocks --allowed-errors 429 503
-```
-
-## Features
-
-- run on any OS
-  - Windows
-  - macOS
-  - Linux
-- intercept requests from Microsoft Graph and other APIs
-- simulate errors
-- simulate throttling
-- simulate rate-limiting
-- mock responses
-- mock error responses
-- define wildcard paths to serve mocked responses
-- mock responses of different types (JSON, binary, etc.)
-- `$select` guidance to improve performance
-- caching guidance to improve performance
-- OData paging guidance
-- client-request-id header guidance
-- non-production beta endpoint guidance for Microsoft Graph
-- configure proxy to your needs, by setting:
-  - failure rate
-  - port
-  - whether to use mock responses or not
-  - URLs to intercept traffic
-- record proxy activity
-- get proxy activity summary report
-- detect minimal Microsoft Graph API permissions
-- check for excessive Microsoft Graph API permissions
-
-### .NET Foundation
+## .NET Foundation
 
 This project is supported by the [.NET Foundation](https://dotnetfoundation.org).

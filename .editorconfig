@@ -39,7 +39,7 @@ dotnet_style_parentheses_in_other_operators = never_if_unnecessary
 dotnet_style_parentheses_in_relational_binary_operators = always_for_clarity
 
 # Modifier preferences
-dotnet_style_require_accessibility_modifiers = for_non_interface_members
+dotnet_style_require_accessibility_modifiers = never
 
 # Expression-level preferences
 dotnet_style_coalesce_expression = true
@@ -76,9 +76,9 @@ dotnet_style_allow_statement_immediately_after_block_experimental = true
 #### C# Coding Conventions ####
 
 # var preferences
-csharp_style_var_elsewhere = false
-csharp_style_var_for_built_in_types = false
-csharp_style_var_when_type_is_apparent = false
+csharp_style_var_elsewhere = true
+csharp_style_var_for_built_in_types = true
+csharp_style_var_when_type_is_apparent = true
 
 # Expression-bodied members
 csharp_style_expression_bodied_accessors = true
@@ -86,7 +86,7 @@ csharp_style_expression_bodied_constructors = false
 csharp_style_expression_bodied_indexers = true
 csharp_style_expression_bodied_lambdas = true
 csharp_style_expression_bodied_local_functions = false
-csharp_style_expression_bodied_methods = false
+csharp_style_expression_bodied_methods = when_on_single_line
 csharp_style_expression_bodied_operators = false
 csharp_style_expression_bodied_properties = true
 
@@ -108,7 +108,7 @@ csharp_preferred_modifier_order = public,private,protected,internal,static,exter
 # Code-block preferences
 csharp_prefer_braces = true
 csharp_prefer_simple_using_statement = true
-csharp_style_namespace_declarations = block_scoped
+csharp_style_namespace_declarations = file_scoped
 csharp_style_prefer_method_group_conversion = true
 csharp_style_prefer_top_level_statements = true
 
@@ -223,3 +223,44 @@ dotnet_naming_style.begins_with_i.required_prefix = I
 dotnet_naming_style.begins_with_i.required_suffix = 
 dotnet_naming_style.begins_with_i.word_separator = 
 dotnet_naming_style.begins_with_i.capitalization = pascal_case
+
+# Do not catch general exception types
+dotnet_diagnostic.CA1031.severity = none
+# URI parameters should not be strings
+dotnet_diagnostic.CA1054.severity = none
+# URI properties should not be strings
+dotnet_diagnostic.CA1056.severity = none
+# Do not pass literals as localized parameters
+dotnet_diagnostic.CA1303.severity = none
+# Normalize strings to uppercase
+dotnet_diagnostic.CA1308.severity = none
+# Avoid uninstantiated internal classes
+dotnet_diagnostic.CA1812.severity = none
+# Use the LoggerMessage delegates
+dotnet_diagnostic.CA1848.severity = none
+# Possible multiple enumerations of IEnumerable collection
+dotnet_diagnostic.CA1851.severity = none
+# Do not directly await a Task
+dotnet_diagnostic.CA2007.severity = none
+# Pass System.Uri objects instead of strings
+dotnet_diagnostic.CA2234.severity = none
+# Do not use insecure randomness
+dotnet_diagnostic.CA5394.severity = none
+# IDE0005: Using directive is unnecessary
+dotnet_diagnostic.IDE0005.severity = warning
+# Use expression body for methods
+dotnet_diagnostic.IDE0022.severity = none
+# Use conditional expression for assignment
+dotnet_diagnostic.IDE0045.severity = none
+# Use conditional expression for return
+dotnet_diagnostic.IDE0046.severity = none
+# Use GeneratedRegexAttribute to generate the regular expression implementation at compile time.
+dotnet_diagnostic.SYSLIB1045.severity = none
+# Implement internal logic asynchronously
+dotnet_diagnostic.VSTHRD102.severity = none
+# Offer async option
+dotnet_diagnostic.VSTHRD104.severity = none
+# Add .ConfigureAwait(bool) to your await expression
+dotnet_diagnostic.VSTHRD111.severity = none
+
+dotnet_analyzer_diagnostic.severity = warning
