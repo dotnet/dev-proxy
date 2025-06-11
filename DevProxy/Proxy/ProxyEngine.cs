@@ -644,10 +644,14 @@ sealed class ProxyEngine(
 
         public static void RemoveFlag()
         {
-            if (File.Exists(filename))
+            try
             {
-                File.Delete(filename);
+                if (File.Exists(filename))
+                {
+                    File.Delete(filename);
+                }
             }
+            catch { }
         }
     }
 
