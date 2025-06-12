@@ -626,10 +626,10 @@ sealed class ProxyEngine(
                 return false;
             }
 
-            return CreateFlag();
+            return Create();
         }
 
-        private static bool CreateFlag()
+        private static bool Create()
         {
             try
             {
@@ -642,7 +642,7 @@ sealed class ProxyEngine(
             return true;
         }
 
-        public static void RemoveFlag()
+        public static void Remove()
         {
             try
             {

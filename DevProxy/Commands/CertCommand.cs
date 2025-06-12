@@ -138,6 +138,6 @@ sealed class CertCommand : Command
         _ = process.Start();
         process.WaitForExit();
 
-        HasRunFlag.RemoveFlag();
+        HasRunFlag.Remove();
     }
 }
