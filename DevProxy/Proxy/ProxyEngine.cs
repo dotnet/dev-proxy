@@ -179,7 +179,7 @@ sealed class ProxyEngine(
     {
         if (!RunTime.IsMac ||
             _config.NoFirstRun ||
-            !HasRunFlag.IsFirstRun() ||
+            !HasRunFlag.CreateIfMissing() ||
             !_config.InstallCert)
         {
             return;
@@ -619,7 +619,7 @@ sealed class ProxyEngine(
     {
         private static readonly string filename = Path.Combine(ProxyUtils.AppFolder!, ".hasrun");
 
-        public static bool IsFirstRun()
+        public static bool CreateIfMissing()
         {
             if (File.Exists(filename))
             {
