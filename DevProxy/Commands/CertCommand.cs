@@ -72,7 +72,7 @@ sealed class CertCommand : Command
             var isForced = invocationContext.ParseResult.GetValueForOption(_forceOption);
             if (!isForced)
             {
-                var isConfirmed = PromptConfirmation("Do you want to remove the root certificate", defaultValue: false);
+                var isConfirmed = PromptConfirmation("Do you want to remove the root certificate", acceptByDefault: false);
                 if (!isConfirmed)
                 {
                     return;
@@ -96,16 +96,16 @@ sealed class CertCommand : Command
         }
     }
 
-    private static bool PromptConfirmation(string message, bool defaultValue)
+    private static bool PromptConfirmation(string message, bool acceptByDefault)
     {
         while (true)
         {
-            Console.Write(message + $" ({(defaultValue ? "Y/n" : "y/N")}): ");
+            Console.Write(message + $" ({(acceptByDefault ? "Y/n" : "y/N")}): ");
             var answer = Console.ReadLine();
 
             if (string.IsNullOrWhiteSpace(answer))
             {
-                return defaultValue;
+                return acceptByDefault;
             }
             else if (string.Equals("y", answer, StringComparison.OrdinalIgnoreCase))
             {
