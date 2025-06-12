@@ -9,7 +9,6 @@ using System.CommandLine.Invocation;
 using System.CommandLine.Parsing;
 using System.Diagnostics;
 using Titanium.Web.Proxy.Helpers;
-using static DevProxy.Proxy.ProxyEngine;
 
 namespace DevProxy.Commands;
 

@@ -615,46 +615,6 @@ sealed class ProxyEngine(
         process.WaitForExit();
     }
 
-    internal static class HasRunFlag
-    {
-        private static readonly string filename = Path.Combine(ProxyUtils.AppFolder!, ".hasrun");
-
-        public static bool CreateIfMissing()
-        {
-            if (File.Exists(filename))
-            {
-                return false;
-            }
-
-            return Create();
-        }
-
-        private static bool Create()
-        {
-            try
-            {
-                File.WriteAllText(filename, "");
-            }
-            catch
-            {
-                return false;
-            }
-            return true;
-        }
-
-        public static void Remove()
-        {
-            try
-            {
-                if (File.Exists(filename))
-                {
-                    File.Delete(filename);
-                }
-            }
-            catch { }
-        }
-    }
-
     private static int GetProcessId(TunnelConnectSessionEventArgs e)
     {
         if (RunTime.IsWindows)
