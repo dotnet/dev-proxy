@@ -126,7 +126,7 @@ sealed class CertCommand : Command
         }
 
         var bashScriptPath = Path.Join(ProxyUtils.AppFolder, "remove-cert.sh");
-        ProcessStartInfo startInfo = new()
+        var startInfo = new ProcessStartInfo()
         {
             FileName = "/bin/bash",
             Arguments = bashScriptPath,
