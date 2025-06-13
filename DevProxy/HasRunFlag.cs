@@ -2,9 +2,11 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-namespace DevProxy.Abstractions.Utils;
+using DevProxy.Abstractions.Utils;
 
-public static class HasRunFlag
+namespace DevProxy;
+
+static class HasRunFlag
 {
     private static readonly string filename = Path.Combine(ProxyUtils.AppFolder!, ".hasrun");
 

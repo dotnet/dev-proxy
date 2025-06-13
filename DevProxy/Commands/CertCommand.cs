@@ -15,7 +15,7 @@ namespace DevProxy.Commands;
 sealed class CertCommand : Command
 {
     private readonly ILogger _logger;
-    private readonly Option<bool> _forceOption = new(["--force", "-f"], "Force the root certificate removal");
+    private readonly Option<bool> _forceOption = new(["--force", "-f"], "Don't prompt for confirmation when removing the certificate");
 
     public CertCommand(ILogger<CertCommand> logger) :
         base("cert", "Manage the Dev Proxy certificate")
@@ -62,9 +62,6 @@ sealed class CertCommand : Command
     public void RemoveCert(InvocationContext invocationContext)
     {
         _logger.LogTrace("RemoveCert() called");
-        ArgumentNullException.ThrowIfNull(_logger);
-        ArgumentNullException.ThrowIfNull(invocationContext);
-        ArgumentNullException.ThrowIfNull(_forceOption);
 
         try
         {
