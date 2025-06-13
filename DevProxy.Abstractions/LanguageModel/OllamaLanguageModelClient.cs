@@ -4,6 +4,7 @@
 
 using System.Diagnostics;
 using System.Net.Http.Json;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 
 namespace DevProxy.Abstractions.LanguageModel;
@@ -11,7 +12,7 @@ namespace DevProxy.Abstractions.LanguageModel;
 public sealed class OllamaLanguageModelClient(
     HttpClient httpClient,
     LanguageModelConfiguration configuration,
-    ILogger<OllamaLanguageModelClient> logger) : ILanguageModelClient
+    ILogger<OllamaLanguageModelClient> logger) : BaseLanguageModelClient(logger)
 {
     private readonly LanguageModelConfiguration _configuration = configuration;
     private readonly ILogger _logger = logger;
@@ -20,7 +21,7 @@ public sealed class OllamaLanguageModelClient(
     private readonly Dictionary<IEnumerable<ILanguageModelChatCompletionMessage>, OllamaLanguageModelChatCompletionResponse> _cacheChatCompletion = [];
     private bool? _lmAvailable;
 
-    public async Task<bool> IsEnabledAsync()
+    public override async Task<bool> IsEnabledAsync()
     {
         if (_lmAvailable.HasValue)
         {
@@ -31,7 +32,7 @@ public sealed class OllamaLanguageModelClient(
         return _lmAvailable.Value;
     }
 
-    public async Task<ILanguageModelCompletionResponse?> GenerateCompletionAsync(string prompt, CompletionOptions? options = null)
+    public override async Task<ILanguageModelCompletionResponse?> GenerateCompletionAsync(string prompt, CompletionOptions? options = null)
     {
         using var scope = _logger.BeginScope(nameof(OllamaLanguageModelClient));
 
@@ -78,7 +79,7 @@ public sealed class OllamaLanguageModelClient(
         }
     }
 
-    public async Task<ILanguageModelCompletionResponse?> GenerateChatCompletionAsync(IEnumerable<ILanguageModelChatCompletionMessage> messages, CompletionOptions? options = null)
+    public override async Task<ILanguageModelCompletionResponse?> GenerateChatCompletionAsync(IEnumerable<ILanguageModelChatCompletionMessage> messages, CompletionOptions? options = null)
     {
         using var scope = _logger.BeginScope(nameof(OllamaLanguageModelClient));
 
@@ -123,6 +124,15 @@ public sealed class OllamaLanguageModelClient(
 
             return response;
         }
+    }
+
+    protected override IEnumerable<ILanguageModelChatCompletionMessage> ConvertMessages(ChatMessage[] messages)
+    {
+        return messages.Select(m => new OllamaLanguageModelChatCompletionMessage
+        {
+            Role = m.Role.Value,
+            Content = m.Text
+        });
     }
 
     private async Task<bool> IsEnabledInternalAsync()

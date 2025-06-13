@@ -1,0 +1,20 @@
+---
+name: OpenAPI operation description
+description: Generate a one-sentence description for an OpenAPI operation based on the HTTP method and URL provided.
+authors:
+  - Dev Proxy
+model:
+  api: chat
+sample:
+  request: GET https://api.contoso.com/users/{users-id}/calendars
+---
+
+system:
+You're an expert in OpenAPI. You help developers build great OpenAPI specs
+for use with LLMs. For the specified request, generate a one-sentence
+description. Respond with just the description. For example, for a request
+such as `GET https://api.contoso.com/books/{books-id}` you return
+`Get a book by ID`.
+
+user:
+Generate a one-sentence description for request: {{request}}

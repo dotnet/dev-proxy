@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using DevProxy.Abstractions.Utils;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Net.Http.Json;
@@ -12,7 +13,7 @@ namespace DevProxy.Abstractions.LanguageModel;
 public sealed class OpenAILanguageModelClient(
     HttpClient httpClient,
     LanguageModelConfiguration configuration,
-    ILogger<OpenAILanguageModelClient> logger) : ILanguageModelClient
+    ILogger<OpenAILanguageModelClient> logger) : BaseLanguageModelClient(logger)
 {
     private readonly LanguageModelConfiguration? _configuration = configuration;
     private readonly HttpClient _httpClient = httpClient;
@@ -20,7 +21,7 @@ public sealed class OpenAILanguageModelClient(
     private readonly Dictionary<IEnumerable<ILanguageModelChatCompletionMessage>, OpenAIChatCompletionResponse> _cacheChatCompletion = [];
     private bool? _lmAvailable;
 
-    public async Task<bool> IsEnabledAsync()
+    public override async Task<bool> IsEnabledAsync()
     {
         if (_lmAvailable.HasValue)
         {
@@ -31,7 +32,7 @@ public sealed class OpenAILanguageModelClient(
         return _lmAvailable.Value;
     }
 
-    public async Task<ILanguageModelCompletionResponse?> GenerateCompletionAsync(string prompt, CompletionOptions? options = null)
+    public override async Task<ILanguageModelCompletionResponse?> GenerateCompletionAsync(string prompt, CompletionOptions? options = null)
     {
         var response = await GenerateChatCompletionAsync([new OpenAIChatCompletionMessage() { Content = prompt, Role = "user" }], options);
         if (response == null)
@@ -65,7 +66,7 @@ public sealed class OpenAILanguageModelClient(
         };
     }
 
-    public async Task<ILanguageModelCompletionResponse?> GenerateChatCompletionAsync(IEnumerable<ILanguageModelChatCompletionMessage> messages, CompletionOptions? options = null)
+    public override async Task<ILanguageModelCompletionResponse?> GenerateChatCompletionAsync(IEnumerable<ILanguageModelChatCompletionMessage> messages, CompletionOptions? options = null)
     {
         using var scope = _logger.BeginScope(nameof(OpenAILanguageModelClient));
 
@@ -110,6 +111,15 @@ public sealed class OpenAILanguageModelClient(
 
             return response;
         }
+    }
+
+    protected override IEnumerable<ILanguageModelChatCompletionMessage> ConvertMessages(ChatMessage[] messages)
+    {
+        return messages.Select(m => new OpenAIChatCompletionMessage
+        {
+            Role = m.Role.Value,
+            Content = m.Text
+        });
     }
 
     private async Task<bool> IsEnabledInternalAsync()

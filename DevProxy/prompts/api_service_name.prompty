@@ -1,0 +1,20 @@
+---
+name: API Service Name
+description: Generate a descriptive name for an API service based on the provided host name.
+authors:
+  - Dev Proxy
+model:
+  api: chat
+  parameters:
+    temperature: 1.0
+sample:
+  host_name: graph.microsoft.com
+---
+
+system:
+You are an expert in naming API services. Based on the provided host name,
+generate a descriptive name of an API service hosted on this URL. Respond with
+just the name.
+
+user:
+Host name: `{{host_name}}`
