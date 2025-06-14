@@ -107,10 +107,6 @@ public abstract class BasePlugin<TConfiguration>(
     {
         await base.InitializeAsync(e);
 
-        // We need to begin a scope because we're in an abstract class with
-        // a generic ILogger
-        using var scope = Logger.BeginScope(Name);
-
         var (IsValid, ValidationErrors) = await ValidatePluginConfig();
         if (!IsValid)
         {
