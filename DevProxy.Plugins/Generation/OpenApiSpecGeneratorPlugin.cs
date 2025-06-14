@@ -178,47 +178,26 @@ public sealed class OpenApiSpecGeneratorPlugin(
 
     private async Task<string> GetOperationIdAsync(string method, string serverUrl, string parametrizedPath)
     {
-        var prompt = @"**Prompt:**
-Generate an operation ID for an OpenAPI specification based on the HTTP method and URL provided. Follow these rules:
-- The operation ID should be in camelCase format.
-- Start with a verb that matches the HTTP method (e.g., `get`, `create`, `update`, `delete`).
-- Use descriptive words from the URL path.
-- Replace path parameters (e.g., `{userId}`) with relevant nouns in singular form (e.g., `User`).
-- Do not provide explanations or any other text; respond only with the operation ID.
-
-Example:
-**Request:** `GET https://api.contoso.com/books/{books-id}`
-getBook
-
-Example:
-**Request:** `GET https://api.contoso.com/books/{books-id}/authors`
-getBookAuthors
-
-Example:
-**Request:** `GET https://api.contoso.com/books/{books-id}/authors/{authors-id}`
-getBookAuthor
-
-Example:
-**Request:** `POST https://api.contoso.com/books/{books-id}/authors`
-addBookAuthor
-
-Now, generate the operation ID for the following:
-**Request:** `{request}`".Replace("{request}", $"{method.ToUpperInvariant()} {serverUrl}{parametrizedPath}", StringComparison.OrdinalIgnoreCase);
         ILanguageModelCompletionResponse? id = null;
         if (await languageModelClient.IsEnabledAsync())
         {
-            id = await languageModelClient.GenerateCompletionAsync(prompt, new() { Temperature = 1 });
+            id = await languageModelClient.GenerateChatCompletionAsync("api_operation_id", new()
+            {
+                { "request", $"{method.ToUpperInvariant()} {serverUrl}{parametrizedPath}" }
+            });
         }
         return id?.Response ?? $"{method}{parametrizedPath.Replace('/', '.')}";
     }
 
     private async Task<string> GetOperationDescriptionAsync(string method, string serverUrl, string parametrizedPath)
     {
-        var prompt = $"You're an expert in OpenAPI. You help developers build great OpenAPI specs for use with LLMs. For the specified request, generate a one-sentence description. Respond with just the description. For example, for a request such as `GET https://api.contoso.com/books/{{books-id}}` you return `Get a book by ID`. Request: {method.ToUpperInvariant()} {serverUrl}{parametrizedPath}";
         ILanguageModelCompletionResponse? description = null;
         if (await languageModelClient.IsEnabledAsync())
         {
-            description = await languageModelClient.GenerateCompletionAsync(prompt);
+            description = await languageModelClient.GenerateChatCompletionAsync("api_operation_description", new()
+            {
+                { "request", $"{method.ToUpperInvariant()} {serverUrl}{parametrizedPath}" }
+            });
         }
         return description?.Response ?? $"{method} {parametrizedPath}";
     }

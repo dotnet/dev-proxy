@@ -10,4 +10,6 @@ public class CompletionOptions
 {
     [JsonPropertyName("temperature")]
     public double? Temperature { get; set; }
+    [JsonPropertyName("top_p")]
+    public double? TopP { get; set; }
 }

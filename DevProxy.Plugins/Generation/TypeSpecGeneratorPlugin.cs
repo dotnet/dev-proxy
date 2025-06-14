@@ -546,11 +546,13 @@ public sealed class TypeSpecGeneratorPlugin(
     {
         Logger.LogTrace("Entered {Name}", nameof(GetOperationDescriptionAsync));
 
-        var prompt = $"You're an expert in OpenAPI. You help developers build great OpenAPI specs for use with LLMs. For the specified request, generate a one-sentence description. Respond with just the description. For example, for a request such as `GET https://api.contoso.com/books/{{books-id}}` you return `Get a book by ID`. Request: {method.ToUpperInvariant()} {url}";
         ILanguageModelCompletionResponse? description = null;
         if (await languageModelClient.IsEnabledAsync())
         {
-            description = await languageModelClient.GenerateCompletionAsync(prompt);
+            description = await languageModelClient.GenerateChatCompletionAsync("api_operation_description", new()
+            {
+                { "request", $"{method.ToUpperInvariant()} {url}" }
+            });
         }
 
         var operationDescription = description?.Response ?? $"{method.ToUpperInvariant()} {url}";
@@ -577,11 +579,13 @@ public sealed class TypeSpecGeneratorPlugin(
     {
         Logger.LogTrace("Entered {Name}", nameof(GetServiceTitleAsync));
 
-        var prompt = $"Based on the following host name, generate a descriptive name of an API service hosted on this URL. Respond with just the name. Host name: {url.Host}";
         ILanguageModelCompletionResponse? serviceTitle = null;
         if (await languageModelClient.IsEnabledAsync())
         {
-            serviceTitle = await languageModelClient.GenerateCompletionAsync(prompt, new() { Temperature = 1 });
+            serviceTitle = await languageModelClient.GenerateChatCompletionAsync("api_service_name", new()
+            {
+                { "host_name", url.Host }
+            });
         }
         var st = serviceTitle?.Response?.Trim('"') ?? $"{url.Host.Split('.').First().ToPascalCase()} API";
 
@@ -828,11 +832,13 @@ public sealed class TypeSpecGeneratorPlugin(
     {
         Logger.LogTrace("Entered {Name}", nameof(MakeSingularAsync));
 
-        var prompt = $"Make the following noun singular. Respond only with the word and nothing else. Don't translate. Word: {noun}";
         ILanguageModelCompletionResponse? singularNoun = null;
         if (await languageModelClient.IsEnabledAsync())
         {
-            singularNoun = await languageModelClient.GenerateCompletionAsync(prompt, new() { Temperature = 1 });
+            singularNoun = await languageModelClient.GenerateChatCompletionAsync("singular_noun", new()
+            {
+                { "noun", noun }
+            });
         }
         var singular = singularNoun?.Response;
 

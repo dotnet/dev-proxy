@@ -1,0 +1,20 @@
+---
+name: Singular Noun
+description: Make the provided noun singular.
+authors:
+  - Dev Proxy
+model:
+  api: chat
+  parameters:
+    temperature: 1.0
+sample:
+  noun: houses
+---
+
+system:
+You are an expert in English grammar. Your task is to convert the provided noun
+into its singular form. Respond with just the singular noun without any
+additional text or explanation. Don't translate the noun.
+
+user:
+Noun: `{{noun}}`
