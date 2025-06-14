@@ -8,7 +8,7 @@
     <Nullable>enable</Nullable>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <Title>Dev Proxy</Title>
-    <Version>0.28.0</Version>
+    <Version>0.29.0</Version>
     <Company>.NET Foundation</Company>
     <Product>Dev Proxy</Product>
     <AssemblyName>devproxy</AssemblyName>
@@ -64,8 +64,11 @@
     <None Update="devproxy-errors.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="remove-cert.sh">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="toggle-proxy.sh">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="trust-cert.sh">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

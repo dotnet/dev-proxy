@@ -179,7 +179,7 @@ sealed class ProxyEngine(
     {
         if (!RunTime.IsMac ||
             _config.NoFirstRun ||
-            !IsFirstRun() ||
+            !HasRunFlag.CreateIfMissing() ||
             !_config.InstallCert)
         {
             return;
@@ -613,23 +613,6 @@ sealed class ProxyEngine(
         using var process = new Process() { StartInfo = startInfo };
         _ = process.Start();
         process.WaitForExit();
-    }
-
-    private static bool IsFirstRun()
-    {
-        var firstRunFilePath = Path.Combine(ProxyUtils.AppFolder!, ".hasrun");
-        if (File.Exists(firstRunFilePath))
-        {
-            return false;
-        }
-
-        try
-        {
-            File.WriteAllText(firstRunFilePath, "");
-        }
-        catch { }
-
-        return true;
     }
 
     private static int GetProcessId(TunnelConnectSessionEventArgs e)
