@@ -178,7 +178,7 @@ sealed class ProxyConsoleFormatter : ConsoleFormatter
     private void WriteRegularLogMessage<TState>(in LogEntry<TState> logEntry, IExternalScopeProvider? scopeProvider, TextWriter textWriter)
     {
         var message = logEntry.Formatter(logEntry.State, logEntry.Exception);
-        WriteMessageWithLabel(message, logEntry.LogLevel, scopeProvider, textWriter);
+        WriteMessageWithLabel(message, logEntry.Category, logEntry.LogLevel, scopeProvider, textWriter);
 
         if (logEntry.Exception is not null)
         {
@@ -187,7 +187,7 @@ sealed class ProxyConsoleFormatter : ConsoleFormatter
         textWriter.WriteLine();
     }
 
-    private void WriteMessageWithLabel(string? message, LogLevel logLevel, IExternalScopeProvider? scopeProvider, TextWriter textWriter)
+    private void WriteMessageWithLabel(string? message, string category, LogLevel logLevel, IExternalScopeProvider? scopeProvider, TextWriter textWriter)
     {
         if (message is null)
         {
@@ -200,9 +200,10 @@ sealed class ProxyConsoleFormatter : ConsoleFormatter
         WriteLabel(textWriter, label, bgColor, fgColor);
         textWriter.Write($"{_labelSpacing}{_boxSpacing}");
 
-        if (logLevel == LogLevel.Debug)
+        if (logLevel <= LogLevel.Debug)
         {
-            textWriter.Write($"[{DateTime.Now:T}] ");
+            textWriter.Write($"[{DateTime.Now:HH:mm:ss.fffffff}] ");
+            textWriter.Write($"{category.Split('.').Last()}: ");
         }
 
         WriteScopes(scopeProvider, textWriter);
