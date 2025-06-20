@@ -7,7 +7,7 @@
       "type": "process",
       "args": [
         "build",
-        "${workspaceFolder}/dev-proxy.sln",
+        "${workspaceFolder}/DevProxy.sln",
         "/property:GenerateFullPaths=true",
         "/consoleloggerparameters:NoSummary"
       ],
@@ -23,7 +23,7 @@
       "type": "process",
       "args": [
         "publish",
-        "${workspaceFolder}/dev-proxy.sln",
+        "${workspaceFolder}/DevProxy.sln",
         "/property:GenerateFullPaths=true",
         "/consoleloggerparameters:NoSummary"
       ],
@@ -37,7 +37,7 @@
         "watch",
         "run",
         "--project",
-        "${workspaceFolder}/dev-proxy.sln"
+        "${workspaceFolder}/DevProxy.sln"
       ],
       "problemMatcher": "$msCompile"
     }

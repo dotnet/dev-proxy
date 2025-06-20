@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy MinimalCsomPermissionsPlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Reference to the JSON schema definition."
+    },
+    "typesFilePath": {
+      "type": "string",
+      "description": "Path to the file that lists permissions required to call SharePoint CSOM APIs. Default: ~appFolder/config/spo-csom-types.json."
+    }
+  },
+  "additionalProperties": false
+}

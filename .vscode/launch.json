@@ -10,9 +10,9 @@
       "request": "launch",
       "preLaunchTask": "build",
       // If you have changed target frameworks, make sure to update the program path.
-      "program": "${workspaceFolder}/dev-proxy/bin/Debug/net9.0/devproxy.dll",
+      "program": "${workspaceFolder}/DevProxy/bin/Debug/net9.0/devproxy.dll",
       "args": [],
-      "cwd": "${workspaceFolder}/dev-proxy/bin/Debug/net9.0",
+      "cwd": "${workspaceFolder}/DevProxy/bin/Debug/net9.0",
       // For more information about the 'console' field, see https://aka.ms/VSCode-CS-LaunchJson-Console
       "console": "integratedTerminal",
       "stopAtEntry": false,

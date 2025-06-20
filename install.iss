@@ -3,10 +3,11 @@
 
 #define MyAppName "Dev Proxy"
 ; for local use only. In production replaced by a command line arg
-#define MyAppSetupExeName "dev-proxy-installer-win-x64-0.28.0"
-#define MyAppVersion "0.28.0"
+#define MyAppSetupExeName "dev-proxy-installer-win-x64-0.29.0"
+#define MyAppVersion "0.29.0"
 #define MyAppPublisher ".NET Foundation"
 #define MyAppURL "https://aka.ms/devproxy"
+#define DevProxyExecutable "devproxy.exe"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
@@ -44,6 +45,9 @@ Source: ".\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsu
 
 [UninstallDelete]
 Type:files;Name:"{app}\rootCert.pfx"
+
+[UninstallRun]
+Filename: "{app}\{#DevProxyExecutable}"; Parameters: "cert remove --force"; RunOnceId: "RemoveCert"; Flags: runhidden; 
 
 [Code]
 procedure RemovePath(Path: string);

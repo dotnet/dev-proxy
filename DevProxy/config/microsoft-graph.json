@@ -1,0 +1,87 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.0/rc.schema.json",
+  "plugins": [
+    {
+      "name": "GraphSelectGuidancePlugin",
+      "enabled": true,
+      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll"
+    },
+    {
+      "name": "GraphBetaSupportGuidancePlugin",
+      "enabled": true,
+      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll",
+      "urlsToWatch": [
+        "https://graph.microsoft.com/beta/*",
+        "https://graph.microsoft.us/beta/*",
+        "https://dod-graph.microsoft.us/beta/*",
+        "https://microsoftgraph.chinacloudapi.cn/beta/*"
+      ]
+    },
+    {
+      "name": "GraphConnectorGuidancePlugin",
+      "enabled": true,
+      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll",
+      "urlsToWatch": [
+        "https://graph.microsoft.com/*/external/connections/*/schema",
+        "https://graph.microsoft.us/*/external/connections/*/schema",
+        "https://dod-graph.microsoft.us/*/external/connections/*/schema",
+        "https://microsoftgraph.chinacloudapi.cn/*/external/connections/*/schema"
+      ]
+    },
+    {
+      "name": "GraphSdkGuidancePlugin",
+      "enabled": true,
+      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll"
+    },
+    {
+      "name": "ODataPagingGuidancePlugin",
+      "enabled": true,
+      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll"
+    },
+    {
+      "name": "GraphClientRequestIdGuidancePlugin",
+      "enabled": true,
+      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll"
+    },
+    {
+      "name": "GraphRandomErrorPlugin",
+      "enabled": true,
+      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll",
+      "configSection": "graphRandomErrorsPlugin"
+    },
+    {
+      "name": "ExecutionSummaryPlugin",
+      "enabled": true,
+      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll",
+      "configSection": "executionSummaryPlugin"
+    }
+  ],
+  "urlsToWatch": [
+    "https://graph.microsoft.com/v1.0/*",
+    "https://graph.microsoft.com/beta/*",
+    "https://graph.microsoft.us/v1.0/*",
+    "https://graph.microsoft.us/beta/*",
+    "https://dod-graph.microsoft.us/v1.0/*",
+    "https://dod-graph.microsoft.us/beta/*",
+    "https://microsoftgraph.chinacloudapi.cn/v1.0/*",
+    "https://microsoftgraph.chinacloudapi.cn/beta/*"
+  ],
+  "graphRandomErrorsPlugin": {
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.0/graphrandomerrorplugin.schema.json",
+    "allowedErrors": [
+      429,
+      500,
+      502,
+      503,
+      504,
+      507
+    ],
+    "rate": 50
+  },
+  "executionSummaryPlugin": {
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.0/executionsummaryplugin.schema.json",
+    "groupBy": "url"
+  },
+  "labelMode": "text",
+  "logLevel": "information"
+}

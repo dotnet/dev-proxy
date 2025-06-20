@@ -26,12 +26,12 @@ jobs:
     - name: Restore workloads
       run: dotnet workload restore
     - name: Restore dependencies
-      run: dotnet restore dev-proxy.sln --locked-mode
+      run: dotnet restore DevProxy.sln --locked-mode
     - name: Build
-      run: dotnet build dev-proxy.sln --no-restore
+      run: dotnet build DevProxy.sln --no-restore
     # We really should have tests, putting these steps here for when we have a build process
     # - name: Test
-    #   run: dotnet test dev-proxy.sln --no-build --verbosity normal --collect:"XPlat Code Coverage"
+    #   run: dotnet test DevProxy.sln --no-build --verbosity normal --collect:"XPlat Code Coverage"
     # - name: Install report generator
     #   run: dotnet tool install --global dotnet-reportgenerator-globaltool
     # - name: Generate coverage report

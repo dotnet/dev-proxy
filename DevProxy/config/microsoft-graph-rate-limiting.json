@@ -1,0 +1,26 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.0/rc.schema.json",
+  "plugins": [
+    {
+      "name": "RateLimitingPlugin",
+      "enabled": true,
+      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll"
+    }
+  ],
+  "urlsToWatch": [
+    "https://graph.microsoft.com/*/drive*",
+    "https://graph.microsoft.com/*/shares/*",
+    "https://graph.microsoft.com/*/sites/*",
+    "https://graph.microsoft.us/*/drive*",
+    "https://graph.microsoft.us/*/shares/*",
+    "https://graph.microsoft.us/*/sites/*",
+    "https://dod-graph.microsoft.us/*/drive*",
+    "https://dod-graph.microsoft.us/*/shares/*",
+    "https://dod-graph.microsoft.us/*/sites/*",
+    "https://microsoftgraph.chinacloudapi.cn/*/drive*",
+    "https://microsoftgraph.chinacloudapi.cn/*/shares/*",
+    "https://microsoftgraph.chinacloudapi.cn/*/sites/*"
+  ],
+  "labelMode": "text",
+  "logLevel": "information"
+}
