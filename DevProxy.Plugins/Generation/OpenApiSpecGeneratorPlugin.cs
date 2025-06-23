@@ -57,7 +57,7 @@ public sealed class OpenApiSpecGeneratorPluginConfiguration
     public SpecVersion SpecVersion { get; set; } = SpecVersion.v3_0;
 }
 
-public sealed class OpenApiSpecGeneratorPlugin(
+public class OpenApiSpecGeneratorPlugin(
     ILogger<OpenApiSpecGeneratorPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     ILanguageModelClient languageModelClient,
@@ -89,12 +89,13 @@ public sealed class OpenApiSpecGeneratorPlugin(
 
         var openApiDocs = new List<OpenApiDocument>();
 
+
         foreach (var request in e.RequestLogs)
         {
             if (request.MessageType != MessageType.InterceptedResponse ||
-              request.Context is null ||
-              request.Context.Session is null ||
-              !ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri))
+                request.Context is null ||
+                request.Context.Session is null ||
+                !ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri))
             {
                 continue;
             }
@@ -124,7 +125,8 @@ public sealed class OpenApiSpecGeneratorPlugin(
                     request.Context.Session.HttpClient.Request.RequestUri.GetLeftPart(UriPartial.Authority),
                     parametrizedPath
                 );
-                AddOrMergePathItem(openApiDocs, pathItem, request.Context.Session.HttpClient.Request.RequestUri, parametrizedPath);
+                var processedPathItem = ProcessPathItem(pathItem, request.Context.Session.HttpClient.Request.RequestUri, parametrizedPath);
+                AddOrMergePathItem(openApiDocs, processedPathItem, request.Context.Session.HttpClient.Request.RequestUri, parametrizedPath);
             }
             catch (Exception ex)
             {
@@ -132,7 +134,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
             }
         }
 
-        Logger.LogDebug("Serializing OpenAPI docs...");
+        // Serialize and write OpenAPI docs
         var generatedOpenApiSpecs = new Dictionary<string, string>();
         foreach (var openApiDoc in openApiDocs)
         {
@@ -163,17 +165,30 @@ public sealed class OpenApiSpecGeneratorPlugin(
 
         StoreReport(new OpenApiSpecGeneratorPluginReport(
             generatedOpenApiSpecs
-            .Select(kvp => new OpenApiSpecGeneratorPluginReportItem
-            {
-                ServerUrl = kvp.Key,
-                FileName = kvp.Value
-            })), e);
+                .Select(kvp => new OpenApiSpecGeneratorPluginReportItem
+                {
+                    ServerUrl = kvp.Key,
+                    FileName = kvp.Value
+                })), e);
 
         // store the generated OpenAPI specs in the global data
         // for use by other plugins
         e.GlobalData[GeneratedOpenApiSpecsKey] = generatedOpenApiSpecs;
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
+    }
+
+    /// <summary>
+    /// Allows derived plugins to post-process the OpenApiPathItem before it is added/merged into the document.
+    /// </summary>
+    /// <param name="pathItem">The OpenApiPathItem to process.</param>
+    /// <param name="requestUri">The request URI.</param>
+    /// <param name="parametrizedPath">The parametrized path string.</param>
+    /// <returns>The processed OpenApiPathItem.</returns>
+    protected virtual OpenApiPathItem ProcessPathItem(OpenApiPathItem pathItem, Uri requestUri, string parametrizedPath)
+    {
+        // By default, return the path item unchanged.
+        return pathItem;
     }
 
     private async Task<string> GetOperationIdAsync(string method, string serverUrl, string parametrizedPath)
