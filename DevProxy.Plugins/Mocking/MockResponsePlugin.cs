@@ -10,6 +10,7 @@ using DevProxy.Plugins.Behavior;
 using DevProxy.Plugins.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.FileSystemGlobbing;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using System.CommandLine;
@@ -60,6 +61,8 @@ public class MockResponsePlugin(
     private readonly ConcurrentDictionary<string, int> _appliedMocks = [];
 
     private MockResponsesLoader? _loader;
+    private Argument<IEnumerable<string>>? _httpResponseFilesArgument;
+    private Option<string>? _httpResponseMocksFileNameOption;
 
     public override string Name => nameof(MockResponsePlugin);
 
@@ -87,6 +90,33 @@ public class MockResponsePlugin(
         };
 
         return [_noMocks, _mocksFile];
+    }
+
+    public override Command[] GetCommands()
+    {
+        var mocksCommand = new Command("mocks", "Manage mock responses");
+        var mocksFromHttpResponseCommand = new Command("from-http-responses", "Create a mock response from HTTP responses");
+        _httpResponseFilesArgument = new Argument<IEnumerable<string>>("http-response-files")
+        {
+            Arity = ArgumentArity.OneOrMore,
+            Description = "Glob pattern to the file(s) containing HTTP responses to create mock responses from",
+        };
+        mocksFromHttpResponseCommand.Add(_httpResponseFilesArgument);
+        _httpResponseMocksFileNameOption = new Option<string>("--mocks-file")
+        {
+            HelpName = "mocks file",
+            Arity = ArgumentArity.ExactlyOne,
+            Description = "File to save the generated mock responses to",
+            Required = true
+        };
+        mocksFromHttpResponseCommand.Add(_httpResponseMocksFileNameOption);
+        mocksFromHttpResponseCommand.SetAction(GenerateMocksFromHttpResponsesAsync);
+
+        mocksCommand.AddCommands(new[]
+        {
+            mocksFromHttpResponseCommand
+        }.OrderByName());
+        return [mocksCommand];
     }
 
     public override void OptionsLoaded(OptionsLoadedArgs e)
@@ -390,6 +420,75 @@ public class MockResponsePlugin(
         e.Session.GenericResponse(body ?? string.Empty, statusCode, headers.Select(h => new HttpHeader(h.Name, h.Value)));
 
         Logger.LogRequest($"{matchingResponse.Response?.StatusCode ?? 200} {matchingResponse.Request?.Url}", MessageType.Mocked, new(e.Session));
+    }
+
+    private async Task GenerateMocksFromHttpResponsesAsync(ParseResult parseResult)
+    {
+        Logger.LogTrace("{Method} called", nameof(GenerateMocksFromHttpResponsesAsync));
+
+        if (_httpResponseFilesArgument is null)
+        {
+            throw new InvalidOperationException("HTTP response files argument is not initialized.");
+        }
+        if (_httpResponseMocksFileNameOption is null)
+        {
+            throw new InvalidOperationException("HTTP response mocks file name option is not initialized.");
+        }
+
+        var outputFilePath = parseResult.GetValue(_httpResponseMocksFileNameOption);
+        if (string.IsNullOrEmpty(outputFilePath))
+        {
+            Logger.LogError("No output file path provided for mock responses.");
+            return;
+        }
+
+        var httpResponseFiles = parseResult.GetValue(_httpResponseFilesArgument);
+        if (httpResponseFiles is null || !httpResponseFiles.Any())
+        {
+            Logger.LogError("No HTTP response files provided.");
+            return;
+        }
+
+        var matcher = new Matcher();
+        matcher.AddIncludePatterns(httpResponseFiles);
+
+        var matchingFiles = matcher.GetResultsInFullPath(".");
+        if (!matchingFiles.Any())
+        {
+            Logger.LogError("No matching HTTP response files found.");
+            return;
+        }
+
+        Logger.LogInformation("Found {FileCount} matching HTTP response files", matchingFiles.Count());
+        Logger.LogDebug("Matching files: {Files}", string.Join(", ", matchingFiles));
+
+        var mockResponses = new List<MockResponse>();
+        foreach (var file in matchingFiles)
+        {
+            Logger.LogInformation("Processing file: {File}", Path.GetRelativePath(".", file));
+            try
+            {
+                mockResponses.Add(MockResponse.FromHttpResponse(await File.ReadAllTextAsync(file), Logger));
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error processing file {File}", file);
+                continue;
+            }
+        }
+
+        var mocksFile = new MockResponseConfiguration
+        {
+            Mocks = mockResponses
+        };
+        await File.WriteAllTextAsync(
+            outputFilePath,
+            JsonSerializer.Serialize(mocksFile, ProxyUtils.JsonSerializerOptions)
+        );
+
+        Logger.LogInformation("Generated mock responses saved to {OutputFile}", outputFilePath);
+
+        Logger.LogTrace("Left {Method}", nameof(GenerateMocksFromHttpResponsesAsync));
     }
 
     private static bool HasMatchingBody(MockResponse mockResponse, Request request)
