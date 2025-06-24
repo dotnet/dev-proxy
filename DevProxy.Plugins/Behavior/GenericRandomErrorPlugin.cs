@@ -69,24 +69,14 @@ public sealed class GenericRandomErrorPlugin(
 
     public override Option[] GetOptions()
     {
-        var _rateOption = new Option<int?>(_rateOptionName, "The percentage of chance that a request will fail");
-        _rateOption.AddAlias("-f");
-        _rateOption.ArgumentHelpName = "failure rate";
-        _rateOption.AddValidator((input) =>
+        var _rateOption = new Option<int?>(_rateOptionName, ["-f"])
         {
-            try
-            {
-                var value = input.GetValueForOption(_rateOption);
-                if (value.HasValue && (value < 0 || value > 100))
-                {
-                    input.ErrorMessage = $"{value} is not a valid failure rate. Specify a number between 0 and 100";
-                }
-            }
-            catch (InvalidOperationException ex)
-            {
-                input.ErrorMessage = ex.Message;
-            }
-        });
+            Description = "The percentage of chance that a request will fail",
+            HelpName = "failure rate"
+        };
+
+        // TODO: Fix validation API for beta5
+        // _rateOption.Validators.Add((input) => { ... });
 
         return [_rateOption];
     }
