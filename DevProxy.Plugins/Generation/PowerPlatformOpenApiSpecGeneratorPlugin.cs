@@ -96,9 +96,9 @@ public sealed class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGenerat
     {
         openApiDoc.Info.Contact = new OpenApiContact
         {
-            Name = Configuration.Contact?.Name ?? "Your Name",
-            Url = Uri.TryCreate(Configuration.Contact?.Url, UriKind.Absolute, out var url) ? url : new Uri("https://www.yourwebsite.com"),
-            Email = Configuration.Contact?.Email ?? "your.email@yourdomain.com"
+            Name = Configuration.Contact?.Name,
+            Url = !string.IsNullOrWhiteSpace(Configuration.Contact?.Url) ? new Uri(Configuration.Contact.Url) : null,
+            Email = Configuration.Contact?.Email
         };
     }
 
