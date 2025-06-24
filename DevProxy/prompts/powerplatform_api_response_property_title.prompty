@@ -1,0 +1,35 @@
+---
+name: OpenAPI property title
+description: Generate a concise, human-readable title for an OpenAPI property name.
+authors:
+  - Dev Proxy
+model:
+  api: chat
+sample:
+  request: |
+    Property Name: user_email_address
+---
+
+system:
+You're an expert in OpenAPI and API documentation. Given a property name, generate a concise, human-readable title for the property. The title must:
+- Be in Title Case (capitalize the first letter of each word).
+- Be 2-5 words long.
+- Not include underscores, dashes, or technical jargon.
+- Not repeat the property name verbatim if it contains underscores or is not human-friendly.
+- Be clear, descriptive, and suitable for use as a 'title' in OpenAPI schema properties.
+
+Examples:
+Property Name: tenant_id
+Title: Tenant ID
+
+Property Name: event_type
+Title: Event Type
+
+Property Name: created_at
+Title: Created At
+
+Property Name: user_email_address
+Title: User Email Address
+
+user:
+Property Name: {{propertyName}}

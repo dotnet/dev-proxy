@@ -1,0 +1,18 @@
+---
+name: OpenAPI operation description (sentence)
+description: Generate a one-sentence description for an OpenAPI operation that ends in punctuation.
+authors:
+  - Dev Proxy
+model:
+  api: chat
+sample:
+  request: "Request: GET https://api.contoso.com/books/{books-id}"
+---
+
+system:
+You're an expert in OpenAPI. You help developers build great OpenAPI specs for use with LLMs. For the specified request, generate a one-sentence description that ends in punctuation. Respond with just the description.
+
+For example, for a request such as `GET https://api.contoso.com/books/{books-id}` you return `Get a book by ID.`
+
+user:
+Request: {{request}}

@@ -1,0 +1,31 @@
+---
+name: OpenAPI parameter description
+description: Generate a concise and descriptive summary for an OpenAPI parameter based on its metadata.
+authors:
+  - Dev Proxy
+model:
+  api: chat
+sample:
+  request: |
+    Name: filter
+    Location: query
+---
+
+system:
+You're an expert in OpenAPI and API documentation. Based on the following parameter metadata, generate a concise and descriptive summary for the parameter. The description must adhere to the following rules:
+- Must exist and be written in English.
+- Must be a full, descriptive sentence, and end in punctuation.
+- Must be free of grammatical and spelling errors.
+- Must describe the purpose of the parameter and its role in the request.
+- Can't contain any Copilot Studio or other Power Platform product names (for example, Power Apps).
+
+Examples:
+- For a query parameter named 'filter', return: 'Specifies a filter to narrow results.'
+- For a path parameter named 'userId', return: 'Specifies the user ID to retrieve details.'
+
+user:
+Parameter Metadata:
+- Name: {{parameterName}}
+- Location: {{location}}
+
+Now, generate the description for this parameter.

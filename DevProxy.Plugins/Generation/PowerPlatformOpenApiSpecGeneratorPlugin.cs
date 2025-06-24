@@ -8,37 +8,9 @@ using System.Globalization;
 
 namespace DevProxy.Plugins.Generation;
 
-public class ContactConfig
-{
-    public string Name { get; set; } = "Your Name";
-    public string Url { get; set; } = "https://www.yourwebsite.com";
-    public string Email { get; set; } = "your.email@yourdomain.com";
-}
-
-public class ConnectorMetadataConfig
-{
-    public string? Website { get; set; }
-    public string? PrivacyPolicy { get; set; }
-    private string[]? _categories;
-    public IReadOnlyList<string>? Categories
-    {
-        get => _categories;
-        set => _categories = value?.ToArray();
-    }
-}
-
-public class PowerPlatformOpenApiSpecGeneratorPluginConfiguration : OpenApiSpecGeneratorPluginConfiguration
-{
-    public ContactConfig Contact { get; set; } = new();
-    public ConnectorMetadataConfig ConnectorMetadata { get; set; } = new();
-    public bool IncludeResponseHeaders { get; set; }
-}
-
-public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugin
+public sealed class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugin
 {
     private readonly ILanguageModelClient _languageModelClient;
-    private readonly PowerPlatformOpenApiSpecGeneratorPluginConfiguration _configuration;
-
 
 #pragma warning disable IDE0290 // Use primary constructor
     public PowerPlatformOpenApiSpecGeneratorPlugin(
@@ -51,8 +23,6 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
     ) : base(logger, urlsToWatch, languageModelClient, proxyConfiguration, pluginConfigurationSection)
     {
         _languageModelClient = languageModelClient;
-        _configuration = pluginConfigurationSection.Get<PowerPlatformOpenApiSpecGeneratorPluginConfiguration>()
-            ?? new();
         Configuration.SpecVersion = SpecVersion.v2_0;
     }
 
@@ -90,7 +60,11 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
 
         // Try to get the server URL from the OpenAPI document
         var serverUrl = openApiDoc.Servers?.FirstOrDefault()?.Url;
-        ArgumentNullException.ThrowIfNull(serverUrl);
+
+        if (string.IsNullOrWhiteSpace(serverUrl))
+        {
+            throw new InvalidOperationException("No server URL found in the OpenAPI document. Please ensure the document contains at least one server definition.");
+        }
 
         // Synchronously call the async metadata generator
         var metadata = GenerateConnectorMetadataAsync(serverUrl).GetAwaiter().GetResult();
@@ -122,9 +96,9 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
     {
         openApiDoc.Info.Contact = new OpenApiContact
         {
-            Name = _configuration.Contact?.Name ?? "Your Name",
-            Url = Uri.TryCreate(_configuration.Contact?.Url, UriKind.Absolute, out var url) ? url : new Uri("https://www.yourwebsite.com"),
-            Email = _configuration.Contact?.Email ?? "your.email@yourdomain.com"
+            Name = Configuration.Contact?.Name ?? "Your Name",
+            Url = Uri.TryCreate(Configuration.Contact?.Url, UriKind.Absolute, out var url) ? url : new Uri("https://www.yourwebsite.com"),
+            Email = Configuration.Contact?.Email ?? "your.email@yourdomain.com"
         };
     }
 
@@ -135,31 +109,14 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
     /// <param name="openApiDoc">The OpenAPI document to process.</param>
     private async Task<string> GetOpenApiDescriptionAsync(string defaultDescription)
     {
-        var prompt = $@"
-        You're an expert in OpenAPI and API documentation. Based on the following OpenAPI document metadata, generate a concise and descriptive summary for the API. 
-        Include the purpose of the API and the types of operations it supports. Respond with just the description.
-
-        OpenAPI Metadata:
-        - Description: {defaultDescription}
-
-        Rules:
-        Must exist and be written in English.
-        Must be free of grammatical and spelling errors.
-        Should describe concisely the main purpose and value offered by your connector.
-        Must be longer than 30 characters and shorter than 500 characters.
-        Can't contain any Copilot Studio or other Power Platform product names (for example, Power Apps).
-
-        Example:
-        If the API is for managing books, you might respond with: 
-        'Allows users to manage books, including operations to create, retrieve, update, and delete book records.'
-
-        Now, generate the description for this API.";
-
         ILanguageModelCompletionResponse? description = null;
 
         if (await _languageModelClient.IsEnabledAsync())
         {
-            description = await _languageModelClient.GenerateCompletionAsync(prompt, new() { Temperature = 0.7 });
+            description = await _languageModelClient.GenerateChatCompletionAsync("powerplatform_api_description", new()
+            {
+                { "description", defaultDescription }
+            });
         }
 
         return description?.Response?.Trim() ?? defaultDescription;
@@ -171,30 +128,13 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
     /// <param name="defaultTitle">The default title to use if LLM generation fails.</param>
     private async Task<string> GetOpenApiTitleAsync(string defaultTitle)
     {
-        var prompt = $@"
-                You're an expert in OpenAPI and API documentation. Based on the following guidelines, generate a concise and descriptive title for the API. 
-                The title must meet the following requirements:
-
-                - Must exist and be written in English.
-                - Must be unique and distinguishable from any existing connector and/or plugin title.
-                - Should be the name of the product or organization.
-                - Should follow existing naming patterns for certified connectors and/or plugins. For independent publishers, the connector name should follow the pattern: Connector Name (Independent Publisher).
-                - Can't be longer than 30 characters.
-                - Can't contain the words API, Connector, Copilot Studio, or any other Power Platform product names (for example, Power Apps).
-                - Can't end in a nonalphanumeric character, including carriage return, new line, or blank space.
-
-                Examples:
-                - Good titles: Azure Sentinel, Office 365 Outlook
-                - Poor titles: Azure Sentinel's Power Apps Connector, Office 365 Outlook API
-
-                Now, generate a title for the following API:
-                Default Title: {defaultTitle}";
-
         ILanguageModelCompletionResponse? title = null;
 
         if (await _languageModelClient.IsEnabledAsync())
         {
-            title = await _languageModelClient.GenerateCompletionAsync(prompt, new() { Temperature = 0.7 });
+            title = await _languageModelClient.GenerateChatCompletionAsync("powerplatform_api_title", new() {
+                { "defaultTitle", defaultTitle }
+            });
         }
 
         // Fallback to the default title if the language model fails
@@ -282,7 +222,7 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
     /// <param name="pathItem">The OpenAPI path item to process.</param>
     private void RemoveResponseHeadersIfDisabled(OpenApiPathItem pathItem)
     {
-        if (!_configuration.IncludeResponseHeaders && pathItem != null)
+        if (!Configuration.IncludeResponseHeaders && pathItem != null)
         {
             foreach (var operation in pathItem.Operations.Values)
             {
@@ -306,36 +246,13 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
     /// <returns>The generated operationId.</returns>
     private async Task<string> GetOperationIdAsync(string method, string serverUrl, string parametrizedPath)
     {
-        var prompt = @"**Prompt:**
-        Generate an operation ID for an OpenAPI specification based on the HTTP method and URL provided. Follow these rules:
-        - The operation ID should be in camelCase format.
-        - Start with a verb that matches the HTTP method (e.g., `get`, `create`, `update`, `delete`).
-        - Use descriptive words from the URL path.
-        - Replace path parameters (e.g., `{userId}`) with relevant nouns in singular form (e.g., `User`).
-        - Do not provide explanations or any other text; respond only with the operation ID.
-
-        Example:
-        **Request:** `GET https://api.contoso.com/books/{books-id}`
-        getBook
-
-        Example:
-        **Request:** `GET https://api.contoso.com/books/{books-id}/authors`
-        getBookAuthors
-
-        Example:
-        **Request:** `GET https://api.contoso.com/books/{books-id}/authors/{authors-id}`
-        getBookAuthor
-
-        Example:
-        **Request:** `POST https://api.contoso.com/books/{books-id}/authors`
-        addBookAuthor
-
-        Now, generate the operation ID for the following:
-        **Request:** `{request}`".Replace("{request}", $"{method.ToUpper(CultureInfo.InvariantCulture)} {serverUrl}{parametrizedPath}", StringComparison.InvariantCulture);
         ILanguageModelCompletionResponse? id = null;
         if (await _languageModelClient.IsEnabledAsync())
         {
-            id = await _languageModelClient.GenerateCompletionAsync(prompt, new() { Temperature = 1 });
+            id = await _languageModelClient.GenerateChatCompletionAsync("powerplatform_api_operation_id", new()
+            {
+                { "request", $"{method.ToUpper(CultureInfo.InvariantCulture)} {serverUrl}{parametrizedPath}" }
+            });
         }
         return id?.Response?.Trim() ?? $"{method}{parametrizedPath.Replace('/', '.')}";
     }
@@ -382,16 +299,13 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
     /// <returns>The generated description.</returns>
     private async Task<string> GetOperationDescriptionAsync(string method, string serverUrl, string parametrizedPath)
     {
-        var prompt = $@"You're an expert in OpenAPI. 
-        You help developers build great OpenAPI specs for use with LLMs. 
-        For the specified request, generate a one-sentence description that ends in punctuation. 
-        Respond with just the description. 
-        For example, for a request such as `GET https://api.contoso.com/books/{{books-id}}` 
-        // you return `Get a book by ID`. Request: {method.ToUpper(CultureInfo.InvariantCulture)} {serverUrl}{parametrizedPath}";
         ILanguageModelCompletionResponse? description = null;
         if (await _languageModelClient.IsEnabledAsync())
         {
-            description = await _languageModelClient.GenerateCompletionAsync(prompt);
+            description = await _languageModelClient.GenerateChatCompletionAsync("powerplatform_api_operation_description", new()
+            {
+                { "request", $"{method.ToUpper(CultureInfo.InvariantCulture)} {serverUrl}{parametrizedPath}" }
+            });
         }
         return description?.Response?.Trim() ?? $"{method} {parametrizedPath}";
     }
@@ -404,30 +318,15 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
     /// <returns>The generated description.</returns>
     private async Task<string> GenerateParameterDescriptionAsync(string parameterName, ParameterLocation? location)
     {
-        var prompt = $@"
-        You're an expert in OpenAPI and API documentation. Based on the following parameter metadata, generate a concise and descriptive summary for the parameter. 
-        The description must adhere to the following rules:
-        - Must exist and be written in English.
-        - Must be a full, descriptive sentence, and end in punctuation.
-        - Must be free of grammatical and spelling errors.
-        - Must describe the purpose of the parameter and its role in the request.
-        - Can't contain any Copilot Studio or other Power Platform product names (for example, Power Apps).
-
-        Parameter Metadata:
-        - Name: {parameterName}
-        - Location: {location}
-
-        Examples:
-        - For a query parameter named 'filter', return: 'Specifies a filter to narrow results.'
-        - For a path parameter named 'userId', return: 'Specifies the user ID to retrieve details.'
-
-        Now, generate the description for this parameter.";
-
         ILanguageModelCompletionResponse? response = null;
 
         if (await _languageModelClient.IsEnabledAsync())
         {
-            response = await _languageModelClient.GenerateCompletionAsync(prompt, new() { Temperature = 0.7 });
+            response = await _languageModelClient.GenerateChatCompletionAsync("powerplatform_api_parameter_description", new()
+            {
+                { "parameterName", parameterName },
+                { "location", location?.ToString() ?? "unknown" }
+            });
         }
 
         // Fallback to the default logic if the language model fails or returns no response
@@ -444,30 +343,15 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
     /// <returns>The generated summary.</returns>
     private async Task<string> GenerateParameterSummaryAsync(string parameterName, ParameterLocation? location)
     {
-        var prompt = $@"
-        You're an expert in OpenAPI and API documentation. Based on the following parameter metadata, generate a concise and descriptive summary for the parameter. 
-        The summary must adhere to the following rules:
-        - Must exist and be written in English.
-        - Must be free of grammatical and spelling errors.
-        - Must be 80 characters or less.
-        - Must contain only alphanumeric characters or parentheses.
-        - Can't contain any Copilot Studio or other Power Platform product names (for example, Power Apps).
-
-        Parameter Metadata:
-        - Name: {parameterName}
-        - Location: {location}
-
-        Examples:
-        - For a query parameter named 'filter', return: 'Filter results by a specific value.'
-        - For a path parameter named 'userId', return: 'The unique identifier for a user.'
-
-        Now, generate the summary for this parameter.";
-
         ILanguageModelCompletionResponse? response = null;
 
         if (await _languageModelClient.IsEnabledAsync())
         {
-            response = await _languageModelClient.GenerateCompletionAsync(prompt, new() { Temperature = 0.7 });
+            response = await _languageModelClient.GenerateChatCompletionAsync("powerplatform_api_parameter_summary", new()
+            {
+                { "parameterName", parameterName },
+                { "location", location?.ToString() ?? "unknown" }
+            });
         }
 
         // Fallback to a default summary if the language model fails or returns no response
@@ -519,37 +403,13 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
     /// <returns>The generated title.</returns>
     private async Task<string> GetResponsePropertyTitleAsync(string propertyName)
     {
-        var prompt = $@"
-        You're an expert in OpenAPI and API documentation. Given a property name, generate a concise, human-readable title for the property. 
-        The title must:
-        - Be in Title Case (capitalize the first letter of each word).
-        - Be 2-5 words long.
-        - Not include underscores, dashes, or technical jargon.
-        - Not repeat the property name verbatim if it contains underscores or is not human-friendly.
-        - Be clear, descriptive, and suitable for use as a 'title' in OpenAPI schema properties.
-
-        Examples:
-        Property Name: tenant_id
-        Title: Tenant ID
-
-        Property Name: event_type
-        Title: Event Type
-
-        Property Name: created_at
-        Title: Created At
-
-        Property Name: user_email_address
-        Title: User Email Address
-
-        Now, generate a title for this property:
-        Property Name: {propertyName}
-        Title:
-        ";
-
         ILanguageModelCompletionResponse? response = null;
         if (await _languageModelClient.IsEnabledAsync())
         {
-            response = await _languageModelClient.GenerateCompletionAsync(prompt, new() { Temperature = 0.3 });
+            response = await _languageModelClient.GenerateChatCompletionAsync("powerplatform_api_response_property_title", new()
+            {
+                { "propertyName", propertyName }
+            });
         }
         return !string.IsNullOrWhiteSpace(response?.Response)
             ? response.Response.Trim()
@@ -583,39 +443,13 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
     /// <returns>The generated description.</returns>
     private async Task<string> GetResponsePropertyDescriptionAsync(string propertyName)
     {
-        var prompt = $@"
-        You're an expert in OpenAPI and API documentation. Given a property name, generate a concise, human-readable description for the property.
-        The description must:
-        - Be a full, descriptive sentence and end in punctuation.
-        - Be written in English.
-        - Be free of grammatical and spelling errors.
-        - Clearly explain the purpose or meaning of the property.
-        - Not repeat the property name verbatim if it contains underscores or is not human-friendly.
-        - Be suitable for use as a 'description' in OpenAPI schema properties.
-        - Only return the description, without any additional text or explanation.
-
-        Examples:
-        Property Name: tenant_id
-        Description: The ID of the tenant this notification belongs to.
-
-        Property Name: event_type
-        Description: The type of the event.
-
-        Property Name: created_at
-        Description: The timestamp of when the event was generated.
-
-        Property Name: user_email_address
-        Description: The email address of the user who triggered the event.
-
-        Now, generate a description for this property:
-        Property Name: {propertyName}
-        Description:
-        ";
-
         ILanguageModelCompletionResponse? response = null;
         if (await _languageModelClient.IsEnabledAsync())
         {
-            response = await _languageModelClient.GenerateCompletionAsync(prompt, new() { Temperature = 0.3 });
+            response = await _languageModelClient.GenerateChatCompletionAsync("powerplatform_api_response_property_description", new()
+            {
+                { "propertyName", propertyName }
+            });
         }
         return !string.IsNullOrWhiteSpace(response?.Response)
             ? response.Response.Trim()
@@ -650,11 +484,11 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
     /// <returns>An <see cref="OpenApiArray"/> containing connector metadata.</returns>
     private async Task<OpenApiArray> GenerateConnectorMetadataAsync(string serverUrl)
     {
-        var website = _configuration.ConnectorMetadata?.Website ?? await GetConnectorMetadataWebsiteUrlAsync(serverUrl);
-        var privacyPolicy = _configuration.ConnectorMetadata?.PrivacyPolicy ?? await GetConnectorMetadataPrivacyPolicyUrlAsync(serverUrl);
+        var website = Configuration.ConnectorMetadata?.Website ?? await GetConnectorMetadataWebsiteUrlAsync(serverUrl);
+        var privacyPolicy = Configuration.ConnectorMetadata?.PrivacyPolicy ?? await GetConnectorMetadataPrivacyPolicyUrlAsync(serverUrl);
 
         string categories;
-        var categoriesList = _configuration.ConnectorMetadata?.Categories;
+        var categoriesList = Configuration.ConnectorMetadata?.Categories;
         if (categoriesList != null && categoriesList.Count > 0)
         {
             categories = string.Join(", ", categoriesList);
@@ -692,30 +526,14 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
     /// <returns>The website URL.</returns>
     private async Task<string> GetConnectorMetadataWebsiteUrlAsync(string defaultUrl)
     {
-        var prompt = $@"
-        You're an expert in OpenAPI and API documentation. Based on the following API metadata, determine the corporate website URL for the API. 
-        If the corporate website URL cannot be determined, respond with the default URL provided.
-
-        API Metadata:
-        - Default URL: {defaultUrl}
-
-        Rules you must follow:
-        - Do not output any explanations or additional text.
-        - The URL must be a valid, publicly accessible website.
-        - The URL must not contain placeholders or invalid characters.
-        - If no corporate website URL can be determined, return the default URL.
-
-        Example:
-        Default URL: https://example.com
-        Response: https://example.com
-
-        Now, determine the corporate website URL for this API.";
-
         ILanguageModelCompletionResponse? response = null;
 
         if (await _languageModelClient.IsEnabledAsync())
         {
-            response = await _languageModelClient.GenerateCompletionAsync(prompt, new() { Temperature = 0.7 });
+            response = await _languageModelClient.GenerateChatCompletionAsync("powerplatform_api_connector_metadata_website", new()
+            {
+                { "defaultUrl", defaultUrl }
+            });
         }
 
         // Fallback to the default URL if the language model fails or returns no response
@@ -729,29 +547,14 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
     /// <returns>The privacy policy URL.</returns>
     private async Task<string> GetConnectorMetadataPrivacyPolicyUrlAsync(string defaultUrl)
     {
-        var prompt = $@"
-        You're an expert in OpenAPI and API documentation. Based on the following API metadata, determine the privacy policy URL for the corporate website or API. 
-        If the privacy policy URL cannot be determined, respond with the default URL provided.
-
-        API Metadata:
-        - Default URL: {defaultUrl}
-
-        Rules you must follow:
-        - Do not output any explanations or additional text.
-        - The URL must be a valid, publicly accessible website.
-        - The URL must not contain placeholders or invalid characters.
-        - If no privacy policy URL can be determined, return the default URL.
-
-        Example:
-        Response: https://example.com/privacy
-
-        Now, determine the privacy policy URL for this API.";
-
         ILanguageModelCompletionResponse? response = null;
 
         if (await _languageModelClient.IsEnabledAsync())
         {
-            response = await _languageModelClient.GenerateCompletionAsync(prompt, new() { Temperature = 0.7 });
+            response = await _languageModelClient.GenerateChatCompletionAsync("powerplatform_api_connector_metadata_privacy_policy", new()
+            {
+                { "defaultUrl", defaultUrl }
+            });
         }
 
         // Fallback to the default URL if the language model fails or returns no response
@@ -766,37 +569,14 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
     /// <returns>The categories string.</returns>
     private async Task<string> GetConnectorMetadataCategoriesAsync(string serverUrl, string defaultCategories)
     {
-        var allowedCategories = @"""AI"", ""Business Management"", ""Business Intelligence"", ""Collaboration"", ""Commerce"", ""Communication"", 
-        ""Content and Files"", ""Finance"", ""Data"", ""Human Resources"", ""Internet of Things"", ""IT Operations"", 
-        ""Lifestyle and Entertainment"", ""Marketing"", ""Productivity"", ""Sales and CRM"", ""Security"", 
-        ""Social Media"", ""Website""";
-
-        var prompt = $@"
-        You're an expert in OpenAPI and API documentation. Based on the following API metadata and the server URL, determine the most appropriate categories for the API from the allowed list of categories. 
-        If you cannot determine appropriate categories, respond with 'None'.
-
-        API Metadata:
-        - Server URL: {serverUrl}
-        - Allowed Categories: {allowedCategories}
-
-        Rules you must follow:
-        - Do not output any explanations or additional text.
-        - The categories must be from the allowed list.
-        - The categories must be relevant to the API's functionality and purpose.
-        - The categories should be in a comma-separated format.
-        - If you cannot determine appropriate categories, respond with 'None'.
-
-        Example:
-        Allowed Categories: AI, Data
-        Response: Data
-
-        Now, determine the categories for this API.";
-
         ILanguageModelCompletionResponse? response = null;
 
         if (await _languageModelClient.IsEnabledAsync())
         {
-            response = await _languageModelClient.GenerateCompletionAsync(prompt, new() { Temperature = 0.7 });
+            response = await _languageModelClient.GenerateChatCompletionAsync("powerplatform_api_connector_metadata_categories", new()
+            {
+                { "serverUrl", serverUrl }
+            });
         }
 
         // If the response is 'None' or empty, return the default categories

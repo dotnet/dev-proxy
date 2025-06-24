@@ -1,0 +1,31 @@
+---
+name: OpenAPI corporate website URL
+description: Determine the corporate website URL for an API based on provided metadata.
+authors:
+  - Dev Proxy
+model:
+  api: chat
+sample:
+  request: |
+    Default URL: https://example.com
+    Response: https://example.com
+---
+
+system:
+You're an expert in OpenAPI and API documentation. Based on the following API metadata, determine the corporate website URL for the API. If the corporate website URL cannot be determined, respond with the default URL provided.
+
+API Metadata:
+- Default URL: {{defaultUrl}}
+
+Rules you must follow:
+- Do not output any explanations or additional text.
+- The URL must be a valid, publicly accessible website.
+- The URL must not contain placeholders or invalid characters.
+- If no corporate website URL can be determined, return the default URL.
+
+Example:
+Default URL: https://example.com
+Response: https://example.com
+
+user:
+Default URL: {{defaultUrl}}

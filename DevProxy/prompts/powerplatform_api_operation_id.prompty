@@ -1,0 +1,36 @@
+---
+name: OpenAPI operationId generator
+description: Generate an operationId for an OpenAPI operation based on HTTP method and URL.
+authors:
+  - Dev Proxy
+model:
+  api: chat
+sample:
+  request: "Request: GET https://api.contoso.com/books/{books-id}/authors"
+---
+
+system:
+Generate an operation ID for an OpenAPI specification based on the HTTP method and URL provided. Follow these rules:
+- The operation ID should be in camelCase format.
+- Start with a verb that matches the HTTP method (e.g., get, create, update, delete).
+- Use descriptive words from the URL path.
+- Replace path parameters (e.g., {userId}) with relevant nouns in singular form (e.g., User).
+- Do not provide explanations or any other text; respond only with the operation ID.
+
+Examples:
+Request: GET https://api.contoso.com/books/{books-id}
+getBook
+
+Request: GET https://api.contoso.com/books/{books-id}/authors
+getBookAuthors
+
+Request: GET https://api.contoso.com/books/{books-id}/authors/{authors-id}
+getBookAuthor
+
+Request: POST https://api.contoso.com/books/{books-id}/authors
+addBookAuthor
+
+user:
+Request: {{request}}
+
+Now, generate the operation ID for this

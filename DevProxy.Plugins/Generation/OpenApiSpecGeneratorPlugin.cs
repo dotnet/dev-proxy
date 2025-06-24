@@ -50,11 +50,33 @@ public enum SpecFormat
     Yaml
 }
 
-public class OpenApiSpecGeneratorPluginConfiguration
+public class ContactConfig
+{
+    public string Name { get; set; } = "Your Name";
+    public string Url { get; set; } = "https://www.yourwebsite.com";
+    public string Email { get; set; } = "your.email@yourdomain.com";
+}
+
+public class ConnectorMetadataConfig
+{
+    public string? Website { get; set; }
+    public string? PrivacyPolicy { get; set; }
+    private string[]? _categories;
+    public IReadOnlyList<string>? Categories
+    {
+        get => _categories;
+        set => _categories = value?.ToArray();
+    }
+}
+
+public sealed class OpenApiSpecGeneratorPluginConfiguration
 {
     public bool IncludeOptionsRequests { get; set; }
     public SpecFormat SpecFormat { get; set; } = SpecFormat.Json;
     public SpecVersion SpecVersion { get; set; } = SpecVersion.v3_0;
+    public ContactConfig Contact { get; set; } = new();
+    public ConnectorMetadataConfig ConnectorMetadata { get; set; } = new();
+    public bool IncludeResponseHeaders { get; set; }
 }
 
 public class OpenApiSpecGeneratorPlugin(

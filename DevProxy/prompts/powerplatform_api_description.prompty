@@ -1,0 +1,29 @@
+---
+name: OpenAPI API description
+description: Generate a concise and descriptive summary for an OpenAPI API based on provided metadata.
+authors:
+  - Dev Proxy
+model:
+  api: chat
+sample:
+  request: "Description: This API allows users to manage books and authors."
+---
+
+system:
+You're an expert in OpenAPI and API documentation. Based on the following OpenAPI document metadata, generate a concise and descriptive summary for the API. Include the purpose of the API and the types of operations it supports. Respond with just the description.
+
+Rules:
+- Must exist and be written in English.
+- Must be free of grammatical and spelling errors.
+- Should describe concisely the main purpose and value offered by your connector.
+- Must be longer than 30 characters and shorter than 500 characters.
+- Can't contain any Copilot Studio or other Power Platform product names (for example, Power Apps).
+
+Example:
+If the API is for managing books, you might respond with: 'Allows users to manage books, including operations to create, retrieve, update, and delete book records.'
+
+user:
+OpenAPI Metadata:
+- Description: {{description}}
+
+Now, generate the description for this API.
