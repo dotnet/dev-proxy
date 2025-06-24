@@ -7,26 +7,40 @@
       "type": "string",
       "description": "The JSON schema reference for validation."
     },
-    "includeOptionsRequests": {
-      "type": "boolean",
-      "description": "Determines whether to include OPTIONS requests in the generated OpenAPI spec. Default: false."
-    },
-    "specFormat": {
-      "type": "string",
-      "enum": [
-        "Json",
-        "Yaml"
-      ],
-      "description": "Specifies the format of the generated OpenAPI spec. Allowed values: 'Json' or 'Yaml'. Default: 'Json'."
-    },
-    "includeResponseHeaders": {
-      "type": "boolean",
-      "description": "Determines whether to include request headers in the generated OpenAPI spec. Default: false."
+    "connectorMetadata": {
+      "type": "object",
+      "description": "Optional metadata for the connector.",
+      "properties": {
+        "categories": {
+          "type": "array",
+          "description": "An array of categories for the API.",
+          "items": {
+            "type": "string",
+            "description": "A category for the API."
+          }
+        },
+        "privacyPolicy": {
+          "type": "string",
+          "format": "uri",
+          "description": "The privacy policy URL for the API."
+        },
+        "website": {
+          "type": "string",
+          "format": "uri",
+          "description": "The corporate website URL for the API."
+        }
+      },
+      "additionalProperties": false
     },
     "contact": {
       "type": "object",
       "description": "Contact information for the API.",
       "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "The email address of the contact person or organization."
+        },
         "name": {
           "type": "string",
           "description": "The name of the contact person or organization."
@@ -35,39 +49,25 @@
           "type": "string",
           "format": "uri",
           "description": "The URL pointing to the contact information."
-        },
-        "email": {
-          "type": "string",
-          "format": "email",
-          "description": "The email address of the contact person or organization."
-        }
-      },      
-      "additionalProperties": false
-    },
-    "connectorMetadata": {
-      "type": "object",
-      "description": "Optional metadata for the connector.",
-      "properties": {
-        "website": {
-          "type": "string",
-          "format": "uri",
-          "description": "The corporate website URL for the API."
-        },
-        "privacyPolicy": {
-          "type": "string",
-          "format": "uri",
-          "description": "The privacy policy URL for the API."
-        },
-        "categories": {
-          "type": "array",
-          "description": "An array of categories for the API.",
-          "items": {
-            "type": "string",
-            "description": "A category for the API."
-          }
         }
       },
       "additionalProperties": false
+    },
+    "includeOptionsRequests": {
+      "type": "boolean",
+      "description": "Determines whether to include OPTIONS requests in the generated OpenAPI spec. Default: false."
+    },
+    "includeResponseHeaders": {
+      "type": "boolean",
+      "description": "Determines whether to include request headers in the generated OpenAPI spec. Default: false."
+    },
+    "specFormat": {
+      "type": "string",
+      "enum": [
+        "Json",
+        "Yaml"
+      ],
+      "description": "Specifies the format of the generated OpenAPI spec. Allowed values: 'Json' or 'Yaml'. Default: 'Json'."
     }
   },
   "additionalProperties": false
