@@ -190,7 +190,7 @@ public class OpenApiSpecGeneratorPlugin(
     /// <returns>The processed OpenApiPathItem.</returns>
     protected virtual OpenApiPathItem ProcessPathItem(OpenApiPathItem pathItem, Uri requestUri, string parametrizedPath)
     {
-        // By default, return the path item unchanged.
+        // By default, return the path item unchanged. Derived plugins can override to add/modify path-level data.
         return pathItem;
     }
 
