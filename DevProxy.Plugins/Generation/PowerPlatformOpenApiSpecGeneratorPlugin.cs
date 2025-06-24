@@ -61,7 +61,7 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
         ArgumentNullException.ThrowIfNull(requestUri);
 
         // Synchronously invoke the async details processor
-        ProcessPathItemDetailsAsync(pathItem, requestUri, parametrizedPath).GetAwaiter().GetResult();
+        //ProcessPathItemDetailsAsync(pathItem, requestUri, parametrizedPath).GetAwaiter().GetResult();
         return pathItem;
     }
 
@@ -77,6 +77,12 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
         {
             // If no server URL, do not add metadata
             return;
+        }
+
+        foreach (var (path, pathItem) in openApiDoc.Paths)
+        {
+            // You can pass the path string if needed
+            ProcessPathItemDetailsAsync(pathItem, new Uri(serverUrl), path).GetAwaiter().GetResult();
         }
 
         // Synchronously call the async metadata generator
@@ -196,14 +202,15 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
             // Update description
             operation.Description = await GetOperationDescriptionAsync(method.ToString(), serverUrl, parametrizedPath);
 
-            // Process parameters
-            if (operation.Parameters != null)
+            // Combine operation-level and path-level parameters
+            var allParameters = new List<OpenApiParameter>();
+            allParameters.AddRange(operation.Parameters);
+            allParameters.AddRange(pathItem.Parameters);
+
+            foreach (var parameter in allParameters)
             {
-                foreach (var parameter in operation.Parameters)
-                {
-                    parameter.Description = await GenerateParameterDescriptionAsync(parameter.Name, parameter.In);
-                    parameter.Extensions["x-ms-summary"] = new OpenApiString(await GenerateParameterSummaryAsync(parameter.Name, parameter.In));
-                }
+                parameter.Description = await GenerateParameterDescriptionAsync(parameter.Name, parameter.In);
+                parameter.Extensions["x-ms-summary"] = new OpenApiString(await GenerateParameterSummaryAsync(parameter.Name, parameter.In));
             }
 
             // Process responses
@@ -684,9 +691,10 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
     /// </summary>
     private static void RemoveConnectorMetadataExtension(OpenApiDocument openApiDoc)
     {
-        if (openApiDoc?.Extensions != null && openApiDoc.Extensions.ContainsKey("x-ms-connector-metadata"))
+        if (openApiDoc?.Extensions != null && openApiDoc.Extensions.ContainsKey("x-ms-generated-by"))
         {
-            _ = openApiDoc.Extensions.Remove("x-ms-connector-metadata");
+            // Remove the x-ms-generated-by extension if it exists
+            _ = openApiDoc.Extensions.Remove("x-ms-generated-by");
         }
     }
 
