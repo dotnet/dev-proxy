@@ -213,17 +213,21 @@ public sealed class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGenerat
     /// <param name="pathItem">The OpenAPI path item to process.</param>
     private void RemoveResponseHeadersIfDisabled(OpenApiPathItem pathItem)
     {
-        if (!Configuration.IncludeResponseHeaders && pathItem != null)
+        if (Configuration.IncludeResponseHeaders || pathItem is null)
         {
-            foreach (var operation in pathItem.Operations.Values)
+            return;
+        }
+
+        foreach (var operation in pathItem.Operations.Values)
+        {
+            if (operation.Responses is null)
             {
-                if (operation.Responses != null)
-                {
-                    foreach (var response in operation.Responses.Values)
-                    {
-                        response.Headers?.Clear();
-                    }
-                }
+                continue;
+            }
+
+            foreach (var response in operation.Responses.Values)
+            {
+                response.Headers?.Clear();
             }
         }
     }
