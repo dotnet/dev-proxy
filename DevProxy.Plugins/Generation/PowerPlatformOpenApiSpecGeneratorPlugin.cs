@@ -586,7 +586,7 @@ public sealed class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGenerat
     }
 
     /// <summary>
-    /// Removes the x-ms-connector-metadata extension from the OpenAPI document if it exists.
+    /// Removes the x-ms-generated-by extension from the OpenAPI document if it exists.
     /// </summary>
     /// <param name="openApiDoc">The OpenAPI document to process.</param>
     private static void RemoveConnectorMetadataExtension(OpenApiDocument openApiDoc)
