@@ -6,7 +6,6 @@ using Microsoft.OpenApi.Models;
 using Microsoft.OpenApi.Any;
 using System.Globalization;
 
-
 namespace DevProxy.Plugins.Generation;
 
 public class ContactConfig
@@ -52,19 +51,32 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
         Configuration.SpecVersion = SpecVersion.v2_0;
     }
 
-
     public override string Name => nameof(PowerPlatformOpenApiSpecGeneratorPlugin);
 
+    /// <summary>
+    /// Processes a single OpenAPI path item to set operation details, parameter descriptions, and response properties.
+    /// This method is called synchronously during the OpenAPI document processing.
+    /// </summary>
+    /// <param name="pathItem">The OpenAPI path item to process.</param>
+    /// <param name="requestUri">The request URI for context.</param>
+    /// <param name="parametrizedPath">The parametrized path for the operation.</param>
+    /// <returns>The processed OpenAPI path item.</returns>
     protected override OpenApiPathItem ProcessPathItem(OpenApiPathItem pathItem, Uri requestUri, string parametrizedPath)
     {
         ArgumentNullException.ThrowIfNull(pathItem);
         ArgumentNullException.ThrowIfNull(requestUri);
 
         // Synchronously invoke the async details processor
-        //ProcessPathItemDetailsAsync(pathItem, requestUri, parametrizedPath).GetAwaiter().GetResult();
+        ProcessPathItemDetailsAsync(pathItem, requestUri, parametrizedPath).GetAwaiter().GetResult();
         return pathItem;
     }
 
+    /// <summary>
+    /// Processes the OpenAPI document to set contact information, title, description, and connector metadata.
+    /// This method is called synchronously during the OpenAPI document processing.
+    /// </summary>
+    /// <param name="openApiDoc">The OpenAPI document to process.</param>
+    /// <exception cref="ArgumentNullException">Thrown if <paramref name="openApiDoc"/> is null.</exception>
     protected override void ProcessOpenApiDocument(OpenApiDocument openApiDoc)
     {
         ArgumentNullException.ThrowIfNull(openApiDoc);
@@ -73,17 +85,7 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
 
         // Try to get the server URL from the OpenAPI document
         var serverUrl = openApiDoc.Servers?.FirstOrDefault()?.Url;
-        if (string.IsNullOrWhiteSpace(serverUrl))
-        {
-            // If no server URL, do not add metadata
-            return;
-        }
-
-        foreach (var (path, pathItem) in openApiDoc.Paths)
-        {
-            // You can pass the path string if needed
-            ProcessPathItemDetailsAsync(pathItem, new Uri(serverUrl), path).GetAwaiter().GetResult();
-        }
+        ArgumentNullException.ThrowIfNull(serverUrl);
 
         // Synchronously call the async metadata generator
         var metadata = GenerateConnectorMetadataAsync(serverUrl).GetAwaiter().GetResult();
@@ -94,6 +96,7 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
     /// <summary>
     /// Sets the OpenApi title and description in the Info area of the OpenApiDocument using LLM-generated values.
     /// </summary>
+    /// <param name="openApiDoc">The OpenAPI document to process.</param>
     private void SetTitleAndDescription(OpenApiDocument openApiDoc)
     {
         // Synchronously call the async title/description generators
@@ -109,6 +112,7 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
     /// <summary>
     /// Sets the OpenApiContact in the Info area of the OpenApiDocument using configuration values.
     /// </summary>
+    /// <param name="openApiDoc">The OpenAPI document to process.</param>
     private void SetContactInfo(OpenApiDocument openApiDoc)
     {
         openApiDoc.Info.Contact = new OpenApiContact
@@ -119,7 +123,11 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
         };
     }
 
-
+    /// <summary>
+    /// Removes the x-ms-connector-metadata extension from the OpenAPI document if it exists
+    /// and is empty.
+    /// </summary>
+    /// <param name="openApiDoc">The OpenAPI document to process.</param>
     private async Task<string> GetOpenApiDescriptionAsync(string defaultDescription)
     {
         var prompt = $@"
@@ -152,6 +160,10 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
         return description?.Response?.Trim() ?? defaultDescription;
     }
 
+    /// <summary>
+    /// Generates a concise and descriptive title for the OpenAPI document using LLM or fallback logic.
+    /// </summary>
+    /// <param name="defaultTitle">The default title to use if LLM generation fails.</param>
     private async Task<string> GetOpenApiTitleAsync(string defaultTitle)
     {
         var prompt = $@"
@@ -184,10 +196,12 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
         return title?.Response?.Trim() ?? defaultTitle;
     }
 
-
     /// <summary>
     /// Processes all operations, parameters, and responses for a single OpenApiPathItem.
     /// </summary>
+    /// <param name="pathItem">The OpenAPI path item to process.</param>
+    /// <param name="requestUri">The request URI for context.</param>
+    /// <param name="parametrizedPath">The parametrized path for the operation.</param>
     private async Task ProcessPathItemDetailsAsync(OpenApiPathItem pathItem, Uri requestUri, string parametrizedPath)
     {
         var serverUrl = $"{requestUri.Scheme}://{requestUri.Host}{(requestUri.IsDefaultPort ? "" : ":" + requestUri.Port)}";
@@ -235,25 +249,9 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
     }
 
     /// <summary>
-    /// Removes all response headers from the OpenApiPathItem if IncludeResponseHeaders is false.
+    /// Recursively processes all properties of an <see cref="OpenApiSchema"/>, setting their title and description using LLM or fallback logic.
     /// </summary>
-    private void RemoveResponseHeadersIfDisabled(OpenApiPathItem pathItem)
-    {
-        if (!_configuration.IncludeResponseHeaders && pathItem != null)
-        {
-            foreach (var operation in pathItem.Operations.Values)
-            {
-                if (operation.Responses != null)
-                {
-                    foreach (var response in operation.Responses.Values)
-                    {
-                        response.Headers?.Clear();
-                    }
-                }
-            }
-        }
-    }
-
+    /// <param name="schema">The OpenAPI schema to process.</param>
     private async Task ProcessSchemaPropertiesAsync(OpenApiSchema schema)
     {
         if (schema.Properties != null)
@@ -272,6 +270,35 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
             await ProcessSchemaPropertiesAsync(schema.Items);
         }
     }
+
+    /// <summary>
+    /// Removes all response headers from the <see cref="OpenApiPathItem"/> if <c>IncludeResponseHeaders</c> is false in the configuration.
+    /// </summary>
+    /// <param name="pathItem">The OpenAPI path item to process.</param>
+    private void RemoveResponseHeadersIfDisabled(OpenApiPathItem pathItem)
+    {
+        if (!_configuration.IncludeResponseHeaders && pathItem != null)
+        {
+            foreach (var operation in pathItem.Operations.Values)
+            {
+                if (operation.Responses != null)
+                {
+                    foreach (var response in operation.Responses.Values)
+                    {
+                        response.Headers?.Clear();
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Generates an operationId for an OpenAPI operation using LLM or fallback logic.
+    /// </summary>
+    /// <param name="method">The HTTP method.</param>
+    /// <param name="serverUrl">The server URL.</param>
+    /// <param name="parametrizedPath">The parametrized path.</param>
+    /// <returns>The generated operationId.</returns>
     private async Task<string> GetOperationIdAsync(string method, string serverUrl, string parametrizedPath)
     {
         var prompt = @"**Prompt:**
@@ -308,6 +335,13 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
         return id?.Response?.Trim() ?? $"{method}{parametrizedPath.Replace('/', '.')}";
     }
 
+    /// <summary>
+    /// Generates a summary for an OpenAPI operation using LLM or fallback logic.
+    /// </summary>
+    /// <param name="method">The HTTP method.</param>
+    /// <param name="serverUrl">The server URL.</param>
+    /// <param name="parametrizedPath">The parametrized path.</param>
+    /// <returns>The generated summary.</returns>
     private async Task<string> GetOperationSummaryAsync(string method, string serverUrl, string parametrizedPath)
     {
         var prompt = $@"You're an expert in OpenAPI. 
@@ -334,6 +368,13 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
         return description?.Response?.Trim() ?? $"{method} {parametrizedPath}";
     }
 
+    /// <summary>
+    /// Generates a description for an OpenAPI operation using LLM or fallback logic.
+    /// </summary>
+    /// <param name="method">The HTTP method.</param>
+    /// <param name="serverUrl">The server URL.</param>
+    /// <param name="parametrizedPath">The parametrized path.</param>
+    /// <returns>The generated description.</returns>
     private async Task<string> GetOperationDescriptionAsync(string method, string serverUrl, string parametrizedPath)
     {
         var prompt = $@"You're an expert in OpenAPI. 
@@ -350,6 +391,12 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
         return description?.Response?.Trim() ?? $"{method} {parametrizedPath}";
     }
 
+    /// <summary>
+    /// Generates a description for an OpenAPI parameter using LLM or fallback logic.
+    /// </summary>
+    /// <param name="parameterName">The parameter name.</param>
+    /// <param name="location">The parameter location.</param>
+    /// <returns>The generated description.</returns>
     private async Task<string> GenerateParameterDescriptionAsync(string parameterName, ParameterLocation? location)
     {
         var prompt = $@"
@@ -384,6 +431,12 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
             : GetFallbackParameterDescription(parameterName, location);
     }
 
+    /// <summary>
+    /// Generates a summary for an OpenAPI parameter using LLM or fallback logic.
+    /// </summary>
+    /// <param name="parameterName">The parameter name.</param>
+    /// <param name="location">The parameter location.</param>
+    /// <returns>The generated summary.</returns>
     private async Task<string> GenerateParameterSummaryAsync(string parameterName, ParameterLocation? location)
     {
         var prompt = $@"
@@ -418,6 +471,12 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
             : GetFallbackParameterSummary(parameterName, location);
     }
 
+    /// <summary>
+    /// Returns a fallback summary for a parameter if LLM generation fails.
+    /// </summary>
+    /// <param name="parameterName">The parameter name.</param>
+    /// <param name="location">The parameter location.</param>
+    /// <returns>The fallback summary string.</returns>
     private static string GetFallbackParameterSummary(string parameterName, ParameterLocation? location)
     {
         return location switch
@@ -430,6 +489,12 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
         };
     }
 
+    /// <summary>
+    /// Returns a fallback description for a parameter if LLM generation fails.
+    /// </summary>
+    /// <param name="parameterName">The parameter name.</param>
+    /// <param name="location">The parameter location.</param>
+    /// <returns>The fallback description string.</returns>
     private static string GetFallbackParameterDescription(string parameterName, ParameterLocation? location)
     {
         return location switch
@@ -442,6 +507,11 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
         };
     }
 
+    /// <summary>
+    /// Generates a title for a response property using LLM or fallback logic.
+    /// </summary>
+    /// <param name="propertyName">The property name.</param>
+    /// <returns>The generated title.</returns>
     private async Task<string> GetResponsePropertyTitleAsync(string propertyName)
     {
         var prompt = $@"
@@ -481,7 +551,11 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
             : GetResponsePropertyTitleFallback(propertyName);
     }
 
-    // Fallback if LLM fails
+    /// <summary>
+    /// Returns a fallback title for a response property if LLM generation fails.
+    /// </summary>
+    /// <param name="propertyName">The property name.</param>
+    /// <returns>The fallback title string.</returns>
     private static string GetResponsePropertyTitleFallback(string propertyName)
     {
         // Replace underscores and dashes with spaces, then ensure all lowercase before capitalizing
@@ -497,6 +571,11 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
         return title;
     }
 
+    /// <summary>
+    /// Generates a description for a response property using LLM or fallback logic.
+    /// </summary>
+    /// <param name="propertyName">The property name.</param>
+    /// <returns>The generated description.</returns>
     private async Task<string> GetResponsePropertyDescriptionAsync(string propertyName)
     {
         var prompt = $@"
@@ -538,7 +617,11 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
             : GetResponsePropertyDescriptionFallback(propertyName);
     }
 
-    // Fallback if LLM fails
+    /// <summary>
+    /// Returns a fallback description for a response property if LLM generation fails.
+    /// </summary>
+    /// <param name="propertyName">The property name.</param>
+    /// <returns>The fallback description string.</returns>
     private static string GetResponsePropertyDescriptionFallback(string propertyName)
     {
         // Convert underscores and dashes to spaces, then ensure all lowercase before capitalizing
@@ -555,6 +638,11 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
         return $"The value of {description}.";
     }
 
+    /// <summary>
+    /// Generates the connector metadata OpenAPI extension array using configuration and LLM.
+    /// </summary>
+    /// <param name="serverUrl">The server URL for context.</param>
+    /// <returns>An <see cref="OpenApiArray"/> containing connector metadata.</returns>
     private async Task<OpenApiArray> GenerateConnectorMetadataAsync(string serverUrl)
     {
         var website = _configuration.ConnectorMetadata?.Website ?? await GetConnectorMetadataWebsiteUrlAsync(serverUrl);
@@ -582,6 +670,11 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
         return metadataArray;
     }
 
+    /// <summary>
+    /// Generates the website URL for connector metadata using LLM or configuration.
+    /// </summary>
+    /// <param name="defaultUrl">The default URL to use if LLM fails.</param>
+    /// <returns>The website URL.</returns>
     private async Task<string> GetConnectorMetadataWebsiteUrlAsync(string defaultUrl)
     {
         var prompt = $@"
@@ -614,6 +707,11 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
         return !string.IsNullOrWhiteSpace(response?.Response) ? response.Response.Trim() : defaultUrl;
     }
 
+    /// <summary>
+    /// Generates the privacy policy URL for connector metadata using LLM or configuration.
+    /// </summary>
+    /// <param name="defaultUrl">The default URL to use if LLM fails.</param>
+    /// <returns>The privacy policy URL.</returns>
     private async Task<string> GetConnectorMetadataPrivacyPolicyUrlAsync(string defaultUrl)
     {
         var prompt = $@"
@@ -645,6 +743,12 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
         return !string.IsNullOrWhiteSpace(response?.Response) ? response.Response.Trim() : defaultUrl;
     }
 
+    /// <summary>
+    /// Generates the categories for connector metadata using LLM or configuration.
+    /// </summary>
+    /// <param name="serverUrl">The server URL for context.</param>
+    /// <param name="defaultCategories">The default categories to use if LLM fails.</param>
+    /// <returns>The categories string.</returns>
     private async Task<string> GetConnectorMetadataCategoriesAsync(string serverUrl, string defaultCategories)
     {
         var allowedCategories = @"""AI"", ""Business Management"", ""Business Intelligence"", ""Collaboration"", ""Commerce"", ""Communication"", 
@@ -689,6 +793,7 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
     /// <summary>
     /// Removes the x-ms-connector-metadata extension from the OpenAPI document if it exists.
     /// </summary>
+    /// <param name="openApiDoc">The OpenAPI document to process.</param>
     private static void RemoveConnectorMetadataExtension(OpenApiDocument openApiDoc)
     {
         if (openApiDoc?.Extensions != null && openApiDoc.Extensions.ContainsKey("x-ms-generated-by"))
