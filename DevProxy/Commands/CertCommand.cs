@@ -14,7 +14,10 @@ namespace DevProxy.Commands;
 sealed class CertCommand : Command
 {
     private readonly ILogger _logger;
-    private readonly Option<bool> _forceOption = new(["--force", "-f"], "Don't prompt for confirmation when removing the certificate");
+    private readonly Option<bool> _forceOption = new(["--force", "-f"])
+    {
+        Description = "Don't prompt for confirmation when removing the certificate"
+    };
 
     public CertCommand(ILogger<CertCommand> logger) :
         base("cert", "Manage the Dev Proxy certificate")
@@ -30,14 +33,12 @@ sealed class CertCommand : Command
         certEnsureCommand.SetAction(async (parseResult) => 
         {
             await EnsureCertAsync();
-            return 0;
         });
 
         var certRemoveCommand = new Command("remove", "Remove the certificate from Root Store");
         certRemoveCommand.SetAction((parseResult) => 
         {
             RemoveCert(parseResult);
-            return 0;
         });
         certRemoveCommand.AddOptions(new[] { _forceOption }.OrderByName());
 

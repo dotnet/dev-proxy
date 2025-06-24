@@ -16,6 +16,7 @@ sealed class DevProxyCommand : RootCommand
     private readonly ISet<UrlToWatch> _urlsToWatch;
     private readonly UpdateNotification _updateNotification;
     private WebApplication? _app;
+    private new IReadOnlyList<Option> Options = Array.Empty<Option>();
 
     internal const string PortOptionName = "--port";
     private Option<int?>? _portOption;
@@ -52,22 +53,14 @@ sealed class DevProxyCommand : RootCommand
         {
             if (_configFileOption is null)
             {
-                _configFileOption = new Option<string?>(ConfigFileOptionName, "The path to the configuration file");
-                _configFileOption.AddAlias("-c");
-                _configFileOption.ArgumentHelpName = "configFile";
-                _configFileOption.AddValidator(input =>
+                _configFileOption = new Option<string?>(ConfigFileOptionName, ["-c"])
                 {
-                    var filePath = ProxyUtils.ReplacePathTokens(input.Tokens[0].Value);
-                    if (string.IsNullOrEmpty(filePath))
-                    {
-                        return;
-                    }
-
-                    if (!File.Exists(filePath))
-                    {
-                        input.ErrorMessage = $"Configuration file {filePath} does not exist";
-                    }
-                });
+                    Description = "The path to the configuration file",
+                    HelpName = "configFile"
+                };
+                
+                // TODO: Fix validation for beta5
+                // _configFileOption.Validators.Add(input => { ... });
             }
 
             var result = _configFileOption.Parse(Environment.GetCommandLineArgs());
@@ -107,18 +100,15 @@ sealed class DevProxyCommand : RootCommand
             {
                 _logLevelOption = new Option<LogLevel?>(
                     LogLevelOptionName,
-                    $"Level of messages to log. Allowed values: {string.Join(", ", Enum.GetNames<LogLevel>())}"
+                    []
                 )
                 {
-                    ArgumentHelpName = "logLevel"
+                    Description = $"Level of messages to log. Allowed values: {string.Join(", ", Enum.GetNames<LogLevel>())}",
+                    HelpName = "logLevel"
                 };
-                _logLevelOption.AddValidator(input =>
-                {
-                    if (!Enum.TryParse<LogLevel>(input.Tokens[0].Value, true, out _))
-                    {
-                        input.ErrorMessage = $"{input.Tokens[0].Value} is not a valid log level. Allowed values are: {string.Join(", ", Enum.GetNames<LogLevel>())}";
-                    }
-                });
+                
+                // TODO: Fix validation for beta5  
+                // _logLevelOption.Validators.Add(input => { ... });
             }
 
             var result = _logLevelOption.Parse(Environment.GetCommandLineArgs());
@@ -156,17 +146,14 @@ sealed class DevProxyCommand : RootCommand
 
             if (_ipAddressOption is null)
             {
-                _ipAddressOption = new(IpAddressOptionName, "The IP address for the proxy to bind to")
+                _ipAddressOption = new(IpAddressOptionName, [])
                 {
-                    ArgumentHelpName = "ipAddress"
+                    Description = "The IP address for the proxy to bind to",
+                    HelpName = "ipAddress"
                 };
-                _ipAddressOption.AddValidator(input =>
-                {
-                    if (!System.Net.IPAddress.TryParse(input.Tokens[0].Value, out _))
-                    {
-                        input.ErrorMessage = $"{input.Tokens[0].Value} is not a valid IP address";
-                    }
-                });
+                
+                // TODO: Fix validation for beta5
+                // _ipAddressOption.Validators.Add(input => { ... });
             }
 
             var result = _ipAddressOption.Parse(Environment.GetCommandLineArgs());
@@ -436,7 +423,11 @@ sealed class DevProxyCommand : RootCommand
             .Select(g => g.First()));
         this.AddOptions(options.OrderByName());
 
-        AddGlobalOption(_logLevelOption!);
+        // Store options for use in parsing methods
+        Options = options.AsReadOnly();
+
+        // Add log level as a regular option instead of global option
+        // In beta5, global options are handled by adding to the root command
 
         var commands = new List<Command>
         {

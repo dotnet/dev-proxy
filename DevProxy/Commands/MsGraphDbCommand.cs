@@ -23,7 +23,6 @@ sealed class MsGraphDbCommand : Command
         this.SetAction(async (parseResult) => 
         {
             await GenerateMsGraphDbAsync();
-            return 0;
         });
     }
 
