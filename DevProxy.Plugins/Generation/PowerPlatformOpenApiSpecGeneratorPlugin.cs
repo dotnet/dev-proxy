@@ -36,23 +36,22 @@ public sealed class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGenerat
     /// <param name="requestUri">The request URI for context.</param>
     /// <param name="parametrizedPath">The parametrized path for the operation.</param>
     /// <returns>The processed OpenAPI path item.</returns>
-    protected override OpenApiPathItem ProcessPathItem(OpenApiPathItem pathItem, Uri requestUri, string parametrizedPath)
+    protected override async Task<OpenApiPathItem> ProcessPathItemAsync(OpenApiPathItem pathItem, Uri requestUri, string parametrizedPath)
     {
         ArgumentNullException.ThrowIfNull(pathItem);
         ArgumentNullException.ThrowIfNull(requestUri);
 
-        // Synchronously invoke the async details processor
-        ProcessPathItemDetailsAsync(pathItem, requestUri, parametrizedPath).GetAwaiter().GetResult();
+        await ProcessPathItemDetailsAsync(pathItem, requestUri, parametrizedPath);
         return pathItem;
     }
 
     /// <summary>
     /// Processes the OpenAPI document to set contact information, title, description, and connector metadata.
-    /// This method is called synchronously during the OpenAPI document processing.
+    /// This method is called asynchronously during the OpenAPI document processing.
     /// </summary>
     /// <param name="openApiDoc">The OpenAPI document to process.</param>
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="openApiDoc"/> is null.</exception>
-    protected override void ProcessOpenApiDocument(OpenApiDocument openApiDoc)
+    protected override async Task ProcessOpenApiDocumentAsync(OpenApiDocument openApiDoc)
     {
         ArgumentNullException.ThrowIfNull(openApiDoc);
         openApiDoc.Info.Contact = Configuration.Contact?.ToOpenApiContact();
@@ -66,8 +65,8 @@ public sealed class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGenerat
             throw new InvalidOperationException("No server URL found in the OpenAPI document. Please ensure the document contains at least one server definition.");
         }
 
-        // Synchronously call the async metadata generator
-        var metadata = GenerateConnectorMetadataAsync(serverUrl).GetAwaiter().GetResult();
+        // Asynchronously call the metadata generator
+        var metadata = await GenerateConnectorMetadataAsync(serverUrl);
         openApiDoc.Extensions["x-ms-connector-metadata"] = metadata;
         RemoveConnectorMetadataExtension(openApiDoc);
     }
@@ -135,7 +134,7 @@ public sealed class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGenerat
     /// <param name="parametrizedPath">The parametrized path for the operation.</param>
     private async Task ProcessPathItemDetailsAsync(OpenApiPathItem pathItem, Uri requestUri, string parametrizedPath)
     {
-        var serverUrl = $"{requestUri.Scheme}://{requestUri.Host}{(requestUri.IsDefaultPort ? "" : ":" + requestUri.Port)}";
+        var serverUrl = requestUri.GetLeftPart(UriPartial.Authority);
         foreach (var (method, operation) in pathItem.Operations)
         {
             // Update operationId

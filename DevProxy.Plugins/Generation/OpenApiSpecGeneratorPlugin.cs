@@ -156,7 +156,7 @@ public class OpenApiSpecGeneratorPlugin(
                     request.Context.Session.HttpClient.Request.RequestUri.GetLeftPart(UriPartial.Authority),
                     parametrizedPath
                 );
-                var processedPathItem = ProcessPathItem(pathItem, request.Context.Session.HttpClient.Request.RequestUri, parametrizedPath);
+                var processedPathItem = await ProcessPathItemAsync(pathItem, request.Context.Session.HttpClient.Request.RequestUri, parametrizedPath);
                 AddOrMergePathItem(openApiDocs, processedPathItem, request.Context.Session.HttpClient.Request.RequestUri, parametrizedPath);
             }
             catch (Exception ex)
@@ -170,7 +170,7 @@ public class OpenApiSpecGeneratorPlugin(
         foreach (var openApiDoc in openApiDocs)
         {
             // Allow derived plugins to post-process the OpenApiDocument (above the path level)
-            ProcessOpenApiDocument(openApiDoc);
+            await ProcessOpenApiDocumentAsync(openApiDoc);
 
             var server = openApiDoc.Servers.First();
             var fileName = GetFileNameFromServerUrl(server.Url, Configuration.SpecFormat);
@@ -219,19 +219,20 @@ public class OpenApiSpecGeneratorPlugin(
     /// <param name="requestUri">The request URI.</param>
     /// <param name="parametrizedPath">The parametrized path string.</param>
     /// <returns>The processed OpenApiPathItem.</returns>
-    protected virtual OpenApiPathItem ProcessPathItem(OpenApiPathItem pathItem, Uri requestUri, string parametrizedPath)
+    protected virtual Task<OpenApiPathItem> ProcessPathItemAsync(OpenApiPathItem pathItem, Uri requestUri, string parametrizedPath)
     {
         // By default, return the path item unchanged. Derived plugins can override to add/modify path-level data.
-        return pathItem;
+        return Task.FromResult(pathItem);
     }
 
     /// <summary>
     /// Allows derived plugins to post-process the OpenApiDocument before it is serialized and written to disk.
     /// </summary>
     /// <param name="openApiDoc">The OpenApiDocument to process.</param>
-    protected virtual void ProcessOpenApiDocument(OpenApiDocument openApiDoc)
+    protected virtual Task ProcessOpenApiDocumentAsync(OpenApiDocument openApiDoc)
     {
         // By default, do nothing. Derived plugins can override to add/modify document-level data.
+        return Task.CompletedTask;
     }
 
     private async Task<string> GetOperationIdAsync(string method, string serverUrl, string parametrizedPath)
