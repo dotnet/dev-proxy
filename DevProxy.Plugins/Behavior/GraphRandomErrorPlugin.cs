@@ -140,10 +140,10 @@ public sealed class GraphRandomErrorPlugin(
 
         base.OptionsLoaded(e);
 
-        var context = e.Context;
+        var parseResult = e.ParseResult;
 
         // Configure the allowed errors
-        var allowedErrors = context.ParseResult.GetValueForOption<IEnumerable<int>?>(_allowedErrorsOptionName, e.Options);
+        var allowedErrors = parseResult.GetValueForOption<IEnumerable<int>?>(_allowedErrorsOptionName, e.Options);
         if (allowedErrors?.Any() ?? false)
         {
             Configuration.AllowedErrors = [.. allowedErrors];

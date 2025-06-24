@@ -97,9 +97,9 @@ public sealed class GenericRandomErrorPlugin(
 
         base.OptionsLoaded(e);
 
-        var context = e.Context;
+        var parseResult = e.ParseResult;
 
-        var rate = context.ParseResult.GetValueForOption<int?>(_rateOptionName, e.Options);
+        var rate = parseResult.GetValueForOption<int?>(_rateOptionName, e.Options);
         if (rate is not null)
         {
             Configuration.Rate = rate.Value;

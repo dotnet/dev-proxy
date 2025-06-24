@@ -63,9 +63,9 @@ public sealed class ExecutionSummaryPlugin(
 
         base.OptionsLoaded(e);
 
-        var context = e.Context;
+        var parseResult = e.ParseResult;
 
-        var groupBy = context.ParseResult.GetValueForOption<SummaryGroupBy?>(_groupByOptionName, e.Options);
+        var groupBy = parseResult.GetValueForOption<SummaryGroupBy?>(_groupByOptionName, e.Options);
         if (groupBy is not null)
         {
             Configuration.GroupBy = groupBy.Value;

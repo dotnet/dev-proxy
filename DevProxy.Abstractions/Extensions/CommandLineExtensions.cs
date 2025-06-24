@@ -20,7 +20,7 @@ public static class CommandLineExtensions
             throw new InvalidOperationException($"Could not find option with name {optionName} and value type {typeof(T).Name}");
         }
 
-        return parseResult.GetValueForOption(option);
+        return parseResult.GetValue(option);
     }
 
     public static IEnumerable<T> OrderByName<T>(this IEnumerable<T> symbols) where T : Symbol
@@ -37,7 +37,7 @@ public static class CommandLineExtensions
 
         foreach (var subcommand in subcommands)
         {
-            command.AddCommand(subcommand);
+            command.Add(subcommand);
         }
     }
 
@@ -48,7 +48,7 @@ public static class CommandLineExtensions
 
         foreach (var option in options)
         {
-            command.AddOption(option);
+            command.Add(option);
         }
     }
 

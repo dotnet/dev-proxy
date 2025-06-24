@@ -108,19 +108,23 @@ sealed class JwtCommand : Command
             jwtSigningKeyOption
         }.OrderByName());
 
-        jwtCreateCommand.SetHandler(
-            GetToken,
-            new JwtBinder(
-                jwtNameOption,
-                jwtAudiencesOption,
-                jwtIssuerOption,
-                jwtRolesOption,
-                jwtScopesOption,
-                jwtClaimsOption,
-                jwtValidForOption,
-                jwtSigningKeyOption
-            )
-        );
+        jwtCreateCommand.SetAction((parseResult) => 
+        {
+            var jwtOptions = new JwtOptions
+            {
+                Name = parseResult.GetValue(jwtNameOption),
+                Audiences = parseResult.GetValue(jwtAudiencesOption),
+                Issuer = parseResult.GetValue(jwtIssuerOption),
+                Roles = parseResult.GetValue(jwtRolesOption),
+                Scopes = parseResult.GetValue(jwtScopesOption),
+                Claims = parseResult.GetValue(jwtClaimsOption),
+                ValidFor = parseResult.GetValue(jwtValidForOption),
+                SigningKey = parseResult.GetValue(jwtSigningKeyOption)
+            };
+            
+            GetToken(jwtOptions);
+            return 0;
+        });
 
         this.AddCommands(new List<Command>
         {

@@ -2,7 +2,6 @@ using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using System.CommandLine;
-using System.CommandLine.Invocation;
 using System.CommandLine.Parsing;
 using Microsoft.VisualStudio.Threading;
 
@@ -450,16 +449,17 @@ sealed class DevProxyCommand : RootCommand
         commands.AddRange(_plugins.SelectMany(p => p.GetCommands()));
         this.AddCommands(commands.OrderByName());
 
-        this.SetHandler(InvokeAsync);
+        this.SetAction(InvokeAsync);
     }
 
     public async Task<int> InvokeAsync(string[] args, WebApplication app)
     {
         _app = app;
-        return await this.InvokeAsync(args);
+        var parseResult = this.Parse(args);
+        return await parseResult.InvokeAsync();
     }
 
-    private async Task<int> InvokeAsync(InvocationContext context)
+    private async Task<int> InvokeAsync(ParseResult parseResult)
     {
         if (_app is null)
         {
@@ -476,8 +476,8 @@ sealed class DevProxyCommand : RootCommand
             return 1;
         }
 
-        ParseOptions(context);
-        var optionsLoadedArgs = new OptionsLoadedArgs(context, Options);
+        ParseOptions(parseResult);
+        var optionsLoadedArgs = new OptionsLoadedArgs(parseResult, Options);
         foreach (var plugin in _plugins.Where(p => p.Enabled))
         {
             plugin.OptionsLoaded(optionsLoadedArgs);
@@ -515,59 +515,59 @@ sealed class DevProxyCommand : RootCommand
         }
     }
 
-    private void ParseOptions(InvocationContext context)
+    private void ParseOptions(ParseResult parseResult)
     {
-        var port = context.ParseResult.GetValueForOption<int?>(PortOptionName, Options);
+        var port = parseResult.GetValueForOption<int?>(PortOptionName, Options);
         if (port is not null)
         {
             _proxyConfiguration.Port = port.Value;
         }
-        var ipAddress = context.ParseResult.GetValueForOption<string?>(IpAddressOptionName, Options);
+        var ipAddress = parseResult.GetValueForOption<string?>(IpAddressOptionName, Options);
         if (ipAddress is not null)
         {
             _proxyConfiguration.IPAddress = ipAddress;
         }
-        var record = context.ParseResult.GetValueForOption<bool?>(RecordOptionName, Options);
+        var record = parseResult.GetValueForOption<bool?>(RecordOptionName, Options);
         if (record is not null)
         {
             _proxyConfiguration.Record = record.Value;
         }
-        var watchPids = context.ParseResult.GetValueForOption<IEnumerable<int>>(WatchPidsOptionName, Options);
+        var watchPids = parseResult.GetValueForOption<IEnumerable<int>>(WatchPidsOptionName, Options);
         if (watchPids is not null && watchPids.Any())
         {
             _proxyConfiguration.WatchPids = watchPids;
         }
-        var watchProcessNames = context.ParseResult.GetValueForOption<IEnumerable<string>>(WatchProcessNamesOptionName, Options);
+        var watchProcessNames = parseResult.GetValueForOption<IEnumerable<string>>(WatchProcessNamesOptionName, Options);
         if (watchProcessNames is not null && watchProcessNames.Any())
         {
             _proxyConfiguration.WatchProcessNames = watchProcessNames;
         }
-        var noFirstRun = context.ParseResult.GetValueForOption<bool?>(NoFirstRunOptionName, Options);
+        var noFirstRun = parseResult.GetValueForOption<bool?>(NoFirstRunOptionName, Options);
         if (noFirstRun is not null)
         {
             _proxyConfiguration.NoFirstRun = noFirstRun.Value;
         }
-        var asSystemProxy = context.ParseResult.GetValueForOption<bool?>(AsSystemProxyOptionName, Options);
+        var asSystemProxy = parseResult.GetValueForOption<bool?>(AsSystemProxyOptionName, Options);
         if (asSystemProxy is not null)
         {
             _proxyConfiguration.AsSystemProxy = asSystemProxy.Value;
         }
-        var installCert = context.ParseResult.GetValueForOption<bool?>(InstallCertOptionName, Options);
+        var installCert = parseResult.GetValueForOption<bool?>(InstallCertOptionName, Options);
         if (installCert is not null)
         {
             _proxyConfiguration.InstallCert = installCert.Value;
         }
-        var timeout = context.ParseResult.GetValueForOption<long?>(TimeoutOptionName, Options);
+        var timeout = parseResult.GetValueForOption<long?>(TimeoutOptionName, Options);
         if (timeout is not null)
         {
             _proxyConfiguration.TimeoutSeconds = timeout.Value;
         }
-        var isDiscover = context.ParseResult.GetValueForOption<bool?>(DiscoverOptionName, Options);
+        var isDiscover = parseResult.GetValueForOption<bool?>(DiscoverOptionName, Options);
         if (isDiscover is not null)
         {
             _proxyConfiguration.Record = true;
         }
-        var env = context.ParseResult.GetValueForOption<string[]?>(EnvOptionName, Options);
+        var env = parseResult.GetValueForOption<string[]?>(EnvOptionName, Options);
         if (env is not null)
         {
             _proxyConfiguration.Env = env.Select(static e =>
