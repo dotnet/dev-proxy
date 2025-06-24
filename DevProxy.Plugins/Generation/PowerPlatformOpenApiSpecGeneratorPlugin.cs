@@ -237,18 +237,24 @@ public sealed class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGenerat
     /// <param name="method">The HTTP method.</param>
     /// <param name="serverUrl">The server URL.</param>
     /// <param name="parametrizedPath">The parametrized path.</param>
-    /// <returns>The generated operationId.</returns>
-    private async Task<string> GetOperationIdAsync(string method, string serverUrl, string parametrizedPath)
+    /// <param name="promptyFile">The prompt file to use for LLM generation.</param>
+    /// <returns>The generated operation id.</returns>
+    protected override Task<string> GetOperationIdAsync(string method, string serverUrl, string parametrizedPath, string promptyFile = "powerplatform_api_operation_id")
     {
-        ILanguageModelCompletionResponse? id = null;
-        if (await _languageModelClient.IsEnabledAsync())
-        {
-            id = await _languageModelClient.GenerateChatCompletionAsync("powerplatform_api_operation_id", new()
-            {
-                { "request", $"{method.ToUpper(CultureInfo.InvariantCulture)} {serverUrl}{parametrizedPath}" }
-            });
-        }
-        return id?.Response?.Trim() ?? $"{method}{parametrizedPath.Replace('/', '.')}";
+        return base.GetOperationIdAsync(method, serverUrl, parametrizedPath, promptyFile);
+    }
+
+    /// <summary>
+    /// Generates an operationId for an OpenAPI operation using LLM or fallback logic.
+    /// </summary>
+    /// <param name="method">The HTTP method.</param>
+    /// <param name="serverUrl">The server URL.</param>
+    /// <param name="parametrizedPath">The parametrized path.</param>
+    /// <param name="promptyFile">The prompt file to use for LLM generation.</param>
+    /// <returns>The generated operation description.</returns>
+    protected override Task<string> GetOperationDescriptionAsync(string method, string serverUrl, string parametrizedPath, string promptyFile = "powerplatform_api_operation_description")
+    {
+        return base.GetOperationDescriptionAsync(method, serverUrl, parametrizedPath, promptyFile);
     }
 
     /// <summary>
@@ -266,26 +272,6 @@ public sealed class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGenerat
             description = await _languageModelClient.GenerateChatCompletionAsync("powerplatform_api_operation_summary", new()
             {
                 { "request", @$"{method.ToUpper(CultureInfo.InvariantCulture)} {serverUrl}{parametrizedPath}" }
-            });
-        }
-        return description?.Response?.Trim() ?? $"{method} {parametrizedPath}";
-    }
-
-    /// <summary>
-    /// Generates a description for an OpenAPI operation using LLM or fallback logic.
-    /// </summary>
-    /// <param name="method">The HTTP method.</param>
-    /// <param name="serverUrl">The server URL.</param>
-    /// <param name="parametrizedPath">The parametrized path.</param>
-    /// <returns>The generated description.</returns>
-    private async Task<string> GetOperationDescriptionAsync(string method, string serverUrl, string parametrizedPath)
-    {
-        ILanguageModelCompletionResponse? description = null;
-        if (await _languageModelClient.IsEnabledAsync())
-        {
-            description = await _languageModelClient.GenerateChatCompletionAsync("powerplatform_api_operation_description", new()
-            {
-                { "request", $"{method.ToUpper(CultureInfo.InvariantCulture)} {serverUrl}{parametrizedPath}" }
             });
         }
         return description?.Response?.Trim() ?? $"{method} {parametrizedPath}";

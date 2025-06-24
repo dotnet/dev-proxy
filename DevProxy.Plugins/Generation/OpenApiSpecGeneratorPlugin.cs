@@ -235,12 +235,15 @@ public class OpenApiSpecGeneratorPlugin(
         return Task.CompletedTask;
     }
 
-    private async Task<string> GetOperationIdAsync(string method, string serverUrl, string parametrizedPath)
+    protected virtual async Task<string> GetOperationIdAsync(string method, string serverUrl, string parametrizedPath, string promptyFile = "api_operation_id")
     {
+        ArgumentException.ThrowIfNullOrEmpty(method);
+        ArgumentException.ThrowIfNullOrEmpty(parametrizedPath);
+
         ILanguageModelCompletionResponse? id = null;
         if (await languageModelClient.IsEnabledAsync())
         {
-            id = await languageModelClient.GenerateChatCompletionAsync("api_operation_id", new()
+            id = await languageModelClient.GenerateChatCompletionAsync(promptyFile, new()
             {
                 { "request", $"{method.ToUpperInvariant()} {serverUrl}{parametrizedPath}" }
             });
@@ -248,12 +251,14 @@ public class OpenApiSpecGeneratorPlugin(
         return id?.Response ?? $"{method}{parametrizedPath.Replace('/', '.')}";
     }
 
-    private async Task<string> GetOperationDescriptionAsync(string method, string serverUrl, string parametrizedPath)
+    protected virtual async Task<string> GetOperationDescriptionAsync(string method, string serverUrl, string parametrizedPath, string promptyFile = "api_operation_description")
     {
+        ArgumentException.ThrowIfNullOrEmpty(method);
+
         ILanguageModelCompletionResponse? description = null;
         if (await languageModelClient.IsEnabledAsync())
         {
-            description = await languageModelClient.GenerateChatCompletionAsync("api_operation_description", new()
+            description = await languageModelClient.GenerateChatCompletionAsync(promptyFile, new()
             {
                 { "request", $"{method.ToUpperInvariant()} {serverUrl}{parametrizedPath}" }
             });
