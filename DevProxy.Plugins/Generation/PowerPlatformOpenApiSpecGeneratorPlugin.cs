@@ -36,13 +36,12 @@ public sealed class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGenerat
     /// <param name="requestUri">The request URI for context.</param>
     /// <param name="parametrizedPath">The parametrized path for the operation.</param>
     /// <returns>The processed OpenAPI path item.</returns>
-    protected override async Task<OpenApiPathItem> ProcessPathItemAsync(OpenApiPathItem pathItem, Uri requestUri, string parametrizedPath)
+    protected override async Task ProcessPathItemAsync(OpenApiPathItem pathItem, Uri requestUri, string parametrizedPath)
     {
         ArgumentNullException.ThrowIfNull(pathItem);
         ArgumentNullException.ThrowIfNull(requestUri);
 
         await ProcessPathItemDetailsAsync(pathItem, requestUri, parametrizedPath);
-        return pathItem;
     }
 
     /// <summary>

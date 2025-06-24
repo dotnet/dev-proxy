@@ -156,8 +156,8 @@ public class OpenApiSpecGeneratorPlugin(
                     request.Context.Session.HttpClient.Request.RequestUri.GetLeftPart(UriPartial.Authority),
                     parametrizedPath
                 );
-                var processedPathItem = await ProcessPathItemAsync(pathItem, request.Context.Session.HttpClient.Request.RequestUri, parametrizedPath);
-                AddOrMergePathItem(openApiDocs, processedPathItem, request.Context.Session.HttpClient.Request.RequestUri, parametrizedPath);
+                await ProcessPathItemAsync(pathItem, request.Context.Session.HttpClient.Request.RequestUri, parametrizedPath);
+                AddOrMergePathItem(openApiDocs, pathItem, request.Context.Session.HttpClient.Request.RequestUri, parametrizedPath);
             }
             catch (Exception ex)
             {
@@ -219,10 +219,10 @@ public class OpenApiSpecGeneratorPlugin(
     /// <param name="requestUri">The request URI.</param>
     /// <param name="parametrizedPath">The parametrized path string.</param>
     /// <returns>The processed OpenApiPathItem.</returns>
-    protected virtual Task<OpenApiPathItem> ProcessPathItemAsync(OpenApiPathItem pathItem, Uri requestUri, string parametrizedPath)
+    protected virtual Task ProcessPathItemAsync(OpenApiPathItem pathItem, Uri requestUri, string parametrizedPath)
     {
         // By default, return the path item unchanged. Derived plugins can override to add/modify path-level data.
-        return Task.FromResult(pathItem);
+        return Task.CompletedTask;
     }
 
     /// <summary>
