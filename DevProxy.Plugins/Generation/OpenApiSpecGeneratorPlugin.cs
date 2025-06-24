@@ -134,7 +134,7 @@ public class OpenApiSpecGeneratorPlugin(
             }
         }
 
-        // Serialize and write OpenAPI docs
+        Logger.LogDebug("Serializing OpenAPI docs...");
         var generatedOpenApiSpecs = new Dictionary<string, string>();
         foreach (var openApiDoc in openApiDocs)
         {
@@ -168,11 +168,11 @@ public class OpenApiSpecGeneratorPlugin(
 
         StoreReport(new OpenApiSpecGeneratorPluginReport(
             generatedOpenApiSpecs
-                .Select(kvp => new OpenApiSpecGeneratorPluginReportItem
-                {
-                    ServerUrl = kvp.Key,
-                    FileName = kvp.Value
-                })), e);
+            .Select(kvp => new OpenApiSpecGeneratorPluginReportItem
+            {
+                ServerUrl = kvp.Key,
+                FileName = kvp.Value
+            })), e);
 
         // store the generated OpenAPI specs in the global data
         // for use by other plugins
