@@ -251,26 +251,13 @@ public sealed class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGenerat
     /// <returns>The generated summary.</returns>
     private async Task<string> GetOperationSummaryAsync(string method, string serverUrl, string parametrizedPath)
     {
-        var prompt = $@"You're an expert in OpenAPI. 
-        You help developers build great OpenAPI specs for use with LLMs. 
-        For the specified request, generate a concise, one-sentence summary that adheres to the following rules:
-        - Must exist and be written in English.
-        - Must be a phrase and cannot not end with punctuation.
-        - Must be free of grammatical and spelling errors.
-        - Must be 80 characters or less.
-        - Must contain only alphanumeric characters or parentheses.        
-        - Must not include the words API, Connector, or any other Power Platform product names (for example, Power Apps).
-        - Respond with just the summary.
-
-        For example:
-        - For a request such as `GET https://api.contoso.com/books/{{books-id}}`, return `Get a book by ID`
-        - For a request such as `POST https://api.contoso.com/books`, return `Create a new book`
-
-        Request: {method.ToUpper(CultureInfo.InvariantCulture)} {serverUrl}{parametrizedPath}";
         ILanguageModelCompletionResponse? description = null;
         if (await _languageModelClient.IsEnabledAsync())
         {
-            description = await _languageModelClient.GenerateCompletionAsync(prompt);
+            description = await _languageModelClient.GenerateChatCompletionAsync("powerplatform_api_operation_summary", new()
+            {
+                { "request", @$"{method.ToUpper(CultureInfo.InvariantCulture)} {serverUrl}{parametrizedPath}" }
+            });
         }
         return description?.Response?.Trim() ?? $"{method} {parametrizedPath}";
     }
