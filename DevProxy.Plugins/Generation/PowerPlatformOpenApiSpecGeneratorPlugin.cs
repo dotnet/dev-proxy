@@ -19,7 +19,12 @@ public class ConnectorMetadataConfig
 {
     public string? Website { get; set; }
     public string? PrivacyPolicy { get; set; }
-    public string? Categories { get; set; }
+    private string[]? _categories;
+    public IReadOnlyList<string>? Categories
+    {
+        get => _categories;
+        set => _categories = value?.ToArray();
+    }
 }
 
 public class PowerPlatformOpenApiSpecGeneratorPluginConfiguration : OpenApiSpecGeneratorPluginConfiguration
@@ -647,7 +652,17 @@ public class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGeneratorPlugi
     {
         var website = _configuration.ConnectorMetadata?.Website ?? await GetConnectorMetadataWebsiteUrlAsync(serverUrl);
         var privacyPolicy = _configuration.ConnectorMetadata?.PrivacyPolicy ?? await GetConnectorMetadataPrivacyPolicyUrlAsync(serverUrl);
-        var categories = _configuration.ConnectorMetadata?.Categories ?? await GetConnectorMetadataCategoriesAsync(serverUrl, "Data");
+
+        string categories;
+        var categoriesList = _configuration.ConnectorMetadata?.Categories;
+        if (categoriesList != null && categoriesList.Count > 0)
+        {
+            categories = string.Join(", ", categoriesList);
+        }
+        else
+        {
+            categories = await GetConnectorMetadataCategoriesAsync(serverUrl, "Data");
+        }
 
         var metadataArray = new OpenApiArray
         {

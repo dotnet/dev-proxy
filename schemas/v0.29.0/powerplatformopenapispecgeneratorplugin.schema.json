@@ -59,8 +59,12 @@
           "description": "The privacy policy URL for the API."
         },
         "categories": {
-          "type": "string",
-          "description": "Comma-separated categories for the API."
+          "type": "array",
+          "description": "An array of categories for the API.",
+          "items": {
+            "type": "string",
+            "description": "A category for the API."
+          }
         }
       },
       "additionalProperties": false
