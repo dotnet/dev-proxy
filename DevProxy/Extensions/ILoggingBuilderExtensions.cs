@@ -30,10 +30,9 @@ static class ILoggingBuilderExtensions
             .AddFilter("Microsoft.AspNetCore.*", LogLevel.Error)
             .AddFilter("Microsoft.Extensions.*", LogLevel.Error)
             .AddFilter("System.*", LogLevel.Error)
-            // Only show plugin messages for the root command
+            // Only show plugin messages when no global options are set
             .AddFilter("DevProxy.Plugins.*", level =>
                 level >= configuredLogLevel &&
-                DevProxyCommand.IsRootCommand &&
                 !DevProxyCommand.HasGlobalOptions)
             .AddConsole(options =>
                 {
