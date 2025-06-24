@@ -55,6 +55,15 @@ public class ContactConfig
     public string Name { get; set; } = "Your Name";
     public string Url { get; set; } = "https://www.yourwebsite.com";
     public string Email { get; set; } = "your.email@yourdomain.com";
+    public OpenApiContact ToOpenApiContact()
+    {
+        return new OpenApiContact
+        {
+            Name = Name,
+            Url = !string.IsNullOrWhiteSpace(Url) ? new Uri(Url) : null,
+            Email = Email
+        };
+    }
 }
 
 public class ConnectorMetadataConfig

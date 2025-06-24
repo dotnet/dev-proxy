@@ -55,7 +55,7 @@ public sealed class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGenerat
     protected override void ProcessOpenApiDocument(OpenApiDocument openApiDoc)
     {
         ArgumentNullException.ThrowIfNull(openApiDoc);
-        SetContactInfo(openApiDoc);
+        openApiDoc.Info.Contact = Configuration.Contact?.ToOpenApiContact();
         SetTitleAndDescription(openApiDoc);
 
         // Try to get the server URL from the OpenAPI document
@@ -86,20 +86,6 @@ public sealed class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGenerat
         openApiDoc.Info ??= new OpenApiInfo();
         openApiDoc.Info.Title = title;
         openApiDoc.Info.Description = description;
-    }
-
-    /// <summary>
-    /// Sets the OpenApiContact in the Info area of the OpenApiDocument using configuration values.
-    /// </summary>
-    /// <param name="openApiDoc">The OpenAPI document to process.</param>
-    private void SetContactInfo(OpenApiDocument openApiDoc)
-    {
-        openApiDoc.Info.Contact = new OpenApiContact
-        {
-            Name = Configuration.Contact?.Name,
-            Url = !string.IsNullOrWhiteSpace(Configuration.Contact?.Url) ? new Uri(Configuration.Contact.Url) : null,
-            Email = Configuration.Contact?.Email
-        };
     }
 
     /// <summary>
