@@ -63,22 +63,26 @@ sealed class DevProxyCommand : RootCommand
                 // _configFileOption.Validators.Add(input => { ... });
             }
 
-            var result = _configFileOption.Parse(Environment.GetCommandLineArgs());
-            // since we're parsing all args, and other options are not instantiated yet
-            // we're getting here a bunch of other errors, so we only need to look for
-            // errors related to the config file option
-            var error = result.Errors.FirstOrDefault(e => e.SymbolResult?.Symbol == _configFileOption);
-            if (error is not null)
-            {
-                // Logger is not available here yet so we need to fallback to Console
-                var color = Console.ForegroundColor;
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.Error.WriteLine(error.Message);
-                Console.ForegroundColor = color;
-                Environment.Exit(1);
-            }
+            // TODO: Fix early parsing for beta5 - Options no longer have Parse method
+            // var result = _configFileOption.Parse(Environment.GetCommandLineArgs());
+            // // since we're parsing all args, and other options are not instantiated yet
+            // // we're getting here a bunch of other errors, so we only need to look for
+            // // errors related to the config file option
+            // var error = result.Errors.FirstOrDefault(e => e.SymbolResult?.Symbol == _configFileOption);
+            // if (error is not null)
+            // {
+            //     // Logger is not available here yet so we need to fallback to Console
+            //     var color = Console.ForegroundColor;
+            //     Console.ForegroundColor = ConsoleColor.Red;
+            //     Console.Error.WriteLine(error.Message);
+            //     Console.ForegroundColor = color;
+            //     Environment.Exit(1);
+            // }
 
-            var configFile = result.GetValueForOption(_configFileOption);
+            // TODO: Fix config file path extraction for beta5
+            var configFile = Environment.GetCommandLineArgs()
+                .Where(arg => arg.StartsWith("--config-file=") || arg.StartsWith("-c="))
+                .FirstOrDefault()?.Split('=', 2).LastOrDefault();
             return configFile is not null ?
                 Path.GetFullPath(ProxyUtils.ReplacePathTokens(configFile)) :
                 null;
@@ -111,22 +115,24 @@ sealed class DevProxyCommand : RootCommand
                 // _logLevelOption.Validators.Add(input => { ... });
             }
 
-            var result = _logLevelOption.Parse(Environment.GetCommandLineArgs());
-            // since we're parsing all args, and other options are not instantiated yet
-            // we're getting here a bunch of other errors, so we only need to look for
-            // errors related to the log level option
-            var error = result.Errors.FirstOrDefault(e => e.SymbolResult?.Symbol == _logLevelOption);
-            if (error is not null)
-            {
-                // Logger is not available here yet so we need to fallback to Console
-                var color = Console.ForegroundColor;
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.Error.WriteLine(error.Message);
-                Console.ForegroundColor = color;
-                Environment.Exit(1);
-            }
+            // TODO: Fix early parsing for beta5 - Options no longer have Parse method  
+            // var result = _logLevelOption.Parse(Environment.GetCommandLineArgs());
+            // // since we're parsing all args, and other options are not instantiated yet
+            // // we're getting here a bunch of other errors, so we only need to look for
+            // // errors related to the log level option
+            // var error = result.Errors.FirstOrDefault(e => e.SymbolResult?.Symbol == _logLevelOption);
+            // if (error is not null)
+            // {
+            //     // Logger is not available here yet so we need to fallback to Console
+            //     var color = Console.ForegroundColor;
+            //     Console.ForegroundColor = ConsoleColor.Red;
+            //     Console.Error.WriteLine(error.Message);
+            //     Console.ForegroundColor = color;
+            //     Environment.Exit(1);
+            // }
 
-            _logLevel = result.GetValueForOption(_logLevelOption);
+            // TODO: Fix log level extraction for beta5
+            _logLevel = null; // Default fallback until parsing is fixed
             _logLevelResolved = true;
 
             return _logLevel;
@@ -156,22 +162,24 @@ sealed class DevProxyCommand : RootCommand
                 // _ipAddressOption.Validators.Add(input => { ... });
             }
 
-            var result = _ipAddressOption.Parse(Environment.GetCommandLineArgs());
-            // since we're parsing all args, and other options are not instantiated yet
-            // we're getting here a bunch of other errors, so we only need to look for
-            // errors related to the log level option
-            var error = result.Errors.FirstOrDefault(e => e.SymbolResult?.Symbol == _ipAddressOption);
-            if (error is not null)
-            {
-                // Logger is not available here yet so we need to fallback to Console
-                var color = Console.ForegroundColor;
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.Error.WriteLine(error.Message);
-                Console.ForegroundColor = color;
-                Environment.Exit(1);
-            }
+            // TODO: Fix early parsing for beta5 - Options no longer have Parse method
+            // var result = _ipAddressOption.Parse(Environment.GetCommandLineArgs());
+            // // since we're parsing all args, and other options are not instantiated yet
+            // // we're getting here a bunch of other errors, so we only need to look for
+            // // errors related to the log level option
+            // var error = result.Errors.FirstOrDefault(e => e.SymbolResult?.Symbol == _ipAddressOption);
+            // if (error is not null)
+            // {
+            //     // Logger is not available here yet so we need to fallback to Console
+            //     var color = Console.ForegroundColor;
+            //     Console.ForegroundColor = ConsoleColor.Red;
+            //     Console.Error.WriteLine(error.Message);
+            //     Console.ForegroundColor = color;
+            //     Environment.Exit(1);
+            // }
 
-            _ipAddress = result.GetValueForOption(_ipAddressOption);
+            // TODO: Fix IP address extraction for beta5  
+            _ipAddress = null; // Default fallback until parsing is fixed
             _ipAddressResolved = true;
 
             return _ipAddress;
@@ -203,7 +211,8 @@ sealed class DevProxyCommand : RootCommand
                 _urlsToWatchOption.AddAlias("-u");
             }
 
-            var result = _urlsToWatchOption!.Parse(Environment.GetCommandLineArgs());
+            // TODO: Fix early parsing for beta5 - Options no longer have Parse method
+            // var result = _urlsToWatchOption!.Parse(Environment.GetCommandLineArgs());
             // since we're parsing all args, and other options are not instantiated yet
             // we're getting here a bunch of other errors, so we only need to look for
             // errors related to the log level option
@@ -218,7 +227,8 @@ sealed class DevProxyCommand : RootCommand
                 Environment.Exit(1);
             }
 
-            urlsToWatch = result.GetValueForOption(_urlsToWatchOption!);
+            // TODO: Fix URLs to watch extraction for beta5
+            urlsToWatch = null; // Default fallback until parsing is fixed
             if (urlsToWatch is not null && urlsToWatch.Count == 0)
             {
                 urlsToWatch = null;

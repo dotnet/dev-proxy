@@ -14,7 +14,7 @@ namespace DevProxy.Commands;
 sealed class CertCommand : Command
 {
     private readonly ILogger _logger;
-    private readonly Option<bool> _forceOption = new(["--force", "-f"])
+    private readonly Option<bool> _forceOption = new("--force", ["-f"])
     {
         Description = "Don't prompt for confirmation when removing the certificate"
     };

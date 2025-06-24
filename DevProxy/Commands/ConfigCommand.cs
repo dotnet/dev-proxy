@@ -62,21 +62,40 @@ sealed class ConfigCommand : Command
     private void ConfigureCommand()
     {
         var configGetCommand = new Command("get", "Download the specified config from the Sample Solution Gallery");
-        var configIdArgument = new Argument<string>("config-id", "The ID of the config to download");
-        configGetCommand.AddArgument(configIdArgument);
-        configGetCommand.SetHandler(DownloadConfigAsync, configIdArgument);
+        var configIdArgument = new Argument<string>("config-id")
+        {
+            Description = "The ID of the config to download"
+        };
+        configGetCommand.Add(configIdArgument);
+        configGetCommand.SetAction(async (parseResult) =>
+        {
+            var configId = parseResult.GetValue(configIdArgument);
+            if (configId != null)
+            {
+                await DownloadConfigAsync(configId);
+            }
+        });
 
         var configNewCommand = new Command("new", "Create new Dev Proxy configuration file");
-        var nameArgument = new Argument<string>("name", "Name of the configuration file")
+        var nameArgument = new Argument<string>("name")
         {
+            Description = "Name of the configuration file",
             Arity = ArgumentArity.ZeroOrOne
         };
-        nameArgument.SetDefaultValue("devproxyrc.json");
-        configNewCommand.AddArgument(nameArgument);
-        configNewCommand.SetHandler(CreateConfigFileAsync, nameArgument);
+        // TODO: Fix default value setting for beta5
+        // nameArgument.SetDefaultValue("devproxyrc.json");
+        configNewCommand.Add(nameArgument);
+        configNewCommand.SetAction(async (parseResult) =>
+        {
+            var name = parseResult.GetValue(nameArgument);
+            if (name != null)
+            {
+                await CreateConfigFileAsync(name);
+            }
+        });
 
         var configOpenCommand = new Command("open", "Open devproxyrc.json");
-        configOpenCommand.SetHandler(() =>
+        configOpenCommand.SetAction((parseResult) =>
         {
             var cfgPsi = new ProcessStartInfo(_proxyConfiguration.ConfigFile)
             {

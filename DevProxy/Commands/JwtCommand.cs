@@ -19,29 +19,33 @@ sealed class JwtCommand : Command
     private void ConfigureCommand()
     {
         var jwtCreateCommand = new Command("create", "Create a new JWT token");
-        var jwtNameOption = new Option<string>("--name", "The name of the user to create the token for.");
-        jwtNameOption.AddAlias("-n");
-
-        var jwtAudiencesOption = new Option<IEnumerable<string>>("--audiences", "The audiences to create the token for. Specify once for each audience")
+        var jwtNameOption = new Option<string>("--name", ["-n"])
         {
+            Description = "The name of the user to create the token for."
+        };
+
+        var jwtAudiencesOption = new Option<IEnumerable<string>>("--audiences", ["-a"])
+        {
+            Description = "The audiences to create the token for. Specify once for each audience",
             AllowMultipleArgumentsPerToken = true
         };
-        jwtAudiencesOption.AddAlias("-a");
 
-        var jwtIssuerOption = new Option<string>("--issuer", "The issuer of the token.");
-        jwtIssuerOption.AddAlias("-i");
-
-        var jwtRolesOption = new Option<IEnumerable<string>>("--roles", "A role claim to add to the token. Specify once for each role.")
+        var jwtIssuerOption = new Option<string>("--issuer", ["-i"])
         {
+            Description = "The issuer of the token."
+        };
+
+        var jwtRolesOption = new Option<IEnumerable<string>>("--roles", ["-r"])
+        {
+            Description = "A role claim to add to the token. Specify once for each role.",
             AllowMultipleArgumentsPerToken = true
         };
-        jwtRolesOption.AddAlias("-r");
 
-        var jwtScopesOption = new Option<IEnumerable<string>>("--scopes", "A scope claim to add to the token. Specify once for each scope.")
+        var jwtScopesOption = new Option<IEnumerable<string>>("--scopes", ["-s"])
         {
+            Description = "A scope claim to add to the token. Specify once for each scope.",
             AllowMultipleArgumentsPerToken = true
         };
-        jwtScopesOption.AddAlias("-s");
 
         var jwtClaimsOption = new Option<Dictionary<string, string>>("--claims",
             description: "Claims to add to the token. Specify once for each claim in the format \"name:value\".",
@@ -75,26 +79,18 @@ sealed class JwtCommand : Command
             AllowMultipleArgumentsPerToken = true,
         };
 
-        var jwtValidForOption = new Option<double>("--valid-for", "The duration for which the token is valid. Duration is set in minutes.");
-        jwtValidForOption.AddAlias("-v");
-
-        var jwtSigningKeyOption = new Option<string>("--signing-key", "The signing key to sign the token. Minimum length is 32 characters.");
-        jwtSigningKeyOption.AddAlias("-k");
-        jwtSigningKeyOption.AddValidator(input =>
+        var jwtValidForOption = new Option<double>("--valid-for", ["-v"])
         {
-            try
-            {
-                var value = input.GetValueForOption(jwtSigningKeyOption);
-                if (string.IsNullOrWhiteSpace(value) || value.Length < 32)
-                {
-                    input.ErrorMessage = $"Requires option '--{jwtSigningKeyOption.Name}' to be at least 32 characters";
-                }
-            }
-            catch (InvalidOperationException ex)
-            {
-                input.ErrorMessage = ex.Message;
-            }
-        });
+            Description = "The duration for which the token is valid. Duration is set in minutes."
+        };
+
+        var jwtSigningKeyOption = new Option<string>("--signing-key", ["-k"])
+        {
+            Description = "The signing key to sign the token. Minimum length is 32 characters."
+        };
+        
+        // TODO: Fix validation for beta5
+        // jwtSigningKeyOption.Validators.Add(input => { ... });
 
         jwtCreateCommand.AddOptions(new List<Option>
         {

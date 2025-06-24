@@ -33,10 +33,10 @@ sealed class OutdatedCommand : Command
             Description = "Return version only"
         };
         this.Add(outdatedShortOption);
-        this.SetAction((parseResult) => 
+        this.SetAction(async (parseResult) => 
         {
             var versionOnly = parseResult.GetValue(outdatedShortOption);
-            CheckVersionAsync(versionOnly);
+            await CheckVersionAsync(versionOnly);
         });
     }
 
