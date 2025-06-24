@@ -79,9 +79,8 @@ sealed class DevProxyCommand : RootCommand
             //     Environment.Exit(1);
             // }
 
-            // TODO: Fix config file path extraction for beta5
             var configFile = Environment.GetCommandLineArgs()
-                .Where(arg => arg.StartsWith("--config-file=") || arg.StartsWith("-c="))
+                .Where(arg => arg.StartsWith("--config-file=", StringComparison.Ordinal) || arg.StartsWith("-c=", StringComparison.Ordinal))
                 .FirstOrDefault()?.Split('=', 2).LastOrDefault();
             return configFile is not null ?
                 Path.GetFullPath(ProxyUtils.ReplacePathTokens(configFile)) :
@@ -201,14 +200,14 @@ sealed class DevProxyCommand : RootCommand
             {
                 _urlsToWatchOption = new Option<List<string>?>(
                     UrlsToWatchOptionName,
-                    "The list of URLs to watch for requests"
+                    ["-u"]
                 )
                 {
-                    ArgumentHelpName = "urlsToWatch",
+                    Description = "The list of URLs to watch for requests",
+                    HelpName = "urlsToWatch",
                     AllowMultipleArgumentsPerToken = true,
                     Arity = ArgumentArity.ZeroOrMore
                 };
-                _urlsToWatchOption.AddAlias("-u");
             }
 
             // TODO: Fix early parsing for beta5 - Options no longer have Parse method
@@ -216,23 +215,19 @@ sealed class DevProxyCommand : RootCommand
             // since we're parsing all args, and other options are not instantiated yet
             // we're getting here a bunch of other errors, so we only need to look for
             // errors related to the log level option
-            var error = result.Errors.FirstOrDefault(e => e.SymbolResult?.Symbol == _urlsToWatchOption);
-            if (error is not null)
-            {
-                // Logger is not available here yet so we need to fallback to Console
-                var color = Console.ForegroundColor;
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.Error.WriteLine(error.Message);
-                Console.ForegroundColor = color;
-                Environment.Exit(1);
-            }
+            // var error = result.Errors.FirstOrDefault(e => e.SymbolResult?.Symbol == _urlsToWatchOption);
+            // if (error is not null) { ... }
+            // TODO: Complete removal of early parsing error handling  
+            // (leftover code from previous parsing approach)
 
             // TODO: Fix URLs to watch extraction for beta5
             urlsToWatch = null; // Default fallback until parsing is fixed
-            if (urlsToWatch is not null && urlsToWatch.Count == 0)
-            {
-                urlsToWatch = null;
-            }
+            
+            // TODO: Remove dead code when early parsing is restored
+            // if (urlsToWatch is not null && urlsToWatch.Count == 0)
+            // {
+            //     urlsToWatch = null;
+            // }
             urlsToWatchResolved = true;
 
             return urlsToWatch;
@@ -301,21 +296,28 @@ sealed class DevProxyCommand : RootCommand
 
     private void ConfigureCommand()
     {
-        _portOption = new(PortOptionName, "The port for the proxy to listen on");
-        _portOption.AddAlias("-p");
-        _portOption.ArgumentHelpName = "port";
-
-        _recordOption = new(RecordOptionName, "Use this option to record all request logs");
-
-        _watchPidsOption = new(WatchPidsOptionName, "The IDs of processes to watch for requests")
+        _portOption = new(PortOptionName, ["-p"])
         {
-            ArgumentHelpName = "pids",
+            Description = "The port for the proxy to listen on",
+            HelpName = "port"
+        };
+
+        _recordOption = new(RecordOptionName, [])
+        {
+            Description = "Use this option to record all request logs"
+        };
+
+        _watchPidsOption = new(WatchPidsOptionName, [])
+        {
+            Description = "The IDs of processes to watch for requests",
+            HelpName = "pids",
             AllowMultipleArgumentsPerToken = true
         };
 
-        _watchProcessNamesOption = new(WatchProcessNamesOptionName, "The names of processes to watch for requests")
+        _watchProcessNamesOption = new(WatchProcessNamesOptionName, [])
         {
-            ArgumentHelpName = "processNames",
+            Description = "The names of processes to watch for requests",
+            HelpName = "processNames",
             AllowMultipleArgumentsPerToken = true
         };
 
@@ -323,90 +325,40 @@ sealed class DevProxyCommand : RootCommand
 
         _discoverOption = new(DiscoverOptionName, "Run Dev Proxy in discovery mode");
 
-        _asSystemProxyOption = new(AsSystemProxyOptionName, "Set Dev Proxy as the system proxy");
-        _asSystemProxyOption.AddValidator(input =>
+        _asSystemProxyOption = new(AsSystemProxyOptionName, [])
         {
-            try
-            {
-                _ = input.GetValueForOption(_asSystemProxyOption);
-            }
-            catch (InvalidOperationException ex)
-            {
-                input.ErrorMessage = ex.Message;
-            }
-        });
-
-        _installCertOption = new(InstallCertOptionName, "Install self-signed certificate");
-        _installCertOption.AddValidator(input =>
-        {
-            try
-            {
-                var asSystemProxy = input.GetValueForOption(_asSystemProxyOption) ?? true;
-                var installCert = input.GetValueForOption(_installCertOption) ?? true;
-                if (asSystemProxy && !installCert)
-                {
-                    input.ErrorMessage = $"Requires option '--{_asSystemProxyOption.Name}' to be 'false'";
-                }
-            }
-            catch (InvalidOperationException ex)
-            {
-                input.ErrorMessage = ex.Message;
-            }
-        });
-
-        _timeoutOption = new(TimeoutOptionName, "Time in seconds after which Dev Proxy exits. Resets when Dev Proxy intercepts a request.")
-        {
-            ArgumentHelpName = "timeout",
+            Description = "Set Dev Proxy as the system proxy"
         };
-        _timeoutOption.AddValidator(input =>
+        
+        // TODO: Fix validation for beta5
+        // _asSystemProxyOption.Validators.Add(input => { ... });
+
+        _installCertOption = new(InstallCertOptionName, [])
         {
-            try
-            {
-                if (!long.TryParse(input.Tokens[0].Value, out var timeoutInput) || timeoutInput < 1)
-                {
-                    input.ErrorMessage = $"{input.Tokens[0].Value} is not valid as a timeout value";
-                }
-            }
-            catch (InvalidOperationException ex)
-            {
-                input.ErrorMessage = ex.Message;
-            }
-        });
-        _timeoutOption.AddAlias("-t");
+            Description = "Install self-signed certificate"  
+        };
+        
+        // TODO: Fix validation for beta5  
+        // _installCertOption.Validators.Add(input => { ... });
+
+        _timeoutOption = new(TimeoutOptionName, ["-t"])
+        {
+            Description = "Time in seconds after which Dev Proxy exits. Resets when Dev Proxy intercepts a request.",
+            HelpName = "timeout"
+        };
+        
+        // TODO: Fix validation for beta5
+        // _timeoutOption.Validators.Add(input => { ... });
 
         _envOption = new(EnvOptionName, "Variables to set for the Dev Proxy process")
         {
-            ArgumentHelpName = "env",
+            HelpName = "env",
             AllowMultipleArgumentsPerToken = true,
             Arity = ArgumentArity.ZeroOrMore
         };
-        _envOption.AddAlias("-e");
-        _envOption.AddValidator(input =>
-        {
-            try
-            {
-                var envVars = input.GetValueForOption(_envOption);
-                if (envVars is null || envVars.Length == 0)
-                {
-                    return;
-                }
-
-                foreach (var envVar in envVars)
-                {
-                    // Split on first '=' only
-                    var parts = envVar.Split('=', 2);
-                    if (parts.Length != 2)
-                    {
-                        input.ErrorMessage = $"Invalid environment variable format: '{envVar}'. Expected format is 'name=value'.";
-                        return;
-                    }
-                }
-            }
-            catch (InvalidOperationException ex)
-            {
-                input.ErrorMessage = ex.Message;
-            }
-        });
+        // TODO: Fix validation and alias for beta5
+        // _envOption.AddAlias("-e");
+        // _envOption.Validators.Add(input => { ... });
 
         var options = new List<Option>
         {

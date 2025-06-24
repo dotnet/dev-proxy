@@ -47,37 +47,13 @@ sealed class JwtCommand : Command
             AllowMultipleArgumentsPerToken = true
         };
 
-        var jwtClaimsOption = new Option<Dictionary<string, string>>("--claims",
-            description: "Claims to add to the token. Specify once for each claim in the format \"name:value\".",
-            parseArgument: result =>
-            {
-                var claims = new Dictionary<string, string>();
-                foreach (var token in result.Tokens)
-                {
-                    var claim = token.Value.Split(":");
-
-                    if (claim.Length != 2)
-                    {
-                        result.ErrorMessage = $"Invalid claim format: '{token.Value}'. Expected format is name:value.";
-                        return claims ?? [];
-                    }
-
-                    try
-                    {
-                        var (key, value) = (claim[0], claim[1]);
-                        claims.Add(key, value);
-                    }
-                    catch (Exception ex)
-                    {
-                        result.ErrorMessage = ex.Message;
-                    }
-                }
-                return claims;
-            }
-        )
+        var jwtClaimsOption = new Option<Dictionary<string, string>>("--claims", ["-c"])
         {
-            AllowMultipleArgumentsPerToken = true,
+            Description = "Claims to add to the token. Specify once for each claim in the format \"name:value\".",
+            AllowMultipleArgumentsPerToken = true
         };
+        
+        // TODO: Restore custom parsing for claims in beta5
 
         var jwtValidForOption = new Option<double>("--valid-for", ["-v"])
         {
