@@ -3,7 +3,7 @@
   "title": "Dev Proxy PowerPlatformOpenApiSpecGeneratorPlugin config schema",
   "type": "object",
   "properties": {
-    "$schema": {
+    "$schemaReference": {
       "type": "string",
       "description": "The JSON schema reference for validation."
     },
