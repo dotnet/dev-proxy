@@ -50,7 +50,7 @@ public enum SpecFormat
     Yaml
 }
 
-public sealed class OpenApiSpecGeneratorPluginConfiguration
+public class OpenApiSpecGeneratorPluginConfiguration
 {
     public bool IncludeOptionsRequests { get; set; }
     public SpecFormat SpecFormat { get; set; } = SpecFormat.Json;
@@ -138,6 +138,9 @@ public class OpenApiSpecGeneratorPlugin(
         var generatedOpenApiSpecs = new Dictionary<string, string>();
         foreach (var openApiDoc in openApiDocs)
         {
+            // Allow derived plugins to post-process the OpenApiDocument (above the path level)
+            ProcessOpenApiDocument(openApiDoc);
+
             var server = openApiDoc.Servers.First();
             var fileName = GetFileNameFromServerUrl(server.Url, Configuration.SpecFormat);
 
@@ -189,6 +192,15 @@ public class OpenApiSpecGeneratorPlugin(
     {
         // By default, return the path item unchanged.
         return pathItem;
+    }
+
+    /// <summary>
+    /// Allows derived plugins to post-process the OpenApiDocument before it is serialized and written to disk.
+    /// </summary>
+    /// <param name="openApiDoc">The OpenApiDocument to process.</param>
+    protected virtual void ProcessOpenApiDocument(OpenApiDocument openApiDoc)
+    {
+        // By default, do nothing. Derived plugins can override to add/modify document-level data.
     }
 
     private async Task<string> GetOperationIdAsync(string method, string serverUrl, string parametrizedPath)

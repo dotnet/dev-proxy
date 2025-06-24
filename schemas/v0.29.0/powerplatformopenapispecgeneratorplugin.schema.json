@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Dev Proxy PowerPlatformSpecGeneratorPlugin config schema",
+  "title": "Dev Proxy PowerPlatformOpenApiSpecGeneratorPlugin config schema",
   "type": "object",
   "properties": {
     "$schema": {
@@ -19,7 +19,7 @@
       ],
       "description": "Specifies the format of the generated OpenAPI spec. Allowed values: 'Json' or 'Yaml'. Default: 'Json'."
     },
-    "includeRequestHeaders": {
+    "includeResponseHeaders": {
       "type": "boolean",
       "description": "Determines whether to include request headers in the generated OpenAPI spec. Default: false."
     },
