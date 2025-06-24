@@ -158,20 +158,26 @@ public sealed class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGenerat
             }
 
             // Process responses
-            if (operation.Responses != null)
+            if (operation.Responses is null)
             {
-                foreach (var response in operation.Responses.Values)
+                continue;
+            }
+
+            foreach (var response in operation.Responses.Values)
+            {
+                if (response.Content is null)
                 {
-                    if (response.Content != null)
+                    continue;
+                }
+
+                foreach (var mediaType in response.Content.Values)
+                {
+                    if (mediaType.Schema is null)
                     {
-                        foreach (var mediaType in response.Content.Values)
-                        {
-                            if (mediaType.Schema != null)
-                            {
-                                await ProcessSchemaPropertiesAsync(mediaType.Schema);
-                            }
-                        }
+                        continue;
                     }
+
+                    await ProcessSchemaPropertiesAsync(mediaType.Schema);
                 }
             }
         }
