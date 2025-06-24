@@ -564,5 +564,4 @@ public sealed class PowerPlatformOpenApiSpecGeneratorPlugin : OpenApiSpecGenerat
             _ = openApiDoc.Extensions.Remove("x-ms-generated-by");
         }
     }
-
 }
