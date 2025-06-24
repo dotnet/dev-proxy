@@ -11,6 +11,10 @@
       "type": "boolean",
       "description": "Determines whether to include OPTIONS requests in the generated OpenAPI spec. Default: false."
     },
+    "ignoreResponseTypes": {
+      "type": "boolean",
+      "description": "Determines whether to ignore response types in the generated OpenAPI spec. Default: false."
+    },
     "specVersion": {
       "type": "string",
       "enum": [
