@@ -497,6 +497,15 @@ sealed class DevProxyCommand : RootCommand
         {
             throw;
         }
+        catch (IOException ex) when (ex.Message.Contains("Failed to bind to address", StringComparison.OrdinalIgnoreCase) && ex.Message.Contains($":{_proxyConfiguration.ApiPort}", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogError("Dev Proxy API port {ApiPort} is already in use.", _proxyConfiguration.ApiPort);
+            _logger.LogError("To resolve this issue:");
+            _logger.LogError("1. Add the 'apiPort' property to your configuration file and set it to a different port number");
+            _logger.LogError("2. If you're using Dev Proxy Toolkit, update the API port extension setting to match your custom port");
+            _logger.LogError("Example configuration: {{ \"apiPort\": 8898 }}");
+            return 1;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "An error occurred while running Dev Proxy");
