@@ -120,7 +120,6 @@ public class OpenApiSpecGeneratorPlugin(
 
         var openApiDocs = new List<OpenApiDocument>();
 
-
         foreach (var request in e.RequestLogs)
         {
             if (request.MessageType != MessageType.InterceptedResponse ||
@@ -145,17 +144,6 @@ public class OpenApiSpecGeneratorPlugin(
             {
                 var pathItem = GetOpenApiPathItem(request.Context.Session);
                 var parametrizedPath = ParametrizePath(pathItem, request.Context.Session.HttpClient.Request.RequestUri);
-                var operationInfo = pathItem.Operations.First();
-                operationInfo.Value.OperationId = await GetOperationIdAsync(
-                    operationInfo.Key.ToString(),
-                    request.Context.Session.HttpClient.Request.RequestUri.GetLeftPart(UriPartial.Authority),
-                    parametrizedPath
-                );
-                operationInfo.Value.Description = await GetOperationDescriptionAsync(
-                    operationInfo.Key.ToString(),
-                    request.Context.Session.HttpClient.Request.RequestUri.GetLeftPart(UriPartial.Authority),
-                    parametrizedPath
-                );
                 await ProcessPathItemAsync(pathItem, request.Context.Session.HttpClient.Request.RequestUri, parametrizedPath);
                 AddOrMergePathItem(openApiDocs, pathItem, request.Context.Session.HttpClient.Request.RequestUri, parametrizedPath);
             }
@@ -219,10 +207,22 @@ public class OpenApiSpecGeneratorPlugin(
     /// <param name="requestUri">The request URI.</param>
     /// <param name="parametrizedPath">The parametrized path string.</param>
     /// <returns>The processed OpenApiPathItem.</returns>
-    protected virtual Task ProcessPathItemAsync(OpenApiPathItem pathItem, Uri requestUri, string parametrizedPath)
+    protected virtual async Task ProcessPathItemAsync(OpenApiPathItem pathItem, Uri requestUri, string parametrizedPath)
     {
-        // By default, return the path item unchanged. Derived plugins can override to add/modify path-level data.
-        return Task.CompletedTask;
+        ArgumentNullException.ThrowIfNull(pathItem);
+        ArgumentNullException.ThrowIfNull(requestUri);
+
+        var operationInfo = pathItem.Operations.First();
+        operationInfo.Value.OperationId = await GetOperationIdAsync(
+            operationInfo.Key.ToString(),
+            requestUri.GetLeftPart(UriPartial.Authority),
+            parametrizedPath
+        );
+        operationInfo.Value.Description = await GetOperationDescriptionAsync(
+            operationInfo.Key.ToString(),
+            requestUri.GetLeftPart(UriPartial.Authority),
+            parametrizedPath
+        );
     }
 
     /// <summary>
@@ -248,7 +248,7 @@ public class OpenApiSpecGeneratorPlugin(
                 { "request", $"{method.ToUpperInvariant()} {serverUrl}{parametrizedPath}" }
             });
         }
-        return id?.Response ?? $"{method}{parametrizedPath.Replace('/', '.')}";
+        return id?.Response?.Trim() ?? $"{method}{parametrizedPath.Replace('/', '.')}";
     }
 
     protected virtual async Task<string> GetOperationDescriptionAsync(string method, string serverUrl, string parametrizedPath, string promptyFile = "api_operation_description")
@@ -263,7 +263,7 @@ public class OpenApiSpecGeneratorPlugin(
                 { "request", $"{method.ToUpperInvariant()} {serverUrl}{parametrizedPath}" }
             });
         }
-        return description?.Response ?? $"{method} {parametrizedPath}";
+        return description?.Response?.Trim() ?? $"{method} {parametrizedPath}";
     }
 
     /**

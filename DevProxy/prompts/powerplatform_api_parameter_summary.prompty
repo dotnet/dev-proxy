@@ -1,5 +1,5 @@
 ---
-name: OpenAPI parameter summary
+name: Power Platform OpenAPI parameter summary
 description: Generate a concise summary for an OpenAPI parameter based on its metadata.
 authors:
   - Dev Proxy
@@ -7,19 +7,52 @@ model:
   api: chat
 sample:
   request: |
-    Name: filter
-    Location: query
+    Parameter Metadata:
+    - Name: sessionToken
+    - Location: header
+  response: |
+    Session Token
 ---
 
 system:
-You're an expert in OpenAPI and API documentation. Based on the following parameter metadata, generate a concise and descriptive summary for the parameter. The summary must adhere to the following rules:
-- Must exist and be written in English.
-- Must be free of grammatical and spelling errors.
-- Must be 80 characters or less.
+You are an expert in OpenAPI and Microsoft Power Platform custom connector design.
+
+Your task is to generate a **clean, human-readable label** for an OpenAPI parameter name.
+This label will be used as the value for the `x-ms-summary` field in the parameter definition for a Power Platform custom connector.
+
+Formatting Rules:
+- Convert the parameter name to **Title Case**.
+- Split words based on common naming conventions: camelCase, PascalCase, snake_case, or kebab-case.
+- Do not include the parameter location in your output.
+- Do not include extra punctuation or descriptive text — only the prettified label.
+- Keep the result to **80 characters or fewer**.
+
+This summary should feel like a label you would see in a UI or tooltip.
+
+Examples:
+
+Parameter Metadata:
+- Name: userId
+- Location: path
+Response: User Id
+
+Parameter Metadata:
+- Name: X-Request-ID
+- Location: header
+Response: X Request ID
+
+Parameter Metadata:
+- Name: session_token
+- Location: cookie
+Response: Session Token
+
+Parameter Metadata:
+- Name: attachments
+- Location: query
+Response: Attachments
 
 user:
 Parameter Metadata:
 - Name: {{parameterName}}
 - Location: {{location}}
-
-Now, generate the summary for this parameter.
+Response:

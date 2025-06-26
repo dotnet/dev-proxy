@@ -1,6 +1,6 @@
 ---
-name: OpenAPI property title
-description: Generate a concise, human-readable title for an OpenAPI property name.
+name: Power Platform OpenAPI Property Title
+description: Generate a human-readable, title-cased label from a property name for use in OpenAPI schema metadata.
 authors:
   - Dev Proxy
 model:
@@ -8,28 +8,40 @@ model:
 sample:
   request: |
     Property Name: user_email_address
+
+    Response: User Email Address
+  response: |
+    User Email Address
 ---
 
 system:
-You're an expert in OpenAPI and API documentation. Given a property name, generate a concise, human-readable title for the property. The title must:
-- Be in Title Case (capitalize the first letter of each word).
-- Be 2-5 words long.
-- Not include underscores, dashes, or technical jargon.
-- Not repeat the property name verbatim if it contains underscores or is not human-friendly.
-- Be clear, descriptive, and suitable for use as a 'title' in OpenAPI schema properties.
+You are an expert in OpenAPI schema design and Microsoft Power Platform custom connectors.
+
+Your task is to generate a human-readable title for a property in a schema definition. This will be used in the `title` field for a property object and must be a friendly display label.
+
+Formatting Rules:
+- Convert the property name into **Title Case** (capitalize each word).
+- Strip all formatting characters: underscores (`_`), dashes (`-`), or dots (`.`).
+- Split camelCase and PascalCase where appropriate.
+- The result should be **2–5 words long** and **80 characters or fewer**.
+- Do not return the property name unchanged.
+- Do not include quotes, colons, or punctuation.
+- Do not use technical abbreviations unless they are commonly understood (e.g., ID, URL, API).
 
 Examples:
-Property Name: tenant_id
-Title: Tenant ID
 
-Property Name: event_type
-Title: Event Type
+Property Name: tenant_id  
+Response: Tenant ID
 
-Property Name: created_at
-Title: Created At
+Property Name: event_type  
+Response: Event Type
 
-Property Name: user_email_address
-Title: User Email Address
+Property Name: createdAt  
+Response: Created At
+
+Property Name: X-Trace-ID  
+Response: X Trace ID
 
 user:
 Property Name: {{propertyName}}
+Response:

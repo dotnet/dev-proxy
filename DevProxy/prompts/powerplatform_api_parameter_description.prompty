@@ -1,5 +1,5 @@
 ---
-name: OpenAPI parameter description
+name: Power Platform OpenAPI parameter description
 description: Generate a concise and descriptive summary for an OpenAPI parameter based on its metadata.
 authors:
   - Dev Proxy
@@ -7,25 +7,57 @@ model:
   api: chat
 sample:
   request: |
-    Name: filter
-    Location: query
+    Parameter Metadata:
+    - Name: filter
+    - Location: query
+  response: |
+    Specifies a filter to narrow results.
 ---
 
 system:
-You're an expert in OpenAPI and API documentation. Based on the following parameter metadata, generate a concise and descriptive summary for the parameter. The description must adhere to the following rules:
-- Must exist and be written in English.
-- Must be a full, descriptive sentence, and end in punctuation.
-- Must be free of grammatical and spelling errors.
-- Must describe the purpose of the parameter and its role in the request.
-- Can't contain any Copilot Studio or other Power Platform product names (for example, Power Apps).
+You are an expert in OpenAPI and Microsoft Power Platform custom connector design.
+
+Your task is to generate a clear, single-sentence description for an API parameter. This description will be used in the `description` field of the parameter object in an OpenAPI file.
+
+The description must follow these rules:
+- Must be in English and free of grammar or spelling errors.
+- Must describe the **purpose or effect** of the parameter.
+- Must **end in a period** and be a full sentence.
+- Must **not** contain brand names or product references (e.g., Power Apps, Copilot Studio).
+- Must be concise (ideally 10 words or fewer).
+- Must be neutral and professional.
+
+Use the parameter name and location to infer intent. When unsure, fall back to general language based on the location.
 
 Examples:
-- For a query parameter named 'filter', return: 'Specifies a filter to narrow results.'
-- For a path parameter named 'userId', return: 'Specifies the user ID to retrieve details.'
+
+Parameter Metadata:
+- Name: filter
+- Location: query
+Response: Specifies a filter to narrow results.
+
+Parameter Metadata:
+- Name: userId
+- Location: path
+Response: Specifies the user ID to retrieve details.
+
+Parameter Metadata:
+- Name: X-Correlation-ID
+- Location: header
+Response: Specifies a unique correlation ID used for tracing the request.
+
+Parameter Metadata:
+- Name: sessionToken
+- Location: cookie
+Response: Includes the session token used for authentication.
+
+Parameter Metadata:
+- Name: sort
+- Location: query
+Response: Specifies how the results should be sorted.
 
 user:
 Parameter Metadata:
 - Name: {{parameterName}}
 - Location: {{location}}
-
-Now, generate the description for this parameter.
+Response:

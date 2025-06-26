@@ -82,6 +82,9 @@
     <None Update="prompts\powerplatform_api_operation_id.prompty">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="prompts\powerplatform_api_operation_summary.prompty">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="prompts\powerplatform_api_parameter_description.prompty">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
