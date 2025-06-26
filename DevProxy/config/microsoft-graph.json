@@ -1,15 +1,15 @@
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.1/rc.schema.json",
   "plugins": [
     {
       "name": "GraphSelectGuidancePlugin",
       "enabled": true,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll"
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll"
     },
     {
       "name": "GraphBetaSupportGuidancePlugin",
       "enabled": true,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll",
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll",
       "urlsToWatch": [
         "https://graph.microsoft.com/beta/*",
         "https://graph.microsoft.us/beta/*",
@@ -20,7 +20,7 @@
     {
       "name": "GraphConnectorGuidancePlugin",
       "enabled": true,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll",
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll",
       "urlsToWatch": [
         "https://graph.microsoft.com/*/external/connections/*/schema",
         "https://graph.microsoft.us/*/external/connections/*/schema",
@@ -31,28 +31,28 @@
     {
       "name": "GraphSdkGuidancePlugin",
       "enabled": true,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll"
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll"
     },
     {
       "name": "ODataPagingGuidancePlugin",
       "enabled": true,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll"
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll"
     },
     {
       "name": "GraphClientRequestIdGuidancePlugin",
       "enabled": true,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll"
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll"
     },
     {
       "name": "GraphRandomErrorPlugin",
       "enabled": true,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll",
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll",
       "configSection": "graphRandomErrorsPlugin"
     },
     {
       "name": "ExecutionSummaryPlugin",
       "enabled": true,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll",
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll",
       "configSection": "executionSummaryPlugin"
     }
   ],
@@ -67,7 +67,7 @@
     "https://microsoftgraph.chinacloudapi.cn/beta/*"
   ],
   "graphRandomErrorsPlugin": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.0/graphrandomerrorplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.1/graphrandomerrorplugin.schema.json",
     "allowedErrors": [
       429,
       500,
@@ -79,7 +79,7 @@
     "rate": 50
   },
   "executionSummaryPlugin": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.0/executionsummaryplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.1/executionsummaryplugin.schema.json",
     "groupBy": "url"
   },
   "labelMode": "text",
