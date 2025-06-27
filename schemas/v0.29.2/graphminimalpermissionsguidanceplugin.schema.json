@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy GraphMinimalPermissionsGuidancePlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Reference to the JSON schema definition."
+    },
+    "permissionsToIgnore": {
+      "type": "array",
+      "description": "The scopes to ignore and not include in the report. Default: ['profile', 'openid', 'offline_access', 'email'].",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}

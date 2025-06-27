@@ -399,24 +399,31 @@ public sealed class TypeSpecGeneratorPlugin(
                     .ToDictionary(h => h.Name.ToCamelCase(), h => h.Value.GetType().Name)
             };
 
-            var models = await GetModelsFromStringAsync(httpResponse.BodyString, lastSegment.ToPascalCase(), httpResponse.StatusCode >= 400);
-            if (models.Length > 0)
+            if (httpResponse.HasBody)
             {
-                foreach (var model in models)
+                var models = await GetModelsFromStringAsync(httpResponse.BodyString, lastSegment.ToPascalCase(), httpResponse.StatusCode >= 400);
+                if (models.Length > 0)
                 {
-                    _ = doc.Service.Namespace.MergeModel(model);
-                }
+                    foreach (var model in models)
+                    {
+                        _ = doc.Service.Namespace.MergeModel(model);
+                    }
 
-                var rootModel = models.Last();
-                if (rootModel.IsArray)
-                {
-                    res.BodyType = $"{rootModel.Name}[]";
-                    op.Name = await GetOperationNameAsync("list", url);
+                    var rootModel = models.Last();
+                    if (rootModel.IsArray)
+                    {
+                        res.BodyType = $"{rootModel.Name}[]";
+                        op.Name = await GetOperationNameAsync("list", url);
+                    }
+                    else
+                    {
+                        res.BodyType = rootModel.Name;
+                    }
                 }
-                else
-                {
-                    res.BodyType = rootModel.Name;
-                }
+            }
+            else
+            {
+                Logger.LogDebug("Response has no body");
             }
         }
 

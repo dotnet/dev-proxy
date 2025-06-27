@@ -213,13 +213,6 @@ public sealed class DevToolsPlugin(
             return;
         }
 
-        var methodAndUrl = e.RequestLog.Message.Split(' ');
-        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, methodAndUrl[1]))
-        {
-            Logger.LogRequest("URL not matched", MessageType.Skipped);
-            return;
-        }
-
         var message = new EntryAddedMessage
         {
             Params = new()
