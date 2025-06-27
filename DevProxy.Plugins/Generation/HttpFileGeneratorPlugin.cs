@@ -79,11 +79,13 @@ public sealed class HttpFileGeneratorPluginConfiguration
 }
 
 public sealed class HttpFileGeneratorPlugin(
+    HttpClient httpClient,
     ILogger<HttpFileGeneratorPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
     BaseReportingPlugin<HttpFileGeneratorPluginConfiguration>(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
@@ -96,7 +98,7 @@ public sealed class HttpFileGeneratorPlugin(
 
     public override string Name => nameof(HttpFileGeneratorPlugin);
 
-    public override async Task AfterRecordingStopAsync(RecordingArgs e)
+    public override async Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
 
@@ -110,13 +112,13 @@ public sealed class HttpFileGeneratorPlugin(
 
         Logger.LogInformation("Creating HTTP file from recorded requests...");
 
-        var httpFile = await GetHttpRequestsAsync(e.RequestLogs);
+        var httpFile = await GetHttpRequestsAsync(e.RequestLogs, cancellationToken);
         DeduplicateRequests(httpFile);
         ExtractVariables(httpFile);
 
         var fileName = $"requests_{DateTime.Now:yyyyMMddHHmmss}.http";
         Logger.LogDebug("Writing HTTP file to {FileName}...", fileName);
-        await File.WriteAllTextAsync(fileName, httpFile.Serialize());
+        await File.WriteAllTextAsync(fileName, httpFile.Serialize(), cancellationToken);
         Logger.LogInformation("Created HTTP file {FileName}", fileName);
 
         var generatedHttpFiles = new[] { fileName };
@@ -129,12 +131,14 @@ public sealed class HttpFileGeneratorPlugin(
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
     }
 
-    private async Task<HttpFile> GetHttpRequestsAsync(IEnumerable<RequestLog> requestLogs)
+    private async Task<HttpFile> GetHttpRequestsAsync(IEnumerable<RequestLog> requestLogs, CancellationToken cancellationToken)
     {
         var httpFile = new HttpFile();
 
         foreach (var request in requestLogs)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (request.MessageType != MessageType.InterceptedResponse ||
               request.Context is null ||
               request.Context.Session is null ||
@@ -158,7 +162,7 @@ public sealed class HttpFileGeneratorPlugin(
             {
                 Method = methodAndUrl[0],
                 Url = methodAndUrl[1],
-                Body = request.Context.Session.HttpClient.Request.HasBody ? await request.Context.Session.GetRequestBodyAsString() : null,
+                Body = request.Context.Session.HttpClient.Request.HasBody ? await request.Context.Session.GetRequestBodyAsString(cancellationToken) : null,
                 Headers = [.. request.Context.Session.HttpClient.Request.Headers.Select(h => new HttpFileRequestHeader { Name = h.Name, Value = h.Value })]
             });
         }

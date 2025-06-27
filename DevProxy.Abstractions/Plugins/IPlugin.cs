@@ -16,14 +16,14 @@ public interface IPlugin
     Option[] GetOptions();
     Command[] GetCommands();
 
-    Task InitializeAsync(InitArgs e);
+    Task InitializeAsync(InitArgs e, CancellationToken cancellationToken);
     void OptionsLoaded(OptionsLoadedArgs e);
-    Task BeforeRequestAsync(ProxyRequestArgs e);
-    Task BeforeResponseAsync(ProxyResponseArgs e);
-    Task AfterResponseAsync(ProxyResponseArgs e);
-    Task AfterRequestLogAsync(RequestLogArgs e);
-    Task AfterRecordingStopAsync(RecordingArgs e);
-    Task MockRequestAsync(EventArgs e);
+    Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken);
+    Task BeforeResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken);
+    Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken);
+    Task AfterRequestLogAsync(RequestLogArgs e, CancellationToken cancellationToken);
+    Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken);
+    Task MockRequestAsync(EventArgs e, CancellationToken cancellationToken);
 }
 
 public interface IPlugin<TConfiguration> : IPlugin

@@ -12,13 +12,13 @@ using System.Text.Json;
 namespace DevProxy.Plugins.Inspection;
 
 internal sealed class LanguageModelPricesLoader(
+    HttpClient httpClient,
     ILogger<LanguageModelPricesLoader> logger,
     LanguageModelPricesPluginConfiguration configuration,
     IProxyConfiguration proxyConfiguration) :
-    BaseLoader(logger, proxyConfiguration)
+    BaseLoader(httpClient, logger, proxyConfiguration)
 {
     private readonly LanguageModelPricesPluginConfiguration _configuration = configuration;
-    private readonly ILogger _logger = logger;
 
     protected override string FilePath => _configuration.PricesFile ?? throw new ArgumentNullException(nameof(_configuration.PricesFile), "Prices file path must be set in the configuration.");
 
@@ -49,12 +49,12 @@ internal sealed class LanguageModelPricesLoader(
                 }
 
                 _configuration.Prices = pricesData;
-                _logger.LogInformation("Language model prices data loaded from {PricesFile}", _configuration.PricesFile);
+                Logger.LogInformation("Language model prices data loaded from {PricesFile}", _configuration.PricesFile);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "An error has occurred while reading {PricesFile}:", _configuration.PricesFile);
+            Logger.LogError(ex, "An error has occurred while reading {PricesFile}:", _configuration.PricesFile);
         }
     }
 }

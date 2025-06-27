@@ -26,6 +26,6 @@ sealed class MsGraphDbCommand : Command
 
     private async Task GenerateMsGraphDbAsync(InvocationContext context)
     {
-        _ = await MSGraphDbUtils.GenerateMSGraphDbAsync(_logger);
+        _ = await MSGraphDbUtils.GenerateMSGraphDbAsync(_logger, false, context.GetCancellationToken());
     }
 }

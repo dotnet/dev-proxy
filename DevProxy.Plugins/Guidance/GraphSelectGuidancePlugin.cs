@@ -17,15 +17,15 @@ public sealed class GraphSelectGuidancePlugin(
 {
     public override string Name => nameof(GraphSelectGuidancePlugin);
 
-    public override async Task InitializeAsync(InitArgs e)
+    public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
     {
-        await base.InitializeAsync(e);
+        await base.InitializeAsync(e, cancellationToken);
 
         // let's not await so that it doesn't block the proxy startup
-        _ = MSGraphDbUtils.GenerateMSGraphDbAsync(Logger, true);
+        _ = MSGraphDbUtils.GenerateMSGraphDbAsync(Logger, true, cancellationToken);
     }
 
-    public override Task AfterResponseAsync(ProxyResponseArgs e)
+    public override Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterResponseAsync));
 

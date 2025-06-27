@@ -37,12 +37,14 @@ public sealed class TypeSpecGeneratorPluginConfiguration
 }
 
 public sealed class TypeSpecGeneratorPlugin(
+    HttpClient httpClient,
     ILogger<TypeSpecGeneratorPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     ILanguageModelClient languageModelClient,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
     BaseReportingPlugin<TypeSpecGeneratorPluginConfiguration>(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
@@ -52,7 +54,7 @@ public sealed class TypeSpecGeneratorPlugin(
 
     public override string Name => nameof(TypeSpecGeneratorPlugin);
 
-    public override async Task AfterRecordingStopAsync(RecordingArgs e)
+    public override async Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterRecordingStopAsync));
 
@@ -70,6 +72,8 @@ public sealed class TypeSpecGeneratorPlugin(
 
         foreach (var request in e.RequestLogs)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (request.MessageType != MessageType.InterceptedResponse ||
               request.Context is null ||
               request.Context.Session is null ||
@@ -106,9 +110,11 @@ public sealed class TypeSpecGeneratorPlugin(
         var generatedTypeSpecFiles = new Dictionary<string, string>();
         foreach (var typeSpecFile in typeSpecFiles)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var fileName = $"{typeSpecFile.Name}-{DateTime.Now:yyyyMMddHHmmss}.tsp";
             Logger.LogDebug("Writing OpenAPI spec to {FileName}...", fileName);
-            await File.WriteAllTextAsync(fileName, typeSpecFile.ToString());
+            await File.WriteAllTextAsync(fileName, typeSpecFile.ToString(), cancellationToken);
 
             generatedTypeSpecFiles.Add(typeSpecFile.Service.Servers.First().Url, fileName);
 
@@ -549,18 +555,14 @@ public sealed class TypeSpecGeneratorPlugin(
         return name;
     }
 
-    private async Task<string> GetOperationDescriptionAsync(string method, Uri url)
+    private async Task<string> GetOperationDescriptionAsync(string method, Uri url, CancellationToken cancellationToken = default)
     {
         Logger.LogTrace("Entered {Name}", nameof(GetOperationDescriptionAsync));
 
-        ILanguageModelCompletionResponse? description = null;
-        if (await languageModelClient.IsEnabledAsync())
+        var description = await languageModelClient.GenerateChatCompletionAsync("api_operation_description", new()
         {
-            description = await languageModelClient.GenerateChatCompletionAsync("api_operation_description", new()
-            {
-                { "request", $"{method.ToUpperInvariant()} {url}" }
-            });
-        }
+            { "request", $"{method.ToUpperInvariant()} {url}" }
+        }, cancellationToken);
 
         var operationDescription = description?.Response ?? $"{method.ToUpperInvariant()} {url}";
 
@@ -582,18 +584,14 @@ public sealed class TypeSpecGeneratorPlugin(
         return name;
     }
 
-    private async Task<string> GetServiceTitleAsync(Uri url)
+    private async Task<string> GetServiceTitleAsync(Uri url, CancellationToken cancellationToken = default)
     {
         Logger.LogTrace("Entered {Name}", nameof(GetServiceTitleAsync));
 
-        ILanguageModelCompletionResponse? serviceTitle = null;
-        if (await languageModelClient.IsEnabledAsync())
+        var serviceTitle = await languageModelClient.GenerateChatCompletionAsync("api_service_name", new()
         {
-            serviceTitle = await languageModelClient.GenerateChatCompletionAsync("api_service_name", new()
-            {
-                { "host_name", url.Host }
-            });
-        }
+            { "host_name", url.Host }
+        }, cancellationToken);
         var st = serviceTitle?.Response?.Trim('"') ?? $"{url.Host.Split('.').First().ToPascalCase()} API";
 
         Logger.LogDebug("Service title: {St}", st);
@@ -835,18 +833,14 @@ public sealed class TypeSpecGeneratorPlugin(
         return modelName;
     }
 
-    private async Task<string> MakeSingularAsync(string noun)
+    private async Task<string> MakeSingularAsync(string noun, CancellationToken cancellationToken = default)
     {
         Logger.LogTrace("Entered {Name}", nameof(MakeSingularAsync));
 
-        ILanguageModelCompletionResponse? singularNoun = null;
-        if (await languageModelClient.IsEnabledAsync())
+        var singularNoun = await languageModelClient.GenerateChatCompletionAsync("singular_noun", new()
         {
-            singularNoun = await languageModelClient.GenerateChatCompletionAsync("singular_noun", new()
-            {
-                { "noun", noun }
-            });
-        }
+            { "noun", noun }
+        }, cancellationToken);
         var singular = singularNoun?.Response;
 
         if (string.IsNullOrEmpty(singular) ||

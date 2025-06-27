@@ -37,7 +37,10 @@ sealed class RequestLogger(IServiceProvider serviceProvider, IProxyState proxySt
 
             foreach (var plugin in plugins.Where(p => p.Enabled))
             {
-                joinableTaskFactory.Run(async () => await plugin.AfterRequestLogAsync(requestLogArgs));
+                // we don't have the app's cancellation token in the current
+                // implementation, but should it change in the future,
+                // we won't have to break the interface
+                joinableTaskFactory.Run(async () => await plugin.AfterRequestLogAsync(requestLogArgs, CancellationToken.None));
             }
         }
     }

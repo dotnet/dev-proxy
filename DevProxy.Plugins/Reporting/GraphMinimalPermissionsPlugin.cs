@@ -22,11 +22,13 @@ public sealed class GraphMinimalPermissionsPluginConfiguration
 }
 
 public sealed class GraphMinimalPermissionsPlugin(
+    HttpClient httpClient,
     ILogger<GraphMinimalPermissionsPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
     BaseReportingPlugin<GraphMinimalPermissionsPluginConfiguration>(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
@@ -36,16 +38,16 @@ public sealed class GraphMinimalPermissionsPlugin(
 
     public override string Name => nameof(GraphMinimalPermissionsPlugin);
 
-    public override async Task InitializeAsync(InitArgs e)
+    public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(e);
 
-        await base.InitializeAsync(e);
+        await base.InitializeAsync(e, cancellationToken);
 
         _graphUtils = ActivatorUtilities.CreateInstance<GraphUtils>(e.ServiceProvider);
     }
 
-    public override async Task AfterRecordingStopAsync(RecordingArgs e)
+    public override async Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterRecordingStopAsync));
 
@@ -112,7 +114,7 @@ public sealed class GraphMinimalPermissionsPlugin(
 
         Logger.LogWarning("This plugin is in preview and may not return the correct results.\r\nPlease review the permissions and test your app before using them in production.\r\nIf you have any feedback, please open an issue at https://aka.ms/devproxy/issue.\r\n");
 
-        var report = await DetermineMinimalScopesAsync(endpoints);
+        var report = await DetermineMinimalScopesAsync(endpoints, cancellationToken);
         if (report is not null)
         {
             StoreReport(report, e);
@@ -121,7 +123,9 @@ public sealed class GraphMinimalPermissionsPlugin(
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
     }
 
-    private async Task<GraphMinimalPermissionsPluginReport?> DetermineMinimalScopesAsync(IEnumerable<(string method, string url)> endpoints)
+    private async Task<GraphMinimalPermissionsPluginReport?> DetermineMinimalScopesAsync(
+        IEnumerable<(string method, string url)> endpoints,
+        CancellationToken cancellationToken)
     {
         if (_graphUtils is null)
         {
@@ -137,8 +141,8 @@ public sealed class GraphMinimalPermissionsPlugin(
             var stringPayload = JsonSerializer.Serialize(payload, ProxyUtils.JsonSerializerOptions);
             Logger.LogDebug("Calling {Url} with payload\r\n{StringPayload}", url, stringPayload);
 
-            var response = await client.PostAsJsonAsync(url, payload);
-            var content = await response.Content.ReadAsStringAsync();
+            var response = await client.PostAsJsonAsync(url, payload, cancellationToken);
+            var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
             Logger.LogDebug("Response:\r\n{Content}", content);
 

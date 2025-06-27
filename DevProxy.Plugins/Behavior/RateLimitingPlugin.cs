@@ -49,11 +49,13 @@ public sealed class RateLimitConfiguration
 }
 
 public sealed class RateLimitingPlugin(
+    HttpClient httpClient,
     ILogger logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
     BasePlugin<RateLimitConfiguration>(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
@@ -67,21 +69,21 @@ public sealed class RateLimitingPlugin(
 
     public override string Name => nameof(RateLimitingPlugin);
 
-    public override async Task InitializeAsync(InitArgs e)
+    public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(e);
 
-        await base.InitializeAsync(e);
+        await base.InitializeAsync(e, cancellationToken);
 
         if (Configuration.WhenLimitExceeded == RateLimitResponseWhenLimitExceeded.Custom)
         {
             Configuration.CustomResponseFile = ProxyUtils.GetFullPath(Configuration.CustomResponseFile, ProxyConfiguration.ConfigFile);
             _loader = ActivatorUtilities.CreateInstance<RateLimitingCustomResponseLoader>(e.ServiceProvider, Configuration);
-            _loader.InitFileWatcher();
+            await _loader.InitFileWatcherAsync(cancellationToken);
         }
     }
 
-    public override async Task BeforeRequestAsync(ProxyRequestArgs e)
+    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
 
@@ -92,15 +94,13 @@ public sealed class RateLimitingPlugin(
         if (state.HasBeenSet)
         {
             Logger.LogRequest("Response already set", MessageType.Skipped, new(e.Session));
-            return;
+            return Task.CompletedTask;
         }
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
             Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
-            return;
+            return Task.CompletedTask;
         }
-
-        await base.BeforeRequestAsync(e);
 
         // set the initial values for the first request
         if (_resetTime == DateTime.MinValue)
@@ -197,11 +197,12 @@ public sealed class RateLimitingPlugin(
         }
 
         StoreRateLimitingHeaders(e);
+        return Task.CompletedTask;
     }
 
-    public override Task BeforeResponseAsync(ProxyResponseArgs e)
+    public override Task BeforeResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)
     {
-        Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
+        Logger.LogTrace("{Method} called", nameof(BeforeResponseAsync));
 
         ArgumentNullException.ThrowIfNull(e);
 

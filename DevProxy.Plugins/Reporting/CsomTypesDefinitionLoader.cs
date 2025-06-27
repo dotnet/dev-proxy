@@ -12,11 +12,12 @@ using System.Text.Json;
 namespace DevProxy.Plugins.Reporting;
 
 internal sealed class CsomTypesDefinitionLoader(
+    HttpClient httpClient,
     ILogger<CsomTypesDefinitionLoader> logger,
     MinimalCsomPermissionsPluginConfiguration configuration,
-    IProxyConfiguration proxyConfiguration) : BaseLoader(logger, proxyConfiguration)
+    IProxyConfiguration proxyConfiguration) :
+    BaseLoader(httpClient, logger, proxyConfiguration)
 {
-    private readonly ILogger _logger = logger;
     private readonly MinimalCsomPermissionsPluginConfiguration _configuration = configuration;
 
     protected override string FilePath => _configuration.TypesFilePath!;
@@ -29,7 +30,7 @@ internal sealed class CsomTypesDefinitionLoader(
             if (types is not null)
             {
                 _configuration.TypesDefinitions = types;
-                _logger.LogInformation("CSOM types definitions loaded from {File}", _configuration.TypesFilePath);
+                Logger.LogInformation("CSOM types definitions loaded from {File}", _configuration.TypesFilePath);
             }
             else
             {
@@ -38,7 +39,7 @@ internal sealed class CsomTypesDefinitionLoader(
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "An error has occurred while reading {ConfigurationFile}:", _configuration.TypesFilePath);
+            Logger.LogError(ex, "An error has occurred while reading {ConfigurationFile}:", _configuration.TypesFilePath);
         }
     }
 }

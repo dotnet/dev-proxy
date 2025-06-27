@@ -19,7 +19,7 @@ public sealed class ODataPagingGuidancePlugin(
 
     public override string Name => nameof(ODataPagingGuidancePlugin);
 
-    public override Task BeforeRequestAsync(ProxyRequestArgs e)
+    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
 
@@ -56,7 +56,7 @@ public sealed class ODataPagingGuidancePlugin(
         return Task.CompletedTask;
     }
 
-    public override async Task BeforeResponseAsync(ProxyResponseArgs e)
+    public override async Task BeforeResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(BeforeResponseAsync));
 
@@ -89,7 +89,7 @@ public sealed class ODataPagingGuidancePlugin(
         e.Session.HttpClient.Response.KeepBody = true;
 
         var nextLink = string.Empty;
-        var bodyString = await e.Session.GetResponseBodyAsString();
+        var bodyString = await e.Session.GetResponseBodyAsString(cancellationToken);
         if (string.IsNullOrEmpty(bodyString))
         {
             Logger.LogRequest("Skipping empty response body", MessageType.Skipped, new(e.Session));

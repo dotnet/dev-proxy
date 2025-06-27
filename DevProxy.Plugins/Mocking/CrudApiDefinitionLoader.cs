@@ -11,13 +11,13 @@ using System.Text.Json;
 namespace DevProxy.Plugins.Mocking;
 
 internal sealed class CrudApiDefinitionLoader(
+    HttpClient httpClient,
     ILogger<CrudApiDefinitionLoader> logger,
     CrudApiConfiguration configuration,
     IProxyConfiguration proxyConfiguration) :
-    BaseLoader(logger, proxyConfiguration)
+    BaseLoader(httpClient, logger, proxyConfiguration)
 {
     private readonly CrudApiConfiguration _configuration = configuration;
-    private readonly ILogger _logger = logger;
 
     protected override string FilePath => _configuration.ApiFile;
 
@@ -52,12 +52,12 @@ internal sealed class CrudApiDefinitionLoader(
                         };
                     }
                 }
-                _logger.LogInformation("{ConfigResponseCount} actions for CRUD API loaded from {ApiFile}", configResponses.Count(), _configuration.ApiFile);
+                Logger.LogInformation("{ConfigResponseCount} actions for CRUD API loaded from {ApiFile}", configResponses.Count(), _configuration.ApiFile);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "An error has occurred while reading {ApiFile}", _configuration.ApiFile);
+            Logger.LogError(ex, "An error has occurred while reading {ApiFile}", _configuration.ApiFile);
         }
     }
 }

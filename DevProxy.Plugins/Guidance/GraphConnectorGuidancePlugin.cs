@@ -34,7 +34,7 @@ public sealed class GraphConnectorGuidancePlugin(
 {
     public override string Name => nameof(GraphConnectorGuidancePlugin);
 
-    public override Task BeforeRequestAsync(ProxyRequestArgs e)
+    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
 

@@ -24,7 +24,7 @@ public sealed class ProxyController(IProxyStateController proxyStateController, 
     public ProxyInfo Get() => ProxyInfo.From(_proxyStateController.ProxyState, _proxyConfiguration);
 
     [HttpPost]
-    public async Task<IActionResult> SetAsync([FromBody] ProxyInfo proxyInfo)
+    public async Task<IActionResult> SetAsync([FromBody] ProxyInfo proxyInfo, CancellationToken cancellationToken)
     {
         if (proxyInfo == null)
         {
@@ -46,7 +46,7 @@ public sealed class ProxyController(IProxyStateController proxyStateController, 
             }
             else
             {
-                await _proxyStateController.StopRecordingAsync();
+                await _proxyStateController.StopRecordingAsync(cancellationToken);
             }
         }
 
@@ -55,10 +55,10 @@ public sealed class ProxyController(IProxyStateController proxyStateController, 
 
     [HttpPost("mockRequest")]
 #pragma warning disable CA1030
-    public async Task RaiseMockRequestAsync()
+    public async Task RaiseMockRequestAsync(CancellationToken cancellationToken)
 #pragma warning restore CA1030
     {
-        await _proxyStateController.MockRequestAsync();
+        await _proxyStateController.MockRequestAsync(cancellationToken);
         Response.StatusCode = 202;
     }
 

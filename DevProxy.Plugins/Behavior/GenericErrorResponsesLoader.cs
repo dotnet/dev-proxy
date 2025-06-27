@@ -11,12 +11,12 @@ using System.Text.Json;
 namespace DevProxy.Plugins.Behavior;
 
 internal sealed class GenericErrorResponsesLoader(
+    HttpClient httpClient,
     ILogger<GenericErrorResponsesLoader> logger,
     GenericRandomErrorConfiguration configuration,
     IProxyConfiguration proxyConfiguration) :
-    BaseLoader(logger, proxyConfiguration)
+    BaseLoader(httpClient, logger, proxyConfiguration)
 {
-    private readonly ILogger _logger = logger;
     private readonly GenericRandomErrorConfiguration _configuration = configuration;
 
     protected override string FilePath => _configuration.ErrorsFile;
@@ -30,12 +30,12 @@ internal sealed class GenericErrorResponsesLoader(
             if (configResponses is not null)
             {
                 _configuration.Errors = configResponses;
-                _logger.LogInformation("{ConfigResponseCount} error responses loaded from {ErrorFile}", configResponses.Count(), _configuration.ErrorsFile);
+                Logger.LogInformation("{ConfigResponseCount} error responses loaded from {ErrorFile}", configResponses.Count(), _configuration.ErrorsFile);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "An error has occurred while reading {ConfigurationFile}:", _configuration.ErrorsFile);
+            Logger.LogError(ex, "An error has occurred while reading {ConfigurationFile}:", _configuration.ErrorsFile);
         }
     }
 }

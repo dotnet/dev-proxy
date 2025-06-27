@@ -12,12 +12,12 @@ using DevProxy.Abstractions.Models;
 namespace DevProxy.Plugins.Behavior;
 
 internal sealed class RateLimitingCustomResponseLoader(
+    HttpClient httpClient,
     ILogger<RateLimitingCustomResponseLoader> logger,
     RateLimitConfiguration configuration,
     IProxyConfiguration proxyConfiguration) :
-    BaseLoader(logger, proxyConfiguration)
+    BaseLoader(httpClient, logger, proxyConfiguration)
 {
-    private readonly ILogger _logger = logger;
     private readonly RateLimitConfiguration _configuration = configuration;
 
     protected override string FilePath => _configuration.CustomResponseFile;
@@ -34,7 +34,7 @@ internal sealed class RateLimitingCustomResponseLoader(
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "An error has occurred while reading {ConfigurationFile}:", _configuration.CustomResponseFile);
+            Logger.LogError(ex, "An error has occurred while reading {ConfigurationFile}:", _configuration.CustomResponseFile);
         }
     }
 }

@@ -26,7 +26,7 @@ public sealed class RetryAfterPlugin(
 
     public override string Name => nameof(RetryAfterPlugin);
 
-    public override Task BeforeRequestAsync(ProxyRequestArgs e)
+    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
 

@@ -41,11 +41,13 @@ public sealed class OpenAITelemetryPluginConfiguration : LanguageModelPricesPlug
 }
 
 public sealed class OpenAITelemetryPlugin(
+    HttpClient httpClient,
     ILogger<OpenAITelemetryPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
     BasePlugin<OpenAITelemetryPluginConfiguration>(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
@@ -66,23 +68,23 @@ public sealed class OpenAITelemetryPlugin(
 
     public override string Name => nameof(OpenAITelemetryPlugin);
 
-    public override async Task InitializeAsync(InitArgs e)
+    public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(e);
 
-        await base.InitializeAsync(e);
+        await base.InitializeAsync(e, cancellationToken);
 
         if (Configuration.IncludeCosts)
         {
             Configuration.PricesFile = ProxyUtils.GetFullPath(Configuration.PricesFile, ProxyConfiguration.ConfigFile);
             _loader = ActivatorUtilities.CreateInstance<LanguageModelPricesLoader>(e.ServiceProvider, Configuration);
-            _loader.InitFileWatcher();
+            await _loader.InitFileWatcherAsync(cancellationToken);
         }
 
         InitializeOpenTelemetryExporter();
     }
 
-    public override Task BeforeRequestAsync(ProxyRequestArgs e)
+    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
 
@@ -142,7 +144,7 @@ public sealed class OpenAITelemetryPlugin(
         return Task.CompletedTask;
     }
 
-    public override Task AfterResponseAsync(ProxyResponseArgs e)
+    public override Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterResponseAsync));
 

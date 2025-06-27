@@ -16,7 +16,7 @@ public sealed class ODSPSearchGuidancePlugin(
 {
     public override string Name => nameof(ODSPSearchGuidancePlugin);
 
-    public override Task BeforeRequestAsync(ProxyRequestArgs e)
+    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
 

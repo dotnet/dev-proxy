@@ -25,11 +25,13 @@ public sealed class ApiCenterOnboardingPluginConfiguration
 }
 
 public sealed class ApiCenterOnboardingPlugin(
+    HttpClient httpClient,
     ILogger<ApiCenterOnboardingPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
     BaseReportingPlugin<ApiCenterOnboardingPluginConfiguration>(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
@@ -41,11 +43,11 @@ public sealed class ApiCenterOnboardingPlugin(
 
     public override string Name => nameof(ApiCenterOnboardingPlugin);
 
-    public override async Task InitializeAsync(InitArgs e)
+    public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(e);
 
-        await base.InitializeAsync(e);
+        await base.InitializeAsync(e, cancellationToken);
 
         try
         {
@@ -69,7 +71,7 @@ public sealed class ApiCenterOnboardingPlugin(
         Logger.LogInformation("Plugin {Plugin} connecting to Azure...", Name);
         try
         {
-            _ = await _apiCenterClient.GetAccessTokenAsync(CancellationToken.None);
+            _ = await _apiCenterClient.GetAccessTokenAsync(cancellationToken);
         }
         catch (Exception ex)
         {
@@ -80,7 +82,7 @@ public sealed class ApiCenterOnboardingPlugin(
         Logger.LogDebug("Plugin {Plugin} auth confirmed...", Name);
     }
 
-    public override async Task AfterRecordingStopAsync(RecordingArgs e)
+    public override async Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterRecordingStopAsync));
 
@@ -104,7 +106,7 @@ public sealed class ApiCenterOnboardingPlugin(
             return;
         }
 
-        _apiDefinitionsByUrl ??= await _apis.GetApiDefinitionsByUrlAsync(_apiCenterClient, Logger);
+        _apiDefinitionsByUrl ??= await _apis.GetApiDefinitionsByUrlAsync(_apiCenterClient, Logger, cancellationToken);
 
         var newApis = new List<(string method, string url)>();
         var interceptedRequests = e.RequestLogs
@@ -122,6 +124,8 @@ public sealed class ApiCenterOnboardingPlugin(
 
         foreach (var request in interceptedRequests)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var (method, url) = request;
 
             Logger.LogDebug("Processing request {Method} {Url}...", method, url);
@@ -136,7 +140,7 @@ public sealed class ApiCenterOnboardingPlugin(
                 continue;
             }
 
-            await apiDefinition.LoadOpenApiDefinitionAsync(_apiCenterClient, Logger);
+            await apiDefinition.LoadOpenApiDefinitionAsync(_apiCenterClient, Logger, cancellationToken);
 
             if (apiDefinition.Definition is null)
             {
@@ -215,12 +219,15 @@ public sealed class ApiCenterOnboardingPlugin(
         }
 
         var generatedOpenApiSpecs = e.GlobalData.TryGetValue(OpenApiSpecGeneratorPlugin.GeneratedOpenApiSpecsKey, out var specs) ? specs as Dictionary<string, string> : [];
-        await CreateApisInApiCenterAsync(apisPerSchemeAndHost, generatedOpenApiSpecs!);
+        await CreateApisInApiCenterAsync(apisPerSchemeAndHost, generatedOpenApiSpecs!, cancellationToken);
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
     }
 
-    async Task CreateApisInApiCenterAsync(IEnumerable<IGrouping<string, (string method, string url)>> apisPerHost, Dictionary<string, string> generatedOpenApiSpecs)
+    async Task CreateApisInApiCenterAsync(
+        IEnumerable<IGrouping<string, (string method, string url)>> apisPerHost,
+        Dictionary<string, string> generatedOpenApiSpecs,
+        CancellationToken cancellationToken)
     {
         Logger.LogInformation("Creating new API entries in API Center...");
 
@@ -228,7 +235,7 @@ public sealed class ApiCenterOnboardingPlugin(
         {
             var schemeAndHost = apiPerHost.Key;
 
-            var api = await CreateApiAsync(schemeAndHost, apiPerHost);
+            var api = await CreateApiAsync(schemeAndHost, apiPerHost, cancellationToken);
             if (api is null)
             {
                 continue;
@@ -242,7 +249,7 @@ public sealed class ApiCenterOnboardingPlugin(
                 continue;
             }
 
-            var apiVersion = await CreateApiVersionAsync(api.Id);
+            var apiVersion = await CreateApiVersionAsync(api.Id, cancellationToken);
             if (apiVersion is null)
             {
                 continue;
@@ -250,7 +257,7 @@ public sealed class ApiCenterOnboardingPlugin(
 
             Debug.Assert(apiVersion.Id is not null);
 
-            var apiDefinition = await CreateApiDefinitionAsync(apiVersion.Id);
+            var apiDefinition = await CreateApiDefinitionAsync(apiVersion.Id, cancellationToken);
             if (apiDefinition is null)
             {
                 continue;
@@ -258,11 +265,11 @@ public sealed class ApiCenterOnboardingPlugin(
 
             Debug.Assert(apiDefinition.Id is not null);
 
-            await ImportApiDefinitionAsync(apiDefinition.Id, openApiSpecFilePath);
+            await ImportApiDefinitionAsync(apiDefinition.Id, openApiSpecFilePath, cancellationToken);
         }
     }
 
-    async Task<Api?> CreateApiAsync(string schemeAndHost, IEnumerable<(string method, string url)> apiRequests)
+    async Task<Api?> CreateApiAsync(string schemeAndHost, IEnumerable<(string method, string url)> apiRequests, CancellationToken cancellationToken)
     {
         Debug.Assert(_apiCenterClient is not null);
 
@@ -286,7 +293,7 @@ public sealed class ApiCenterOnboardingPlugin(
             }
         };
 
-        var newApi = await _apiCenterClient.PutApiAsync(api, apiName);
+        var newApi = await _apiCenterClient.PutApiAsync(api, apiName, cancellationToken);
         if (newApi is not null)
         {
             Logger.LogDebug("API created successfully");
@@ -299,7 +306,7 @@ public sealed class ApiCenterOnboardingPlugin(
         return newApi;
     }
 
-    async Task<ApiVersion?> CreateApiVersionAsync(string apiId)
+    async Task<ApiVersion?> CreateApiVersionAsync(string apiId, CancellationToken cancellationToken)
     {
         Debug.Assert(_apiCenterClient is not null);
 
@@ -314,7 +321,7 @@ public sealed class ApiCenterOnboardingPlugin(
             }
         };
 
-        var newApiVersion = await _apiCenterClient.PutVersionAsync(apiVersion, apiId, "v1-0");
+        var newApiVersion = await _apiCenterClient.PutVersionAsync(apiVersion, apiId, "v1-0", cancellationToken);
         if (newApiVersion is not null)
         {
             Logger.LogDebug("API version created successfully");
@@ -327,7 +334,7 @@ public sealed class ApiCenterOnboardingPlugin(
         return newApiVersion;
     }
 
-    async Task<ApiDefinition?> CreateApiDefinitionAsync(string apiVersionId)
+    async Task<ApiDefinition?> CreateApiDefinitionAsync(string apiVersionId, CancellationToken cancellationToken)
     {
         Debug.Assert(_apiCenterClient is not null);
 
@@ -340,7 +347,7 @@ public sealed class ApiCenterOnboardingPlugin(
                 Title = "OpenAPI"
             }
         };
-        var newApiDefinition = await _apiCenterClient.PutDefinitionAsync(apiDefinition, apiVersionId, "openapi");
+        var newApiDefinition = await _apiCenterClient.PutDefinitionAsync(apiDefinition, apiVersionId, "openapi", cancellationToken);
         if (newApiDefinition is not null)
         {
             Logger.LogDebug("API definition created successfully");
@@ -353,13 +360,13 @@ public sealed class ApiCenterOnboardingPlugin(
         return newApiDefinition;
     }
 
-    async Task ImportApiDefinitionAsync(string apiDefinitionId, string openApiSpecFilePath)
+    async Task ImportApiDefinitionAsync(string apiDefinitionId, string openApiSpecFilePath, CancellationToken cancellationToken)
     {
         Debug.Assert(_apiCenterClient is not null);
 
         Logger.LogDebug("  Importing API definition for {Api}...", apiDefinitionId);
 
-        var openApiSpec = await File.ReadAllTextAsync(openApiSpecFilePath);
+        var openApiSpec = await File.ReadAllTextAsync(openApiSpecFilePath, cancellationToken);
         var apiSpecImport = new ApiSpecImport
         {
             Format = ApiSpecImportResultFormat.Inline,
@@ -370,7 +377,7 @@ public sealed class ApiCenterOnboardingPlugin(
                 Version = "3.0.1"
             }
         };
-        var res = await _apiCenterClient.PostImportSpecificationAsync(apiSpecImport, apiDefinitionId);
+        var res = await _apiCenterClient.PostImportSpecificationAsync(apiSpecImport, apiDefinitionId, cancellationToken);
         if (res.IsSuccessStatusCode)
         {
             Logger.LogDebug("API definition imported successfully");
@@ -380,7 +387,7 @@ public sealed class ApiCenterOnboardingPlugin(
             var resContent = res.ReasonPhrase;
             try
             {
-                resContent = await res.Content.ReadAsStringAsync();
+                resContent = await res.Content.ReadAsStringAsync(cancellationToken);
             }
             catch
             {

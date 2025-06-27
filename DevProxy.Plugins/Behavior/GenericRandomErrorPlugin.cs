@@ -36,11 +36,13 @@ public sealed class GenericRandomErrorConfiguration
 }
 
 public sealed class GenericRandomErrorPlugin(
+    HttpClient httpClient,
     ILogger<GenericRandomErrorPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
     BasePlugin<GenericRandomErrorConfiguration>(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
@@ -53,16 +55,16 @@ public sealed class GenericRandomErrorPlugin(
 
     public override string Name => nameof(GenericRandomErrorPlugin);
 
-    public override async Task InitializeAsync(InitArgs e)
+    public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(e);
 
-        await base.InitializeAsync(e);
+        await base.InitializeAsync(e, cancellationToken);
 
         Configuration.ErrorsFile = ProxyUtils.GetFullPath(Configuration.ErrorsFile, ProxyConfiguration.ConfigFile);
 
         _loader = ActivatorUtilities.CreateInstance<GenericErrorResponsesLoader>(e.ServiceProvider, Configuration);
-        _loader.InitFileWatcher();
+        await _loader.InitFileWatcherAsync(cancellationToken);
 
         ValidateErrors();
     }
@@ -106,7 +108,7 @@ public sealed class GenericRandomErrorPlugin(
         }
     }
 
-    public override Task BeforeRequestAsync(ProxyRequestArgs e)
+    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
 
@@ -301,6 +303,7 @@ public sealed class GenericRandomErrorPlugin(
 
         if (unmatchedErrorUrls.Count == 0)
         {
+            Logger.LogDebug("All error response URLs are matched");
             return;
         }
 

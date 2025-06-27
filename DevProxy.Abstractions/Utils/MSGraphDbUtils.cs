@@ -33,7 +33,7 @@ public static class MSGraphDbUtils
         }
     }
 
-    public static async Task<int> GenerateMSGraphDbAsync(ILogger logger, bool skipIfUpdatedToday = false)
+    public static async Task<int> GenerateMSGraphDbAsync(ILogger logger, bool skipIfUpdatedToday, CancellationToken cancellationToken)
     {
         var appFolder = ProxyUtils.AppFolder;
         if (string.IsNullOrEmpty(appFolder))
@@ -52,8 +52,8 @@ public static class MSGraphDbUtils
                 return 1;
             }
 
-            await UpdateOpenAPIGraphFilesIfNecessaryAsync(appFolder, logger);
-            await LoadOpenAPIFilesAsync(appFolder, logger);
+            await UpdateOpenAPIGraphFilesIfNecessaryAsync(appFolder, logger, cancellationToken);
+            await LoadOpenAPIFilesAsync(appFolder, logger, cancellationToken);
             if (_openApiDocuments.Count < 1)
             {
                 logger.LogDebug("No OpenAPI files found or couldn't load them");
@@ -61,8 +61,8 @@ public static class MSGraphDbUtils
             }
 
             var dbConnection = MSGraphDbConnection;
-            CreateDb(dbConnection, logger);
-            FillData(dbConnection, logger);
+            await CreateDbAsync(dbConnection, logger, cancellationToken);
+            await FillDataAsync(dbConnection, logger, cancellationToken);
 
             logger.LogInformation("Microsoft Graph database successfully updated");
 
@@ -78,29 +78,29 @@ public static class MSGraphDbUtils
 
     private static string GetGraphOpenApiYamlFileName(string version) => $"graph-{version.Replace(".", "_", StringComparison.OrdinalIgnoreCase)}-openapi.yaml";
 
-    private static void CreateDb(SqliteConnection dbConnection, ILogger logger)
+    private static async Task CreateDbAsync(SqliteConnection dbConnection, ILogger logger, CancellationToken cancellationToken)
     {
         logger.LogInformation("Creating database...");
 
         logger.LogDebug("Dropping endpoints table...");
         var dropTable = dbConnection.CreateCommand();
         dropTable.CommandText = "DROP TABLE IF EXISTS endpoints";
-        _ = dropTable.ExecuteNonQuery();
+        _ = await dropTable.ExecuteNonQueryAsync(cancellationToken);
 
         logger.LogDebug("Creating endpoints table...");
         var createTable = dbConnection.CreateCommand();
         // when you change the schema, increase the db version number in ProxyUtils
         createTable.CommandText = "CREATE TABLE IF NOT EXISTS endpoints (path TEXT, graphVersion TEXT, hasSelect BOOLEAN)";
-        _ = createTable.ExecuteNonQuery();
+        _ = await createTable.ExecuteNonQueryAsync(cancellationToken);
 
         logger.LogDebug("Creating index on endpoints and version...");
         // Add an index on the path and graphVersion columns
         var createIndex = dbConnection.CreateCommand();
         createIndex.CommandText = "CREATE INDEX IF NOT EXISTS idx_endpoints_path_version ON endpoints (path, graphVersion)";
-        _ = createIndex.ExecuteNonQuery();
+        _ = await createIndex.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private static void FillData(SqliteConnection dbConnection, ILogger logger)
+    private static async Task FillDataAsync(SqliteConnection dbConnection, ILogger logger, CancellationToken cancellationToken)
     {
         logger.LogInformation("Filling database...");
 
@@ -108,6 +108,8 @@ public static class MSGraphDbUtils
 
         foreach (var openApiDocument in _openApiDocuments)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var graphVersion = openApiDocument.Key;
             var document = openApiDocument.Value;
 
@@ -121,6 +123,8 @@ public static class MSGraphDbUtils
 
             foreach (var path in document.Paths)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 logger.LogTrace("Endpoint {GraphVersion}{Key}...", graphVersion, path.Key);
 
                 // Get the GET operation for this path
@@ -138,7 +142,7 @@ public static class MSGraphDbUtils
                 insertEndpoint.Parameters["@path"].Value = path.Key;
                 insertEndpoint.Parameters["@graphVersion"].Value = graphVersion;
                 insertEndpoint.Parameters["@hasSelect"].Value = hasSelect;
-                _ = insertEndpoint.ExecuteNonQuery();
+                _ = await insertEndpoint.ExecuteNonQueryAsync(cancellationToken);
                 i++;
             }
         }
@@ -146,7 +150,7 @@ public static class MSGraphDbUtils
         logger.LogInformation("Inserted {EndpointCount} endpoints in the database", i);
     }
 
-    private static async Task UpdateOpenAPIGraphFilesIfNecessaryAsync(string folder, ILogger logger)
+    private static async Task UpdateOpenAPIGraphFilesIfNecessaryAsync(string folder, ILogger logger, CancellationToken cancellationToken)
     {
         logger.LogInformation("Checking for updated OpenAPI files...");
 
@@ -166,8 +170,8 @@ public static class MSGraphDbUtils
                 logger.LogInformation("Downloading OpenAPI file from {Url}...", url);
 
                 using var client = new HttpClient();
-                var response = await client.GetStringAsync(url);
-                await File.WriteAllTextAsync(file.FullName, response);
+                var response = await client.GetStringAsync(url, cancellationToken);
+                await File.WriteAllTextAsync(file.FullName, response, cancellationToken);
 
                 logger.LogDebug("Downloaded OpenAPI file from {Url} to {File}", url, file);
             }
@@ -178,7 +182,7 @@ public static class MSGraphDbUtils
         }
     }
 
-    private static async Task LoadOpenAPIFilesAsync(string folder, ILogger logger)
+    private static async Task LoadOpenAPIFilesAsync(string folder, ILogger logger, CancellationToken cancellationToken)
     {
         logger.LogInformation("Loading OpenAPI files...");
 
@@ -196,7 +200,7 @@ public static class MSGraphDbUtils
 
             try
             {
-                var openApiDocument = await new OpenApiStreamReader().ReadAsync(file.OpenRead());
+                var openApiDocument = await new OpenApiStreamReader().ReadAsync(file.OpenRead(), cancellationToken);
                 _openApiDocuments[version] = openApiDocument.OpenApiDocument;
 
                 logger.LogDebug("Added OpenAPI file {FilePath} for {Version}", filePath, version);

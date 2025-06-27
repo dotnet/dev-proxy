@@ -30,11 +30,13 @@ public sealed class RewritePluginConfiguration
 }
 
 public sealed class RewritePlugin(
+    HttpClient httpClient,
     ILogger<RewritePlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
     BasePlugin<RewritePluginConfiguration>(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
@@ -45,19 +47,19 @@ public sealed class RewritePlugin(
 
     public override string Name => nameof(RewritePlugin);
 
-    public override async Task InitializeAsync(InitArgs e)
+    public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(e);
 
-        await base.InitializeAsync(e);
+        await base.InitializeAsync(e, cancellationToken);
 
         Configuration.RewritesFile = ProxyUtils.GetFullPath(Configuration.RewritesFile, _proxyConfiguration.ConfigFile);
 
         _loader = ActivatorUtilities.CreateInstance<RewritesLoader>(e.ServiceProvider, Configuration);
-        _loader.InitFileWatcher();
+        await _loader.InitFileWatcherAsync(cancellationToken);
     }
 
-    public override Task BeforeRequestAsync(ProxyRequestArgs e)
+    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
 

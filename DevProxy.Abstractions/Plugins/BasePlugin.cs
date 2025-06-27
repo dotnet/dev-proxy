@@ -21,14 +21,12 @@ public abstract class BasePlugin(
     protected ILogger Logger { get; } = logger;
     protected ISet<UrlToWatch> UrlsToWatch { get; } = urlsToWatch;
 
-#pragma warning disable CA1065
-    public virtual string Name => throw new NotImplementedException();
-#pragma warning restore CA1065
+    public abstract string Name { get; }
 
     public virtual Option[] GetOptions() => [];
     public virtual Command[] GetCommands() => [];
 
-    public virtual Task InitializeAsync(InitArgs e)
+    public virtual Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
     {
         return Task.CompletedTask;
     }
@@ -37,38 +35,39 @@ public abstract class BasePlugin(
     {
     }
 
-    public virtual Task BeforeRequestAsync(ProxyRequestArgs e)
+    public virtual Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
     {
         return Task.CompletedTask;
     }
 
-    public virtual Task BeforeResponseAsync(ProxyResponseArgs e)
+    public virtual Task BeforeResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)
     {
         return Task.CompletedTask;
     }
 
-    public virtual Task AfterResponseAsync(ProxyResponseArgs e)
+    public virtual Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)
     {
         return Task.CompletedTask;
     }
 
-    public virtual Task AfterRequestLogAsync(RequestLogArgs e)
+    public virtual Task AfterRequestLogAsync(RequestLogArgs e, CancellationToken cancellationToken)
     {
         return Task.CompletedTask;
     }
 
-    public virtual Task AfterRecordingStopAsync(RecordingArgs e)
+    public virtual Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
     {
         return Task.CompletedTask;
     }
 
-    public virtual Task MockRequestAsync(EventArgs e)
+    public virtual Task MockRequestAsync(EventArgs e, CancellationToken cancellationToken)
     {
         return Task.CompletedTask;
     }
 }
 
 public abstract class BasePlugin<TConfiguration>(
+    HttpClient httpClient,
     ILogger logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
@@ -76,6 +75,7 @@ public abstract class BasePlugin<TConfiguration>(
     BasePlugin(logger, urlsToWatch), IPlugin<TConfiguration> where TConfiguration : new()
 {
     private TConfiguration? _configuration;
+    private readonly HttpClient _httpClient = httpClient;
 
     protected IProxyConfiguration ProxyConfiguration { get; } = proxyConfiguration;
     public TConfiguration Configuration
@@ -103,18 +103,18 @@ public abstract class BasePlugin<TConfiguration>(
     {
     }
 
-    public override async Task InitializeAsync(InitArgs e)
+    public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
     {
-        await base.InitializeAsync(e);
+        await base.InitializeAsync(e, cancellationToken);
 
-        var (IsValid, ValidationErrors) = await ValidatePluginConfig();
+        var (IsValid, ValidationErrors) = await ValidatePluginConfigAsync(cancellationToken);
         if (!IsValid)
         {
             Logger.LogError("Plugin configuration validation failed with the following errors: {Errors}", string.Join(", ", ValidationErrors));
         }
     }
 
-    private async Task<(bool IsValid, IEnumerable<string> ValidationErrors)> ValidatePluginConfig()
+    private async Task<(bool IsValid, IEnumerable<string> ValidationErrors)> ValidatePluginConfigAsync(CancellationToken cancellationToken)
     {
         if (!ProxyConfiguration.ValidateSchemas)
         {
@@ -132,7 +132,7 @@ public abstract class BasePlugin<TConfiguration>(
             }
 
             var configSectionName = ConfigurationSection.Key;
-            var configFile = await File.ReadAllTextAsync(ProxyConfiguration.ConfigFile);
+            var configFile = await File.ReadAllTextAsync(ProxyConfiguration.ConfigFile, cancellationToken);
 
             using var document = JsonDocument.Parse(configFile, ProxyUtils.JsonDocumentOptions);
             var root = document.RootElement;
@@ -144,7 +144,7 @@ public abstract class BasePlugin<TConfiguration>(
             }
 
             ProxyUtils.ValidateSchemaVersion(schemaUrl, Logger);
-            return await ProxyUtils.ValidateJson(configSection.GetRawText(), schemaUrl, Logger);
+            return await ProxyUtils.ValidateJsonAsync(configSection.GetRawText(), schemaUrl, _httpClient, Logger, cancellationToken);
         }
         catch (Exception ex)
         {

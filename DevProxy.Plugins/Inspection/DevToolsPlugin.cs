@@ -39,11 +39,13 @@ public sealed class DevToolsPluginConfiguration
 }
 
 public sealed class DevToolsPlugin(
+    HttpClient httpClient,
     ILogger<DevToolsPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
     BasePlugin<DevToolsPluginConfiguration>(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
@@ -51,24 +53,25 @@ public sealed class DevToolsPlugin(
 {
     private readonly Dictionary<string, GetResponseBodyResultParams> _responseBody = [];
 
+    private CancellationToken? _cancellationToken;
     private WebSocketServer? _webSocket;
 
     public override string Name => nameof(DevToolsPlugin);
 
-    public override async Task InitializeAsync(InitArgs e)
+    public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
     {
-        await base.InitializeAsync(e);
+        _cancellationToken = cancellationToken;
+
+        await base.InitializeAsync(e, cancellationToken);
 
         InitInspector();
     }
 
-    public override async Task BeforeRequestAsync(ProxyRequestArgs e)
+    public override async Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
 
         ArgumentNullException.ThrowIfNull(e);
-
-        await base.BeforeRequestAsync(e);
 
         if (_webSocket?.IsConnected != true)
         {
@@ -108,7 +111,7 @@ public sealed class DevToolsPlugin(
                 }
             }
         };
-        await _webSocket.SendAsync(requestWillBeSentMessage);
+        await _webSocket.SendAsync(requestWillBeSentMessage, cancellationToken);
 
         // must be included to avoid the "Provisional headers are shown" warning
         var requestWillBeSentExtraInfoMessage = new RequestWillBeSentExtraInfoMessage
@@ -121,16 +124,16 @@ public sealed class DevToolsPlugin(
                 Headers = headers
             }
         };
-        await _webSocket.SendAsync(requestWillBeSentExtraInfoMessage);
+        await _webSocket.SendAsync(requestWillBeSentExtraInfoMessage, cancellationToken);
     }
 
-    public override async Task AfterResponseAsync(ProxyResponseArgs e)
+    public override async Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterResponseAsync));
 
         ArgumentNullException.ThrowIfNull(e);
 
-        await base.AfterResponseAsync(e);
+        await base.AfterResponseAsync(e, cancellationToken);
 
         if (_webSocket?.IsConnected != true)
         {
@@ -186,7 +189,7 @@ public sealed class DevToolsPlugin(
             }
         };
 
-        await _webSocket.SendAsync(responseReceivedMessage);
+        await _webSocket.SendAsync(responseReceivedMessage, cancellationToken);
 
         var loadingFinishedMessage = new LoadingFinishedMessage
         {
@@ -197,10 +200,10 @@ public sealed class DevToolsPlugin(
                 EncodedDataLength = e.Session.HttpClient.Response.HasBody ? e.Session.HttpClient.Response.Body.Length : 0
             }
         };
-        await _webSocket.SendAsync(loadingFinishedMessage);
+        await _webSocket.SendAsync(loadingFinishedMessage, cancellationToken);
     }
 
-    public override async Task AfterRequestLogAsync(RequestLogArgs e)
+    public override async Task AfterRequestLogAsync(RequestLogArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterRequestLogAsync));
 
@@ -228,7 +231,7 @@ public sealed class DevToolsPlugin(
                 }
             }
         };
-        await _webSocket.SendAsync(message);
+        await _webSocket.SendAsync(message, cancellationToken);
 
         Logger.LogTrace("Left {Name}", nameof(AfterRequestLogAsync));
     }
@@ -359,7 +362,7 @@ public sealed class DevToolsPlugin(
                         Base64Encoded = value.Base64Encoded
                     }
                 };
-                _ = _webSocket.SendAsync(result);
+                _ = _webSocket.SendAsync(result, _cancellationToken ?? CancellationToken.None);
             }
         }
         catch { }

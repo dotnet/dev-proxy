@@ -48,6 +48,7 @@ sealed class ProxyEngine(
     // the key is HashObject of the SessionEventArgs object
     private readonly ConcurrentDictionary<int, Dictionary<string, object>> _pluginData = [];
     private InactivityTimer? _inactivityTimer;
+    private CancellationToken? _cancellationToken;
 
     public static X509Certificate2? Certificate => ProxyServer?.CertificateManager.RootCertificate;
 
@@ -70,6 +71,8 @@ sealed class ProxyEngine(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _cancellationToken = stoppingToken;
+
         Debug.Assert(ProxyServer is not null, "Proxy server is not initialized");
 
         if (!_urlsToWatch.Any())
@@ -166,7 +169,7 @@ sealed class ProxyEngine(
                     await Task.Delay(10, stoppingToken);
                 }
 
-                await ReadKeysAsync();
+                await ReadKeysAsync(stoppingToken);
             }
         }
         catch (TaskCanceledException)
@@ -199,7 +202,7 @@ sealed class ProxyEngine(
         process.WaitForExit();
     }
 
-    private async Task ReadKeysAsync()
+    private async Task ReadKeysAsync(CancellationToken cancellationToken)
     {
         var key = Console.ReadKey(true).Key;
 #pragma warning disable IDE0010
@@ -210,14 +213,14 @@ sealed class ProxyEngine(
                 StartRecording();
                 break;
             case ConsoleKey.S:
-                await StopRecordingAsync();
+                await StopRecordingAsync(cancellationToken);
                 break;
             case ConsoleKey.C:
                 Console.Clear();
                 PrintHotkeys();
                 break;
             case ConsoleKey.W:
-                await _proxyController.MockRequestAsync();
+                await _proxyController.MockRequestAsync(cancellationToken);
                 break;
         }
     }
@@ -232,14 +235,14 @@ sealed class ProxyEngine(
         _proxyController.StartRecording();
     }
 
-    private async Task StopRecordingAsync()
+    private async Task StopRecordingAsync(CancellationToken cancellationToken)
     {
         if (!_proxyController.ProxyState.IsRecording)
         {
             return;
         }
 
-        await _proxyController.StopRecordingAsync();
+        await _proxyController.StopRecordingAsync(cancellationToken);
     }
 
     // Convert strings from config to regexes.
@@ -325,7 +328,7 @@ sealed class ProxyEngine(
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        await StopRecordingAsync();
+        await StopRecordingAsync(cancellationToken);
         StopProxy();
 
         await base.StopAsync(cancellationToken);
@@ -420,9 +423,11 @@ sealed class ProxyEngine(
     {
         foreach (var plugin in _plugins.Where(p => p.Enabled))
         {
+            _cancellationToken?.ThrowIfCancellationRequested();
+
             try
             {
-                await plugin.BeforeRequestAsync(proxyRequestArgs);
+                await plugin.BeforeRequestAsync(proxyRequestArgs, _cancellationToken ?? CancellationToken.None);
             }
             catch (Exception ex)
             {
@@ -509,9 +514,11 @@ sealed class ProxyEngine(
 
             foreach (var plugin in _plugins.Where(p => p.Enabled))
             {
+                _cancellationToken?.ThrowIfCancellationRequested();
+
                 try
                 {
-                    await plugin.BeforeResponseAsync(proxyResponseArgs);
+                    await plugin.BeforeResponseAsync(proxyResponseArgs, _cancellationToken ?? CancellationToken.None);
                 }
                 catch (Exception ex)
                 {
@@ -549,9 +556,11 @@ sealed class ProxyEngine(
 
             foreach (var plugin in _plugins.Where(p => p.Enabled))
             {
+                _cancellationToken?.ThrowIfCancellationRequested();
+
                 try
                 {
-                    await plugin.AfterResponseAsync(proxyResponseArgs);
+                    await plugin.AfterResponseAsync(proxyResponseArgs, _cancellationToken ?? CancellationToken.None);
                 }
                 catch (Exception ex)
                 {

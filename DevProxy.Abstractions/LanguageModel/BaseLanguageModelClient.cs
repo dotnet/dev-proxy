@@ -10,18 +10,22 @@ using System.Collections.Concurrent;
 
 namespace DevProxy.Abstractions.LanguageModel;
 
-public abstract class BaseLanguageModelClient(ILogger logger) : ILanguageModelClient
+public abstract class BaseLanguageModelClient(LanguageModelConfiguration configuration, ILogger logger) : ILanguageModelClient
 {
-    private readonly ILogger _logger = logger;
+    protected LanguageModelConfiguration Configuration { get; } = configuration;
+    protected ILogger Logger { get; } = logger;
+
+    private bool? _lmAvailable;
+
     private readonly ConcurrentDictionary<string, (IEnumerable<ILanguageModelChatCompletionMessage>?, CompletionOptions?)> _promptCache = new();
 
-    public virtual async Task<ILanguageModelCompletionResponse?> GenerateChatCompletionAsync(string promptFileName, Dictionary<string, object> parameters)
+    public virtual async Task<ILanguageModelCompletionResponse?> GenerateChatCompletionAsync(string promptFileName, Dictionary<string, object> parameters, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(promptFileName, nameof(promptFileName));
 
         if (!promptFileName.EndsWith(".prompty", StringComparison.OrdinalIgnoreCase))
         {
-            _logger.LogDebug("Prompt file name '{PromptFileName}' does not end with '.prompty'. Appending the extension.", promptFileName);
+            Logger.LogDebug("Prompt file name '{PromptFileName}' does not end with '.prompty'. Appending the extension.", promptFileName);
             promptFileName += ".prompty";
         }
 
@@ -34,20 +38,63 @@ public abstract class BaseLanguageModelClient(ILogger logger) : ILanguageModelCl
             return null;
         }
 
-        return await GenerateChatCompletionAsync(messages, options);
+        return await GenerateChatCompletionAsync(messages, options, cancellationToken);
     }
 
-    public virtual Task<ILanguageModelCompletionResponse?> GenerateChatCompletionAsync(IEnumerable<ILanguageModelChatCompletionMessage> messages, CompletionOptions? options = null) => throw new NotImplementedException();
+    public async Task<ILanguageModelCompletionResponse?> GenerateChatCompletionAsync(IEnumerable<ILanguageModelChatCompletionMessage> messages, CompletionOptions? options, CancellationToken cancellationToken)
+    {
+        if (Configuration is null)
+        {
+            return null;
+        }
 
-    public virtual Task<ILanguageModelCompletionResponse?> GenerateCompletionAsync(string prompt, CompletionOptions? options = null) => throw new NotImplementedException();
+        if (!await IsEnabledAsync(cancellationToken))
+        {
+            Logger.LogDebug("Language model is not available.");
+            return null;
+        }
 
-    public virtual Task<bool> IsEnabledAsync() => throw new NotImplementedException();
+        return await GenerateChatCompletionCoreAsync(messages, options, cancellationToken);
+    }
 
-    protected virtual IEnumerable<ILanguageModelChatCompletionMessage> ConvertMessages(ChatMessage[] messages) => throw new NotImplementedException();
+    public async Task<ILanguageModelCompletionResponse?> GenerateCompletionAsync(string prompt, CompletionOptions? options, CancellationToken cancellationToken)
+    {
+        if (Configuration is null)
+        {
+            return null;
+        }
+
+        if (!await IsEnabledAsync(cancellationToken))
+        {
+            Logger.LogDebug("Language model is not available.");
+            return null;
+        }
+
+        return await GenerateCompletionCoreAsync(prompt, options, cancellationToken);
+    }
+
+    public async Task<bool> IsEnabledAsync(CancellationToken cancellationToken)
+    {
+        if (_lmAvailable.HasValue)
+        {
+            return _lmAvailable.Value;
+        }
+
+        _lmAvailable = await IsEnabledCoreAsync(cancellationToken);
+        return _lmAvailable.Value;
+    }
+
+    protected abstract IEnumerable<ILanguageModelChatCompletionMessage> ConvertMessages(ChatMessage[] messages);
+
+    protected abstract Task<ILanguageModelCompletionResponse?> GenerateChatCompletionCoreAsync(IEnumerable<ILanguageModelChatCompletionMessage> messages, CompletionOptions? options, CancellationToken cancellationToken);
+
+    protected abstract Task<ILanguageModelCompletionResponse?> GenerateCompletionCoreAsync(string prompt, CompletionOptions? options, CancellationToken cancellationToken);
+
+    protected abstract Task<bool> IsEnabledCoreAsync(CancellationToken cancellationToken);
 
     private (IEnumerable<ILanguageModelChatCompletionMessage>?, CompletionOptions?) LoadPrompt(string promptFileName, Dictionary<string, object> parameters)
     {
-        _logger.LogDebug("Prompt file {PromptFileName} not in the cache. Loading...", promptFileName);
+        Logger.LogDebug("Prompt file {PromptFileName} not in the cache. Loading...", promptFileName);
 
         var filePath = Path.Combine(ProxyUtils.AppFolder!, "prompts", promptFileName);
         if (!File.Exists(filePath))
@@ -55,14 +102,14 @@ public abstract class BaseLanguageModelClient(ILogger logger) : ILanguageModelCl
             throw new FileNotFoundException($"Prompt file '{filePath}' not found.");
         }
 
-        _logger.LogDebug("Loading prompt file: {FilePath}", filePath);
+        Logger.LogDebug("Loading prompt file: {FilePath}", filePath);
         var promptContents = File.ReadAllText(filePath);
 
         var prompty = PromptyCore.Prompty.Load(promptContents, []);
         if (prompty.Prepare(parameters) is not ChatMessage[] promptyMessages ||
             promptyMessages.Length == 0)
         {
-            _logger.LogError("No messages found in the prompt file: {FilePath}", filePath);
+            Logger.LogError("No messages found in the prompt file: {FilePath}", filePath);
             return (null, null);
         }
 

@@ -11,12 +11,13 @@ using System.Text.Json;
 namespace DevProxy.Plugins.Mocking;
 
 internal sealed class MockResponsesLoader(
+    HttpClient httpClient,
     ILogger<MockResponsesLoader> logger,
     MockResponseConfiguration configuration,
-    IProxyConfiguration proxyConfiguration) : BaseLoader(logger, proxyConfiguration)
+    IProxyConfiguration proxyConfiguration) :
+    BaseLoader(httpClient, logger, proxyConfiguration)
 {
     private readonly MockResponseConfiguration _configuration = configuration;
-    private readonly ILogger _logger = logger;
 
     protected override string FilePath => _configuration.MocksFile;
 
@@ -29,12 +30,12 @@ internal sealed class MockResponsesLoader(
             if (configResponses is not null)
             {
                 _configuration.Mocks = configResponses;
-                _logger.LogInformation("Mock responses for {ConfigResponseCount} url patterns loaded from {MockFile}", configResponses.Count(), _configuration.MocksFile);
+                Logger.LogInformation("Mock responses for {ConfigResponseCount} url patterns loaded from {MockFile}", configResponses.Count(), _configuration.MocksFile);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "An error has occurred while reading {ConfigurationFile}:", _configuration.MocksFile);
+            Logger.LogError(ex, "An error has occurred while reading {ConfigurationFile}:", _configuration.MocksFile);
         }
     }
 }

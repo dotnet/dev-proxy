@@ -210,7 +210,7 @@ public static class ProxyUtils
         return $"{uri.GetLeftPart(UriPartial.Authority)}/{parsedSample.QueryVersion}/{resourceUrl}{queryString}";
     }
 
-    public static async Task<(bool IsValid, IEnumerable<string> ValidationErrors)> ValidateJson(string? json, string? schemaUrl, ILogger logger)
+    public static async Task<(bool IsValid, IEnumerable<string> ValidationErrors)> ValidateJsonAsync(string? json, string? schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken)
     {
         try
         {
@@ -226,10 +226,10 @@ public static class ProxyUtils
                 logger.LogDebug("Schema URL is empty, skipping validation");
                 return (true, []);
             }
+            ArgumentNullException.ThrowIfNull(httpClient);
 
             logger.LogDebug("Downloading schema from {SchemaUrl}", schemaUrl);
-            using var client = new HttpClient();
-            var schemaContents = await client.GetStringAsync(schemaUrl);
+            var schemaContents = await httpClient.GetStringAsync(schemaUrl, cancellationToken);
 
             logger.LogDebug("Parsing schema");
             var schema = JSchema.Parse(schemaContents);

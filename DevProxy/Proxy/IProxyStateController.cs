@@ -10,7 +10,7 @@ public interface IProxyStateController
 {
     IProxyState ProxyState { get; }
     void StartRecording();
-    Task StopRecordingAsync();
-    Task MockRequestAsync();
+    Task StopRecordingAsync(CancellationToken cancellationToken);
+    Task MockRequestAsync(CancellationToken cancellationToken);
     void StopProxy();
 }

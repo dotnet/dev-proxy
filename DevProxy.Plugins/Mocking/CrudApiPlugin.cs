@@ -78,11 +78,13 @@ public sealed class CrudApiConfiguration
 }
 
 public sealed class CrudApiPlugin(
+    HttpClient httpClient,
     ILogger<CrudApiPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
     BasePlugin<CrudApiConfiguration>(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
@@ -94,16 +96,16 @@ public sealed class CrudApiPlugin(
 
     public override string Name => nameof(CrudApiPlugin);
 
-    public override async Task InitializeAsync(InitArgs e)
+    public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(e);
 
-        await base.InitializeAsync(e);
+        await base.InitializeAsync(e, cancellationToken);
 
         Configuration.ApiFile = ProxyUtils.GetFullPath(Configuration.ApiFile, ProxyConfiguration.ConfigFile);
 
         _loader = ActivatorUtilities.CreateInstance<CrudApiDefinitionLoader>(e.ServiceProvider, Configuration);
-        _loader.InitFileWatcher();
+        await _loader.InitFileWatcherAsync(cancellationToken);
 
         if (Configuration.Auth == CrudApiAuthType.Entra &&
             Configuration.EntraAuthConfig is null)
@@ -128,7 +130,7 @@ public sealed class CrudApiPlugin(
         await SetupOpenIdConnectConfigurationAsync();
     }
 
-    public override Task BeforeRequestAsync(ProxyRequestArgs e)
+    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
 

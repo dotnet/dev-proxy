@@ -17,7 +17,7 @@ public sealed class GraphSdkGuidancePlugin(
 {
     public override string Name => nameof(GraphSdkGuidancePlugin);
 
-    public override Task AfterResponseAsync(ProxyResponseArgs e)
+    public override Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterResponseAsync));
 
