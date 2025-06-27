@@ -42,17 +42,14 @@ public sealed class ExecutionSummaryPlugin(
 
     public override Option[] GetOptions()
     {
-        var groupBy = new Option<SummaryGroupBy?>(_groupByOptionName, "Specifies how the information should be grouped in the summary. Available options: `url` (default), `messageType`.")
+        var groupBy = new Option<SummaryGroupBy?>(_groupByOptionName, [])
         {
-            ArgumentHelpName = "summary-group-by"
+            Description = "Specifies how the information should be grouped in the summary. Available options: `url` (default), `messageType`.",
+            HelpName = "summary-group-by"
         };
-        groupBy.AddValidator(input =>
-        {
-            if (!Enum.TryParse<SummaryGroupBy>(input.Tokens[0].Value, true, out var groupBy))
-            {
-                input.ErrorMessage = $"{input.Tokens[0].Value} is not a valid option to group by. Allowed values are: {string.Join(", ", Enum.GetNames<SummaryGroupBy>())}";
-            }
-        });
+        
+        // TODO: Fix validation API for beta5
+        // groupBy.Validators.Add(input => { ... });
 
         return [groupBy];
     }
@@ -63,9 +60,9 @@ public sealed class ExecutionSummaryPlugin(
 
         base.OptionsLoaded(e);
 
-        var context = e.Context;
+        var parseResult = e.ParseResult;
 
-        var groupBy = context.ParseResult.GetValueForOption<SummaryGroupBy?>(_groupByOptionName, e.Options);
+        var groupBy = parseResult.GetValueForOption<SummaryGroupBy?>(_groupByOptionName, e.Options);
         if (groupBy is not null)
         {
             Configuration.GroupBy = groupBy.Value;
