@@ -54,12 +54,12 @@ static class PluginServiceExtensions
             pluginReferences.Add(new()
             {
                 Name = "UrlDiscoveryPlugin",
-                PluginPath = "~appFolder/plugins/dev-proxy-plugins.dll"
+                PluginPath = "~appFolder/plugins/DevProxy.Plugins.dll"
             });
             pluginReferences.Add(new()
             {
                 Name = "PlainTextReporter",
-                PluginPath = "~appFolder/plugins/dev-proxy-plugins.dll"
+                PluginPath = "~appFolder/plugins/DevProxy.Plugins.dll"
             });
 
             globallyWatchedUrls.Clear();
