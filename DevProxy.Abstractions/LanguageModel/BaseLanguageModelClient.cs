@@ -24,7 +24,9 @@ public abstract class BaseLanguageModelClient(ILogger logger) : ILanguageModelCl
             _logger.LogDebug("Prompt file name '{PromptFileName}' does not end with '.prompty'. Appending the extension.", promptFileName);
             promptFileName += ".prompty";
         }
-        var (messages, options) = _promptCache.GetOrAdd(promptFileName, _ =>
+
+        var cacheKey = GetPromptCacheKey(promptFileName, parameters);
+        var (messages, options) = _promptCache.GetOrAdd(cacheKey, _ =>
             LoadPrompt(promptFileName, parameters));
 
         if (messages is null || !messages.Any())
@@ -80,5 +82,11 @@ public abstract class BaseLanguageModelClient(ILogger logger) : ILanguageModelCl
         }
 
         return (messages, options);
+    }
+
+    private static string GetPromptCacheKey(string promptFileName, Dictionary<string, object> parameters)
+    {
+        var parametersString = string.Join(";", parameters.Select(kvp => $"{kvp.Key}={kvp.Value}"));
+        return $"{promptFileName}:{parametersString}";
     }
 }

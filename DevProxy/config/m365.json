@@ -1,27 +1,27 @@
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.2/rc.schema.json",
   "plugins": [
     {
       "name": "DevToolsPlugin",
       "enabled": false,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll",
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll",
       "configSection": "devTools"
     },
     {
       "name": "LatencyPlugin",
       "enabled": false,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll",
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll",
       "configSection": "latencyPlugin"
     },
     {
       "name": "RetryAfterPlugin",
       "enabled": true,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll"
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll"
     },
     {
       "name": "GraphSelectGuidancePlugin",
       "enabled": true,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll",
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll",
       "urlsToWatch": [
         "https://graph.microsoft.com/v1.0/*",
         "https://graph.microsoft.com/beta/*",
@@ -36,7 +36,7 @@
     {
       "name": "ODSPSearchGuidancePlugin",
       "enabled": true,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll",
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll",
       "urlsToWatch": [
         "https://graph.microsoft.com/v1.0/*",
         "https://graph.microsoft.com/beta/*",
@@ -51,7 +51,7 @@
     {
       "name": "GraphBetaSupportGuidancePlugin",
       "enabled": true,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll",
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll",
       "urlsToWatch": [
         "https://graph.microsoft.com/beta/*",
         "https://graph.microsoft.us/beta/*",
@@ -62,7 +62,7 @@
     {
       "name": "GraphConnectorGuidancePlugin",
       "enabled": true,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll",
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll",
       "urlsToWatch": [
         "https://graph.microsoft.com/*/external/connections/*/schema",
         "https://graph.microsoft.us/*/external/connections/*/schema",
@@ -73,7 +73,7 @@
     {
       "name": "GraphSdkGuidancePlugin",
       "enabled": true,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll",
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll",
       "urlsToWatch": [
         "https://graph.microsoft.com/v1.0/*",
         "https://graph.microsoft.com/beta/*",
@@ -88,12 +88,12 @@
     {
       "name": "ODataPagingGuidancePlugin",
       "enabled": true,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll"
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll"
     },
     {
       "name": "GraphClientRequestIdGuidancePlugin",
       "enabled": true,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll",
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll",
       "urlsToWatch": [
         "https://graph.microsoft.com/v1.0/*",
         "https://graph.microsoft.com/beta/*",
@@ -108,54 +108,54 @@
     {
       "name": "CachingGuidancePlugin",
       "enabled": true,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll",
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll",
       "configSection": "cachingGuidance"
     },
     {
       "name": "RateLimitingPlugin",
       "enabled": false,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll",
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll",
       "configSection": "rateLimiting"
     },
     {
       "name": "MockResponsePlugin",
       "enabled": false,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll",
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll",
       "configSection": "mocksPlugin"
     },
     {
       "name": "GraphMockResponsePlugin",
       "enabled": true,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll",
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll",
       "configSection": "mocksPlugin"
     },
     {
       "name": "GraphRandomErrorPlugin",
       "enabled": true,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll",
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll",
       "configSection": "graphRandomErrorsPlugin"
     },
     {
       "name": "ExecutionSummaryPlugin",
       "enabled": false,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll",
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll",
       "configSection": "executionSummaryPlugin"
     },
     {
       "name": "GraphMinimalPermissionsPlugin",
       "enabled": true,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll",
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll",
       "configSection": "graphMinimalPermissionsPlugin"
     },
     {
       "name": "GraphMinimalPermissionsGuidancePlugin",
       "enabled": false,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll"
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll"
     },
     {
       "name": "MockGeneratorPlugin",
       "enabled": false,
-      "pluginPath": "~appFolder/plugins/dev-proxy-plugins.dll"
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll"
     }
   ],
   "urlsToWatch": [
@@ -173,11 +173,11 @@
     "https://*.sharepoint-df.*/*_vti_bin/*"
   ],
   "mocksPlugin": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.0/mockresponseplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.2/mockresponseplugin.schema.json",
     "mocksFile": "m365-mocks.json"
   },
   "graphRandomErrorsPlugin": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.0/graphrandomerrorplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.2/graphrandomerrorplugin.schema.json",
     "allowedErrors": [
       429,
       500,
@@ -189,28 +189,28 @@
     "rate": 50
   },
   "executionSummaryPlugin": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.0/executionsummaryplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.2/executionsummaryplugin.schema.json",
     "groupBy": "url"
   },
   "graphMinimalPermissionsPlugin": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.0/graphminimalpermissionsplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.2/graphminimalpermissionsplugin.schema.json",
     "type": "delegated"
   },
   "cachingGuidance": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.0/cachingguidanceplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.2/cachingguidanceplugin.schema.json",
     "cacheThresholdSeconds": 5
   },
   "latencyPlugin": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.0/latencyplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.2/latencyplugin.schema.json",
     "minMs": 200,
     "maxMs": 10000
   },
   "devTools": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.0/devtoolsplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.2/devtoolsplugin.schema.json",
     "preferredBrowser": "Edge"
   },
   "rateLimiting": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.0/ratelimitingplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v0.29.2/ratelimitingplugin.schema.json",
     "costPerRequest": 2,
     "rateLimit": 120,
     "retryAfterSeconds": 5
