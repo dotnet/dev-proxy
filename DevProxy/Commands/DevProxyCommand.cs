@@ -326,6 +326,23 @@ sealed class DevProxyCommand : RootCommand
             Arity = ArgumentArity.ZeroOrMore
         };
 
+        // Add validation for env option format
+        _envOption.Validators.Add(result =>
+        {
+            var env = result.GetValueOrDefault<string[]?>();
+            if (env is not null)
+            {
+                foreach (var e in env)
+                {
+                    var parts = e.Split('=', 2);
+                    if (parts.Length != 2)
+                    {
+                        result.AddError($"Invalid env format: {e}. Expected format is 'key=value'.");
+                    }
+                }
+            }
+        });
+
         var options = new List<Option>
         {
             _portOption,
@@ -489,13 +506,11 @@ sealed class DevProxyCommand : RootCommand
         var env = parseResult.GetValueForOption<string[]?>(EnvOptionName, Options);
         if (env is not null)
         {
+            // Validation is now handled by the option validator
             _proxyConfiguration.Env = env.Select(static e =>
             {
-                // Split on first '=' only
                 var parts = e.Split('=', 2);
-                return parts.Length != 2
-                    ? throw new ArgumentException($"Invalid env format: {e}. Expected format is 'key=value'.")
-                    : new KeyValuePair<string, string>(parts[0], parts[1]);
+                return new KeyValuePair<string, string>(parts[0], parts[1]);
             }).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
         }
     }

@@ -75,6 +75,16 @@ public sealed class GenericRandomErrorPlugin(
             HelpName = "failure rate"
         };
 
+        // Add validation for rate option
+        _rateOption.Validators.Add(result =>
+        {
+            var rate = result.GetValueOrDefault<int?>();
+            if (rate is not null && (rate < 0 || rate > 100))
+            {
+                result.AddError($"Rate must be between 0 and 100. Received: {rate}");
+            }
+        });
+
         return [_rateOption];
     }
 
@@ -89,10 +99,6 @@ public sealed class GenericRandomErrorPlugin(
         var rate = parseResult.GetValueForOption<int?>(_rateOptionName, e.Options);
         if (rate is not null)
         {
-            if (rate < 0 || rate > 100)
-            {
-                throw new ArgumentOutOfRangeException($"Rate must be between 0 and 100. Received: {rate}");
-            }
             Configuration.Rate = rate.Value;
         }
     }
