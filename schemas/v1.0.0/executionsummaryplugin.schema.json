@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy ExecutionSummaryPlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "The JSON schema reference for validation."
+    },
+    "groupBy": {
+      "type": "string",
+      "enum": [
+        "url",
+        "messageType"
+      ],
+      "description": "How proxy should group the information in the summary. Available options: url, messageType. Default: url."
+    }
+  },
+  "additionalProperties": false
+}
