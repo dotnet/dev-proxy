@@ -30,16 +30,10 @@ sealed class CertCommand : Command
     private void ConfigureCommand()
     {
         var certEnsureCommand = new Command("ensure", "Ensure certificates are setup (creates root if required). Also makes root certificate trusted.");
-        certEnsureCommand.SetAction(async (parseResult) => 
-        {
-            await EnsureCertAsync();
-        });
+        certEnsureCommand.SetAction(async _ => await EnsureCertAsync());
 
         var certRemoveCommand = new Command("remove", "Remove the certificate from Root Store");
-        certRemoveCommand.SetAction((parseResult) => 
-        {
-            RemoveCert(parseResult);
-        });
+        certRemoveCommand.SetAction(RemoveCert);
         certRemoveCommand.AddOptions(new[] { _forceOption }.OrderByName());
 
         this.AddCommands(new List<Command>

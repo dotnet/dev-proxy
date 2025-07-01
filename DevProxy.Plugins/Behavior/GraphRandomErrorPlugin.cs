@@ -118,9 +118,6 @@ public sealed class GraphRandomErrorPlugin(
             HelpName = "failure rate"
         };
         
-        // TODO: Fix validation API for beta5
-        // _rateOption.Validators.Add((input) => { ... });
-
         return [_allowedErrors, _rateOption];
     }
 
@@ -150,6 +147,10 @@ public sealed class GraphRandomErrorPlugin(
         var rate = parseResult.GetValueForOption<int?>(_rateOptionName, e.Options);
         if (rate is not null)
         {
+            if (rate < 0 || rate > 100)
+            {
+                throw new ArgumentOutOfRangeException($"Rate must be between 0 and 100. Received: {rate}");
+            }
             Configuration.Rate = rate.Value;
         }
     }

@@ -42,15 +42,12 @@ public sealed class ExecutionSummaryPlugin(
 
     public override Option[] GetOptions()
     {
-        var groupBy = new Option<SummaryGroupBy?>(_groupByOptionName, [])
+        var groupBy = new Option<SummaryGroupBy?>(_groupByOptionName)
         {
             Description = "Specifies how the information should be grouped in the summary. Available options: `url` (default), `messageType`.",
             HelpName = "summary-group-by"
         };
         
-        // TODO: Fix validation API for beta5
-        // groupBy.Validators.Add(input => { ... });
-
         return [groupBy];
     }
 

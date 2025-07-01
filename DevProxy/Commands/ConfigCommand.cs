@@ -77,21 +77,16 @@ sealed class ConfigCommand : Command
         });
 
         var configNewCommand = new Command("new", "Create new Dev Proxy configuration file");
-        var nameArgument = new Argument<string>("name")
+        var nameArgument = new Argument<string?>("name")
         {
             Description = "Name of the configuration file",
             Arity = ArgumentArity.ZeroOrOne
         };
-        // TODO: Fix default value setting for beta5
-        // nameArgument.SetDefaultValue("devproxyrc.json");
         configNewCommand.Add(nameArgument);
         configNewCommand.SetAction(async (parseResult) =>
         {
-            var name = parseResult.GetValue(nameArgument);
-            if (name != null)
-            {
-                await CreateConfigFileAsync(name);
-            }
+            var name = parseResult.GetValue(nameArgument) ?? "devproxyrc.json";
+            await CreateConfigFileAsync(name);
         });
 
         var configOpenCommand = new Command("open", "Open devproxyrc.json");

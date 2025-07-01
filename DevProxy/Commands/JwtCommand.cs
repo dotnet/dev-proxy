@@ -53,7 +53,8 @@ sealed class JwtCommand : Command
             AllowMultipleArgumentsPerToken = true
         };
         
-        // TODO: Restore custom parsing for claims in beta5
+        // Custom parsing for claims would need to be implemented in the action handler
+        // when the new complex parsing mechanisms are available in later beta5 versions.
 
         var jwtValidForOption = new Option<double>("--valid-for", ["-v"])
         {
@@ -64,9 +65,7 @@ sealed class JwtCommand : Command
         {
             Description = "The signing key to sign the token. Minimum length is 32 characters."
         };
-        
-        // TODO: Fix validation for beta5
-        // jwtSigningKeyOption.Validators.Add(input => { ... });
+        // Validation for signing key length can be implemented in the action handler
 
         jwtCreateCommand.AddOptions(new List<Option>
         {

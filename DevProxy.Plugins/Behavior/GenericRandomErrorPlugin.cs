@@ -75,9 +75,6 @@ public sealed class GenericRandomErrorPlugin(
             HelpName = "failure rate"
         };
 
-        // TODO: Fix validation API for beta5
-        // _rateOption.Validators.Add((input) => { ... });
-
         return [_rateOption];
     }
 
@@ -92,6 +89,10 @@ public sealed class GenericRandomErrorPlugin(
         var rate = parseResult.GetValueForOption<int?>(_rateOptionName, e.Options);
         if (rate is not null)
         {
+            if (rate < 0 || rate > 100)
+            {
+                throw new ArgumentOutOfRangeException($"Rate must be between 0 and 100. Received: {rate}");
+            }
             Configuration.Rate = rate.Value;
         }
     }

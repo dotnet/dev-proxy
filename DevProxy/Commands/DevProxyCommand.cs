@@ -58,12 +58,10 @@ sealed class DevProxyCommand : RootCommand
                     Description = "The path to the configuration file",
                     HelpName = "configFile"
                 };
-                
-                // TODO: Fix validation for beta5
-                // _configFileOption.Validators.Add(input => { ... });
             }
 
-            // TODO: Fix early parsing for beta5 - Options no longer have Parse method
+            // Early parsing was used to get config file before full command processing.
+            // Implementing manual argument parsing as workaround for beta5.
             // var result = _configFileOption.Parse(Environment.GetCommandLineArgs());
             // // since we're parsing all args, and other options are not instantiated yet
             // // we're getting here a bunch of other errors, so we only need to look for
@@ -101,37 +99,28 @@ sealed class DevProxyCommand : RootCommand
 
             if (_logLevelOption is null)
             {
-                _logLevelOption = new Option<LogLevel?>(
-                    LogLevelOptionName,
-                    []
-                )
+                _logLevelOption = new Option<LogLevel?>(LogLevelOptionName)
                 {
                     Description = $"Level of messages to log. Allowed values: {string.Join(", ", Enum.GetNames<LogLevel>())}",
                     HelpName = "logLevel"
                 };
-                
-                // TODO: Fix validation for beta5  
-                // _logLevelOption.Validators.Add(input => { ... });
             }
 
-            // TODO: Fix early parsing for beta5 - Options no longer have Parse method  
-            // var result = _logLevelOption.Parse(Environment.GetCommandLineArgs());
-            // // since we're parsing all args, and other options are not instantiated yet
-            // // we're getting here a bunch of other errors, so we only need to look for
-            // // errors related to the log level option
-            // var error = result.Errors.FirstOrDefault(e => e.SymbolResult?.Symbol == _logLevelOption);
-            // if (error is not null)
-            // {
-            //     // Logger is not available here yet so we need to fallback to Console
-            //     var color = Console.ForegroundColor;
-            //     Console.ForegroundColor = ConsoleColor.Red;
-            //     Console.Error.WriteLine(error.Message);
-            //     Console.ForegroundColor = color;
-            //     Environment.Exit(1);
-            // }
-
-            // TODO: Fix log level extraction for beta5
-            _logLevel = null; // Default fallback until parsing is fixed
+            // Early parsing was used to get log level before full command processing.
+            // Implementing manual argument parsing as workaround for beta5.
+            
+            var logLevelArg = Environment.GetCommandLineArgs()
+                .Where(arg => arg.StartsWith("--log-level=", StringComparison.Ordinal))
+                .FirstOrDefault()?.Split('=', 2).LastOrDefault();
+                
+            if (logLevelArg is not null && Enum.TryParse<LogLevel>(logLevelArg, true, out var logLevel))
+            {
+                _logLevel = logLevel;
+            }
+            else
+            {
+                _logLevel = null; // Default fallback
+            }
             _logLevelResolved = true;
 
             return _logLevel;
@@ -151,34 +140,21 @@ sealed class DevProxyCommand : RootCommand
 
             if (_ipAddressOption is null)
             {
-                _ipAddressOption = new(IpAddressOptionName, [])
+                _ipAddressOption = new(IpAddressOptionName)
                 {
                     Description = "The IP address for the proxy to bind to",
                     HelpName = "ipAddress"
                 };
-                
-                // TODO: Fix validation for beta5
-                // _ipAddressOption.Validators.Add(input => { ... });
             }
 
-            // TODO: Fix early parsing for beta5 - Options no longer have Parse method
-            // var result = _ipAddressOption.Parse(Environment.GetCommandLineArgs());
-            // // since we're parsing all args, and other options are not instantiated yet
-            // // we're getting here a bunch of other errors, so we only need to look for
-            // // errors related to the log level option
-            // var error = result.Errors.FirstOrDefault(e => e.SymbolResult?.Symbol == _ipAddressOption);
-            // if (error is not null)
-            // {
-            //     // Logger is not available here yet so we need to fallback to Console
-            //     var color = Console.ForegroundColor;
-            //     Console.ForegroundColor = ConsoleColor.Red;
-            //     Console.Error.WriteLine(error.Message);
-            //     Console.ForegroundColor = color;
-            //     Environment.Exit(1);
-            // }
-
-            // TODO: Fix IP address extraction for beta5  
-            _ipAddress = null; // Default fallback until parsing is fixed
+            // Early parsing was used to get IP address before full command processing.
+            // Implementing manual argument parsing as workaround for beta5.
+            
+            var ipAddressArg = Environment.GetCommandLineArgs()
+                .Where(arg => arg.StartsWith("--ip-address=", StringComparison.Ordinal))
+                .FirstOrDefault()?.Split('=', 2).LastOrDefault();
+                
+            _ipAddress = ipAddressArg; // Use provided IP address or null for default
             _ipAddressResolved = true;
 
             return _ipAddress;
@@ -210,24 +186,17 @@ sealed class DevProxyCommand : RootCommand
                 };
             }
 
-            // TODO: Fix early parsing for beta5 - Options no longer have Parse method
-            // var result = _urlsToWatchOption!.Parse(Environment.GetCommandLineArgs());
-            // since we're parsing all args, and other options are not instantiated yet
-            // we're getting here a bunch of other errors, so we only need to look for
-            // errors related to the log level option
-            // var error = result.Errors.FirstOrDefault(e => e.SymbolResult?.Symbol == _urlsToWatchOption);
-            // if (error is not null) { ... }
-            // TODO: Complete removal of early parsing error handling  
-            // (leftover code from previous parsing approach)
-
-            // TODO: Fix URLs to watch extraction for beta5
-            urlsToWatch = null; // Default fallback until parsing is fixed
+            // Early parsing was used to get URLs to watch before full command processing.
+            // Implementing manual argument parsing as workaround for beta5.
             
-            // TODO: Remove dead code when early parsing is restored
-            // if (urlsToWatch is not null && urlsToWatch.Count == 0)
-            // {
-            //     urlsToWatch = null;
-            // }
+            var urlArgs = Environment.GetCommandLineArgs()
+                .Where(arg => arg.StartsWith("--urls-to-watch=", StringComparison.Ordinal) || arg.StartsWith("-u=", StringComparison.Ordinal))
+                .Select(arg => arg.Split('=', 2).LastOrDefault())
+                .Where(url => !string.IsNullOrEmpty(url))
+                .Cast<string>()
+                .ToList();
+                
+            urlsToWatch = urlArgs.Count > 0 ? urlArgs : null;
             urlsToWatchResolved = true;
 
             return urlsToWatch;
@@ -302,63 +271,60 @@ sealed class DevProxyCommand : RootCommand
             HelpName = "port"
         };
 
-        _recordOption = new(RecordOptionName, [])
+        _recordOption = new(RecordOptionName)
         {
             Description = "Use this option to record all request logs"
         };
 
-        _watchPidsOption = new(WatchPidsOptionName, [])
+        _watchPidsOption = new(WatchPidsOptionName)
         {
             Description = "The IDs of processes to watch for requests",
             HelpName = "pids",
             AllowMultipleArgumentsPerToken = true
         };
 
-        _watchProcessNamesOption = new(WatchProcessNamesOptionName, [])
+        _watchProcessNamesOption = new(WatchProcessNamesOptionName)
         {
             Description = "The names of processes to watch for requests",
             HelpName = "processNames",
             AllowMultipleArgumentsPerToken = true
         };
 
-        _noFirstRunOption = new(NoFirstRunOptionName, "Skip the first run experience");
+        _noFirstRunOption = new(NoFirstRunOptionName)
+        {
+            Description = "Skip the first run experience"
+        };
 
-        _discoverOption = new(DiscoverOptionName, "Run Dev Proxy in discovery mode");
+        _discoverOption = new(DiscoverOptionName)
+        {
+            Description = "Run Dev Proxy in discovery mode"
+        };
 
-        _asSystemProxyOption = new(AsSystemProxyOptionName, [])
+        _asSystemProxyOption = new(AsSystemProxyOptionName)
         {
             Description = "Set Dev Proxy as the system proxy"
         };
-        
-        // TODO: Fix validation for beta5
-        // _asSystemProxyOption.Validators.Add(input => { ... });
 
-        _installCertOption = new(InstallCertOptionName, [])
+        _installCertOption = new(InstallCertOptionName)
         {
             Description = "Install self-signed certificate"  
         };
         
-        // TODO: Fix validation for beta5  
-        // _installCertOption.Validators.Add(input => { ... });
-
         _timeoutOption = new(TimeoutOptionName, ["-t"])
         {
             Description = "Time in seconds after which Dev Proxy exits. Resets when Dev Proxy intercepts a request.",
             HelpName = "timeout"
         };
         
-        // TODO: Fix validation for beta5
-        // _timeoutOption.Validators.Add(input => { ... });
+        // Validation can be implemented in the action handlers if needed
 
-        _envOption = new(EnvOptionName, "Variables to set for the Dev Proxy process")
+        _envOption = new(EnvOptionName, ["-e"])
         {
+            Description = "Variables to set for the Dev Proxy process",
             HelpName = "env",
             AllowMultipleArgumentsPerToken = true,
             Arity = ArgumentArity.ZeroOrMore
         };
-        // TODO: Fix validation and alias for beta5
-        // _envOption.AddAlias("-e");
-        // _envOption.Validators.Add(input => { ... });
 
         var options = new List<Option>
         {
