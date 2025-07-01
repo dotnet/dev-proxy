@@ -26,7 +26,7 @@ else
     response='y'
 fi
 
-if [[ "$response" = [nN] ]]; then
+if [[ "$response" != "" && "$response" != [yY] ]]; then
     echo -e "\nExiting"
     exit 1
 fi
