@@ -509,6 +509,15 @@ public static class ProxyUtils
             .OrderBy(x => x)];
     }
 
+#pragma warning disable CA1055
+    public static string UrlWithParametersToRegex(string urlWithParameters)
+#pragma warning restore CA1055
+    {
+        ArgumentNullException.ThrowIfNull(urlWithParameters);
+
+        return $"^{Regex.Replace(Regex.Escape(urlWithParameters), "\\\\{[^}]+}", ".*")}";
+    }
+
     internal static Assembly GetAssembly()
             => _assembly ??= (Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly());
 

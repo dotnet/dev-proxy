@@ -10,6 +10,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using Microsoft.OpenApi.Readers;
+using System.Text.RegularExpressions;
 
 namespace DevProxy.Plugins.Reporting;
 
@@ -182,7 +183,17 @@ public sealed class MinimalPermissionsPlugin(
                         Logger.LogDebug("No URL found for server '{Server}'", server.Description ?? "unnamed");
                         continue;
                     }
-                    apiDefinitions[server.Url] = apiDefinition;
+
+                    Logger.LogDebug("Found server '{Server}' with URL '{Url}'", server.Description ?? "unnamed", server.Url);
+
+                    var serverUrl = server.Url;
+                    if (server.Url.Contains('{', StringComparison.Ordinal))
+                    {
+                        serverUrl = ProxyUtils.UrlWithParametersToRegex(server.Url);
+                        Logger.LogDebug("Transformed server URL '{OriginalUrl}' to '{TransformedUrl}'", server.Url, serverUrl);
+                    }
+
+                    apiDefinitions[serverUrl] = apiDefinition;
                 }
             }
             catch (Exception ex)
@@ -202,7 +213,9 @@ public sealed class MinimalPermissionsPlugin(
             var url = request.Message.Split(' ')[1];
             Logger.LogDebug("Matching request {RequestUrl} to API specs...", url);
 
-            var matchingKey = apiSpecsByUrl.Keys.FirstOrDefault(url.StartsWith);
+            var matchingKey = apiSpecsByUrl.Keys.FirstOrDefault(urlOrPattern =>
+                url.StartsWith(urlOrPattern, StringComparison.OrdinalIgnoreCase) ||
+                Regex.IsMatch(url, urlOrPattern));
             if (matchingKey is null)
             {
                 Logger.LogDebug("No matching API spec found for {RequestUrl}", url);

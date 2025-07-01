@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Models;
 using DevProxy.Plugins.Utils;
 using Microsoft.Extensions.Logging;
@@ -116,27 +117,26 @@ static class OpenApiDocumentExtensions
         {
             logger.LogDebug("Checking server URL {ServerUrl}...", server.Url);
 
-            if (!requestUrl.StartsWith(server.Url, StringComparison.OrdinalIgnoreCase))
+            if (!UrlMatchesServerUrl(requestUrl, server.Url))
             {
                 logger.LogDebug("Request URL {RequestUrl} does not match server URL {ServerUrl}", requestUrl, server.Url);
                 continue;
             }
 
-            var serverUrl = new Uri(server.Url);
-            var serverPath = serverUrl.AbsolutePath.TrimEnd('/');
             var requestUri = new Uri(requestUrl);
-            var urlPathFromRequest = requestUri.GetLeftPart(UriPartial.Path).Replace(server.Url.TrimEnd('/'), "", StringComparison.OrdinalIgnoreCase);
+            var absoluteUrlPathFromRequest = requestUri.GetLeftPart(UriPartial.Path);
 
             foreach (var path in openApiDocument.Paths)
             {
                 var urlPathFromSpec = path.Key;
-                logger.LogDebug("Checking path {UrlPath}...", urlPathFromSpec);
+                var absolutePathFromSpec = server.Url.TrimEnd('/') + urlPathFromSpec;
+                logger.LogDebug("Checking path {UrlPath}...", absolutePathFromSpec);
 
                 // check if path contains parameters. If it does,
                 // replace them with regex
-                if (urlPathFromSpec.Contains('{', StringComparison.OrdinalIgnoreCase))
+                if (absolutePathFromSpec.Contains('{', StringComparison.OrdinalIgnoreCase))
                 {
-                    logger.LogDebug("Path {UrlPath} contains parameters and will be converted to Regex", urlPathFromSpec);
+                    logger.LogDebug("Path {UrlPath} contains parameters and will be converted to Regex", absolutePathFromSpec);
 
                     // force replace all parameters with regex
                     // this is more robust than replacing parameters by name
@@ -147,24 +147,24 @@ static class OpenApiDocumentExtensions
                     // we also escape the path to make sure that regex special
                     // characters are not interpreted so that we won't fail
                     // on matching URLs that contain ()
-                    urlPathFromSpec = Regex.Replace(Regex.Escape(urlPathFromSpec), @"\\\{[^}]+\}", $"([^/]+)");
+                    absolutePathFromSpec = Regex.Replace(Regex.Escape(absolutePathFromSpec), @"\\\{[^}]+\}", $"([^/]+)");
 
-                    logger.LogDebug("Converted path to Regex: {UrlPath}", urlPathFromSpec);
-                    var regex = new Regex($"^{urlPathFromSpec}$");
-                    if (regex.IsMatch(urlPathFromRequest))
+                    logger.LogDebug("Converted path to Regex: {UrlPath}", absolutePathFromSpec);
+                    var regex = new Regex($"^{absolutePathFromSpec}$");
+                    if (regex.IsMatch(absoluteUrlPathFromRequest))
                     {
-                        logger.LogDebug("Regex matches {RequestUrl}", urlPathFromRequest);
+                        logger.LogDebug("Regex matches {RequestUrl}", absoluteUrlPathFromRequest);
 
                         return path;
                     }
 
-                    logger.LogDebug("Regex does not match {RequestUrl}", urlPathFromRequest);
+                    logger.LogDebug("Regex does not match {RequestUrl}", absoluteUrlPathFromRequest);
                 }
                 else
                 {
-                    if (urlPathFromRequest.Equals(urlPathFromSpec, StringComparison.OrdinalIgnoreCase))
+                    if (absoluteUrlPathFromRequest.Equals(absolutePathFromSpec, StringComparison.OrdinalIgnoreCase))
                     {
-                        logger.LogDebug("{RequestUrl} matches {UrlPath}", requestUrl, urlPathFromSpec);
+                        logger.LogDebug("{RequestUrl} matches {UrlPath}", requestUrl, absolutePathFromSpec);
                         return path;
                     }
 
@@ -215,5 +215,22 @@ static class OpenApiDocumentExtensions
         return [.. openApiDocument.Components.SecuritySchemes
             .Where(s => s.Value.Type == SecuritySchemeType.OAuth2)
             .Select(s => s.Value)];
+    }
+
+    private static bool UrlMatchesServerUrl(string absoluteUrl, string serverUrl)
+    {
+        if (absoluteUrl.StartsWith(serverUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // If serverUrl contains parameters, use regex to compare it
+        if (!serverUrl.Contains('{', StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var serverUrlPattern = ProxyUtils.UrlWithParametersToRegex(serverUrl);
+        return Regex.IsMatch(absoluteUrl, serverUrlPattern, RegexOptions.IgnoreCase);
     }
 }
