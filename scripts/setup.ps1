@@ -17,11 +17,10 @@ Write-Host "3. Unzip the release in the devproxy directory"
 Write-Host "4. Configure devproxy and its files as executable (Linux and macOS only)"
 Write-Host "5. Add the devproxy directory to your PATH environment variable in `$PROFILE.CurrentUserAllHosts"
 Write-Host ""
-Write-Host "Continue (y/n)? " -NoNewline
-$response = [System.Console]::ReadKey().KeyChar
+$response = Read-Host "Continue (Y/n)?"
 
-if ($response -notin @('y', 'Y')) {
-    Write-Host "`nExiting"
+if ($response -in @('n', 'N')) {
+    Write-Host "Exiting"
     exit 1
 }
 

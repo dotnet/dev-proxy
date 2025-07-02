@@ -18,11 +18,10 @@ Write-Host "4. Configure Dev Proxy and its files as executable (Linux and macOS 
 Write-Host "5. Configure new version notifications for the beta channel"
 Write-Host "6. Add the devproxy-beta directory to your PATH environment variable in `$PROFILE.CurrentUserAllHosts"
 Write-Host ""
-Write-Host "Continue (y/n)? " -NoNewline
-$response = [System.Console]::ReadKey().KeyChar
+$response = Read-Host "Continue (Y/n)?"
 
-if ($response -notin @('y', 'Y')) {
-    Write-Host "`nExiting"
+if ($response -in @('n', 'N')) {
+    Write-Host "Exiting"
     exit 1
 }
 
