@@ -55,6 +55,7 @@ public sealed class OpenApiSpecGeneratorPluginConfiguration
     public bool IncludeOptionsRequests { get; set; }
     public SpecFormat SpecFormat { get; set; } = SpecFormat.Json;
     public SpecVersion SpecVersion { get; set; } = SpecVersion.v3_0;
+    public bool IgnoreResponseTypes { get; set; }
 }
 
 public sealed class OpenApiSpecGeneratorPlugin(
@@ -416,6 +417,15 @@ public sealed class OpenApiSpecGeneratorPlugin(
         if (contentType.StartsWith("application/json", StringComparison.OrdinalIgnoreCase))
         {
             Logger.LogDebug("    Processing JSON body...");
+            if (Configuration.IgnoreResponseTypes)
+            {
+                Logger.LogDebug("      Ignoring response types");
+                return new()
+                {
+                    Type = "string"
+                };
+            }
+
             return GetSchemaFromJsonString(body);
         }
 

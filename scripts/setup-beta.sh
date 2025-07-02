@@ -21,15 +21,14 @@ echo ""
 
 if [ -t 0 ]; then
     # Terminal is interactive, prompt the user
-    read -p "Continue (y/n)? " -n1 -r response
+    read -p "Continue (Y/n)? " -n1 -r response
+    if [[ "$response" != "" && "$response" != [yY] && "$response" != $'\n' ]]; then
+        echo -e "\nExiting"
+        exit 1
+    fi
 else
     # Not interactive
     response='y'
-fi
-
-if [[ "$response" != [yY] ]]; then
-    echo -e "\nExiting"
-    exit 1
 fi
 
 if [ -t 0 ]; then
