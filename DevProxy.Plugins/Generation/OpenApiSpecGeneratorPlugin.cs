@@ -422,7 +422,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
                 Logger.LogDebug("      Ignoring response types");
                 return new()
                 {
-                    Type = "string",
+                    Type = "string"
                 };
             }
 
