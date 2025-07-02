@@ -69,22 +69,24 @@ public sealed class GenericRandomErrorPlugin(
 
     public override Option[] GetOptions()
     {
-        var _rateOption = new Option<int?>(_rateOptionName, "The percentage of chance that a request will fail");
-        _rateOption.AddAlias("-f");
-        _rateOption.ArgumentHelpName = "failure rate";
-        _rateOption.AddValidator((input) =>
+        var _rateOption = new Option<int?>(_rateOptionName, "-f")
+        {
+            Description = "The percentage of chance that a request will fail",
+            HelpName = "failure-rate"
+        };
+        _rateOption.Validators.Add((input) =>
         {
             try
             {
-                var value = input.GetValueForOption(_rateOption);
+                var value = input.GetValue(_rateOption);
                 if (value.HasValue && (value < 0 || value > 100))
                 {
-                    input.ErrorMessage = $"{value} is not a valid failure rate. Specify a number between 0 and 100";
+                    input.AddError($"{value} is not a valid failure rate. Specify a number between 0 and 100");
                 }
             }
             catch (InvalidOperationException ex)
             {
-                input.ErrorMessage = ex.Message;
+                input.AddError(ex.Message);
             }
         });
 
@@ -97,9 +99,7 @@ public sealed class GenericRandomErrorPlugin(
 
         base.OptionsLoaded(e);
 
-        var context = e.Context;
-
-        var rate = context.ParseResult.GetValueForOption<int?>(_rateOptionName, e.Options);
+        var rate = e.ParseResult.GetValueOrDefault<int?>(_rateOptionName);
         if (rate is not null)
         {
             Configuration.Rate = rate.Value;

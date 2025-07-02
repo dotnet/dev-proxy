@@ -17,11 +17,11 @@ static class IServiceCollectionExtensions
     public static IServiceCollection ConfigureDevProxyServices(
         this IServiceCollection services,
         ConfigurationManager configuration,
-        string[] args)
+        DevProxyConfigOptions options)
     {
         _ = services.AddControllers();
         _ = services
-            .AddApplicationServices(configuration, args)
+            .AddApplicationServices(configuration, options)
             .AddHostedService<ProxyEngine>()
             .AddEndpointsApiExplorer()
             .AddSwaggerGen()
@@ -33,7 +33,7 @@ static class IServiceCollectionExtensions
     static IServiceCollection AddApplicationServices(
         this IServiceCollection services,
         ConfigurationManager configuration,
-        string[] args)
+        DevProxyConfigOptions options)
     {
         _ = services
             .AddSingleton((IConfigurationRoot)configuration)
@@ -47,8 +47,7 @@ static class IServiceCollectionExtensions
             .AddSingleton<DevProxyCommand>()
             .AddHttpClient();
 
-        var isDiscover = args.Contains("--discover", StringComparer.OrdinalIgnoreCase);
-        _ = services.AddPlugins(configuration, isDiscover);
+        _ = services.AddPlugins(configuration, options);
 
         return services;
     }

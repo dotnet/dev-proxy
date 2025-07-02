@@ -11,7 +11,7 @@ namespace Microsoft.Extensions.Configuration;
 
 static class ConfigurationManagerExtensions
 {
-    public static ConfigurationManager ConfigureDevProxyConfig(this ConfigurationManager configuration)
+    public static ConfigurationManager ConfigureDevProxyConfig(this ConfigurationManager configuration, DevProxyConfigOptions options)
     {
         configuration.Sources.Clear();
         _ = configuration.SetBasePath(Directory.GetCurrentDirectory());
@@ -19,7 +19,7 @@ static class ConfigurationManagerExtensions
         string?[] configFiles = [
             // config file specified by the user takes precedence
             // null if not specified
-            DevProxyCommand.ConfigFile,
+            options.ConfigFile,
             // current directory
             "devproxyrc.jsonc",
             "devproxyrc.json",

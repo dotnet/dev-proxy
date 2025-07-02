@@ -20,9 +20,10 @@ static class ILoggingBuilderExtensions
 
     public static ILoggingBuilder ConfigureDevProxyLogging(
         this ILoggingBuilder builder,
-        ConfigurationManager configuration)
+        ConfigurationManager configuration,
+        DevProxyConfigOptions options)
     {
-        var configuredLogLevel = DevProxyCommand.LogLevel ??
+        var configuredLogLevel = options.LogLevel ??
             configuration.GetValue("logLevel", LogLevel.Information);
 
         _ = builder

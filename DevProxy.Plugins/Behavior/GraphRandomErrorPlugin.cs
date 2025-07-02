@@ -105,29 +105,31 @@ public sealed class GraphRandomErrorPlugin(
 
     public override Option[] GetOptions()
     {
-        var _allowedErrors = new Option<IEnumerable<int>>(_allowedErrorsOptionName, "List of errors that Dev Proxy may produce")
+        var _allowedErrors = new Option<IEnumerable<int>>(_allowedErrorsOptionName, "-a")
         {
-            ArgumentHelpName = "allowed errors",
-            AllowMultipleArgumentsPerToken = true
+            AllowMultipleArgumentsPerToken = true,
+            Description = "List of errors that Dev Proxy may produce",
+            HelpName = "allowed-errors"
         };
-        _allowedErrors.AddAlias("-a");
 
-        var _rateOption = new Option<int?>(_rateOptionName, "The percentage of chance that a request will fail");
-        _rateOption.AddAlias("-f");
-        _rateOption.ArgumentHelpName = "failure rate";
-        _rateOption.AddValidator((input) =>
+        var _rateOption = new Option<int?>(_rateOptionName, "-f")
+        {
+            Description = "The percentage of chance that a request will fail",
+            HelpName = "failure-rate"
+        };
+        _rateOption.Validators.Add((input) =>
         {
             try
             {
-                var value = input.GetValueForOption(_rateOption);
+                var value = input.GetValue(_rateOption);
                 if (value.HasValue && (value < 0 || value > 100))
                 {
-                    input.ErrorMessage = $"{value} is not a valid failure rate. Specify a number between 0 and 100";
+                    input.AddError($"{value} is not a valid failure rate. Specify a number between 0 and 100");
                 }
             }
             catch (InvalidOperationException ex)
             {
-                input.ErrorMessage = ex.Message;
+                input.AddError(ex.Message);
             }
         });
 
@@ -140,10 +142,10 @@ public sealed class GraphRandomErrorPlugin(
 
         base.OptionsLoaded(e);
 
-        var context = e.Context;
+        var parseResult = e.ParseResult;
 
         // Configure the allowed errors
-        var allowedErrors = context.ParseResult.GetValueForOption<IEnumerable<int>?>(_allowedErrorsOptionName, e.Options);
+        var allowedErrors = parseResult.GetValueOrDefault<IEnumerable<int>?>(_allowedErrorsOptionName);
         if (allowedErrors?.Any() ?? false)
         {
             Configuration.AllowedErrors = [.. allowedErrors];
@@ -157,7 +159,7 @@ public sealed class GraphRandomErrorPlugin(
             }
         }
 
-        var rate = context.ParseResult.GetValueForOption<int?>(_rateOptionName, e.Options);
+        var rate = parseResult.GetValueOrDefault<int?>(_rateOptionName);
         if (rate is not null)
         {
             Configuration.Rate = rate.Value;

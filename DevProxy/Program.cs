@@ -6,16 +6,16 @@ using DevProxy;
 using DevProxy.Commands;
 using System.Net;
 
-static WebApplication BuildApplication(string[] args)
+static WebApplication BuildApplication(string[] args, DevProxyConfigOptions options)
 {
     var builder = WebApplication.CreateBuilder(args);
 
-    _ = builder.Configuration.ConfigureDevProxyConfig();
-    _ = builder.Logging.ConfigureDevProxyLogging(builder.Configuration);
-    _ = builder.Services.ConfigureDevProxyServices(builder.Configuration, args);
+    _ = builder.Configuration.ConfigureDevProxyConfig(options);
+    _ = builder.Logging.ConfigureDevProxyLogging(builder.Configuration, options);
+    _ = builder.Services.ConfigureDevProxyServices(builder.Configuration, options);
 
     var defaultIpAddress = "127.0.0.1";
-    var ipAddress = DevProxyCommand.IPAddress ??
+    var ipAddress = options.IPAddress ??
         builder.Configuration.GetValue("ipAddress", defaultIpAddress) ??
         defaultIpAddress;
     _ = builder.WebHost.ConfigureKestrel(options =>
@@ -34,11 +34,13 @@ static WebApplication BuildApplication(string[] args)
 }
 _ = Announcement.ShowAsync();
 
-var app = BuildApplication(args);
+var options = new DevProxyConfigOptions();
+options.ParseOptions(args);
+var app = BuildApplication(args, options);
 
-var rootCommand = app.Services.GetRequiredService<DevProxyCommand>();
+var devProxyCommand = app.Services.GetRequiredService<DevProxyCommand>();
 var loggerFactory = app.Services.GetRequiredService<ILoggerFactory>();
 
-var exitCode = await rootCommand.InvokeAsync(args, app);
+var exitCode = await devProxyCommand.InvokeAsync(args, app);
 loggerFactory.Dispose();
 Environment.Exit(exitCode);

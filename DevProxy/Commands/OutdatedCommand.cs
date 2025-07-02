@@ -28,9 +28,16 @@ sealed class OutdatedCommand : Command
 
     private void ConfigureCommand()
     {
-        var outdatedShortOption = new Option<bool>("--short", "Return version only");
-        AddOption(outdatedShortOption);
-        this.SetHandler(CheckVersionAsync, outdatedShortOption);
+        var outdatedShortOption = new Option<bool>("--short")
+        {
+            Description = "Return version only",
+        };
+        Add(outdatedShortOption);
+        SetAction(async (parseResult) =>
+        {
+            var versionOnly = parseResult.GetValue(outdatedShortOption);
+            await CheckVersionAsync(versionOnly);
+        });
     }
 
     private async Task CheckVersionAsync(bool versionOnly)

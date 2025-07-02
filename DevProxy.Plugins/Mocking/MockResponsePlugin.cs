@@ -72,15 +72,16 @@ public class MockResponsePlugin(
 
     public override Option[] GetOptions()
     {
-        var _noMocks = new Option<bool?>(_noMocksOptionName, "Disable loading mock requests")
+        var _noMocks = new Option<bool?>(_noMocksOptionName, "-n")
         {
-            ArgumentHelpName = "no mocks"
+            Description = "Disable loading mock requests",
+            HelpName = "no-mocks"
         };
-        _noMocks.AddAlias("-n");
 
-        var _mocksFile = new Option<string?>(_mocksFileOptionName, "Provide a file populated with mock responses")
+        var _mocksFile = new Option<string?>(_mocksFileOptionName)
         {
-            ArgumentHelpName = "mocks file"
+            Description = "Provide a file populated with mock responses",
+            HelpName = "mocks-file"
         };
 
         return [_noMocks, _mocksFile];
@@ -92,10 +93,10 @@ public class MockResponsePlugin(
 
         base.OptionsLoaded(e);
 
-        var context = e.Context;
+        var parseResult = e.ParseResult;
 
         // allow disabling of mocks as a command line option
-        var noMocks = context.ParseResult.GetValueForOption<bool?>(_noMocksOptionName, e.Options);
+        var noMocks = parseResult.GetValueOrDefault<bool?>(_noMocksOptionName);
         if (noMocks.HasValue)
         {
             Configuration.NoMocks = noMocks.Value;
@@ -107,7 +108,7 @@ public class MockResponsePlugin(
         }
 
         // update the name of the mocks file to load from if supplied
-        var mocksFile = context.ParseResult.GetValueForOption<string?>(_mocksFileOptionName, e.Options);
+        var mocksFile = parseResult.GetValueOrDefault<string?>(_mocksFileOptionName);
         if (mocksFile is not null)
         {
             Configuration.MocksFile = mocksFile;

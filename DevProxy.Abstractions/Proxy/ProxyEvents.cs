@@ -4,7 +4,6 @@
 
 using DevProxy.Abstractions.Utils;
 using System.CommandLine;
-using System.CommandLine.Invocation;
 using System.Text.Json.Serialization;
 using Titanium.Web.Proxy.EventArguments;
 
@@ -48,12 +47,10 @@ public class InitArgs
     public required IServiceProvider ServiceProvider { get; init; }
 }
 
-public class OptionsLoadedArgs(InvocationContext context, IReadOnlyList<Option> options)
+public class OptionsLoadedArgs(ParseResult parseResult)
 {
-    public InvocationContext Context { get; set; } = context ??
-        throw new ArgumentNullException(nameof(context));
-    public IReadOnlyList<Option> Options { get; set; } = options ??
-        throw new ArgumentNullException(nameof(options));
+    public ParseResult ParseResult { get; set; } = parseResult ??
+        throw new ArgumentNullException(nameof(parseResult));
 }
 
 public class RequestLog

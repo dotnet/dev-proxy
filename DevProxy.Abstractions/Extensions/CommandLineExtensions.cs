@@ -8,7 +8,7 @@ namespace System.CommandLine.Parsing;
 
 public static class CommandLineExtensions
 {
-    public static T? GetValueForOption<T>(this ParseResult parseResult, string optionName, IReadOnlyList<Option> options)
+    public static T? GetValue<T>(this ParseResult parseResult, string optionName, IList<Option> options)
     {
         ArgumentNullException.ThrowIfNull(parseResult);
 
@@ -20,7 +20,21 @@ public static class CommandLineExtensions
             throw new InvalidOperationException($"Could not find option with name {optionName} and value type {typeof(T).Name}");
         }
 
-        return parseResult.GetValueForOption(option);
+        return parseResult.GetValue(option);
+    }
+
+    public static T? GetValueOrDefault<T>(this ParseResult parseResult, string optionName)
+    {
+        ArgumentNullException.ThrowIfNull(parseResult);
+
+        try
+        {
+            return parseResult.GetValue<T>(optionName);
+        }
+        catch (Exception ex) when (ex is InvalidCastException or ArgumentException or InvalidOperationException)
+        {
+            return default;
+        }
     }
 
     public static IEnumerable<T> OrderByName<T>(this IEnumerable<T> symbols) where T : Symbol
@@ -37,7 +51,7 @@ public static class CommandLineExtensions
 
         foreach (var subcommand in subcommands)
         {
-            command.AddCommand(subcommand);
+            command.Add(subcommand);
         }
     }
 
@@ -48,7 +62,7 @@ public static class CommandLineExtensions
 
         foreach (var option in options)
         {
-            command.AddOption(option);
+            command.Add(option);
         }
     }
 

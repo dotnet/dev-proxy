@@ -4,7 +4,6 @@
 
 using DevProxy.Abstractions.Utils;
 using System.CommandLine;
-using System.CommandLine.Invocation;
 
 namespace DevProxy.Commands;
 
@@ -21,10 +20,10 @@ sealed class MsGraphDbCommand : Command
 
     private void ConfigureCommand()
     {
-        this.SetHandler(GenerateMsGraphDbAsync);
+        SetAction(GenerateMsGraphDbAsync);
     }
 
-    private async Task GenerateMsGraphDbAsync(InvocationContext context)
+    private async Task GenerateMsGraphDbAsync(ParseResult parseResult)
     {
         _ = await MSGraphDbUtils.GenerateMSGraphDbAsync(_logger);
     }

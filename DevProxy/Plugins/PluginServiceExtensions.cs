@@ -20,14 +20,14 @@ static class PluginServiceExtensions
     public static IServiceCollection AddPlugins(
         this IServiceCollection services,
         IConfiguration configuration,
-        bool isDiscover)
+        DevProxyConfigOptions options)
     {
         var serviceProvider = services.BuildServiceProvider();
         var logger = serviceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Plugins");
         using var scope = logger.BeginScope(nameof(AddPlugins));
 
         var pluginReferences = configuration.GetSection("plugins").Get<List<PluginReference>>();
-        var globallyWatchedUrls = (DevProxyCommand.UrlsToWatch ?? configuration.GetSection("urlsToWatch").Get<List<string>>() ?? []).Select(ConvertToRegex).ToList();
+        var globallyWatchedUrls = (options.UrlsToWatch ?? configuration.GetSection("urlsToWatch").Get<List<string>>() ?? []).Select(ConvertToRegex).ToList();
 
         var schemaUrl = configuration.GetValue<string>("$schema");
         if (string.IsNullOrWhiteSpace(schemaUrl))
@@ -39,7 +39,7 @@ static class PluginServiceExtensions
             ProxyUtils.ValidateSchemaVersion(schemaUrl, logger);
         }
 
-        if (isDiscover)
+        if (options.Discover)
         {
             logger.LogWarning("Dev Proxy is running in URL discovery mode. Configured plugins and URLs to watch will be ignored.");
             if (pluginReferences is null)

@@ -5,7 +5,6 @@
 using DevProxy.Abstractions.Utils;
 using DevProxy.Proxy;
 using System.CommandLine;
-using System.CommandLine.Invocation;
 using System.CommandLine.Parsing;
 using System.Diagnostics;
 using Titanium.Web.Proxy.Helpers;
@@ -15,7 +14,10 @@ namespace DevProxy.Commands;
 sealed class CertCommand : Command
 {
     private readonly ILogger _logger;
-    private readonly Option<bool> _forceOption = new(["--force", "-f"], "Don't prompt for confirmation when removing the certificate");
+    private readonly Option<bool> _forceOption = new("--force", "-f")
+    {
+        Description = "Don't prompt for confirmation when removing the certificate"
+    };
 
     public CertCommand(ILogger<CertCommand> logger) :
         base("cert", "Manage the Dev Proxy certificate")
@@ -28,10 +30,10 @@ sealed class CertCommand : Command
     private void ConfigureCommand()
     {
         var certEnsureCommand = new Command("ensure", "Ensure certificates are setup (creates root if required). Also makes root certificate trusted.");
-        certEnsureCommand.SetHandler(EnsureCertAsync);
+        certEnsureCommand.SetAction(async _ => await EnsureCertAsync());
 
         var certRemoveCommand = new Command("remove", "Remove the certificate from Root Store");
-        certRemoveCommand.SetHandler(RemoveCert);
+        certRemoveCommand.SetAction(RemoveCert);
         certRemoveCommand.AddOptions(new[] { _forceOption }.OrderByName());
 
         this.AddCommands(new List<Command>
@@ -59,13 +61,13 @@ sealed class CertCommand : Command
         _logger.LogTrace("EnsureCertAsync() finished");
     }
 
-    public void RemoveCert(InvocationContext invocationContext)
+    public void RemoveCert(ParseResult parseResult)
     {
         _logger.LogTrace("RemoveCert() called");
 
         try
         {
-            var isForced = invocationContext.ParseResult.GetValueForOption(_forceOption);
+            var isForced = parseResult.GetValue(_forceOption);
             if (!isForced)
             {
                 var isConfirmed = PromptConfirmation("Do you want to remove the root certificate", acceptByDefault: false);

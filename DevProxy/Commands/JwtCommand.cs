@@ -19,33 +19,39 @@ sealed class JwtCommand : Command
     private void ConfigureCommand()
     {
         var jwtCreateCommand = new Command("create", "Create a new JWT token");
-        var jwtNameOption = new Option<string>("--name", "The name of the user to create the token for.");
-        jwtNameOption.AddAlias("-n");
-
-        var jwtAudiencesOption = new Option<IEnumerable<string>>("--audiences", "The audiences to create the token for. Specify once for each audience")
+        var jwtNameOption = new Option<string>("--name", "-n")
         {
-            AllowMultipleArgumentsPerToken = true
+            Description = "The name of the user to create the token for."
         };
-        jwtAudiencesOption.AddAlias("-a");
 
-        var jwtIssuerOption = new Option<string>("--issuer", "The issuer of the token.");
-        jwtIssuerOption.AddAlias("-i");
-
-        var jwtRolesOption = new Option<IEnumerable<string>>("--roles", "A role claim to add to the token. Specify once for each role.")
+        var jwtAudiencesOption = new Option<IEnumerable<string>>("--audiences", "-a")
         {
-            AllowMultipleArgumentsPerToken = true
+            AllowMultipleArgumentsPerToken = true,
+            Description = "The audiences to create the token for. Specify once for each audience."
         };
-        jwtRolesOption.AddAlias("-r");
 
-        var jwtScopesOption = new Option<IEnumerable<string>>("--scopes", "A scope claim to add to the token. Specify once for each scope.")
+        var jwtIssuerOption = new Option<string>("--issuer", "-i")
         {
-            AllowMultipleArgumentsPerToken = true
+            Description = "The issuer of the token."
         };
-        jwtScopesOption.AddAlias("-s");
 
-        var jwtClaimsOption = new Option<Dictionary<string, string>>("--claims",
-            description: "Claims to add to the token. Specify once for each claim in the format \"name:value\".",
-            parseArgument: result =>
+        var jwtRolesOption = new Option<IEnumerable<string>>("--roles", "-r")
+        {
+            AllowMultipleArgumentsPerToken = true,
+            Description = "A role claim to add to the token. Specify once for each role."
+        };
+
+        var jwtScopesOption = new Option<IEnumerable<string>>("--scopes", "-s")
+        {
+            AllowMultipleArgumentsPerToken = true,
+            Description = "A scope claim to add to the token. Specify once for each scope."
+        };
+
+        var jwtClaimsOption = new Option<Dictionary<string, string>>("--claims")
+        {
+            AllowMultipleArgumentsPerToken = true,
+            Description = "Claims to add to the token. Specify once for each claim in the format \"name:value\".",
+            CustomParser = result =>
             {
                 var claims = new Dictionary<string, string>();
                 foreach (var token in result.Tokens)
@@ -54,7 +60,7 @@ sealed class JwtCommand : Command
 
                     if (claim.Length != 2)
                     {
-                        result.ErrorMessage = $"Invalid claim format: '{token.Value}'. Expected format is name:value.";
+                        result.AddError($"Invalid claim format: '{token.Value}'. Expected format is name:value.");
                         return claims ?? [];
                     }
 
@@ -65,34 +71,35 @@ sealed class JwtCommand : Command
                     }
                     catch (Exception ex)
                     {
-                        result.ErrorMessage = ex.Message;
+                        result.AddError(ex.Message);
                     }
                 }
                 return claims;
             }
-        )
-        {
-            AllowMultipleArgumentsPerToken = true,
         };
 
-        var jwtValidForOption = new Option<double>("--valid-for", "The duration for which the token is valid. Duration is set in minutes.");
-        jwtValidForOption.AddAlias("-v");
+        var jwtValidForOption = new Option<double>("--valid-for", "-v")
+        {
+            Description = "The duration for which the token is valid. Duration is set in minutes."
+        };
 
-        var jwtSigningKeyOption = new Option<string>("--signing-key", "The signing key to sign the token. Minimum length is 32 characters.");
-        jwtSigningKeyOption.AddAlias("-k");
-        jwtSigningKeyOption.AddValidator(input =>
+        var jwtSigningKeyOption = new Option<string>("--signing-key", "-k")
+        {
+            Description = "The signing key to sign the token. Minimum length is 32 characters."
+        };
+        jwtSigningKeyOption.Validators.Add(input =>
         {
             try
             {
-                var value = input.GetValueForOption(jwtSigningKeyOption);
+                var value = input.GetValue(jwtSigningKeyOption);
                 if (string.IsNullOrWhiteSpace(value) || value.Length < 32)
                 {
-                    input.ErrorMessage = $"Requires option '--{jwtSigningKeyOption.Name}' to be at least 32 characters";
+                    input.AddError($"Requires option '--{jwtSigningKeyOption.Name}' to be at least 32 characters");
                 }
             }
             catch (InvalidOperationException ex)
             {
-                input.ErrorMessage = ex.Message;
+                input.AddError(ex.Message);
             }
         });
 
@@ -108,19 +115,22 @@ sealed class JwtCommand : Command
             jwtSigningKeyOption
         }.OrderByName());
 
-        jwtCreateCommand.SetHandler(
-            GetToken,
-            new JwtBinder(
-                jwtNameOption,
-                jwtAudiencesOption,
-                jwtIssuerOption,
-                jwtRolesOption,
-                jwtScopesOption,
-                jwtClaimsOption,
-                jwtValidForOption,
-                jwtSigningKeyOption
-            )
-        );
+        jwtCreateCommand.SetAction(parseResult =>
+        {
+            var jwtOptions = new JwtOptions
+            {
+                Name = parseResult.GetValue(jwtNameOption),
+                Audiences = parseResult.GetValue(jwtAudiencesOption),
+                Issuer = parseResult.GetValue(jwtIssuerOption),
+                Roles = parseResult.GetValue(jwtRolesOption),
+                Scopes = parseResult.GetValue(jwtScopesOption),
+                Claims = parseResult.GetValue(jwtClaimsOption),
+                ValidFor = parseResult.GetValue(jwtValidForOption),
+                SigningKey = parseResult.GetValue(jwtSigningKeyOption)
+            };
+
+            GetToken(jwtOptions);
+        });
 
         this.AddCommands(new List<Command>
         {
