@@ -50,14 +50,45 @@ public enum SpecFormat
     Yaml
 }
 
+public class ContactConfig
+{
+    public string Name { get; set; } = "Your Name";
+    public string Url { get; set; } = "https://www.yourwebsite.com";
+    public string Email { get; set; } = "your.email@yourdomain.com";
+    public OpenApiContact ToOpenApiContact()
+    {
+        return new OpenApiContact
+        {
+            Name = Name,
+            Url = !string.IsNullOrWhiteSpace(Url) ? new Uri(Url) : null,
+            Email = Email
+        };
+    }
+}
+
+public class ConnectorMetadataConfig
+{
+    public string? Website { get; set; }
+    public string? PrivacyPolicy { get; set; }
+    private string[]? _categories;
+    public IReadOnlyList<string>? Categories
+    {
+        get => _categories;
+        set => _categories = value?.ToArray();
+    }
+}
+
 public sealed class OpenApiSpecGeneratorPluginConfiguration
 {
     public bool IncludeOptionsRequests { get; set; }
     public SpecFormat SpecFormat { get; set; } = SpecFormat.Json;
     public SpecVersion SpecVersion { get; set; } = SpecVersion.v3_0;
+    public ContactConfig Contact { get; set; } = new();
+    public ConnectorMetadataConfig ConnectorMetadata { get; set; } = new();
+    public bool IncludeResponseHeaders { get; set; }
 }
 
-public sealed class OpenApiSpecGeneratorPlugin(
+public class OpenApiSpecGeneratorPlugin(
     ILogger<OpenApiSpecGeneratorPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     ILanguageModelClient languageModelClient,
@@ -92,9 +123,9 @@ public sealed class OpenApiSpecGeneratorPlugin(
         foreach (var request in e.RequestLogs)
         {
             if (request.MessageType != MessageType.InterceptedResponse ||
-              request.Context is null ||
-              request.Context.Session is null ||
-              !ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri))
+                request.Context is null ||
+                request.Context.Session is null ||
+                !ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri))
             {
                 continue;
             }
@@ -113,17 +144,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
             {
                 var pathItem = GetOpenApiPathItem(request.Context.Session);
                 var parametrizedPath = ParametrizePath(pathItem, request.Context.Session.HttpClient.Request.RequestUri);
-                var operationInfo = pathItem.Operations.First();
-                operationInfo.Value.OperationId = await GetOperationIdAsync(
-                    operationInfo.Key.ToString(),
-                    request.Context.Session.HttpClient.Request.RequestUri.GetLeftPart(UriPartial.Authority),
-                    parametrizedPath
-                );
-                operationInfo.Value.Description = await GetOperationDescriptionAsync(
-                    operationInfo.Key.ToString(),
-                    request.Context.Session.HttpClient.Request.RequestUri.GetLeftPart(UriPartial.Authority),
-                    parametrizedPath
-                );
+                await ProcessPathItemAsync(pathItem, request.Context.Session.HttpClient.Request.RequestUri, parametrizedPath);
                 AddOrMergePathItem(openApiDocs, pathItem, request.Context.Session.HttpClient.Request.RequestUri, parametrizedPath);
             }
             catch (Exception ex)
@@ -136,6 +157,9 @@ public sealed class OpenApiSpecGeneratorPlugin(
         var generatedOpenApiSpecs = new Dictionary<string, string>();
         foreach (var openApiDoc in openApiDocs)
         {
+            // Allow derived plugins to post-process the OpenApiDocument (above the path level)
+            await ProcessOpenApiDocumentAsync(openApiDoc);
+
             var server = openApiDoc.Servers.First();
             var fileName = GetFileNameFromServerUrl(server.Url, Configuration.SpecFormat);
 
@@ -176,30 +200,70 @@ public sealed class OpenApiSpecGeneratorPlugin(
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
     }
 
-    private async Task<string> GetOperationIdAsync(string method, string serverUrl, string parametrizedPath)
+    /// <summary>
+    /// Allows derived plugins to post-process the OpenApiPathItem before it is added/merged into the document.
+    /// </summary>
+    /// <param name="pathItem">The OpenApiPathItem to process.</param>
+    /// <param name="requestUri">The request URI.</param>
+    /// <param name="parametrizedPath">The parametrized path string.</param>
+    /// <returns>The processed OpenApiPathItem.</returns>
+    protected virtual async Task ProcessPathItemAsync(OpenApiPathItem pathItem, Uri requestUri, string parametrizedPath)
     {
+        ArgumentNullException.ThrowIfNull(pathItem);
+        ArgumentNullException.ThrowIfNull(requestUri);
+
+        var operationInfo = pathItem.Operations.First();
+        operationInfo.Value.OperationId = await GetOperationIdAsync(
+            operationInfo.Key.ToString(),
+            requestUri.GetLeftPart(UriPartial.Authority),
+            parametrizedPath
+        );
+        operationInfo.Value.Description = await GetOperationDescriptionAsync(
+            operationInfo.Key.ToString(),
+            requestUri.GetLeftPart(UriPartial.Authority),
+            parametrizedPath
+        );
+    }
+
+    /// <summary>
+    /// Allows derived plugins to post-process the OpenApiDocument before it is serialized and written to disk.
+    /// </summary>
+    /// <param name="openApiDoc">The OpenApiDocument to process.</param>
+    protected virtual Task ProcessOpenApiDocumentAsync(OpenApiDocument openApiDoc)
+    {
+        // By default, do nothing. Derived plugins can override to add/modify document-level data.
+        return Task.CompletedTask;
+    }
+
+    protected virtual async Task<string> GetOperationIdAsync(string method, string serverUrl, string parametrizedPath, string promptyFile = "api_operation_id")
+    {
+        ArgumentException.ThrowIfNullOrEmpty(method);
+        ArgumentException.ThrowIfNullOrEmpty(parametrizedPath);
+
         ILanguageModelCompletionResponse? id = null;
         if (await languageModelClient.IsEnabledAsync())
         {
-            id = await languageModelClient.GenerateChatCompletionAsync("api_operation_id", new()
+            id = await languageModelClient.GenerateChatCompletionAsync(promptyFile, new()
             {
                 { "request", $"{method.ToUpperInvariant()} {serverUrl}{parametrizedPath}" }
             });
         }
-        return id?.Response ?? $"{method}{parametrizedPath.Replace('/', '.')}";
+        return id?.Response?.Trim() ?? $"{method}{parametrizedPath.Replace('/', '.')}";
     }
 
-    private async Task<string> GetOperationDescriptionAsync(string method, string serverUrl, string parametrizedPath)
+    protected virtual async Task<string> GetOperationDescriptionAsync(string method, string serverUrl, string parametrizedPath, string promptyFile = "api_operation_description")
     {
+        ArgumentException.ThrowIfNullOrEmpty(method);
+
         ILanguageModelCompletionResponse? description = null;
         if (await languageModelClient.IsEnabledAsync())
         {
-            description = await languageModelClient.GenerateChatCompletionAsync("api_operation_description", new()
+            description = await languageModelClient.GenerateChatCompletionAsync(promptyFile, new()
             {
                 { "request", $"{method.ToUpperInvariant()} {serverUrl}{parametrizedPath}" }
             });
         }
-        return description?.Response ?? $"{method} {parametrizedPath}";
+        return description?.Response?.Trim() ?? $"{method} {parametrizedPath}";
     }
 
     /**
