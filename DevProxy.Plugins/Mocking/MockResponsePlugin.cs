@@ -39,11 +39,13 @@ public sealed class MockResponseConfiguration
 }
 
 public class MockResponsePlugin(
+    HttpClient httpClient,
     ILogger<MockResponsePlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
     BasePlugin<MockResponseConfiguration>(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
@@ -61,11 +63,11 @@ public class MockResponsePlugin(
 
     public override string Name => nameof(MockResponsePlugin);
 
-    public override async Task InitializeAsync(InitArgs e)
+    public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(e);
 
-        await base.InitializeAsync(e);
+        await base.InitializeAsync(e, cancellationToken);
 
         _loader = ActivatorUtilities.CreateInstance<MockResponsesLoader>(e.ServiceProvider, Configuration);
     }
@@ -117,12 +119,12 @@ public class MockResponsePlugin(
         Configuration.MocksFile = ProxyUtils.GetFullPath(Configuration.MocksFile, _proxyConfiguration.ConfigFile);
 
         // load the responses from the configured mocks file
-        _loader?.InitFileWatcher();
+        _loader!.InitFileWatcherAsync(CancellationToken.None).GetAwaiter().GetResult();
 
         ValidateMocks();
     }
 
-    public override Task BeforeRequestAsync(ProxyRequestArgs e)
+    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
 

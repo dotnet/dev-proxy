@@ -20,19 +20,19 @@ public sealed class OpenAIMockResponsePlugin(
 {
     public override string Name => nameof(OpenAIMockResponsePlugin);
 
-    public override async Task InitializeAsync(InitArgs e)
+    public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
     {
-        await base.InitializeAsync(e);
+        await base.InitializeAsync(e, cancellationToken);
 
         Logger.LogInformation("Checking language model availability...");
-        if (!await languageModelClient.IsEnabledAsync())
+        if (!await languageModelClient.IsEnabledAsync(cancellationToken))
         {
             Logger.LogError("Local language model is not enabled. The {Plugin} will not be used.", Name);
             Enabled = false;
         }
     }
 
-    public override async Task BeforeRequestAsync(ProxyRequestArgs e)
+    public override async Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
 
@@ -66,7 +66,7 @@ public sealed class OpenAIMockResponsePlugin(
 
         if (openAiRequest is OpenAICompletionRequest completionRequest)
         {
-            if ((await languageModelClient.GenerateCompletionAsync(completionRequest.Prompt)) is not ILanguageModelCompletionResponse lmResponse)
+            if ((await languageModelClient.GenerateCompletionAsync(completionRequest.Prompt, null, cancellationToken)) is not ILanguageModelCompletionResponse lmResponse)
             {
                 return;
             }
@@ -82,7 +82,7 @@ public sealed class OpenAIMockResponsePlugin(
         else if (openAiRequest is OpenAIChatCompletionRequest chatRequest)
         {
             if ((await languageModelClient
-                .GenerateChatCompletionAsync(chatRequest.Messages)) is not ILanguageModelCompletionResponse lmResponse)
+                .GenerateChatCompletionAsync(chatRequest.Messages, null, cancellationToken)) is not ILanguageModelCompletionResponse lmResponse)
             {
                 return;
             }

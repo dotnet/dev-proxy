@@ -24,11 +24,13 @@ public sealed class ApiCenterProductionVersionPluginConfiguration
 }
 
 public sealed class ApiCenterProductionVersionPlugin(
+    HttpClient httpClient,
     ILogger<ApiCenterProductionVersionPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
     BaseReportingPlugin<ApiCenterProductionVersionPluginConfiguration>(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
@@ -39,11 +41,11 @@ public sealed class ApiCenterProductionVersionPlugin(
 
     public override string Name => nameof(ApiCenterProductionVersionPlugin);
 
-    public override async Task InitializeAsync(InitArgs e)
+    public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(e);
 
-        await base.InitializeAsync(e);
+        await base.InitializeAsync(e, cancellationToken);
 
         try
         {
@@ -78,7 +80,7 @@ public sealed class ApiCenterProductionVersionPlugin(
         Logger.LogDebug("Plugin {Plugin} auth confirmed...", Name);
     }
 
-    public override async Task AfterRecordingStopAsync(RecordingArgs e)
+    public override async Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterRecordingStopAsync));
 
@@ -110,9 +112,11 @@ public sealed class ApiCenterProductionVersionPlugin(
 
         foreach (var api in _apis)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             Debug.Assert(api.Id is not null);
 
-            await api.LoadVersionsAsync(_apiCenterClient);
+            await api.LoadVersionsAsync(_apiCenterClient, cancellationToken);
             if (api.Versions == null || api.Versions.Length == 0)
             {
                 Logger.LogInformation("No versions found for {Api}", api.Properties?.Title);
@@ -121,9 +125,11 @@ public sealed class ApiCenterProductionVersionPlugin(
 
             foreach (var versionFromApiCenter in api.Versions)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 Debug.Assert(versionFromApiCenter.Id is not null);
 
-                await versionFromApiCenter.LoadDefinitionsAsync(_apiCenterClient);
+                await versionFromApiCenter.LoadDefinitionsAsync(_apiCenterClient, cancellationToken);
                 if (versionFromApiCenter.Definitions == null ||
                     versionFromApiCenter.Definitions.Length == 0)
                 {
@@ -134,9 +140,11 @@ public sealed class ApiCenterProductionVersionPlugin(
                 var definitions = new List<ApiDefinition>();
                 foreach (var definitionFromApiCenter in versionFromApiCenter.Definitions)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
+
                     Debug.Assert(definitionFromApiCenter.Id is not null);
 
-                    await definitionFromApiCenter.LoadOpenApiDefinitionAsync(_apiCenterClient, Logger);
+                    await definitionFromApiCenter.LoadOpenApiDefinitionAsync(_apiCenterClient, Logger, cancellationToken);
 
                     if (definitionFromApiCenter.Definition is null)
                     {

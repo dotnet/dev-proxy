@@ -15,7 +15,7 @@ public sealed class GraphBetaSupportGuidancePlugin(
 {
     public override string Name => nameof(GraphBetaSupportGuidancePlugin);
 
-    public override Task AfterResponseAsync(ProxyResponseArgs e)
+    public override Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterResponseAsync));
 

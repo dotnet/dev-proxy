@@ -20,7 +20,7 @@ public sealed class MockGeneratorPlugin(
 {
     public override string Name => nameof(MockGeneratorPlugin);
 
-    public override async Task AfterRecordingStopAsync(RecordingArgs e)
+    public override async Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterRecordingStopAsync));
 
@@ -39,6 +39,8 @@ public sealed class MockGeneratorPlugin(
 
         foreach (var request in e.RequestLogs)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (request.MessageType != MessageType.InterceptedResponse ||
               request.Context is null ||
               request.Context.Session is null ||
@@ -66,7 +68,7 @@ public sealed class MockGeneratorPlugin(
                 {
                     StatusCode = response.StatusCode,
                     Headers = newHeaders,
-                    Body = await GetResponseBodyAsync(request.Context.Session)
+                    Body = await GetResponseBodyAsync(request.Context.Session, cancellationToken)
                 }
             };
             // skip mock if it's 200 but has no body
@@ -91,7 +93,7 @@ public sealed class MockGeneratorPlugin(
         var fileName = $"mocks-{DateTime.Now:yyyyMMddHHmmss}.json";
 
         Logger.LogDebug("Writing mocks to {FileName}...", fileName);
-        await File.WriteAllTextAsync(fileName, mocksFileJson);
+        await File.WriteAllTextAsync(fileName, mocksFileJson, cancellationToken);
 
         Logger.LogInformation("Created mock file {FileName} with {MocksCount} mocks", fileName, mocks.Count);
 
@@ -106,7 +108,7 @@ public sealed class MockGeneratorPlugin(
     /// </summary>
     /// <param name="session">Request session</param>
     /// <returns>Response body or @filename for binary responses</returns>
-    private async Task<dynamic?> GetResponseBodyAsync(SessionEventArgs session)
+    private async Task<dynamic?> GetResponseBodyAsync(SessionEventArgs session, CancellationToken cancellationToken)
     {
         Logger.LogDebug("Getting response body...");
 
@@ -124,7 +126,7 @@ public sealed class MockGeneratorPlugin(
             try
             {
                 Logger.LogDebug("Reading response body as string...");
-                var body = response.IsBodyRead ? response.BodyString : await session.GetResponseBodyAsString();
+                var body = response.IsBodyRead ? response.BodyString : await session.GetResponseBodyAsString(cancellationToken);
                 Logger.LogDebug("Body: {Body}", body);
                 Logger.LogDebug("Deserializing response body...");
                 return JsonSerializer.Deserialize<dynamic>(body, ProxyUtils.JsonSerializerOptions);
@@ -142,9 +144,9 @@ public sealed class MockGeneratorPlugin(
         {
             var filename = $"response-{Guid.NewGuid()}.bin";
             Logger.LogDebug("Reading response body as bytes...");
-            var body = await session.GetResponseBody();
+            var body = await session.GetResponseBody(cancellationToken);
             Logger.LogDebug("Writing response body to {Filename}...", filename);
-            await File.WriteAllBytesAsync(filename, body);
+            await File.WriteAllBytesAsync(filename, body, cancellationToken);
             return $"@{filename}";
         }
         catch (Exception ex)

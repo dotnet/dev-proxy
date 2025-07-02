@@ -24,11 +24,13 @@ public sealed class ExecutionSummaryPluginConfiguration
 }
 
 public sealed class ExecutionSummaryPlugin(
+    HttpClient httpClient,
     ILogger<ExecutionSummaryPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
     BaseReportingPlugin<ExecutionSummaryPluginConfiguration>(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
@@ -73,7 +75,7 @@ public sealed class ExecutionSummaryPlugin(
         }
     }
 
-    public override Task AfterRecordingStopAsync(RecordingArgs e)
+    public override Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterRecordingStopAsync));
 

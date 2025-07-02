@@ -35,11 +35,13 @@ public sealed class GraphRandomErrorConfiguration
 }
 
 public sealed class GraphRandomErrorPlugin(
+    HttpClient httpClient,
     ILogger<GraphRandomErrorPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
     BasePlugin<GraphRandomErrorConfiguration>(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
@@ -166,7 +168,7 @@ public sealed class GraphRandomErrorPlugin(
         }
     }
 
-    public override Task BeforeRequestAsync(ProxyRequestArgs e)
+    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
 

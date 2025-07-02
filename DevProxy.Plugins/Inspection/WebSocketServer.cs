@@ -51,7 +51,8 @@ public sealed class WebSocketServer(int port, ILogger logger) : IDisposable
         }
     }
 
-    public async Task SendAsync<TMsg>(TMsg message)
+    public async Task SendAsync<TMsg>(TMsg message, CancellationToken cancellationToken)
+        where TMsg : notnull
     {
         if (_webSocket is null)
         {
@@ -62,10 +63,10 @@ public sealed class WebSocketServer(int port, ILogger logger) : IDisposable
 
         // we need a semaphore to avoid multiple simultaneous writes
         // which aren't allowed
-        await _webSocketSemaphore.WaitAsync();
+        await _webSocketSemaphore.WaitAsync(cancellationToken);
 
         var messageBytes = Encoding.UTF8.GetBytes(messageString);
-        await _webSocket.SendAsync(new ArraySegment<byte>(messageBytes), WebSocketMessageType.Text, true, CancellationToken.None);
+        await _webSocket.SendAsync(new ArraySegment<byte>(messageBytes), WebSocketMessageType.Text, true, cancellationToken);
 
         _ = _webSocketSemaphore.Release();
     }

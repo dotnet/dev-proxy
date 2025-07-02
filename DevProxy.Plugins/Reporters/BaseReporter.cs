@@ -13,17 +13,15 @@ public abstract class BaseReporter(
     ILogger logger,
     ISet<UrlToWatch> urlsToWatch) : BasePlugin(logger, urlsToWatch)
 {
-#pragma warning disable CA1065
-    public virtual string FileExtension => throw new NotImplementedException();
-#pragma warning restore CA1065
+    public abstract string FileExtension { get; }
 
-    public override async Task AfterRecordingStopAsync(RecordingArgs e)
+    public override async Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterRecordingStopAsync));
 
         ArgumentNullException.ThrowIfNull(e);
 
-        await base.AfterRecordingStopAsync(e);
+        await base.AfterRecordingStopAsync(e, cancellationToken);
 
         if (!e.GlobalData.TryGetValue(ProxyUtils.ReportsKey, out var value) ||
             value is not Dictionary<string, object> reports ||
@@ -35,6 +33,8 @@ public abstract class BaseReporter(
 
         foreach (var report in reports)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             Logger.LogDebug("Transforming report {ReportKey}...", report.Key);
 
             var reportContents = GetReport(report);
@@ -55,7 +55,7 @@ public abstract class BaseReporter(
             }
 
             Logger.LogInformation("Writing report {ReportKey} to {FileName}...", report.Key, fileName);
-            await File.WriteAllTextAsync(fileName, reportContents);
+            await File.WriteAllTextAsync(fileName, reportContents, cancellationToken);
         }
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));

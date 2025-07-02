@@ -17,7 +17,7 @@ public sealed class GraphClientRequestIdGuidancePlugin(
 {
     public override string Name => nameof(GraphClientRequestIdGuidancePlugin);
 
-    public override Task BeforeRequestAsync(ProxyRequestArgs e)
+    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
 

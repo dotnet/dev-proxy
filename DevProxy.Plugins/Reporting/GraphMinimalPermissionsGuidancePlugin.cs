@@ -37,11 +37,13 @@ public sealed class GraphMinimalPermissionsGuidancePluginConfiguration
 }
 
 public sealed class GraphMinimalPermissionsGuidancePlugin(
+    HttpClient httpClient,
     ILogger<GraphMinimalPermissionsGuidancePlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
     BaseReportingPlugin<GraphMinimalPermissionsGuidancePluginConfiguration>(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
@@ -51,11 +53,11 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
 
     public override string Name => nameof(GraphMinimalPermissionsGuidancePlugin);
 
-    public override async Task InitializeAsync(InitArgs e)
+    public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(e);
 
-        await base.InitializeAsync(e);
+        await base.InitializeAsync(e, cancellationToken);
 
         _graphUtils = ActivatorUtilities.CreateInstance<GraphUtils>(e.ServiceProvider);
 
@@ -75,7 +77,7 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
         }
     }
 
-    public override async Task AfterRecordingStopAsync(RecordingArgs e)
+    public override async Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterRecordingStopAsync));
 
@@ -200,7 +202,7 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
 
             Logger.LogInformation("Evaluating delegated permissions for: {Endpoints}", string.Join(", ", delegatedEndpoints.Select(e => $"{e.method} {e.url}")));
 
-            await EvaluateMinimalScopesAsync(delegatedEndpoints, scopesToEvaluate, GraphPermissionsType.Delegated, delegatedPermissionsInfo);
+            await EvaluateMinimalScopesAsync(delegatedEndpoints, scopesToEvaluate, GraphPermissionsType.Delegated, delegatedPermissionsInfo, cancellationToken);
         }
 
         if (applicationEndpoints.Count > 0)
@@ -210,7 +212,7 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
 
             Logger.LogInformation("Evaluating application permissions for: {Endpoints}", string.Join(", ", applicationEndpoints.Select(e => $"{e.method} {e.url}")));
 
-            await EvaluateMinimalScopesAsync(applicationEndpoints, rolesToEvaluate, GraphPermissionsType.Application, applicationPermissionsInfo);
+            await EvaluateMinimalScopesAsync(applicationEndpoints, rolesToEvaluate, GraphPermissionsType.Application, applicationPermissionsInfo, cancellationToken);
         }
 
         StoreReport(report, e);
@@ -218,7 +220,12 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
     }
 
-    private async Task EvaluateMinimalScopesAsync(IEnumerable<(string method, string url)> endpoints, IEnumerable<string> permissionsFromAccessToken, GraphPermissionsType scopeType, GraphMinimalPermissionsInfo permissionsInfo)
+    private async Task EvaluateMinimalScopesAsync(
+        IEnumerable<(string method, string url)> endpoints,
+        IEnumerable<string> permissionsFromAccessToken,
+        GraphPermissionsType scopeType,
+        GraphMinimalPermissionsInfo permissionsInfo,
+        CancellationToken cancellationToken)
     {
         if (_graphUtils is null)
         {
@@ -241,8 +248,8 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
             var stringPayload = JsonSerializer.Serialize(payload, ProxyUtils.JsonSerializerOptions);
             Logger.LogDebug("Calling {Url} with payload{NewLine}{Payload}", url, Environment.NewLine, stringPayload);
 
-            var response = await client.PostAsJsonAsync(url, payload);
-            var content = await response.Content.ReadAsStringAsync();
+            var response = await client.PostAsJsonAsync(url, payload, cancellationToken);
+            var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
             Logger.LogDebug("Response:{NewLine}{Content}", Environment.NewLine, content);
 

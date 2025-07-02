@@ -36,12 +36,14 @@ sealed class IdToken
 }
 
 public sealed class EntraMockResponsePlugin(
+    HttpClient httpClient,
     ILogger<EntraMockResponsePlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     X509Certificate2 certificate,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
     MockResponsePlugin(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,

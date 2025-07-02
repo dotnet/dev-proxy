@@ -11,13 +11,13 @@ using System.Text.Json;
 namespace DevProxy.Plugins.Manipulation;
 
 internal sealed class RewritesLoader(
+    HttpClient httpClient,
     ILogger<RewritesLoader> logger,
     RewritePluginConfiguration configuration,
     IProxyConfiguration proxyConfiguration) :
-    BaseLoader(logger, proxyConfiguration)
+    BaseLoader(httpClient, logger, proxyConfiguration)
 {
     private readonly RewritePluginConfiguration _configuration = configuration;
-    private readonly ILogger _logger = logger;
 
     protected override string FilePath => _configuration.RewritesFile;
 
@@ -30,12 +30,12 @@ internal sealed class RewritesLoader(
             if (configRewrites is not null)
             {
                 _configuration.Rewrites = configRewrites;
-                _logger.LogInformation("Rewrites for {ConfigResponseCount} url patterns loaded from {RewritesFile}", configRewrites.Count(), _configuration.RewritesFile);
+                Logger.LogInformation("Rewrites for {ConfigResponseCount} url patterns loaded from {RewritesFile}", configRewrites.Count(), _configuration.RewritesFile);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "An error has occurred while reading {RewritesFile}:", _configuration.RewritesFile);
+            Logger.LogError(ex, "An error has occurred while reading {RewritesFile}:", _configuration.RewritesFile);
         }
     }
 }

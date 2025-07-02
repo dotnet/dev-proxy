@@ -34,7 +34,7 @@ sealed class ProxyStateController(
         PrintRecordingIndicator(ProxyState.IsRecording);
     }
 
-    public async Task StopRecordingAsync()
+    public async Task StopRecordingAsync(CancellationToken cancellationToken)
     {
         if (!ProxyState.IsRecording)
         {
@@ -57,7 +57,7 @@ sealed class ProxyStateController(
         {
             try
             {
-                await plugin.AfterRecordingStopAsync(recordingArgs);
+                await plugin.AfterRecordingStopAsync(recordingArgs, cancellationToken);
             }
             catch (Exception ex)
             {
@@ -67,7 +67,7 @@ sealed class ProxyStateController(
         _logger.LogInformation("DONE");
     }
 
-    public async Task MockRequestAsync()
+    public async Task MockRequestAsync(CancellationToken cancellationToken)
     {
         var eventArgs = new EventArgs();
 
@@ -75,7 +75,7 @@ sealed class ProxyStateController(
         {
             try
             {
-                await plugin.MockRequestAsync(eventArgs);
+                await plugin.MockRequestAsync(eventArgs, cancellationToken);
             }
             catch (Exception ex)
             {

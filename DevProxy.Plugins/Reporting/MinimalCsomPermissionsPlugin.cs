@@ -20,11 +20,13 @@ public sealed class MinimalCsomPermissionsPluginConfiguration
 }
 
 public sealed class MinimalCsomPermissionsPlugin(
+    HttpClient httpClient,
     ILogger<MinimalCsomPermissionsPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
     BaseReportingPlugin<MinimalCsomPermissionsPluginConfiguration>(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
@@ -34,13 +36,13 @@ public sealed class MinimalCsomPermissionsPlugin(
 
     public override string Name => nameof(MinimalCsomPermissionsPlugin);
 
-    public override async Task InitializeAsync(InitArgs e)
+    public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("Entered MinimalCsomPermissionsPlugin.InitializeAsync");
 
         ArgumentNullException.ThrowIfNull(e);
 
-        await base.InitializeAsync(e);
+        await base.InitializeAsync(e, cancellationToken);
 
         if (string.IsNullOrWhiteSpace(Configuration.TypesFilePath))
         {
@@ -54,12 +56,12 @@ public sealed class MinimalCsomPermissionsPlugin(
         }
 
         _loader = ActivatorUtilities.CreateInstance<CsomTypesDefinitionLoader>(e.ServiceProvider, Configuration);
-        _loader.InitFileWatcher();
+        await _loader.InitFileWatcherAsync(cancellationToken);
 
         Logger.LogTrace("Left MinimalCsomPermissionsPlugin.RegisterAsync");
     }
 
-    public override async Task AfterRecordingStopAsync(RecordingArgs e)
+    public override async Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterRecordingStopAsync));
 
@@ -86,6 +88,8 @@ public sealed class MinimalCsomPermissionsPlugin(
 
         foreach (var request in interceptedRequests)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (request.Context == null)
             {
                 continue;
@@ -97,7 +101,7 @@ public sealed class MinimalCsomPermissionsPlugin(
                 continue;
             }
 
-            var requestBody = await request.Context.Session.GetRequestBodyAsString();
+            var requestBody = await request.Context.Session.GetRequestBodyAsString(cancellationToken);
             if (string.IsNullOrEmpty(requestBody))
             {
                 continue;

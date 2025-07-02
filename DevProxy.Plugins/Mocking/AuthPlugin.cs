@@ -72,11 +72,13 @@ public sealed class AuthPluginConfiguration
 }
 
 public sealed class AuthPlugin(
+    HttpClient httpClient,
     ILogger<AuthPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
     BasePlugin<AuthPluginConfiguration>(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
@@ -86,9 +88,9 @@ public sealed class AuthPlugin(
 
     public override string Name => nameof(AuthPlugin);
 
-    public override async Task InitializeAsync(InitArgs e)
+    public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
     {
-        await base.InitializeAsync(e);
+        await base.InitializeAsync(e, cancellationToken);
 
         if (Configuration.Type == null)
         {
@@ -154,7 +156,7 @@ public sealed class AuthPlugin(
         Enabled = false;
     }
 
-    public override Task BeforeRequestAsync(ProxyRequestArgs e)
+    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
 

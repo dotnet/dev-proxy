@@ -30,6 +30,7 @@ public class MockRequestPlugin(
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
     BasePlugin<MockRequestConfiguration>(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
@@ -43,19 +44,19 @@ public class MockRequestPlugin(
 
     public override string Name => nameof(MockRequestPlugin);
 
-    public override async Task InitializeAsync(InitArgs e)
+    public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(e);
 
-        await base.InitializeAsync(e);
+        await base.InitializeAsync(e, cancellationToken);
 
         Configuration.MockFile = ProxyUtils.GetFullPath(Configuration.MockFile, ProxyConfiguration.ConfigFile);
 
         _loader = ActivatorUtilities.CreateInstance<MockRequestLoader>(e.ServiceProvider, Configuration);
-        _loader.InitFileWatcher();
+        await _loader.InitFileWatcherAsync(cancellationToken);
     }
 
-    public override async Task MockRequestAsync(EventArgs e)
+    public override async Task MockRequestAsync(EventArgs e, CancellationToken cancellationToken)
     {
         if (Configuration.Request is null)
         {
@@ -69,7 +70,7 @@ public class MockRequestPlugin(
         {
             Logger.LogRequest("Sending mock request", MessageType.Mocked, Configuration.Request.Method, Configuration.Request.Url);
 
-            _ = await _httpClient.SendAsync(requestMessage);
+            _ = await _httpClient.SendAsync(requestMessage, cancellationToken);
         }
         catch (Exception ex)
         {

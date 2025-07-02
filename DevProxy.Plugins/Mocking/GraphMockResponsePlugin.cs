@@ -17,11 +17,13 @@ using Titanium.Web.Proxy.Models;
 namespace DevProxy.Plugins.Mocking;
 
 public class GraphMockResponsePlugin(
+    HttpClient httpClient,
     ILogger<GraphMockResponsePlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
     MockResponsePlugin(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
@@ -29,7 +31,7 @@ public class GraphMockResponsePlugin(
 {
     public override string Name => nameof(GraphMockResponsePlugin);
 
-    public override async Task BeforeRequestAsync(ProxyRequestArgs e)
+    public override async Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
 
@@ -44,14 +46,14 @@ public class GraphMockResponsePlugin(
         if (!ProxyUtils.IsGraphBatchUrl(e.Session.HttpClient.Request.RequestUri))
         {
             // not a batch request, use the basic mock functionality
-            await base.BeforeRequestAsync(e);
+            await base.BeforeRequestAsync(e, cancellationToken);
             return;
         }
 
         var batch = JsonSerializer.Deserialize<GraphBatchRequestPayload>(e.Session.HttpClient.Request.BodyString, ProxyUtils.JsonSerializerOptions);
         if (batch is null)
         {
-            await base.BeforeRequestAsync(e);
+            await base.BeforeRequestAsync(e, cancellationToken);
             return;
         }
 
@@ -129,7 +131,7 @@ public class GraphMockResponsePlugin(
                         }
                         else
                         {
-                            var bodyBytes = await File.ReadAllBytesAsync(filePath);
+                            var bodyBytes = await File.ReadAllBytesAsync(filePath, cancellationToken);
                             body = Convert.ToBase64String(bodyBytes);
                         }
                     }

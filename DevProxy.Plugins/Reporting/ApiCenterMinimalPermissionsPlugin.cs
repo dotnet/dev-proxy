@@ -25,11 +25,13 @@ public sealed class ApiCenterMinimalPermissionsPluginConfiguration
 }
 
 public sealed class ApiCenterMinimalPermissionsPlugin(
+    HttpClient httpClient,
     ILogger logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
     BaseReportingPlugin<ApiCenterMinimalPermissionsPluginConfiguration>(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
@@ -41,11 +43,11 @@ public sealed class ApiCenterMinimalPermissionsPlugin(
 
     public override string Name => nameof(ApiCenterMinimalPermissionsPlugin);
 
-    public override async Task InitializeAsync(InitArgs e)
+    public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(e);
 
-        await base.InitializeAsync(e);
+        await base.InitializeAsync(e, cancellationToken);
 
         try
         {
@@ -80,7 +82,7 @@ public sealed class ApiCenterMinimalPermissionsPlugin(
         Logger.LogDebug("Plugin {Plugin} auth confirmed...", Name);
     }
 
-    public override async Task AfterRecordingStopAsync(RecordingArgs e)
+    public override async Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterRecordingStopAsync));
 
@@ -113,7 +115,7 @@ public sealed class ApiCenterMinimalPermissionsPlugin(
 
         // get all API definitions by URL so that we can easily match
         // API requests to API definitions, for permissions lookup
-        _apiDefinitionsByUrl ??= await _apis.GetApiDefinitionsByUrlAsync(_apiCenterClient, Logger);
+        _apiDefinitionsByUrl ??= await _apis.GetApiDefinitionsByUrlAsync(_apiCenterClient, Logger, cancellationToken);
 
         var (requestsByApiDefinition, unmatchedApicRequests) = GetRequestsByApiDefinition(interceptedRequests, _apiDefinitionsByUrl);
 
@@ -125,6 +127,8 @@ public sealed class ApiCenterMinimalPermissionsPlugin(
 
         foreach (var (apiDefinition, requests) in requestsByApiDefinition)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var minimalPermissions = CheckMinimalPermissions(requests, apiDefinition);
 
             var api = _apis.FindApiByDefinition(apiDefinition, Logger);

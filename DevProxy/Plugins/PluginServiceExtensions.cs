@@ -168,8 +168,11 @@ static class PluginServiceExtensions
             {
                 var plugin = (IPlugin)ActivatorUtilities.CreateInstance(sp, pluginType, urlsToWatch) ??
                     throw new InvalidOperationException($"Failed to create instance of plugin type {pluginType}");
+                // we don't have a cancellation token right now, because this
+                // stage is synchronous, but if the implementation changes
+                // in the future then we won't need to change the interface
 #pragma warning disable VSTHRD002
-                plugin.InitializeAsync(new() { ServiceProvider = sp }).Wait();
+                plugin.InitializeAsync(new() { ServiceProvider = sp }, CancellationToken.None).Wait();
 #pragma warning restore VSTHRD002
                 return plugin;
             });
@@ -184,8 +187,11 @@ static class PluginServiceExtensions
         {
             var plugin = (IPlugin)ActivatorUtilities.CreateInstance(sp, pluginType, configSection, urlsToWatch) ??
                 throw new InvalidOperationException($"Failed to create instance of plugin type {pluginType}");
+            // we don't have a cancellation token right now, because this
+            // stage is synchronous, but if the implementation changes
+            // in the future then we won't need to change the interface
 #pragma warning disable VSTHRD002
-            plugin.InitializeAsync(new() { ServiceProvider = sp }).Wait();
+            plugin.InitializeAsync(new() { ServiceProvider = sp }, CancellationToken.None).Wait();
 #pragma warning restore VSTHRD002
             return plugin;
         });

@@ -16,11 +16,13 @@ public sealed class CachingGuidancePluginConfiguration
 }
 
 public sealed class CachingGuidancePlugin(
+    HttpClient httpClient,
     ILogger<CachingGuidancePlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection configurationSection) :
     BasePlugin<CachingGuidancePluginConfiguration>(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
@@ -30,7 +32,7 @@ public sealed class CachingGuidancePlugin(
 
     public override string Name => nameof(CachingGuidancePlugin);
 
-    public override Task BeforeRequestAsync(ProxyRequestArgs e)
+    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
 

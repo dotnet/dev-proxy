@@ -27,11 +27,13 @@ public abstract class BaseReportingPlugin(
 }
 
 public abstract class BaseReportingPlugin<TConfiguration>(
+    HttpClient httpClient,
     ILogger logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection configurationSection) :
     BasePlugin<TConfiguration>(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,

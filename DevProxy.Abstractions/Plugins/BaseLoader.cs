@@ -9,9 +9,12 @@ using System.Text.Json;
 
 namespace DevProxy.Abstractions.Plugins;
 
-public abstract class BaseLoader(ILogger logger, IProxyConfiguration proxyConfiguration) : IDisposable
+public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyConfiguration proxyConfiguration) : IDisposable
 {
-    private readonly ILogger _logger = logger;
+    private CancellationToken? _cancellationToken;
+#pragma warning disable CA2213 // HttpClient is injected, so we don't dispose it
+    private readonly HttpClient _httpClient = httpClient;
+#pragma warning restore CA2213
     private readonly bool _validateSchemas = proxyConfiguration.ValidateSchemas;
     private readonly Lock _debounceLock = new();
     private readonly int _debounceDelay = 300; // milliseconds
@@ -21,9 +24,12 @@ public abstract class BaseLoader(ILogger logger, IProxyConfiguration proxyConfig
     private bool _isDisposed;
 
     protected abstract string FilePath { get; }
+    protected ILogger Logger { get; } = logger;
 
-    public void InitFileWatcher()
+    public async Task InitFileWatcherAsync(CancellationToken cancellationToken)
     {
+        _cancellationToken = cancellationToken;
+
         if (_watcher is not null)
         {
             return;
@@ -32,7 +38,7 @@ public abstract class BaseLoader(ILogger logger, IProxyConfiguration proxyConfig
         var path = Path.GetDirectoryName(FilePath) ?? throw new InvalidOperationException($"{FilePath} is an invalid path");
         if (!File.Exists(FilePath))
         {
-            _logger.LogWarning("File {File} not found. No data will be provided", FilePath);
+            Logger.LogWarning("File {File} not found. No data will be provided", FilePath);
             return;
         }
 
@@ -47,7 +53,7 @@ public abstract class BaseLoader(ILogger logger, IProxyConfiguration proxyConfig
         _watcher.Changed += File_Changed;
         _watcher.EnableRaisingEvents = true;
 
-        LoadFileContents();
+        await LoadFileContentsAsync(cancellationToken);
     }
 
     protected abstract void LoadData(string fileContents);
@@ -68,34 +74,34 @@ public abstract class BaseLoader(ILogger logger, IProxyConfiguration proxyConfig
         _isDisposed = true;
     }
 
-    private async Task<bool> ValidateFileContents(string fileContents)
+    private async Task<bool> ValidateFileContentsAsync(string fileContents, CancellationToken cancellationToken)
     {
         using var document = JsonDocument.Parse(fileContents, ProxyUtils.JsonDocumentOptions);
         var root = document.RootElement;
 
         if (!root.TryGetProperty("$schema", out var schemaUrlElement))
         {
-            _logger.LogDebug("Schema reference not found in file {File}. Skipping schema validation", FilePath);
+            Logger.LogDebug("Schema reference not found in file {File}. Skipping schema validation", FilePath);
             return true;
         }
 
         var schemaUrl = schemaUrlElement.GetString() ?? "";
-        ProxyUtils.ValidateSchemaVersion(schemaUrl, _logger);
-        var (IsValid, ValidationErrors) = await ProxyUtils.ValidateJson(fileContents, schemaUrl, _logger);
+        ProxyUtils.ValidateSchemaVersion(schemaUrl, Logger);
+        var (IsValid, ValidationErrors) = await ProxyUtils.ValidateJsonAsync(fileContents, schemaUrl, _httpClient, Logger, cancellationToken);
 
         if (!IsValid)
         {
-            _logger.LogError("Schema validation failed for {File} with the following errors: {Errors}", FilePath, string.Join(", ", ValidationErrors));
+            Logger.LogError("Schema validation failed for {File} with the following errors: {Errors}", FilePath, string.Join(", ", ValidationErrors));
         }
 
         return IsValid;
     }
 
-    private void LoadFileContents()
+    private async Task LoadFileContentsAsync(CancellationToken cancellationToken)
     {
         if (!File.Exists(FilePath))
         {
-            _logger.LogWarning("File {File} not found. No data will be loaded", FilePath);
+            Logger.LogWarning("File {File} not found. No data will be loaded", FilePath);
             return;
         }
 
@@ -103,16 +109,16 @@ public abstract class BaseLoader(ILogger logger, IProxyConfiguration proxyConfig
         {
             using var stream = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             using var reader = new StreamReader(stream);
-            var responsesString = reader.ReadToEnd();
+            var responsesString = await reader.ReadToEndAsync(cancellationToken);
 
-            if (!_validateSchemas || ValidateFileContents(responsesString).Result)
+            if (!_validateSchemas || await ValidateFileContentsAsync(responsesString, cancellationToken))
             {
                 LoadData(responsesString);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "An error has occurred while reading {File}:", FilePath);
+            Logger.LogError(ex, "An error has occurred while reading {File}:", FilePath);
         }
     }
 
@@ -121,7 +127,9 @@ public abstract class BaseLoader(ILogger logger, IProxyConfiguration proxyConfig
         lock (_debounceLock)
         {
             _debounceTimer?.Dispose();
-            _debounceTimer = new(_ => LoadFileContents(), null, _debounceDelay, Timeout.Infinite);
+#pragma warning disable CS4014 // we don't need to await this
+            _debounceTimer = new(_ => LoadFileContentsAsync(_cancellationToken ?? CancellationToken.None), null, _debounceDelay, Timeout.Infinite);
+#pragma warning restore CS4014
         }
     }
 

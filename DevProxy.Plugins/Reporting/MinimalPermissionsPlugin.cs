@@ -20,11 +20,13 @@ public sealed class MinimalPermissionsPluginConfiguration
 }
 
 public sealed class MinimalPermissionsPlugin(
+    HttpClient httpClient,
     ILogger<MinimalPermissionsPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
     BaseReportingPlugin<MinimalPermissionsPluginConfiguration>(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
@@ -34,9 +36,9 @@ public sealed class MinimalPermissionsPlugin(
 
     public override string Name => nameof(MinimalPermissionsPlugin);
 
-    public override async Task InitializeAsync(InitArgs e)
+    public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
     {
-        await base.InitializeAsync(e);
+        await base.InitializeAsync(e, cancellationToken);
 
         if (string.IsNullOrWhiteSpace(Configuration.ApiSpecsFolderPath))
         {
@@ -52,7 +54,7 @@ public sealed class MinimalPermissionsPlugin(
         }
     }
 
-    public override Task AfterRecordingStopAsync(RecordingArgs e)
+    public override async Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterRecordingStopAsync));
 
@@ -68,16 +70,16 @@ public sealed class MinimalPermissionsPlugin(
         if (!interceptedRequests.Any())
         {
             Logger.LogRequest("No requests to process", MessageType.Skipped);
-            return Task.CompletedTask;
+            return;
         }
 
         Logger.LogInformation("Checking if recorded API requests use minimal permissions as defined in API specs...");
 
-        _apiSpecsByUrl ??= LoadApiSpecs(Configuration.ApiSpecsFolderPath!);
+        _apiSpecsByUrl ??= await LoadApiSpecsAsync(Configuration.ApiSpecsFolderPath!, cancellationToken);
         if (_apiSpecsByUrl is null || _apiSpecsByUrl.Count == 0)
         {
             Logger.LogWarning("No API definitions found in the specified folder.");
-            return Task.CompletedTask;
+            return;
         }
 
         var (requestsByApiSpec, unmatchedApiSpecRequests) = GetRequestsByApiSpec(interceptedRequests, _apiSpecsByUrl);
@@ -143,14 +145,15 @@ public sealed class MinimalPermissionsPlugin(
         StoreReport(report, e);
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
-        return Task.CompletedTask;
     }
 
-    private Dictionary<string, OpenApiDocument> LoadApiSpecs(string apiSpecsFolderPath)
+    private async Task<Dictionary<string, OpenApiDocument>> LoadApiSpecsAsync(string apiSpecsFolderPath, CancellationToken cancellationToken)
     {
         var apiDefinitions = new Dictionary<string, OpenApiDocument>();
         foreach (var file in Directory.EnumerateFiles(apiSpecsFolderPath, "*.*", SearchOption.AllDirectories))
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var extension = Path.GetExtension(file);
             if (!extension.Equals(".json", StringComparison.OrdinalIgnoreCase) &&
                 !extension.Equals(".yaml", StringComparison.OrdinalIgnoreCase) &&
@@ -163,7 +166,7 @@ public sealed class MinimalPermissionsPlugin(
             Logger.LogDebug("Processing file '{File}'...", file);
             try
             {
-                var fileContents = File.ReadAllText(file);
+                var fileContents = await File.ReadAllTextAsync(file, cancellationToken);
                 fileContents = ProxyUtils.ReplaceVariables(fileContents, ProxyConfiguration.Env, v => $"{{{v}}}");
 
                 var apiDefinition = new OpenApiStringReader().Read(fileContents, out _);

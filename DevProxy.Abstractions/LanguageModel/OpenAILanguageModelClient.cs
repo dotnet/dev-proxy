@@ -13,28 +13,15 @@ namespace DevProxy.Abstractions.LanguageModel;
 public sealed class OpenAILanguageModelClient(
     HttpClient httpClient,
     LanguageModelConfiguration configuration,
-    ILogger<OpenAILanguageModelClient> logger) : BaseLanguageModelClient(logger)
+    ILogger<OpenAILanguageModelClient> logger) : BaseLanguageModelClient(configuration, logger)
 {
-    private readonly LanguageModelConfiguration? _configuration = configuration;
     private readonly HttpClient _httpClient = httpClient;
     private readonly ILogger _logger = logger;
     private readonly Dictionary<IEnumerable<ILanguageModelChatCompletionMessage>, OpenAIChatCompletionResponse> _cacheChatCompletion = [];
-    private bool? _lmAvailable;
 
-    public override async Task<bool> IsEnabledAsync()
+    protected override async Task<ILanguageModelCompletionResponse?> GenerateCompletionCoreAsync(string prompt, CompletionOptions? options, CancellationToken cancellationToken)
     {
-        if (_lmAvailable.HasValue)
-        {
-            return _lmAvailable.Value;
-        }
-
-        _lmAvailable = await IsEnabledInternalAsync();
-        return _lmAvailable.Value;
-    }
-
-    public override async Task<ILanguageModelCompletionResponse?> GenerateCompletionAsync(string prompt, CompletionOptions? options = null)
-    {
-        var response = await GenerateChatCompletionAsync([new OpenAIChatCompletionMessage() { Content = prompt, Role = "user" }], options);
+        var response = await GenerateChatCompletionAsync([new OpenAIChatCompletionMessage() { Content = prompt, Role = "user" }], options, cancellationToken);
         if (response == null)
         {
             return null;
@@ -66,33 +53,20 @@ public sealed class OpenAILanguageModelClient(
         };
     }
 
-    public override async Task<ILanguageModelCompletionResponse?> GenerateChatCompletionAsync(IEnumerable<ILanguageModelChatCompletionMessage> messages, CompletionOptions? options = null)
+    protected override async Task<ILanguageModelCompletionResponse?> GenerateChatCompletionCoreAsync(
+        IEnumerable<ILanguageModelChatCompletionMessage> messages,
+        CompletionOptions? options,
+        CancellationToken cancellationToken)
     {
         using var scope = _logger.BeginScope(nameof(OpenAILanguageModelClient));
 
-        if (_configuration is null)
-        {
-            return null;
-        }
-
-        if (!_lmAvailable.HasValue)
-        {
-            _logger.LogError("Language model availability is not checked. Call {IsEnabled} first.", nameof(IsEnabledAsync));
-            return null;
-        }
-
-        if (!_lmAvailable.Value)
-        {
-            return null;
-        }
-
-        if (_configuration.CacheResponses && _cacheChatCompletion.TryGetCacheValue(messages, out var cachedResponse))
+        if (Configuration.CacheResponses && _cacheChatCompletion.TryGetCacheValue(messages, out var cachedResponse))
         {
             _logger.LogDebug("Returning cached response for message: {LastMessage}", messages.Last().Content);
             return cachedResponse;
         }
 
-        var response = await GenerateChatCompletionInternalAsync([.. messages.Select(m => (OpenAIChatCompletionMessage)m)], options);
+        var response = await GenerateChatCompletionInternalAsync([.. messages.Select(m => (OpenAIChatCompletionMessage)m)], options, cancellationToken);
         if (response == null)
         {
             return null;
@@ -104,7 +78,7 @@ public sealed class OpenAILanguageModelClient(
         }
         else
         {
-            if (_configuration.CacheResponses && response.Response is not null)
+            if (Configuration.CacheResponses && response.Response is not null)
             {
                 _cacheChatCompletion[messages] = response;
             }
@@ -122,28 +96,28 @@ public sealed class OpenAILanguageModelClient(
         });
     }
 
-    private async Task<bool> IsEnabledInternalAsync()
+    protected override async Task<bool> IsEnabledCoreAsync(CancellationToken cancellationToken)
     {
         using var scope = _logger.BeginScope(nameof(OpenAILanguageModelClient));
 
-        if (_configuration is null || !_configuration.Enabled)
+        if (Configuration is null || !Configuration.Enabled)
         {
             return false;
         }
 
-        if (string.IsNullOrEmpty(_configuration.Url))
+        if (string.IsNullOrEmpty(Configuration.Url))
         {
             _logger.LogError("URL is not set. Language model will be disabled");
             return false;
         }
 
-        if (string.IsNullOrEmpty(_configuration.Model))
+        if (string.IsNullOrEmpty(Configuration.Model))
         {
             _logger.LogError("Model is not set. Language model will be disabled");
             return false;
         }
 
-        _logger.LogDebug("Checking LM availability at {Url}...", _configuration.Url);
+        _logger.LogDebug("Checking LM availability at {Url}...", Configuration.Url);
 
         try
         {
@@ -151,7 +125,7 @@ public sealed class OpenAILanguageModelClient(
             {
                 Content = "Are you there? Reply with a yes or no.",
                 Role = "user"
-            }]);
+            }], null, cancellationToken);
             if (testCompletion?.ErrorMessage is not null)
             {
                 _logger.LogError("Error: {Error}", testCompletion.ErrorMessage);
@@ -162,39 +136,39 @@ public sealed class OpenAILanguageModelClient(
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Couldn't reach language model at {Url}", _configuration.Url);
+            _logger.LogError(ex, "Couldn't reach language model at {Url}", Configuration.Url);
             return false;
         }
     }
 
-    private async Task<OpenAIChatCompletionResponse?> GenerateChatCompletionInternalAsync(OpenAIChatCompletionMessage[] messages, CompletionOptions? options = null)
+    private async Task<OpenAIChatCompletionResponse?> GenerateChatCompletionInternalAsync(OpenAIChatCompletionMessage[] messages, CompletionOptions? options, CancellationToken cancellationToken = default)
     {
-        Debug.Assert(_configuration != null, "Configuration is null");
+        Debug.Assert(Configuration != null, "Configuration is null");
 
         try
         {
-            var url = $"{_configuration.Url?.TrimEnd('/')}/chat/completions";
+            var url = $"{Configuration.Url?.TrimEnd('/')}/chat/completions";
             _logger.LogDebug("Requesting chat completion. Message: {LastMessage}", messages.Last().Content);
 
             var payload = new OpenAIChatCompletionRequest
             {
                 Messages = messages,
-                Model = _configuration.Model,
+                Model = Configuration.Model,
                 Stream = false,
                 Temperature = options?.Temperature
             };
 
-            var response = await _httpClient.PostAsJsonAsync(url, payload, ProxyUtils.JsonSerializerOptions);
+            var response = await _httpClient.PostAsJsonAsync(url, payload, ProxyUtils.JsonSerializerOptions, cancellationToken);
             _logger.LogDebug("Response: {Response}", response.StatusCode);
 
             if (!response.IsSuccessStatusCode)
             {
-                var errorResponse = await response.Content.ReadAsStringAsync();
+                var errorResponse = await response.Content.ReadAsStringAsync(cancellationToken);
                 _logger.LogDebug("LM error: {ErrorResponse}", errorResponse);
                 return null;
             }
 
-            var res = await response.Content.ReadFromJsonAsync<OpenAIChatCompletionResponse>();
+            var res = await response.Content.ReadFromJsonAsync<OpenAIChatCompletionResponse>(cancellationToken);
             if (res is null)
             {
                 return res;

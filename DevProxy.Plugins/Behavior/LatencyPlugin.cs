@@ -16,11 +16,13 @@ public sealed class LatencyConfiguration
 }
 
 public sealed class LatencyPlugin(
+    HttpClient httpClient,
     ILogger<LatencyPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
     BasePlugin<LatencyConfiguration>(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
@@ -30,7 +32,7 @@ public sealed class LatencyPlugin(
 
     public override string Name => nameof(LatencyPlugin);
 
-    public override async Task BeforeRequestAsync(ProxyRequestArgs e)
+    public override async Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
 
@@ -44,7 +46,7 @@ public sealed class LatencyPlugin(
 
         var delay = _random.Next(Configuration.MinMs, Configuration.MaxMs);
         Logger.LogRequest($"Delaying request for {delay}ms", MessageType.Chaos, new(e.Session));
-        await Task.Delay(delay);
+        await Task.Delay(delay, cancellationToken);
 
         Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
     }

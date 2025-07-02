@@ -59,12 +59,14 @@ public sealed class OpenApiSpecGeneratorPluginConfiguration
 }
 
 public sealed class OpenApiSpecGeneratorPlugin(
+    HttpClient httpClient,
     ILogger<OpenApiSpecGeneratorPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     ILanguageModelClient languageModelClient,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
     BaseReportingPlugin<OpenApiSpecGeneratorPluginConfiguration>(
+        httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
@@ -74,7 +76,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
 
     public override string Name => nameof(OpenApiSpecGeneratorPlugin);
 
-    public override async Task AfterRecordingStopAsync(RecordingArgs e)
+    public override async Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterRecordingStopAsync));
 
@@ -92,6 +94,8 @@ public sealed class OpenApiSpecGeneratorPlugin(
 
         foreach (var request in e.RequestLogs)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (request.MessageType != MessageType.InterceptedResponse ||
               request.Context is null ||
               request.Context.Session is null ||
@@ -118,12 +122,14 @@ public sealed class OpenApiSpecGeneratorPlugin(
                 operationInfo.Value.OperationId = await GetOperationIdAsync(
                     operationInfo.Key.ToString(),
                     request.Context.Session.HttpClient.Request.RequestUri.GetLeftPart(UriPartial.Authority),
-                    parametrizedPath
+                    parametrizedPath,
+                    cancellationToken
                 );
                 operationInfo.Value.Description = await GetOperationDescriptionAsync(
                     operationInfo.Key.ToString(),
                     request.Context.Session.HttpClient.Request.RequestUri.GetLeftPart(UriPartial.Authority),
-                    parametrizedPath
+                    parametrizedPath,
+                    cancellationToken
                 );
                 AddOrMergePathItem(openApiDocs, pathItem, request.Context.Session.HttpClient.Request.RequestUri, parametrizedPath);
             }
@@ -155,7 +161,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
             };
 
             Logger.LogDebug("  Writing OpenAPI spec to {FileName}...", fileName);
-            await File.WriteAllTextAsync(fileName, docString);
+            await File.WriteAllTextAsync(fileName, docString, cancellationToken);
 
             generatedOpenApiSpecs.Add(server.Url, fileName);
 
@@ -177,29 +183,22 @@ public sealed class OpenApiSpecGeneratorPlugin(
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
     }
 
-    private async Task<string> GetOperationIdAsync(string method, string serverUrl, string parametrizedPath)
+    private async Task<string> GetOperationIdAsync(string method, string serverUrl, string parametrizedPath, CancellationToken cancellationToken)
     {
-        ILanguageModelCompletionResponse? id = null;
-        if (await languageModelClient.IsEnabledAsync())
+        var id = await languageModelClient.GenerateChatCompletionAsync("api_operation_id", new()
         {
-            id = await languageModelClient.GenerateChatCompletionAsync("api_operation_id", new()
-            {
-                { "request", $"{method.ToUpperInvariant()} {serverUrl}{parametrizedPath}" }
-            });
-        }
+            { "request", $"{method.ToUpperInvariant()} {serverUrl}{parametrizedPath}" }
+        }, cancellationToken);
         return id?.Response ?? $"{method}{parametrizedPath.Replace('/', '.')}";
     }
 
-    private async Task<string> GetOperationDescriptionAsync(string method, string serverUrl, string parametrizedPath)
+    private async Task<string> GetOperationDescriptionAsync(string method, string serverUrl, string parametrizedPath, CancellationToken cancellationToken)
     {
-        ILanguageModelCompletionResponse? description = null;
-        if (await languageModelClient.IsEnabledAsync())
+        var description = await languageModelClient.GenerateChatCompletionAsync("api_operation_description", new()
         {
-            description = await languageModelClient.GenerateChatCompletionAsync("api_operation_description", new()
-            {
-                { "request", $"{method.ToUpperInvariant()} {serverUrl}{parametrizedPath}" }
-            });
-        }
+            { "request", $"{method.ToUpperInvariant()} {serverUrl}{parametrizedPath}" }
+        },
+        cancellationToken);
         return description?.Response ?? $"{method} {parametrizedPath}";
     }
 
