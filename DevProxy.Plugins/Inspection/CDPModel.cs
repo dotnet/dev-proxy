@@ -10,7 +10,7 @@ using System.Text.Json.Serialization;
 namespace DevProxy.Plugins.Inspection.CDP;
 #pragma warning restore IDE0130
 
-public abstract class Message
+public class Message
 {
     [JsonPropertyName("id")]
     public int? Id { get; set; }
@@ -296,4 +296,38 @@ public class GetResponseBodyResultParams
     public string? Body { get; set; }
     [JsonPropertyName("base64Encoded")]
     public bool? Base64Encoded { get; set; }
+}
+
+public class StreamResourceContentResult : MessageResult<StreamResourceContentResultParams>
+{
+}
+
+public class StreamResourceContentResultParams
+{
+    [JsonPropertyName("bufferedData")]
+    public string? BufferedData { get; set; }
+}
+
+public class DataReceivedMessage : Message<DataReceivedParams>
+{
+    public DataReceivedMessage()
+    {
+        Method = "Network.dataReceived";
+    }
+}
+
+public class DataReceivedParams
+{
+    [JsonPropertyName("data")]
+    public string? Data { get; set; }
+    [JsonPropertyName("dataLength")]
+    public long? DataLength { get; set; }
+    [JsonPropertyName("encodedDataLength")]
+    public long? EncodedDataLength { get; set; }
+    [JsonPropertyName("requestId")]
+    public string? RequestId { get; set; }
+
+    [JsonPropertyName("timestamp")]
+    public double? Timestamp { get; set; }
+
 }
