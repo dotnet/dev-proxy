@@ -14,6 +14,7 @@ using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Globalization;
+using System.Text;
 
 namespace DevProxy.Plugins.Inspection;
 
@@ -191,6 +192,11 @@ public sealed class DevToolsPlugin(
 
         await _webSocket.SendAsync(responseReceivedMessage, cancellationToken);
 
+        if (e.Session.HttpClient.Response.ContentType == "text/event-stream")
+        {
+            await SendBodyAsDataReceivedAsync(requestId, body.Body, cancellationToken);
+        }
+
         var loadingFinishedMessage = new LoadingFinishedMessage
         {
             Params = new()
@@ -339,33 +345,96 @@ public sealed class DevToolsPlugin(
 
         try
         {
-            var message = JsonSerializer.Deserialize<GetResponseBodyMessage>(msg, ProxyUtils.JsonSerializerOptions);
-            if (message?.Method == "Network.getResponseBody")
+            var message = JsonSerializer.Deserialize<Message>(msg, ProxyUtils.JsonSerializerOptions);
+            switch (message?.Method)
             {
-                var requestId = message.Params?.RequestId;
-                if (requestId is null ||
-                    !_responseBody.TryGetValue(requestId, out var value) ||
-                    // should never happen because the message is sent from devtools
-                    // and Id is required on all socket messages but theoretically
-                    // it is possible
-                    message.Id is null)
-                {
-                    return;
-                }
-
-                var result = new GetResponseBodyResult
-                {
-                    Id = (int)message.Id,
-                    Result = new()
+                case "Network.getResponseBody":
+                    var getResponseBodyMessage = JsonSerializer.Deserialize<GetResponseBodyMessage>(msg, ProxyUtils.JsonSerializerOptions);
+                    if (getResponseBodyMessage is null)
                     {
-                        Body = value.Body,
-                        Base64Encoded = value.Base64Encoded
+                        return;
                     }
-                };
-                _ = _webSocket.SendAsync(result, _cancellationToken ?? CancellationToken.None);
+                    _ = HandleNetworkGetResponseBodyAsync(getResponseBodyMessage, _cancellationToken ?? CancellationToken.None);
+                    break;
+                case "Network.streamResourceContent":
+                    _ = HandleNetworkStreamResourceContentAsync(message, _cancellationToken ?? CancellationToken.None);
+                    break;
+                default:
+                    break;
             }
         }
         catch { }
+    }
+
+    private async Task HandleNetworkStreamResourceContentAsync(Message message, CancellationToken cancellationToken)
+    {
+        if (_webSocket is null || message.Id is null)
+        {
+            return;
+        }
+
+        var result = new StreamResourceContentResult
+        {
+            Id = (int)message.Id,
+            Result = new()
+            {
+                BufferedData = string.Empty
+            }
+        };
+
+        await _webSocket.SendAsync(result, cancellationToken);
+    }
+
+    private async Task HandleNetworkGetResponseBodyAsync(GetResponseBodyMessage message, CancellationToken cancellationToken)
+    {
+        if (_webSocket is null || message.Params?.RequestId is null)
+        {
+            return;
+        }
+
+        if (!_responseBody.TryGetValue(message.Params.RequestId, out var value) ||
+            // should never happen because the message is sent from devtools
+            // and Id is required on all socket messages but theoretically
+            // it is possible
+            message.Id is null)
+        {
+            return;
+        }
+
+        var result = new GetResponseBodyResult
+        {
+            Id = (int)message.Id,
+            Result = new()
+            {
+                Body = value.Body,
+                Base64Encoded = value.Base64Encoded
+            }
+        };
+
+        await _webSocket.SendAsync(result, cancellationToken);
+    }
+
+    private async Task SendBodyAsDataReceivedAsync(string requestId, string? body, CancellationToken cancellationToken)
+    {
+        if (_webSocket is null || string.IsNullOrEmpty(body))
+        {
+            return;
+        }
+
+        var base64Encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(body));
+        var dataReceivedMessage = new DataReceivedMessage
+        {
+            Params = new()
+            {
+                RequestId = requestId,
+                Timestamp = (double)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000,
+                Data = base64Encoded,
+                DataLength = body.Length,
+                EncodedDataLength = base64Encoded.Length
+            }
+        };
+
+        await _webSocket.SendAsync(dataReceivedMessage, cancellationToken);
     }
 
     private static int GetFreePort()
