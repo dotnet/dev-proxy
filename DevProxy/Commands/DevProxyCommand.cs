@@ -179,7 +179,8 @@ sealed class DevProxyCommand : RootCommand
         var logLevelOption = new Option<LogLevel?>(LogLevelOptionName)
         {
             Description = $"Level of messages to log. Allowed values: {string.Join(", ", Enum.GetNames<LogLevel>())}",
-            HelpName = "log-level"
+            HelpName = "log-level",
+            Recursive = true
         };
         logLevelOption.Validators.Add(input =>
         {
