@@ -186,7 +186,8 @@ public sealed class DevToolsPlugin(
                         .GroupBy(h => h.Name)
                         .ToDictionary(g => g.Key, g => string.Join(", ", g.Select(h => h.Value))),
                     MimeType = e.Session.HttpClient.Response.ContentType
-                }
+                },
+                HasExtraInfo = true
             }
         };
 
