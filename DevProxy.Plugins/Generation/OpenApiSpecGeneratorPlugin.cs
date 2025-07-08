@@ -319,9 +319,9 @@ public sealed class OpenApiSpecGeneratorPlugin(
         }
 
         Logger.LogDebug("  Processing query string parameters...");
-#pragma warning disable IDE0004
-        var dictionary = (queryParams.AllKeys as string[]).ToDictionary(k => k, k => queryParams[k] as object);
-#pragma warning restore IDE0004
+        var dictionary = queryParams.AllKeys
+            .Where(k => k != null).Cast<string>()
+            .ToDictionary(k => k, k => queryParams[k] as object);
 
         foreach (var parameter in dictionary)
         {
