@@ -4,7 +4,7 @@
 
 using System.Diagnostics;
 using System.Net.Http.Json;
-using Microsoft.Extensions.AI;
+using DevProxy.Abstractions.Prompty;
 using Microsoft.Extensions.Logging;
 
 namespace DevProxy.Abstractions.LanguageModel;
@@ -83,8 +83,8 @@ public sealed class OllamaLanguageModelClient(
     {
         return messages.Select(m => new OllamaLanguageModelChatCompletionMessage
         {
-            Role = m.Role.Value,
-            Content = m.Text
+            Role = m.Role ?? "user",
+            Content = m.Text ?? string.Empty
         });
     }
 

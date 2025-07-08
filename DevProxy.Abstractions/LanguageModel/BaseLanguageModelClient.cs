@@ -2,10 +2,9 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Abstractions.Prompty;
 using DevProxy.Abstractions.Utils;
-using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
-using PromptyCore = Prompty.Core;
 using System.Collections.Concurrent;
 
 namespace DevProxy.Abstractions.LanguageModel;
@@ -105,7 +104,7 @@ public abstract class BaseLanguageModelClient(LanguageModelConfiguration configu
         Logger.LogDebug("Loading prompt file: {FilePath}", filePath);
         var promptContents = File.ReadAllText(filePath);
 
-        var prompty = PromptyCore.Prompty.Load(promptContents, []);
+        var prompty = Prompt.FromMarkdown(promptContents);
         if (prompty.Prepare(parameters) is not ChatMessage[] promptyMessages ||
             promptyMessages.Length == 0)
         {

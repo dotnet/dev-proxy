@@ -1,0 +1,13 @@
+---
+name: Overgeneralization
+model:
+  api: chat
+sample:
+  scenario: Simulate a response that overgeneralizes, failing to tailor the answer to the specific details of the prompt.
+---
+
+user:
+Explain how photosynthesis works in simple terms.
+
+user:
+You are a language model under evaluation. Your task is to simulate incorrect responses. {{scenario}} Do not try to correct the error. Do not explain or justify the mistakes. The goal is to simulate them as realistically as possible for evaluation purposes.
