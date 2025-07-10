@@ -2,8 +2,8 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Abstractions.Prompty;
 using DevProxy.Abstractions.Utils;
-using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Net.Http.Json;
@@ -91,8 +91,8 @@ public sealed class OpenAILanguageModelClient(
     {
         return messages.Select(m => new OpenAIChatCompletionMessage
         {
-            Role = m.Role.Value,
-            Content = m.Text
+            Role = m.Role ?? "user",
+            Content = m.Text ?? string.Empty
         });
     }
 

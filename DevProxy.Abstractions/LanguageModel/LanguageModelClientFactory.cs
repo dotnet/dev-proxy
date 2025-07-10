@@ -4,7 +4,6 @@
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Prompty.Core;
 
 namespace DevProxy.Abstractions.LanguageModel;
 
@@ -17,8 +16,6 @@ public static class LanguageModelClientFactory
 
         var lmSection = configuration.GetSection("LanguageModel");
         var config = lmSection?.Get<LanguageModelConfiguration>() ?? new();
-
-        InvokerFactory.AutoDiscovery();
 
         return config.Client switch
         {
