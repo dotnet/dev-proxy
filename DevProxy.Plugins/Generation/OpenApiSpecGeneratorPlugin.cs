@@ -324,16 +324,16 @@ public sealed class OpenApiSpecGeneratorPlugin(
             .Where(k => k != null).Cast<string>()
             .ToDictionary(k => k, k => queryParams[k] as object);
 
-        foreach (var parameter in dictionary)
+        foreach (var (key, value) in dictionary)
         {
             operation.Parameters.Add(new()
             {
-                Name = parameter.Key,
+                Name = key,
                 In = ParameterLocation.Query,
                 Required = false,
                 Schema = new() { Type = "string" }
             });
-            Logger.LogDebug("    Added query string parameter {ParameterKey}", parameter.Key);
+            Logger.LogDebug("    Added query string parameter {ParameterKey}", key);
         }
     }
 
