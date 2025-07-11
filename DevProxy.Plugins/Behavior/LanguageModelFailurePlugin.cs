@@ -19,8 +19,7 @@ public sealed class LanguageModelFailurePlugin(
     ILogger<LanguageModelFailurePlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
-    IConfigurationSection pluginConfigurationSection,
-    ILanguageModelClient languageModelClient) :
+    IConfigurationSection pluginConfigurationSection) :
     BasePlugin<LanguageModelFailureConfiguration>(
         httpClient,
         logger,
@@ -47,18 +46,6 @@ public sealed class LanguageModelFailurePlugin(
     ];
 
     public override string Name => nameof(LanguageModelFailurePlugin);
-
-    public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
-    {
-        await base.InitializeAsync(e, cancellationToken);
-
-        Logger.LogInformation("Checking language model availability...");
-        if (!await languageModelClient.IsEnabledAsync(cancellationToken))
-        {
-            Logger.LogError("Local language model is not enabled. The {Plugin} will not be used.", Name);
-            Enabled = false;
-        }
-    }
 
     public override async Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
     {
