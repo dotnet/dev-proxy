@@ -9,6 +9,7 @@ using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi;
+using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Extensions;
 using Microsoft.OpenApi.Interfaces;
 using Microsoft.OpenApi.Models;
@@ -326,15 +327,29 @@ public sealed class OpenApiSpecGeneratorPlugin(
 
         foreach (var (key, value) in dictionary)
         {
-            operation.Parameters.Add(new()
+            var isRequired = Configuration.IncludeParameters.Any(p => string.Equals(p, key, StringComparison.Ordinal));
+
+            OpenApiParameter parameter = new()
             {
                 Name = key,
                 In = ParameterLocation.Query,
-                Required = false,
+                Required = isRequired,
                 Schema = new() { Type = "string" }
-            });
+            };
+            SetParameterDefault(parameter, value);
+
+            operation.Parameters.Add(parameter);
             Logger.LogDebug("    Added query string parameter {ParameterKey}", key);
         }
+    }
+
+    private static void SetParameterDefault(OpenApiParameter parameter, object? value)
+    {
+        if (!parameter.Required || value is null)
+        {
+            return;
+        }
+        parameter.Schema.Default = new OpenApiString(value.ToString());
     }
 
     private void SetResponseFromSession(OpenApiOperation operation, Response response)
