@@ -56,6 +56,7 @@ public sealed class OpenApiSpecGeneratorPluginConfiguration
     public SpecFormat SpecFormat { get; set; } = SpecFormat.Json;
     public SpecVersion SpecVersion { get; set; } = SpecVersion.v3_0;
     public bool IgnoreResponseTypes { get; set; }
+    public IEnumerable<string> IncludeParameters { get; set; } = [];
 }
 
 public sealed class OpenApiSpecGeneratorPlugin(
