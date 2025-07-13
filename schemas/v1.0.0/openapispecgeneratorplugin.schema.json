@@ -36,7 +36,8 @@
       "items": {
         "type": "string"
       },
-      "description": "Defines the list of query string parameters to include in the generated OpenAPI spec, along with their default values. Default: []"
+      "description": "Defines the list of query string parameters to include in the generated OpenAPI spec, along with their default values. Default: []",
+      "default": []
     }
   },
   "additionalProperties": false
