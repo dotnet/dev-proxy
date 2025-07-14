@@ -83,7 +83,7 @@ public abstract class BaseLanguageModelClient(LanguageModelConfiguration configu
         return _lmAvailable.Value;
     }
 
-    protected abstract IEnumerable<ILanguageModelChatCompletionMessage> ConvertMessages(ChatMessage[] messages);
+    protected abstract IEnumerable<ILanguageModelChatCompletionMessage> ConvertMessages(IEnumerable<ChatMessage> messages);
 
     protected abstract Task<ILanguageModelCompletionResponse?> GenerateChatCompletionCoreAsync(IEnumerable<ILanguageModelChatCompletionMessage> messages, CompletionOptions? options, CancellationToken cancellationToken);
 
@@ -105,8 +105,8 @@ public abstract class BaseLanguageModelClient(LanguageModelConfiguration configu
         var promptContents = File.ReadAllText(filePath);
 
         var prompty = Prompt.FromMarkdown(promptContents);
-        if (prompty.Prepare(parameters) is not ChatMessage[] promptyMessages ||
-            promptyMessages.Length == 0)
+        if (prompty.Prepare(parameters) is not IEnumerable<ChatMessage> promptyMessages ||
+            !promptyMessages.Any())
         {
             Logger.LogError("No messages found in the prompt file: {FilePath}", filePath);
             return (null, null);

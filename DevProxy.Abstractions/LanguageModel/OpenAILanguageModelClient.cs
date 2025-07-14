@@ -87,7 +87,7 @@ public sealed class OpenAILanguageModelClient(
         }
     }
 
-    protected override IEnumerable<ILanguageModelChatCompletionMessage> ConvertMessages(ChatMessage[] messages)
+    protected override IEnumerable<ILanguageModelChatCompletionMessage> ConvertMessages(IEnumerable<ChatMessage> messages)
     {
         return messages.Select(m => new OpenAIChatCompletionMessage
         {
