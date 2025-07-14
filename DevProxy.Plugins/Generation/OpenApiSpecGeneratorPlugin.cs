@@ -322,7 +322,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
 
         Logger.LogDebug("  Processing query string parameters...");
         var dictionary = queryParams.AllKeys
-            .Where(k => k != null).Cast<string>()
+            .Where(k => k is not null).Cast<string>()
             .ToDictionary(k => k, k => queryParams[k] as object);
 
         foreach (var (key, value) in dictionary)
