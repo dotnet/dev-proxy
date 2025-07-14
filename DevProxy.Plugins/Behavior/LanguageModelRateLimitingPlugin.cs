@@ -190,6 +190,8 @@ public sealed class LanguageModelRateLimitingPlugin(
                 else
                 {
                     Logger.LogRequest($"Custom behavior not set. {Configuration.CustomResponseFile} not found.", MessageType.Failed, new(e.Session));
+                    e.Session.GenericResponse("Custom response file not found.", HttpStatusCode.InternalServerError, Array.Empty<HttpHeader>());
+                    state.HasBeenSet = true;
                 }
             }
         }
