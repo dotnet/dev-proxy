@@ -30,6 +30,14 @@
         "Yaml"
       ],
       "description": "Specifies the format of the generated OpenAPI spec. Allowed values: 'Json' or 'Yaml'. Default: 'Json'."
+    },
+    "includeParameters": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Defines the list of query string parameters to include in the generated OpenAPI spec, along with their default values. Default: []",
+      "default": []
     }
   },
   "additionalProperties": false
