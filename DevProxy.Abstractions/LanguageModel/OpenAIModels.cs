@@ -6,7 +6,7 @@ using System.Text.Json.Serialization;
 
 namespace DevProxy.Abstractions.LanguageModel;
 
-public abstract class OpenAIRequest
+public class OpenAIRequest
 {
     [JsonPropertyName("frequency_penalty")]
     public long? FrequencyPenalty { get; set; }
@@ -22,7 +22,7 @@ public abstract class OpenAIRequest
     public double? TopP { get; set; }
 }
 
-public abstract class OpenAIResponse : ILanguageModelCompletionResponse
+public class OpenAIResponse : ILanguageModelCompletionResponse
 {
     public long Created { get; set; }
     public OpenAIError? Error { get; set; }
@@ -37,12 +37,12 @@ public abstract class OpenAIResponse : ILanguageModelCompletionResponse
     public string? RequestUrl { get; set; }
 
     public string? ErrorMessage => Error?.Message;
-    public abstract string? Response { get; }
+    public virtual string? Response { get; }
 
     public OpenAIResponse ConvertToOpenAIResponse() => this;
 }
 
-public abstract class OpenAIResponse<TChoice> : OpenAIResponse
+public class OpenAIResponse<TChoice> : OpenAIResponse
 {
     public IEnumerable<TChoice>? Choices { get; set; }
 }
