@@ -50,7 +50,7 @@ public sealed class RateLimitConfiguration
 
 public sealed class RateLimitingPlugin(
     HttpClient httpClient,
-    ILogger logger,
+    ILogger<RateLimitingPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :

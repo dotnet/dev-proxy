@@ -26,7 +26,7 @@ public sealed class ApiCenterMinimalPermissionsPluginConfiguration
 
 public sealed class ApiCenterMinimalPermissionsPlugin(
     HttpClient httpClient,
-    ILogger logger,
+    ILogger<ApiCenterMinimalPermissionsPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
