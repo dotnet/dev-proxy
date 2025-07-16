@@ -150,7 +150,7 @@ public sealed class AuthPlugin(
                 return;
             }
 
-            await SetupOpenIdConnectConfigurationAsync();
+            await SetupOpenIdConnectConfigurationAsync(Configuration.OAuth2.MetadataUrl);
         }
 
         Enabled = false;
@@ -187,12 +187,12 @@ public sealed class AuthPlugin(
         return Task.CompletedTask;
     }
 
-    private async Task SetupOpenIdConnectConfigurationAsync()
+    private async Task SetupOpenIdConnectConfigurationAsync(string metadataUrl)
     {
         try
         {
             var retriever = new OpenIdConnectConfigurationRetriever();
-            var configurationManager = new ConfigurationManager<OpenIdConnectConfiguration>("https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration", retriever);
+            var configurationManager = new ConfigurationManager<OpenIdConnectConfiguration>(metadataUrl, retriever);
             _openIdConnectConfiguration = await configurationManager.GetConfigurationAsync();
         }
         catch (Exception ex)
