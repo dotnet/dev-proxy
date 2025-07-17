@@ -24,7 +24,7 @@ sealed class RequestLogger(IServiceProvider serviceProvider, IProxyState proxySt
         {
             if (_proxyState.IsRecording)
             {
-                _proxyState.RequestLogs.Add(requestLog);
+                _proxyState.RequestLogs.Enqueue(requestLog);
             }
 
             var requestLogArgs = new RequestLogArgs(requestLog);

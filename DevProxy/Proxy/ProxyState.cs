@@ -4,14 +4,14 @@
 
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
-using System.Collections.ObjectModel;
+using System.Collections.Concurrent;
 
 namespace DevProxy.Proxy;
 
 sealed class ProxyState : IProxyState
 {
     public bool IsRecording { get; set; }
-    public Collection<RequestLog> RequestLogs { get; set; } = [];
+    public ConcurrentQueue<RequestLog> RequestLogs { get; set; } = [];
     public Dictionary<string, object> GlobalData { get; set; } = new() {
         { ProxyUtils.ReportsKey, new Dictionary<string, object>() }
     };

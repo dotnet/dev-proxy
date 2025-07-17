@@ -3,7 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using DevProxy.Abstractions.Proxy;
-using System.Collections.ObjectModel;
+using System.Collections.Concurrent;
 
 namespace DevProxy.Proxy;
 
@@ -13,5 +13,5 @@ public interface IProxyState
 {
     Dictionary<string, object> GlobalData { get; }
     bool IsRecording { get; set; }
-    Collection<RequestLog> RequestLogs { get; }
+    ConcurrentQueue<RequestLog> RequestLogs { get; }
 }
