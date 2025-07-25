@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Text.Json;
+using Titanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Inspection;
 
@@ -321,7 +322,13 @@ public sealed class OpenAITelemetryPlugin(
             return;
         }
 
-        AddResponseTypeSpecificTags(activity, openAiRequest, response.BodyString);
+        var bodyString = response.BodyString;
+        if (IsStreamingResponse(response))
+        {
+            bodyString = GetBodyFromStreamingResponse(response);
+        }
+
+        AddResponseTypeSpecificTags(activity, openAiRequest, bodyString);
 
         Logger.LogTrace("ProcessSuccessResponse() finished");
     }
@@ -995,6 +1002,63 @@ public sealed class OpenAITelemetryPlugin(
             OpenAIFineTuneRequest => "fine_tuning.jobs",
             _ => "unknown"
         };
+    }
+
+    private bool IsStreamingResponse(Response response)
+    {
+        Logger.LogTrace("{Method} called", nameof(IsStreamingResponse));
+        var contentType = response.Headers.FirstOrDefault(h => h.Name.Equals("content-type", StringComparison.OrdinalIgnoreCase))?.Value;
+        if (string.IsNullOrEmpty(contentType))
+        {
+            Logger.LogDebug("No content-type header found");
+            return false;
+        }
+
+        var isStreamingResponse = contentType.Contains("text/event-stream", StringComparison.OrdinalIgnoreCase);
+        Logger.LogDebug("IsStreamingResponse: {IsStreamingResponse}", isStreamingResponse);
+
+        Logger.LogTrace("{Method} finished", nameof(IsStreamingResponse));
+        return isStreamingResponse;
+    }
+
+    private string GetBodyFromStreamingResponse(Response response)
+    {
+        Logger.LogTrace("{Method} called", nameof(GetBodyFromStreamingResponse));
+
+        // default to the whole body
+        var bodyString = response.BodyString;
+
+        var chunks = bodyString.Split("\n\n", StringSplitOptions.RemoveEmptyEntries);
+        if (chunks.Length == 0)
+        {
+            Logger.LogDebug("No chunks found in the response body");
+            return bodyString;
+        }
+
+        // check if the last chunk is `data: [DONE]`
+        var lastChunk = chunks.Last().Trim();
+        if (lastChunk.Equals("data: [DONE]", StringComparison.OrdinalIgnoreCase))
+        {
+            // get next to last chunk
+            var chunk = chunks.Length > 1 ? chunks[^2].Trim() : string.Empty;
+            if (chunk.StartsWith("data: ", StringComparison.OrdinalIgnoreCase))
+            {
+                // remove the "data: " prefix
+                bodyString = chunk[6..].Trim();
+                Logger.LogDebug("Last chunk starts with 'data: ', using the last chunk as the body: {BodyString}", bodyString);
+            }
+            else
+            {
+                Logger.LogDebug("Last chunk does not start with 'data: ', using the whole body");
+            }
+        }
+        else
+        {
+            Logger.LogDebug("Last chunk is not `data: [DONE]`, using the whole body");
+        }
+
+        Logger.LogTrace("{Method} finished", nameof(GetBodyFromStreamingResponse));
+        return bodyString;
     }
 
     public void Dispose()
