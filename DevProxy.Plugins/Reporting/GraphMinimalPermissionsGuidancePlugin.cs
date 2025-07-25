@@ -61,20 +61,16 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
 
         _graphUtils = ActivatorUtilities.CreateInstance<GraphUtils>(e.ServiceProvider);
 
-        // we need to do it this way because .NET doesn't distinguish between
-        // an empty array and a null value and we want to be able to tell
-        // if the user hasn't specified a value and we should use the default
-        // set or if they have specified an empty array and we shouldn't exclude
-        // any permissions
-        if (Configuration.PermissionsToExclude is null)
-        {
-            Configuration.PermissionsToExclude = ["profile", "openid", "offline_access", "email"];
-        }
-        else
-        {
-            // remove empty strings
-            Configuration.PermissionsToExclude = Configuration.PermissionsToExclude.Where(p => !string.IsNullOrEmpty(p));
-        }
+        InitializePermissionsToExclude();
+    }
+
+    private void InitializePermissionsToExclude()
+    {
+        var key = nameof(GraphMinimalPermissionsGuidancePluginConfiguration.PermissionsToExclude)
+            .ToCamelCase();
+
+        string[] defaultPermissionsToExclude = ["profile", "openid", "offline_access", "email"];
+        Configuration.PermissionsToExclude = GetConfigurationValue(key, Configuration.PermissionsToExclude, defaultPermissionsToExclude);
     }
 
     public override async Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
