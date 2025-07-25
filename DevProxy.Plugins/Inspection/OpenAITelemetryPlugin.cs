@@ -1044,7 +1044,7 @@ public sealed class OpenAITelemetryPlugin(
             if (chunk.StartsWith("data: ", StringComparison.OrdinalIgnoreCase))
             {
                 // remove the "data: " prefix
-                bodyString = chunk[6..].Trim();
+                bodyString = chunk["data: ".Length..].Trim();
                 Logger.LogDebug("Last chunk starts with 'data: ', using the last chunk as the body: {BodyString}", bodyString);
             }
             else
