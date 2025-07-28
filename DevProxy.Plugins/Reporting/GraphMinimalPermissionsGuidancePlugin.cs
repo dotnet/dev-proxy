@@ -244,11 +244,10 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
         try
         {
             var url = $"https://devxapi-func-prod-eastus.azurewebsites.net/permissions?scopeType={GraphUtils.GetScopeTypeString(scopeType)}";
-            using var client = new HttpClient();
             var stringPayload = JsonSerializer.Serialize(payload, ProxyUtils.JsonSerializerOptions);
             Logger.LogDebug("Calling {Url} with payload{NewLine}{Payload}", url, Environment.NewLine, stringPayload);
 
-            var response = await client.PostAsJsonAsync(url, payload, cancellationToken);
+            var response = await PluginHttpClient.PostAsJsonAsync(url, payload, cancellationToken);
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
             Logger.LogDebug("Response:{NewLine}{Content}", Environment.NewLine, content);
