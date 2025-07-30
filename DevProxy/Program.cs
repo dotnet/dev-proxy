@@ -32,11 +32,13 @@ static WebApplication BuildApplication(string[] args, DevProxyConfigOptions opti
 
     return app;
 }
-_ = Announcement.ShowAsync();
 
 var options = new DevProxyConfigOptions();
 options.ParseOptions(args);
 var app = BuildApplication(args, options);
+
+var announcement = app.Services.GetRequiredService<Announcement>();
+_ = announcement.ShowAsync();
 
 var devProxyCommand = app.Services.GetRequiredService<DevProxyCommand>();
 var loggerFactory = app.Services.GetRequiredService<ILoggerFactory>();

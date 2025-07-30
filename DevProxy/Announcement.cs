@@ -6,11 +6,12 @@ using System.Text.RegularExpressions;
 
 namespace DevProxy;
 
-static class Announcement
+internal class Announcement(HttpClient httpClient)
 {
     private static readonly Uri announcementUrl = new("https://aka.ms/devproxy/announcement");
+    private readonly HttpClient _httpClient = httpClient;
 
-    public static async Task ShowAsync()
+    public async Task ShowAsync()
     {
         var announcement = await GetAsync();
         if (!string.IsNullOrEmpty(announcement))
@@ -22,12 +23,11 @@ static class Announcement
         }
     }
 
-    public static async Task<string?> GetAsync()
+    private async Task<string?> GetAsync()
     {
         try
         {
-            using var client = new HttpClient();
-            return await client.GetStringAsync(announcementUrl);
+            return await _httpClient.GetStringAsync(announcementUrl);
         }
         catch
         {

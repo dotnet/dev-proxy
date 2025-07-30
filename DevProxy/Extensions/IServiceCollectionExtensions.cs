@@ -45,6 +45,7 @@ static class IServiceCollectionExtensions
             .AddSingleton<UpdateNotification>()
             .AddSingleton<ProxyEngine>()
             .AddSingleton<DevProxyCommand>()
+            .AddSingleton<Announcement>()
             .AddHttpClient();
 
         _ = services.AddPlugins(configuration, options);
