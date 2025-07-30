@@ -5,6 +5,7 @@
 using DevProxy;
 using DevProxy.Abstractions.LanguageModel;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Utils;
 using DevProxy.Commands;
 using DevProxy.Proxy;
 
@@ -46,6 +47,7 @@ static class IServiceCollectionExtensions
             .AddSingleton<ProxyEngine>()
             .AddSingleton<DevProxyCommand>()
             .AddSingleton<Announcement>()
+            .AddSingleton<MSGraphDbUtils>()
             .AddHttpClient();
 
         _ = services.AddPlugins(configuration, options);

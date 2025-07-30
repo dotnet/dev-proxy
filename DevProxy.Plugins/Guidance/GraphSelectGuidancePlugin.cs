@@ -13,8 +13,11 @@ namespace DevProxy.Plugins.Guidance;
 
 public sealed class GraphSelectGuidancePlugin(
     ILogger<GraphSelectGuidancePlugin> logger,
-    ISet<UrlToWatch> urlsToWatch) : BasePlugin(logger, urlsToWatch)
+    ISet<UrlToWatch> urlsToWatch,
+    MSGraphDbUtils msGraphDbUtils) : BasePlugin(logger, urlsToWatch)
 {
+    private readonly MSGraphDbUtils _msGraphDbUtils = msGraphDbUtils;
+
     public override string Name => nameof(GraphSelectGuidancePlugin);
 
     public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
@@ -22,7 +25,7 @@ public sealed class GraphSelectGuidancePlugin(
         await base.InitializeAsync(e, cancellationToken);
 
         // let's not await so that it doesn't block the proxy startup
-        _ = MSGraphDbUtils.GenerateMSGraphDbAsync(Logger, true, cancellationToken);
+        _ = _msGraphDbUtils.GenerateMSGraphDbAsync(true, cancellationToken);
     }
 
     public override Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)
@@ -82,7 +85,7 @@ public sealed class GraphSelectGuidancePlugin(
 
         try
         {
-            var dbConnection = MSGraphDbUtils.MSGraphDbConnection;
+            var dbConnection = _msGraphDbUtils.MSGraphDbConnection;
             // lookup information from the database
             var selectEndpoint = dbConnection.CreateCommand();
             selectEndpoint.CommandText = "SELECT hasSelect FROM endpoints WHERE path = @path AND graphVersion = @graphVersion";
