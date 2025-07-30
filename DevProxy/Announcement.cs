@@ -6,7 +6,7 @@ using System.Text.RegularExpressions;
 
 namespace DevProxy;
 
-internal class Announcement(HttpClient httpClient)
+internal sealed class Announcement(HttpClient httpClient)
 {
     private static readonly Uri announcementUrl = new("https://aka.ms/devproxy/announcement");
     private readonly HttpClient _httpClient = httpClient;
