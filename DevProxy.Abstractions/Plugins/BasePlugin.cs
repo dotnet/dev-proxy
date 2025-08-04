@@ -99,13 +99,13 @@ public abstract class BasePlugin<TConfiguration>(
     }
     public IConfigurationSection ConfigurationSection { get; } = pluginConfigurationSection;
 
-    protected virtual IEnumerable<string>? GetConfigurationValue(string key, IEnumerable<string>? list, IEnumerable<string>? defaultList = default)
+    protected virtual IEnumerable<string>? GetConfigurationValue(string key, IEnumerable<string>? configuredList, IEnumerable<string>? defaultList = default)
     {
         ArgumentNullException.ThrowIfNull(key, nameof(key));
 
         var keyExists = ConfigurationSection.GetChildren().Any(f => string.Equals(key, f.Key, StringComparison.Ordinal));
-        list = list?.Where(static p => !string.IsNullOrEmpty(p)).ToArray();
-        return keyExists ? list ?? [] : defaultList;
+        configuredList = configuredList?.Where(static p => !string.IsNullOrEmpty(p)).ToArray();
+        return keyExists ? configuredList ?? [] : defaultList;
     }
 
     public virtual void Register(IServiceCollection services, TConfiguration configuration)
