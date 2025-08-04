@@ -99,7 +99,22 @@ public abstract class BasePlugin<TConfiguration>(
     }
     public IConfigurationSection ConfigurationSection { get; } = pluginConfigurationSection;
 
-    protected virtual IEnumerable<string>? GetConfigurationValue(string key, IEnumerable<string>? configuredList, IEnumerable<string>? defaultList = default)
+    /// <summary>
+    /// <para>Evaluates the <paramref name="key"/> array property.
+    ///   If the property exists, the <paramref name="configuredList"/> value is used;
+    ///   otherwise, the default <paramref name="defaultList"/> is applied.</para>
+    /// <para>If the property is <i>null</i>, it is interpreted as an empty array (<i>[]</i>).</para>
+    /// <para>Note: This is necessary because .NET configuration binding cannot differentiate between an empty array,
+    ///   a null value, or a missing property in appsettings.json.
+    ///   See at <see cref="https://github.com/dotnet/runtime/issues/58930"/>
+    /// </para>
+    /// </summary>
+    /// <param name="key">The array property name</param>
+    /// <param name="configuredList">The configured list of string values</param>
+    /// <param name="defaultList">The default list of string values</param>
+    /// <returns>Returns the result list of string values</returns>
+    protected virtual IEnumerable<string>? GetConfigurationValue(string key, IEnumerable<string>? configuredList,
+        IEnumerable<string>? defaultList = default)
     {
         ArgumentNullException.ThrowIfNull(key, nameof(key));
 
