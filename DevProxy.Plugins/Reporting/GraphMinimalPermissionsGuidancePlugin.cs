@@ -33,7 +33,7 @@ public sealed class GraphMinimalPermissionsInfo
 
 public sealed class GraphMinimalPermissionsGuidancePluginConfiguration
 {
-    public IEnumerable<string>? PermissionsToExclude { get; set; } = [];
+    public IEnumerable<string>? PermissionsToExclude { get; set; }
 }
 
 public sealed class GraphMinimalPermissionsGuidancePlugin(
