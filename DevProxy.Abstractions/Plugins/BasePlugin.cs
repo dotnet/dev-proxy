@@ -101,7 +101,7 @@ public abstract class BasePlugin<TConfiguration>(
 
     protected virtual IEnumerable<string>? GetConfigurationValue(string key, IEnumerable<string>? list, IEnumerable<string>? defaultList = default)
     {
-        if (key is null) { return null; }
+        ArgumentNullException.ThrowIfNull(key, nameof(key));
 
         var keyExists = ConfigurationSection.GetChildren().Any(f => string.Equals(key, f.Key, StringComparison.Ordinal));
         list = list?.Where(static p => !string.IsNullOrEmpty(p)).ToArray();
