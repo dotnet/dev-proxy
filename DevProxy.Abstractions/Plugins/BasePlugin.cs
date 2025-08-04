@@ -75,8 +75,7 @@ public abstract class BasePlugin<TConfiguration>(
     BasePlugin(logger, urlsToWatch), IPlugin<TConfiguration> where TConfiguration : new()
 {
     private TConfiguration? _configuration;
-
-    protected HttpClient PluginHttpClient { get; } = httpClient;
+    private readonly HttpClient _httpClient = httpClient;
 
     protected IProxyConfiguration ProxyConfiguration { get; } = proxyConfiguration;
     public TConfiguration Configuration
@@ -169,7 +168,7 @@ public abstract class BasePlugin<TConfiguration>(
             }
 
             ProxyUtils.ValidateSchemaVersion(schemaUrl, Logger);
-            return await ProxyUtils.ValidateJsonAsync(configSection.GetRawText(), schemaUrl, PluginHttpClient, Logger, cancellationToken);
+            return await ProxyUtils.ValidateJsonAsync(configSection.GetRawText(), schemaUrl, _httpClient, Logger, cancellationToken);
         }
         catch (Exception ex)
         {
