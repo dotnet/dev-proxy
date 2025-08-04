@@ -35,6 +35,7 @@ public sealed class GraphMinimalPermissionsPlugin(
         pluginConfigurationSection)
 {
     private GraphUtils? _graphUtils;
+    private readonly HttpClient _httpClient = httpClient;
 
     public override string Name => nameof(GraphMinimalPermissionsPlugin);
 
@@ -140,7 +141,7 @@ public sealed class GraphMinimalPermissionsPlugin(
             var stringPayload = JsonSerializer.Serialize(payload, ProxyUtils.JsonSerializerOptions);
             Logger.LogDebug("Calling {Url} with payload\r\n{StringPayload}", url, stringPayload);
 
-            var response = await PluginHttpClient.PostAsJsonAsync(url, payload, cancellationToken);
+            var response = await _httpClient.PostAsJsonAsync(url, payload, cancellationToken);
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
             Logger.LogDebug("Response:\r\n{Content}", content);
