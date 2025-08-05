@@ -46,7 +46,7 @@ static class IServiceCollectionExtensions
             .AddSingleton<UpdateNotification>()
             .AddSingleton<ProxyEngine>()
             .AddSingleton<DevProxyCommand>()
-            .AddSingleton<MSGraphDbUtils>()
+            .AddSingleton<MSGraphDb>()
             .AddHttpClient();
 
         _ = services.AddPlugins(configuration, options);

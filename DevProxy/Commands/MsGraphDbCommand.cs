@@ -10,13 +10,13 @@ namespace DevProxy.Commands;
 sealed class MsGraphDbCommand : Command
 {
     private readonly ILogger _logger;
-    private readonly MSGraphDbUtils _msGraphDbUtils;
+    private readonly MSGraphDb _msGraphDb;
 
-    public MsGraphDbCommand(ILogger<MsGraphDbCommand> logger, MSGraphDbUtils msGraphDbUtils) :
+    public MsGraphDbCommand(ILogger<MsGraphDbCommand> logger, MSGraphDb msGraphDb) :
         base("msgraphdb", "Generate a local SQLite database with Microsoft Graph API metadata")
     {
         _logger = logger;
-        _msGraphDbUtils = msGraphDbUtils;
+        _msGraphDb = msGraphDb;
         ConfigureCommand();
     }
 
@@ -27,6 +27,6 @@ sealed class MsGraphDbCommand : Command
 
     private async Task GenerateMsGraphDbAsync(ParseResult parseResult, CancellationToken cancellationToken)
     {
-        _ = await _msGraphDbUtils.GenerateMSGraphDbAsync(false, cancellationToken);
+        _ = await _msGraphDb.GenerateMSGraphDbAsync(false, cancellationToken);
     }
 }
