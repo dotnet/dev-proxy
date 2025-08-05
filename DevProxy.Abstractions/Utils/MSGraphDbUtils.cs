@@ -13,7 +13,9 @@ public sealed class MSGraphDbUtils(HttpClient httpClient, ILogger<MSGraphDbUtils
 {
     private static readonly string[] graphVersions = ["v1.0", "beta"];
     private readonly Dictionary<string, OpenApiDocument> _openApiDocuments = [];
+#pragma warning disable CA2213 // Disposable fields should be disposed
     private readonly HttpClient _httpClient = httpClient;
+#pragma warning restore CA2213 // Disposable fields should be disposed
     private readonly ILogger<MSGraphDbUtils> _logger = logger;
     private SqliteConnection? _msGraphDbConnection;
 
@@ -218,6 +220,5 @@ public sealed class MSGraphDbUtils(HttpClient httpClient, ILogger<MSGraphDbUtils
     public void Dispose()
     {
         _msGraphDbConnection?.Dispose();
-        _httpClient?.Dispose();
     }
 }
