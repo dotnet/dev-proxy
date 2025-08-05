@@ -99,6 +99,21 @@ public abstract class BasePlugin<TConfiguration>(
     }
     public IConfigurationSection ConfigurationSection { get; } = pluginConfigurationSection;
 
+    public virtual void Register(IServiceCollection services, TConfiguration configuration)
+    {
+    }
+
+    public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
+    {
+        await base.InitializeAsync(e, cancellationToken);
+
+        var (IsValid, ValidationErrors) = await ValidatePluginConfigAsync(cancellationToken);
+        if (!IsValid)
+        {
+            Logger.LogError("Plugin configuration validation failed with the following errors: {Errors}", string.Join(", ", ValidationErrors));
+        }
+    }
+
     /// <summary>
     /// <para>Evaluates the <paramref name="key"/> array property.
     ///   If the property exists, the <paramref name="configuredList"/> value is used;
@@ -119,23 +134,8 @@ public abstract class BasePlugin<TConfiguration>(
         ArgumentNullException.ThrowIfNull(key, nameof(key));
 
         var keyExists = ConfigurationSection.GetChildren().Any(f => string.Equals(key, f.Key, StringComparison.Ordinal));
-        configuredList = configuredList?.Where(static p => !string.IsNullOrEmpty(p)).ToArray();
+        configuredList = configuredList?.Where(static p => !string.IsNullOrEmpty(p));
         return keyExists ? configuredList ?? [] : defaultList;
-    }
-
-    public virtual void Register(IServiceCollection services, TConfiguration configuration)
-    {
-    }
-
-    public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
-    {
-        await base.InitializeAsync(e, cancellationToken);
-
-        var (IsValid, ValidationErrors) = await ValidatePluginConfigAsync(cancellationToken);
-        if (!IsValid)
-        {
-            Logger.LogError("Plugin configuration validation failed with the following errors: {Errors}", string.Join(", ", ValidationErrors));
-        }
     }
 
     private async Task<(bool IsValid, IEnumerable<string> ValidationErrors)> ValidatePluginConfigAsync(CancellationToken cancellationToken)

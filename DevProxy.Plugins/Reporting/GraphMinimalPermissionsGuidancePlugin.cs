@@ -64,15 +64,6 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
         InitializePermissionsToExclude();
     }
 
-    private void InitializePermissionsToExclude()
-    {
-        var key = nameof(GraphMinimalPermissionsGuidancePluginConfiguration.PermissionsToExclude)
-            .ToCamelCase();
-
-        string[] defaultPermissionsToExclude = ["profile", "openid", "offline_access", "email"];
-        Configuration.PermissionsToExclude = GetConfigurationValue(key, Configuration.PermissionsToExclude, defaultPermissionsToExclude);
-    }
-
     public override async Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterRecordingStopAsync));
@@ -214,6 +205,15 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
         StoreReport(report, e);
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
+    }
+
+    private void InitializePermissionsToExclude()
+    {
+        var key = nameof(GraphMinimalPermissionsGuidancePluginConfiguration.PermissionsToExclude)
+            .ToCamelCase();
+
+        string[] defaultPermissionsToExclude = ["profile", "openid", "offline_access", "email"];
+        Configuration.PermissionsToExclude = GetConfigurationValue(key, Configuration.PermissionsToExclude, defaultPermissionsToExclude);
     }
 
     private async Task EvaluateMinimalScopesAsync(
