@@ -2,12 +2,13 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Abstractions.Utils;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using Microsoft.OpenApi.Readers;
 
-namespace DevProxy.Abstractions.Utils;
+namespace DevProxy.Abstractions.Data;
 
 public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) : IDisposable
 {
