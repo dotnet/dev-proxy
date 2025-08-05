@@ -84,22 +84,20 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
     {
         _logger.LogInformation("Creating database...");
 
-        var dbConnection = Connection;
-
         _logger.LogDebug("Dropping endpoints table...");
-        var dropTable = dbConnection.CreateCommand();
+        var dropTable = Connection.CreateCommand();
         dropTable.CommandText = "DROP TABLE IF EXISTS endpoints";
         _ = await dropTable.ExecuteNonQueryAsync(cancellationToken);
 
         _logger.LogDebug("Creating endpoints table...");
-        var createTable = dbConnection.CreateCommand();
+        var createTable = Connection.CreateCommand();
         // when you change the schema, increase the db version number in ProxyUtils
         createTable.CommandText = "CREATE TABLE IF NOT EXISTS endpoints (path TEXT, graphVersion TEXT, hasSelect BOOLEAN)";
         _ = await createTable.ExecuteNonQueryAsync(cancellationToken);
 
         _logger.LogDebug("Creating index on endpoints and version...");
         // Add an index on the path and graphVersion columns
-        var createIndex = dbConnection.CreateCommand();
+        var createIndex = Connection.CreateCommand();
         createIndex.CommandText = "CREATE INDEX IF NOT EXISTS idx_endpoints_path_version ON endpoints (path, graphVersion)";
         _ = await createIndex.ExecuteNonQueryAsync(cancellationToken);
     }
@@ -107,8 +105,6 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
     private async Task FillDataAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Filling database...");
-
-        var dbConnection = Connection;
 
         var i = 0;
 
@@ -121,7 +117,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
 
             _logger.LogDebug("Filling database for {GraphVersion}...", graphVersion);
 
-            var insertEndpoint = dbConnection.CreateCommand();
+            var insertEndpoint = Connection.CreateCommand();
             insertEndpoint.CommandText = "INSERT INTO endpoints (path, graphVersion, hasSelect) VALUES (@path, @graphVersion, @hasSelect)";
             _ = insertEndpoint.Parameters.Add(new("@path", null));
             _ = insertEndpoint.Parameters.Add(new("@graphVersion", null));
