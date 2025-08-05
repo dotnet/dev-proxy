@@ -67,10 +67,8 @@ internal static class StringExtensions
     {
         if (string.IsNullOrEmpty(str))
         {
-
             return str;
         }
-
 
         return char.ToLowerInvariant(str[0]) + str[1..];
     }
