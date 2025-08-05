@@ -17,22 +17,22 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
     private readonly HttpClient _httpClient = httpClient;
 #pragma warning restore CA2213 // Disposable fields should be disposed
     private readonly ILogger<MSGraphDb> _logger = logger;
-    private SqliteConnection? _msGraphDbConnection;
+    private SqliteConnection? _connection;
 
     // v1 refers to v1 of the db schema, not the graph version
     public static string MSGraphDbFilePath => Path.Combine(ProxyUtils.AppFolder!, "msgraph-openapi-v1.db");
 
-    public SqliteConnection MSGraphDbConnection
+    public SqliteConnection Connection
     {
         get
         {
-            if (_msGraphDbConnection is null)
+            if (_connection is null)
             {
-                _msGraphDbConnection = new($"Data Source={MSGraphDbFilePath}");
-                _msGraphDbConnection.Open();
+                _connection = new($"Data Source={MSGraphDbFilePath}");
+                _connection.Open();
             }
 
-            return _msGraphDbConnection;
+            return _connection;
         }
     }
 
@@ -84,7 +84,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
     {
         _logger.LogInformation("Creating database...");
 
-        var dbConnection = MSGraphDbConnection;
+        var dbConnection = Connection;
 
         _logger.LogDebug("Dropping endpoints table...");
         var dropTable = dbConnection.CreateCommand();
@@ -108,7 +108,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
     {
         _logger.LogInformation("Filling database...");
 
-        var dbConnection = MSGraphDbConnection;
+        var dbConnection = Connection;
 
         var i = 0;
 
@@ -219,6 +219,6 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
 
     public void Dispose()
     {
-        _msGraphDbConnection?.Dispose();
+        _connection?.Dispose();
     }
 }

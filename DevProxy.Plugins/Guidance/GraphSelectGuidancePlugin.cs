@@ -85,7 +85,7 @@ public sealed class GraphSelectGuidancePlugin(
 
         try
         {
-            var dbConnection = _msGraphDb.MSGraphDbConnection;
+            var dbConnection = _msGraphDb.Connection;
             // lookup information from the database
             var selectEndpoint = dbConnection.CreateCommand();
             selectEndpoint.CommandText = "SELECT hasSelect FROM endpoints WHERE path = @path AND graphVersion = @graphVersion";
