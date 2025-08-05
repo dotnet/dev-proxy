@@ -25,7 +25,7 @@ public sealed class GraphSelectGuidancePlugin(
         await base.InitializeAsync(e, cancellationToken);
 
         // let's not await so that it doesn't block the proxy startup
-        _ = _msGraphDb.GenerateMSGraphDbAsync(true, cancellationToken);
+        _ = _msGraphDb.GenerateDbAsync(true, cancellationToken);
     }
 
     public override Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)

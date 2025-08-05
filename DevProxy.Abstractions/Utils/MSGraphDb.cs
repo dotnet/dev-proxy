@@ -36,7 +36,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
         }
     }
 
-    public async Task<int> GenerateMSGraphDbAsync(bool skipIfUpdatedToday, CancellationToken cancellationToken)
+    public async Task<int> GenerateDbAsync(bool skipIfUpdatedToday, CancellationToken cancellationToken)
     {
         var appFolder = ProxyUtils.AppFolder;
         if (string.IsNullOrEmpty(appFolder))
