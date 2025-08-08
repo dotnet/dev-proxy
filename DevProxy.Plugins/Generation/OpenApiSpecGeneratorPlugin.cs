@@ -19,8 +19,8 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Web;
-using Titanium.Web.Proxy.EventArguments;
-using Titanium.Web.Proxy.Http;
+using Unobtanium.Web.Proxy.EventArguments;
+using Unobtanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Generation;
 

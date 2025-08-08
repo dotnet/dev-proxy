@@ -8,7 +8,7 @@ using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
-using Titanium.Web.Proxy.EventArguments;
+using Unobtanium.Web.Proxy.EventArguments;
 
 namespace DevProxy.Plugins.Guidance;
 

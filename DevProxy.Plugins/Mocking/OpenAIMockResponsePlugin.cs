@@ -9,7 +9,7 @@ using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Text.Json;
-using Titanium.Web.Proxy.Models;
+using Unobtanium.Web.Proxy.Models;
 
 namespace DevProxy.Plugins.Mocking;
 

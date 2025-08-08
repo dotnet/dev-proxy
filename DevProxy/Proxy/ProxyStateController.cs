@@ -4,7 +4,7 @@
 
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
-using Titanium.Web.Proxy;
+using Unobtanium.Web.Proxy;
 
 namespace DevProxy.Proxy;
 

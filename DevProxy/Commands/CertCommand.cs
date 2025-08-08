@@ -3,28 +3,30 @@
 // See the LICENSE file in the project root for more information.
 
 using DevProxy.Abstractions.Utils;
-using DevProxy.Proxy;
 using System.CommandLine;
 using System.CommandLine.Parsing;
 using System.Diagnostics;
-using Titanium.Web.Proxy.Helpers;
+using Unobtanium.Web.Proxy;
+using Unobtanium.Web.Proxy.Helpers;
 
 namespace DevProxy.Commands;
 
 sealed class CertCommand : Command
 {
     private readonly ILogger _logger;
+    private readonly ProxyServer _server;
     private readonly Option<bool> _forceOption = new("--force", "-f")
     {
         Description = "Don't prompt for confirmation when removing the certificate"
     };
 
-    public CertCommand(ILogger<CertCommand> logger) :
+    public CertCommand(ILogger<CertCommand> logger, ProxyServer server) :
         base("cert", "Manage the Dev Proxy certificate")
     {
         _logger = logger;
 
         ConfigureCommand();
+        _server = server;
     }
 
     private void ConfigureCommand()
@@ -50,7 +52,7 @@ sealed class CertCommand : Command
         try
         {
             _logger.LogInformation("Ensuring certificate exists and is trusted...");
-            await ProxyEngine.ProxyServer.CertificateManager.EnsureRootCertificateAsync();
+            await _server.CertificateManager.EnsureRootCertificateAsync();
             _logger.LogInformation("DONE");
         }
         catch (Exception ex)
@@ -80,7 +82,7 @@ sealed class CertCommand : Command
             _logger.LogInformation("Uninstalling the root certificate...");
 
             RemoveTrustedCertificateOnMac();
-            ProxyEngine.ProxyServer.CertificateManager.RemoveTrustedRootCertificate(machineTrusted: false);
+            _server.CertificateManager.RemoveTrustedRootCertificate(machineTrusted: false);
 
             _logger.LogInformation("DONE");
         }

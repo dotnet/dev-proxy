@@ -105,17 +105,6 @@
           "Microsoft.IdentityModel.Tokens": "8.9.0"
         }
       },
-      "Unobtanium.Web.Proxy": {
-        "type": "Direct",
-        "requested": "[0.1.5, )",
-        "resolved": "0.1.5",
-        "contentHash": "HiICGm0e44+i4aVHpLn+aphmSC2eQnDvlTttw1rE0hntOZKoLGRy37sydqqbRP1ZokMf3Mt0GEgSWxDwnucKGg==",
-        "dependencies": {
-          "BouncyCastle.Cryptography": "2.4.0",
-          "Microsoft.Extensions.Logging.Abstractions": "8.0.1",
-          "System.Runtime.CompilerServices.Unsafe": "6.0.0"
-        }
-      },
       "Azure.Core": {
         "type": "Transitive",
         "resolved": "1.44.1",
@@ -554,6 +543,25 @@
         "resolved": "4.5.4",
         "contentHash": "zteT+G8xuGu6mS+mzDzYXbzS7rd3K6Fjb9RiZlYlJPam2/hU7JCBZBVEcywNuR+oZ1ncTvc/cq0faRr3P01OVg=="
       },
+      "Unobtanium.Web.Proxy": {
+        "type": "Transitive",
+        "resolved": "0.9.0-beta.1",
+        "contentHash": "Ae/2f7v3T3NQkRknBhAHqBrY85nJHQr8lxRD/j8B3rMK4KbIlbGe3A6Hd71ponq+sNHnLxa3BPSg8pdldc9RHg==",
+        "dependencies": {
+          "BouncyCastle.Cryptography": "2.4.0",
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.3",
+          "System.Runtime.CompilerServices.Unsafe": "6.0.0",
+          "Unobtanium.Web.Proxy.Events": "0.9.0-beta.1"
+        }
+      },
+      "Unobtanium.Web.Proxy.Events": {
+        "type": "Transitive",
+        "resolved": "0.9.0-beta.1",
+        "contentHash": "ckgncJ95Tr1GCx3Kv3yJK3sANfJznKIHOqZebqR0w3JblHrNF2VLJ5ALA5YZ5CcO7QuqqXVnfkusapy7QJRFwA==",
+        "dependencies": {
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.1"
+        }
+      },
       "YamlDotNet": {
         "type": "Transitive",
         "resolved": "16.3.0",
@@ -572,7 +580,7 @@
           "Newtonsoft.Json.Schema": "[4.0.1, )",
           "Scriban": "[6.2.1, )",
           "System.CommandLine": "[2.0.0-beta5.25306.1, )",
-          "Unobtanium.Web.Proxy": "[0.1.5, )",
+          "Unobtanium.Web.Proxy": "[0.9.0-beta.1, )",
           "YamlDotNet": "[16.3.0, )"
         }
       }

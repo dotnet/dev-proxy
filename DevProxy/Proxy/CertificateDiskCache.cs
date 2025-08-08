@@ -3,8 +3,8 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Security.Cryptography.X509Certificates;
-using Titanium.Web.Proxy.Certificates.Cache;
-using Titanium.Web.Proxy.Helpers;
+using Unobtanium.Web.Proxy.Certificates.Cache;
+using Unobtanium.Web.Proxy.Helpers;
 
 namespace DevProxy.Proxy;
 

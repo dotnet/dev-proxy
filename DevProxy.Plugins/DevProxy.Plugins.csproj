@@ -60,10 +60,6 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Unobtanium.Web.Proxy" Version="0.1.5">
-      <Private>false</Private>
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </PackageReference>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\DevProxy.Abstractions\DevProxy.Abstractions.csproj">

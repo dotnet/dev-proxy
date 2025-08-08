@@ -14,7 +14,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Web;
-using Titanium.Web.Proxy.Http;
+using Unobtanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Generation;
 

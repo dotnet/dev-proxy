@@ -4,6 +4,8 @@
 
 using DevProxy.Commands;
 using DevProxy.Logging;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging.Console;
 
 #pragma warning disable IDE0130
 namespace Microsoft.Extensions.Logging;
@@ -13,7 +15,7 @@ static class ILoggingBuilderExtensions
 {
     public static ILoggingBuilder AddRequestLogger(this ILoggingBuilder builder)
     {
-        _ = builder.Services.AddSingleton<ILoggerProvider, RequestLoggerProvider>();
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<ILoggerProvider, RequestLoggerProvider>());
 
         return builder;
     }
@@ -27,6 +29,11 @@ static class ILoggingBuilderExtensions
             configuration.GetValue("logLevel", LogLevel.Information);
 
         _ = builder
+            .AddOpenTelemetry(config =>
+            {
+                config.IncludeFormattedMessage = true;
+                config.IncludeScopes = true;
+            })
             .AddFilter("Microsoft.Hosting.*", LogLevel.Error)
             .AddFilter("Microsoft.AspNetCore.*", LogLevel.Error)
             .AddFilter("Microsoft.Extensions.*", LogLevel.Error)
@@ -49,7 +56,8 @@ static class ILoggingBuilderExtensions
                 }
             )
             .AddRequestLogger()
-            .SetMinimumLevel(configuredLogLevel);
+            .SetMinimumLevel(configuredLogLevel)
+            ;
 
         return builder;
     }

@@ -6,7 +6,7 @@ using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Plugins;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Titanium.Web.Proxy.Http;
+using Unobtanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Guidance;
 

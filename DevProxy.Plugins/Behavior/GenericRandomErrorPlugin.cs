@@ -15,8 +15,8 @@ using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Titanium.Web.Proxy.Http;
-using Titanium.Web.Proxy.Models;
+using Unobtanium.Web.Proxy.Http;
+using Unobtanium.Web.Proxy.Models;
 
 namespace DevProxy.Plugins.Behavior;
 

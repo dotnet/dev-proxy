@@ -10,7 +10,7 @@ using DevProxy.Plugins.Mocking;
 using DevProxy.Plugins.Utils;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
-using Titanium.Web.Proxy.EventArguments;
+using Unobtanium.Web.Proxy.EventArguments;
 
 namespace DevProxy.Plugins.Generation;
 

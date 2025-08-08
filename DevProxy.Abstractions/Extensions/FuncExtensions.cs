@@ -5,7 +5,7 @@
 // from: https://github.com/justcoding121/titanium-web-proxy/blob/902504a324425e4e49fc5ba604c2b7fa172e68ce/src/Titanium.Web.Proxy/Extensions/FuncExtensions.cs
 
 #pragma warning disable IDE0130
-namespace Titanium.Web.Proxy.EventArguments;
+namespace Unobtanium.Web.Proxy.EventArguments;
 #pragma warning restore IDE0130
 
 public static class FuncExtensions

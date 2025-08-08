@@ -2,7 +2,9 @@
   "profiles": {
     "No args": {
       "commandName": "Project",
-      "commandLineArgs": "",
+      "environmentVariables": {
+        "AsSystemProxy": "false"
+      },
       "hotReloadEnabled": true
     },
     "No chaos with mock responses": {
@@ -32,7 +34,12 @@
     },
     "Default": {
       "commandName": "Project",
-      "hotReloadEnabled": true
+      "hotReloadEnabled": true,
+      "environmentVariables": {
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4317",
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc",
+        "AsSystemProxy": "false"
+      }
     },
     "Missing arg": {
       "commandName": "Project",

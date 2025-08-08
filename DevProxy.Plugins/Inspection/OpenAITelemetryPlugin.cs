@@ -19,7 +19,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Text.Json;
-using Titanium.Web.Proxy.Http;
+using Unobtanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Inspection;
 

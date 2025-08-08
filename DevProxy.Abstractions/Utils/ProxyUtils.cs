@@ -12,7 +12,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using Titanium.Web.Proxy.Http;
+using Unobtanium.Web.Proxy.Http;
 
 namespace DevProxy.Abstractions.Utils;
 

@@ -15,4 +15,7 @@ static class ILoggerExtensions
           { nameof(url), url },
           { nameof(requestId), requestId }
       });
+
+    public static IDisposable? BeginRequestScope(this ILogger logger, HttpMethod method, Uri url, int requestId) => logger.BeginScope(method.Method!, url.ToString(), requestId);
+
 }

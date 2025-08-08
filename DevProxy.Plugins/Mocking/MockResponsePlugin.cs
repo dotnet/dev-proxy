@@ -21,8 +21,8 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using Titanium.Web.Proxy.Http;
-using Titanium.Web.Proxy.Models;
+using Unobtanium.Web.Proxy.Http;
+using Unobtanium.Web.Proxy.Models;
 
 namespace DevProxy.Plugins.Mocking;
 

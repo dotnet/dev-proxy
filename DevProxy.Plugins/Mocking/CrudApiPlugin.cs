@@ -19,9 +19,9 @@ using System.Net;
 using System.Security.Claims;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using Titanium.Web.Proxy.EventArguments;
-using Titanium.Web.Proxy.Http;
-using Titanium.Web.Proxy.Models;
+using Unobtanium.Web.Proxy.EventArguments;
+using Unobtanium.Web.Proxy.Http;
+using Unobtanium.Web.Proxy.Models;
 
 namespace DevProxy.Plugins.Mocking;
 

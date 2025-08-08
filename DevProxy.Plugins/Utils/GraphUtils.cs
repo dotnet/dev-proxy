@@ -5,7 +5,7 @@
 using DevProxy.Plugins.Models;
 using Microsoft.Extensions.Logging;
 using System.Net.Http.Json;
-using Titanium.Web.Proxy.Http;
+using Unobtanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Utils;
 

@@ -5,7 +5,7 @@
 using DevProxy.Abstractions.Utils;
 using System.CommandLine;
 using System.Text.Json.Serialization;
-using Titanium.Web.Proxy.EventArguments;
+using Unobtanium.Web.Proxy.EventArguments;
 
 namespace DevProxy.Abstractions.Proxy;
 

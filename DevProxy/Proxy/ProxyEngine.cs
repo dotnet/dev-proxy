@@ -5,17 +5,16 @@
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
-using Microsoft.VisualStudio.Threading;
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Net;
-using System.Security.Cryptography.X509Certificates;
 using System.Text.RegularExpressions;
-using Titanium.Web.Proxy;
-using Titanium.Web.Proxy.EventArguments;
-using Titanium.Web.Proxy.Helpers;
-using Titanium.Web.Proxy.Http;
-using Titanium.Web.Proxy.Models;
+using Unobtanium.Web.Proxy;
+using Unobtanium.Web.Proxy.Events;
+using Unobtanium.Web.Proxy.EventArguments;
+using Unobtanium.Web.Proxy.Helpers;
+using Unobtanium.Web.Proxy.Http;
+using Unobtanium.Web.Proxy.Models;
+using Org.BouncyCastle.Asn1.X509.Qualified;
 
 namespace DevProxy.Proxy;
 
@@ -30,14 +29,18 @@ sealed class ProxyEngine(
     IProxyConfiguration proxyConfiguration,
     ISet<UrlToWatch> urlsToWatch,
     IProxyStateController proxyController,
-    ILogger<ProxyEngine> logger) : BackgroundService, IDisposable
+    ILogger<ProxyEngine> logger,
+    ProxyServer proxyServer,
+    ProxyServerConfiguration proxyServerConfiguration) : BackgroundService, IDisposable
 {
+    internal const string ACTIVITY_SOURCE_NAME = "DevProxy.Proxy.ProxyEngine";
+    public static readonly ActivitySource ActivitySource = new(ACTIVITY_SOURCE_NAME);
     private readonly IEnumerable<IPlugin> _plugins = plugins;
     private readonly ILogger _logger = logger;
     private readonly IProxyConfiguration _config = proxyConfiguration;
 
-    internal static ProxyServer ProxyServer { get; private set; }
-    private ExplicitProxyEndPoint? _explicitEndPoint;
+    //internal static ProxyServer ProxyServer { get; private set; }
+    //private ExplicitProxyEndPoint? _explicitEndPoint;
     // lists of URLs to watch, used for intercepting requests
     private readonly ISet<UrlToWatch> _urlsToWatch = urlsToWatch;
     // lists of hosts to watch extracted from urlsToWatch,
@@ -50,30 +53,30 @@ sealed class ProxyEngine(
     private InactivityTimer? _inactivityTimer;
     private CancellationToken? _cancellationToken;
 
-    public static X509Certificate2? Certificate => ProxyServer?.CertificateManager.RootCertificate;
+    //public static X509Certificate2? Certificate => proxyServer?.CertificateManager.RootCertificate;
 
     private ExceptionHandler ExceptionHandler => ex => _logger.LogError(ex, "An error occurred in a plugin");
 
-    static ProxyEngine()
-    {
-        ProxyServer = new();
-        ProxyServer.CertificateManager.PfxFilePath = Environment.GetEnvironmentVariable("DEV_PROXY_CERT_PATH") ?? string.Empty;
-        ProxyServer.CertificateManager.RootCertificateName = "Dev Proxy CA";
-        ProxyServer.CertificateManager.CertificateStorage = new CertificateDiskCache();
-        // we need to change this to a value lower than 397
-        // to avoid the ERR_CERT_VALIDITY_TOO_LONG error in Edge
-        ProxyServer.CertificateManager.CertificateValidDays = 365;
+    //static ProxyEngine()
+    //{
+    //    ProxyServer = new();
+    //    ProxyServer.CertificateManager.PfxFilePath = Environment.GetEnvironmentVariable("DEV_PROXY_CERT_PATH") ?? string.Empty;
+    //    ProxyServer.CertificateManager.RootCertificateName = "Dev Proxy CA";
+    //    ProxyServer.CertificateManager.CertificateStorage = new CertificateDiskCache();
+    //    // we need to change this to a value lower than 397
+    //    // to avoid the ERR_CERT_VALIDITY_TOO_LONG error in Edge
+    //    ProxyServer.CertificateManager.CertificateValidDays = 365;
 
-        using var joinableTaskContext = new JoinableTaskContext();
-        var joinableTaskFactory = new JoinableTaskFactory(joinableTaskContext);
-        _ = joinableTaskFactory.Run(async () => await ProxyServer.CertificateManager.LoadOrCreateRootCertificateAsync());
-    }
+    //    using var joinableTaskContext = new JoinableTaskContext();
+    //    var joinableTaskFactory = new JoinableTaskFactory(joinableTaskContext);
+    //    _ = joinableTaskFactory.Run(async () => await ProxyServer.CertificateManager.LoadOrCreateRootCertificateAsync());
+    //}
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _cancellationToken = stoppingToken;
 
-        Debug.Assert(ProxyServer is not null, "Proxy server is not initialized");
+        Debug.Assert(proxyServer is not null, "Proxy server is not initialized");
 
         if (!_urlsToWatch.Any())
         {
@@ -83,44 +86,64 @@ sealed class ProxyEngine(
 
         LoadHostNamesFromUrls();
 
-        ProxyServer.BeforeRequest += OnRequestAsync;
-        ProxyServer.BeforeResponse += OnBeforeResponseAsync;
-        ProxyServer.AfterResponse += OnAfterResponseAsync;
-        ProxyServer.ServerCertificateValidationCallback += OnCertificateValidationAsync;
-        ProxyServer.ClientCertificateSelectionCallback += OnCertificateSelectionAsync;
+        // TODO: Handle replacement of BeforeRequest
+        //proxyServer.BeforeRequest += OnRequestAsync;
+        proxyServerConfiguration.Events.OnRequest += OnRequestAsync;
 
-        var ipAddress = string.IsNullOrEmpty(_config.IPAddress) ? IPAddress.Any : IPAddress.Parse(_config.IPAddress);
-        _explicitEndPoint = new(ipAddress, _config.Port, true);
+        // TODO: Handle removal of BeforeResponse
+        //proxyServer.BeforeResponse += OnBeforeResponseAsync;
+
+        // TODO: Handle replacement of AfterResponse
+        //proxyServer.AfterResponse += OnAfterResponseAsync;
+        proxyServerConfiguration.Events.OnResponse += OnResponseAsync;
+
+        proxyServer.ServerCertificateValidationCallback += OnCertificateValidationAsync;
+        proxyServer.ClientCertificateSelectionCallback += OnCertificateSelectionAsync;
+
+        // Endpoint is configured in IServiceCollectionExtensions.AddProxyConfiguration
+        //var ipAddress = string.IsNullOrEmpty(_config.IPAddress) ? IPAddress.Any : IPAddress.Parse(_config.IPAddress);
+        //_explicitEndPoint = new(ipAddress, _config.Port, true);
+
+        // TODO: Implement process validation
         // Fired when a CONNECT request is received
-        _explicitEndPoint.BeforeTunnelConnectRequest += OnBeforeTunnelConnectRequestAsync;
+        //_explicitEndPoint.BeforeTunnelConnectRequest += OnBeforeTunnelConnectRequestAsync;
+        // This is superceeded by:
+        proxyServerConfiguration.Events.ShouldDecryptNewConnection = (host, cts) => Task.FromResult(IsProxiedHost(host));// || IsProxiedProcess(...));
         if (_config.InstallCert)
         {
-            await ProxyServer.CertificateManager.EnsureRootCertificateAsync(stoppingToken);
+            await proxyServer.CertificateManager.EnsureRootCertificateAsync(stoppingToken);
         }
         else
         {
-            _explicitEndPoint.GenericCertificate = await ProxyServer
-                .CertificateManager
-                .LoadRootCertificateAsync(stoppingToken);
+            // TODO: Remove this code, happens automatically
+            //_explicitEndPoint.GenericCertificate = await proxyServer
+            //    .CertificateManager
+            //    .LoadRootCertificateAsync(stoppingToken);
         }
 
-        ProxyServer.AddEndPoint(_explicitEndPoint);
-        await ProxyServer.StartAsync(cancellationToken: stoppingToken);
+        //proxyServer.AddEndPoint(_explicitEndPoint);
+        await proxyServer.StartAsync(cancellationToken: stoppingToken);
 
         // run first-run setup on macOS
         FirstRunSetup();
 
-        foreach (var endPoint in ProxyServer.ProxyEndPoints)
+        ExplicitProxyEndPoint? explicitProxyEndPoint = null;
+
+        foreach (var endPoint in proxyServer.ProxyEndPoints)
         {
             _logger.LogInformation("Dev Proxy listening on {IPAddress}:{Port}...", endPoint.IpAddress, endPoint.Port);
+            if (explicitProxyEndPoint is null && endPoint is ExplicitProxyEndPoint explicitProxyEnd)
+            {
+                explicitProxyEndPoint = explicitProxyEnd;
+            }
         }
 
         if (_config.AsSystemProxy)
         {
             if (RunTime.IsWindows)
             {
-                ProxyServer.SetAsSystemHttpProxy(_explicitEndPoint);
-                ProxyServer.SetAsSystemHttpsProxy(_explicitEndPoint);
+                proxyServer.SetAsSystemHttpProxy(explicitProxyEndPoint!);
+                proxyServer.SetAsSystemHttpsProxy(explicitProxyEndPoint!);
             }
             else if (RunTime.IsMac)
             {
@@ -162,7 +185,7 @@ sealed class ProxyEngine(
 
         try
         {
-            while (!stoppingToken.IsCancellationRequested && ProxyServer.ProxyRunning)
+            while (!stoppingToken.IsCancellationRequested && proxyServer.ProxyRunning)
             {
                 while (!Console.KeyAvailable)
                 {
@@ -294,22 +317,22 @@ sealed class ProxyEngine(
         // Unsubscribe & Quit
         try
         {
-            if (_explicitEndPoint != null)
-            {
-                _explicitEndPoint.BeforeTunnelConnectRequest -= OnBeforeTunnelConnectRequestAsync;
-            }
+            //if (_explicitEndPoint != null)
+            //{
+            //    _explicitEndPoint.BeforeTunnelConnectRequest -= OnBeforeTunnelConnectRequestAsync;
+            //}
 
-            if (ProxyServer is not null)
+            if (proxyServer is not null) // Irrelevant is always defined
             {
-                ProxyServer.BeforeRequest -= OnRequestAsync;
-                ProxyServer.BeforeResponse -= OnBeforeResponseAsync;
-                ProxyServer.AfterResponse -= OnAfterResponseAsync;
-                ProxyServer.ServerCertificateValidationCallback -= OnCertificateValidationAsync;
-                ProxyServer.ClientCertificateSelectionCallback -= OnCertificateSelectionAsync;
+                //ProxyServer.BeforeRequest -= OnRequestAsync;
+                //ProxyServer.BeforeResponse -= OnBeforeResponseAsync;
+                //ProxyServer.AfterResponse -= OnAfterResponseAsync;
+                proxyServer.ServerCertificateValidationCallback -= OnCertificateValidationAsync;
+                proxyServer.ClientCertificateSelectionCallback -= OnCertificateSelectionAsync;
 
-                if (ProxyServer.ProxyRunning)
+                if (proxyServer.ProxyRunning)
                 {
-                    ProxyServer.Stop();
+                    proxyServer.Stop();
                 }
             }
 
@@ -419,6 +442,37 @@ sealed class ProxyEngine(
         }
     }
 
+    // Unobtanium Request handler
+    private async Task<RequestEventResponse> OnRequestAsync(object sender, RequestEventArguments e, CancellationToken cancellationToken)
+    {
+        // Distributed tracing
+        using var activity = ActivitySource.StartActivity(nameof(OnRequestAsync), ActivityKind.Server, e.RequestActivity?.Context ?? default);
+        var uri = e.Request.RequestUri!;
+        var hashCode = e.RequestActivity?.GetHashCode() ?? e.Request.GetHashCode();
+        if (IsProxiedHost(uri.Host)) // && IsIncludedByHeaders??
+        {
+
+            if (!_pluginData.TryAdd(hashCode, []))
+            {
+                // Throwing here will break the request....
+                throw new InvalidOperationException($"Unable to initialize the plugin data storage for hash key {hashCode}");
+            }
+
+            // If I start this scope I no longer see logs appear
+            using var scope = _logger.BeginRequestScope(e.Request.Method, uri, hashCode);
+
+            _logger.LogInformation("OnRequestAsync {method} {url}", e.Request.Method, uri);
+
+            // This is definity not using structured logging...
+            _logger.LogRequest($"{e.Request.Method} {uri}", MessageType.InterceptedRequest, e.Request.Method.Method, uri.ToString()); //Logging context?
+
+            // Execute the required plugins here and decide what to return.
+            //return RequestEventResponse.EarlyResponse(new HttpResponseMessage(System.Net.HttpStatusCode.UnavailableForLegalReasons));
+        }
+        _logger.LogRequest("Done", MessageType.FinishedProcessingRequest);
+        return RequestEventResponse.ContinueResponse();
+    }
+
     private async Task HandleRequestAsync(SessionEventArgs e, ProxyRequestArgs proxyRequestArgs)
     {
         foreach (var plugin in _plugins.Where(p => p.Enabled))
@@ -445,6 +499,7 @@ sealed class ProxyEngine(
 
     private bool IsProxiedHost(string hostName)
     {
+        return true;
         var urlMatch = _hostsToWatch.FirstOrDefault(h => h.Url.IsMatch(hostName));
         return urlMatch is not null && !urlMatch.Exclude;
     }
@@ -488,6 +543,7 @@ sealed class ProxyEngine(
     }
 
     // Modify response
+    // OnBeforeResponseAsync is no longer supported, where was this used for?
     async Task OnBeforeResponseAsync(object sender, SessionEventArgs e)
     {
         // read response headers
@@ -527,6 +583,7 @@ sealed class ProxyEngine(
             }
         }
     }
+    
     async Task OnAfterResponseAsync(object sender, SessionEventArgs e)
     {
         // read response headers
@@ -573,6 +630,19 @@ sealed class ProxyEngine(
             // clean up
             _ = _pluginData.Remove(e.GetHashCode(), out _);
         }
+    }
+    
+    // Unobtanium ResponseHandler
+    private async Task<ResponseEventResponse> OnResponseAsync(object sender, ResponseEventArguments e, CancellationToken cancellationToken)
+    {
+        // Distributed tracing
+        using var activity = ActivitySource.StartActivity(nameof(OnResponseAsync), ActivityKind.Consumer, e.RequestActivity?.Context ?? default);
+        var uri = e.Request.RequestUri!;
+        if (IsProxiedHost(uri.Host)) // This is already checked but lets mimic the existing 
+        {
+
+        }
+        return ResponseEventResponse.ContinueResponse();
     }
 
     // Allows overriding default certificate validation logic
