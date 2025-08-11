@@ -33,6 +33,7 @@ public sealed class MinimalPermissionsGuidancePluginReport
 public sealed class MinimalPermissionsGuidancePluginConfiguration
 {
     public string? ApiSpecsFolderPath { get; set; }
+    public IEnumerable<string>? PermissionsToExclude { get; set; }
 }
 
 public sealed class MinimalPermissionsGuidancePlugin(
@@ -67,6 +68,7 @@ public sealed class MinimalPermissionsGuidancePlugin(
             Enabled = false;
             throw new InvalidOperationException($"ApiSpecsFolderPath '{Configuration.ApiSpecsFolderPath}' does not exist.");
         }
+        InitializePermissionsToExclude();
     }
 
     public override async Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
@@ -179,6 +181,15 @@ public sealed class MinimalPermissionsGuidancePlugin(
         StoreReport(report, e);
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
+    }
+
+    private void InitializePermissionsToExclude()
+    {
+        var key = nameof(MinimalPermissionsGuidancePluginConfiguration.PermissionsToExclude)
+            .ToCamelCase();
+
+        string[] defaultPermissionsToExclude = ["profile", "openid", "offline_access", "email"];
+        Configuration.PermissionsToExclude = GetConfigurationValue(key, Configuration.PermissionsToExclude, defaultPermissionsToExclude);
     }
 
     private async Task<Dictionary<string, OpenApiDocument>> LoadApiSpecsAsync(string apiSpecsFolderPath, CancellationToken cancellationToken)
