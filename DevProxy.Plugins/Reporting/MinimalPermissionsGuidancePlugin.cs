@@ -57,17 +57,7 @@ public sealed class MinimalPermissionsGuidancePlugin(
     {
         await base.InitializeAsync(e, cancellationToken);
 
-        if (string.IsNullOrWhiteSpace(Configuration.ApiSpecsFolderPath))
-        {
-            Enabled = false;
-            throw new InvalidOperationException("ApiSpecsFolderPath is required.");
-        }
-        Configuration.ApiSpecsFolderPath = ProxyUtils.GetFullPath(Configuration.ApiSpecsFolderPath, ProxyConfiguration.ConfigFile);
-        if (!Path.Exists(Configuration.ApiSpecsFolderPath))
-        {
-            Enabled = false;
-            throw new InvalidOperationException($"ApiSpecsFolderPath '{Configuration.ApiSpecsFolderPath}' does not exist.");
-        }
+        InitializeApiSpecsFolderPath();
         InitializePermissionsToExclude();
     }
 
@@ -181,6 +171,22 @@ public sealed class MinimalPermissionsGuidancePlugin(
         StoreReport(report, e);
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
+    }
+
+    private void InitializeApiSpecsFolderPath()
+    {
+        if (string.IsNullOrWhiteSpace(Configuration.ApiSpecsFolderPath))
+        {
+            Enabled = false;
+            throw new InvalidOperationException("ApiSpecsFolderPath is required.");
+        }
+
+        Configuration.ApiSpecsFolderPath = ProxyUtils.GetFullPath(Configuration.ApiSpecsFolderPath, ProxyConfiguration.ConfigFile);
+        if (!Path.Exists(Configuration.ApiSpecsFolderPath))
+        {
+            Enabled = false;
+            throw new InvalidOperationException($"ApiSpecsFolderPath '{Configuration.ApiSpecsFolderPath}' does not exist.");
+        }
     }
 
     private void InitializePermissionsToExclude()
