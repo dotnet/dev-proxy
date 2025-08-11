@@ -177,8 +177,7 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
 
         Logger.LogWarning("This plugin is in preview and may not return the correct results.\r\nPlease review the permissions and test your app before using them in production.\r\nIf you have any feedback, please open an issue at https://aka.ms/devproxy/issue.\r\n");
 
-        if (Configuration.PermissionsToExclude is not null &&
-            Configuration.PermissionsToExclude.Any())
+        if (Configuration.PermissionsToExclude?.Any() == true)
         {
             Logger.LogInformation("Excluding the following permissions: {Permissions}", string.Join(", ", Configuration.PermissionsToExclude));
         }
@@ -391,6 +390,6 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
     private static string GetTokenizedUrl(string absoluteUrl)
     {
         var sanitizedUrl = ProxyUtils.SanitizeUrl(absoluteUrl);
-        return "/" + string.Join("", new Uri(sanitizedUrl).Segments.Skip(2).Select(Uri.UnescapeDataString));
+        return "/" + string.Concat(new Uri(sanitizedUrl).Segments.Skip(2).Select(Uri.UnescapeDataString));
     }
 }

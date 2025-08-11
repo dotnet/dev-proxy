@@ -226,6 +226,6 @@ public sealed class GraphMinimalPermissionsPlugin(
     private static string GetTokenizedUrl(string absoluteUrl)
     {
         var sanitizedUrl = ProxyUtils.SanitizeUrl(absoluteUrl);
-        return "/" + string.Join("", new Uri(sanitizedUrl).Segments.Skip(2).Select(Uri.UnescapeDataString));
+        return "/" + string.Concat(new Uri(sanitizedUrl).Segments.Skip(2).Select(Uri.UnescapeDataString));
     }
 }
