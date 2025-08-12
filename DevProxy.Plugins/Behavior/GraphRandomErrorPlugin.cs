@@ -234,8 +234,12 @@ public sealed class GraphRandomErrorPlugin(
             try
             {
                 // pick a random error response for the current request method
+                // if the request has dependencies, use FailedDependency status code
+                // https://learn.microsoft.com/en-us/graph/json-batching?tabs=http#sequencing-requests-with-the-dependson-property
                 var methodStatusCodes = _methodStatusCode[request.Method];
-                var errorStatus = methodStatusCodes[_random.Next(0, methodStatusCodes.Length)];
+                var errorStatus = request.DependsOn is not null && request.DependsOn.Any() ?
+                    HttpStatusCode.FailedDependency :
+                    methodStatusCodes[_random.Next(0, methodStatusCodes.Length)];
 
                 var response = new GraphBatchResponsePayloadResponse
                 {
@@ -315,8 +319,8 @@ public sealed class GraphRandomErrorPlugin(
 
     private void UpdateProxyBatchResponse(ProxyRequestArgs ev, GraphBatchResponsePayload response)
     {
-        // failed batch uses a fixed 424 error status code
-        var errorStatus = HttpStatusCode.FailedDependency;
+        // failed batch uses 200 OK status code
+        var errorStatus = HttpStatusCode.OK;
 
         var session = ev.Session;
         var requestId = Guid.NewGuid().ToString();
