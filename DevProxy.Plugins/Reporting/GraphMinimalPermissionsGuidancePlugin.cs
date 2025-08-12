@@ -94,7 +94,7 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
             }
 
             var methodAndUrlString = request.Message;
-            var methodAndUrl = GetMethodAndUrl(methodAndUrlString);
+            var methodAndUrl = MethodAndUrlUtils.ToMethodAndUrl(methodAndUrlString);
             if (methodAndUrl.method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
@@ -375,16 +375,6 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
         {
             return (GraphPermissionsType.Application, []);
         }
-    }
-
-    private static (string method, string url) GetMethodAndUrl(string message)
-    {
-        var info = message.Split(" ");
-        if (info.Length > 2)
-        {
-            info = [info[0], string.Join(" ", info.Skip(1))];
-        }
-        return (method: info[0], url: info[1]);
     }
 
     private static string GetTokenizedUrl(string absoluteUrl)
