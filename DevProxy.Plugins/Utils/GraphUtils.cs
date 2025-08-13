@@ -47,9 +47,9 @@ sealed class GraphUtils(
         };
     }
 
-    internal async Task<IEnumerable<string>> UpdateUserScopesAsync(IEnumerable<string> minimalScopes, IEnumerable<(string method, string url)> endpoints, GraphPermissionsType permissionsType)
+    internal async Task<IEnumerable<string>> UpdateUserScopesAsync(IEnumerable<string> minimalScopes, IEnumerable<MethodAndUrl> endpoints, GraphPermissionsType permissionsType)
     {
-        var userEndpoints = endpoints.Where(e => e.url.Contains("/users/{", StringComparison.OrdinalIgnoreCase));
+        var userEndpoints = endpoints.Where(e => e.Url.Contains("/users/{", StringComparison.OrdinalIgnoreCase));
         if (!userEndpoints.Any())
         {
             return minimalScopes;
@@ -60,8 +60,8 @@ sealed class GraphUtils(
         var url = $"https://devxapi-func-prod-eastus.azurewebsites.net/permissions?scopeType={GetScopeTypeString(permissionsType)}";
         var urls = userEndpoints.Select(e =>
         {
-            _logger.LogDebug("Getting permissions for {Method} {Url}", e.method, e.url);
-            return $"{url}&requesturl={e.url}&method={e.method}";
+            _logger.LogDebug("Getting permissions for {Method} {Url}", e.Method, e.Url);
+            return $"{url}&requesturl={e.Url}&method={e.Method}";
         });
         var tasks = urls.Select(u =>
         {

@@ -4,9 +4,11 @@
 
 namespace DevProxy.Plugins.Utils;
 
+internal readonly record struct MethodAndUrl(string Method, string Url);
+
 internal static class MethodAndUrlUtils
 {
-    public static (string method, string url) ToMethodAndUrl(string methodAndUrlString)
+    public static MethodAndUrl ToMethodAndUrl(string methodAndUrlString)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(methodAndUrlString, nameof(methodAndUrlString));
 
@@ -15,6 +17,6 @@ internal static class MethodAndUrlUtils
         {
             info = [info[0], string.Join(" ", info.Skip(1))];
         }
-        return (method: info[0], url: info[1]);
+        return new(Method: info[0], Url: info[1]);
     }
 }

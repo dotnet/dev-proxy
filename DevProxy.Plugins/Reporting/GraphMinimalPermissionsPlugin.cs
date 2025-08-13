@@ -60,8 +60,7 @@ public sealed class GraphMinimalPermissionsPlugin(
             return;
         }
 
-        var methodAndUrlComparer = new MethodAndUrlComparer();
-        var endpoints = new List<(string method, string url)>();
+        var endpoints = new List<MethodAndUrl>();
 
         foreach (var request in e.RequestLogs)
         {
@@ -72,18 +71,18 @@ public sealed class GraphMinimalPermissionsPlugin(
 
             var methodAndUrlString = request.Message;
             var methodAndUrl = MethodAndUrlUtils.ToMethodAndUrl(methodAndUrlString);
-            if (methodAndUrl.method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase))
+            if (methodAndUrl.Method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
-            if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, methodAndUrl.url))
+            if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, methodAndUrl.Url))
             {
-                Logger.LogDebug("URL not matched: {Url}", methodAndUrl.url);
+                Logger.LogDebug("URL not matched: {Url}", methodAndUrl.Url);
                 continue;
             }
 
-            var uri = new Uri(methodAndUrl.url);
+            var uri = new Uri(methodAndUrl.Url);
             if (!ProxyUtils.IsGraphUrl(uri))
             {
                 continue;
@@ -97,13 +96,13 @@ public sealed class GraphMinimalPermissionsPlugin(
             }
             else
             {
-                methodAndUrl = (methodAndUrl.method, GetTokenizedUrl(methodAndUrl.url));
+                methodAndUrl = new(methodAndUrl.Method, GetTokenizedUrl(methodAndUrl.Url));
                 endpoints.Add(methodAndUrl);
             }
         }
 
         // Remove duplicates
-        endpoints = [.. endpoints.Distinct(methodAndUrlComparer)];
+        endpoints = [.. endpoints.Distinct()];
 
         if (endpoints.Count == 0)
         {
@@ -111,7 +110,7 @@ public sealed class GraphMinimalPermissionsPlugin(
             return;
         }
 
-        Logger.LogInformation("Retrieving minimal permissions for:\r\n{Endpoints}\r\n", string.Join(Environment.NewLine, endpoints.Select(e => $"- {e.method} {e.url}")));
+        Logger.LogInformation("Retrieving minimal permissions for:\r\n{Endpoints}\r\n", string.Join(Environment.NewLine, endpoints.Select(e => $"- {e.Method} {e.Url}")));
 
         Logger.LogWarning("This plugin is in preview and may not return the correct results.\r\nPlease review the permissions and test your app before using them in production.\r\nIf you have any feedback, please open an issue at https://aka.ms/devproxy/issue.\r\n");
 
@@ -125,7 +124,7 @@ public sealed class GraphMinimalPermissionsPlugin(
     }
 
     private async Task<GraphMinimalPermissionsPluginReport?> DetermineMinimalScopesAsync(
-        IEnumerable<(string method, string url)> endpoints,
+        IEnumerable<MethodAndUrl> endpoints,
         CancellationToken cancellationToken)
     {
         if (_graphUtils is null)
@@ -133,7 +132,7 @@ public sealed class GraphMinimalPermissionsPlugin(
             throw new InvalidOperationException("GraphUtils is not initialized. Make sure to call InitializeAsync first.");
         }
 
-        var payload = endpoints.Select(e => new GraphRequestInfo { Method = e.method, Url = e.url });
+        var payload = endpoints.Select(e => new GraphRequestInfo { Method = e.Method, Url = e.Url });
 
         try
         {
@@ -179,9 +178,9 @@ public sealed class GraphMinimalPermissionsPlugin(
         }
     }
 
-    private static (string method, string url)[] GetRequestsFromBatch(string batchBody, string graphVersion, string graphHostName)
+    private static MethodAndUrl[] GetRequestsFromBatch(string batchBody, string graphVersion, string graphHostName)
     {
-        var requests = new List<(string, string)>();
+        var requests = new List<MethodAndUrl>();
 
         if (string.IsNullOrEmpty(batchBody))
         {
@@ -203,7 +202,8 @@ public sealed class GraphMinimalPermissionsPlugin(
                     var method = request.Method;
                     var url = request.Url;
                     var absoluteUrl = $"https://{graphHostName}/{graphVersion}{url}";
-                    requests.Add((method, GetTokenizedUrl(absoluteUrl)));
+                    MethodAndUrl methodAndUrl = new(Method: method, Url: GetTokenizedUrl(absoluteUrl));
+                    requests.Add(methodAndUrl);
                 }
                 catch { }
             }
