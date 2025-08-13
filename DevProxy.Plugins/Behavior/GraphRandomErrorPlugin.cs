@@ -259,7 +259,13 @@ public sealed class GraphRandomErrorPlugin(
                 {
                     var retryAfterDate = DateTime.Now.AddSeconds(Configuration.RetryAfterInSeconds);
                     var requestUrl = ProxyUtils.GetAbsoluteRequestUrlFromBatch(e.Session.HttpClient.Request.RequestUri, request.Url);
-                    var throttledRequests = e.GlobalData[RetryAfterPlugin.ThrottledRequestsKey] as List<ThrottlerInfo>;
+
+                    if (!e.GlobalData.TryGetValue(RetryAfterPlugin.ThrottledRequestsKey, out var value))
+                    {
+                        value = new List<ThrottlerInfo>();
+                        e.GlobalData.Add(RetryAfterPlugin.ThrottledRequestsKey, value);
+                    }
+                    var throttledRequests = value as List<ThrottlerInfo>;
                     throttledRequests?.Add(new(GraphUtils.BuildThrottleKey(requestUrl), ShouldThrottle, retryAfterDate));
                     response.Headers = new() { { "Retry-After", Configuration.RetryAfterInSeconds.ToString(CultureInfo.InvariantCulture) } };
                 }
