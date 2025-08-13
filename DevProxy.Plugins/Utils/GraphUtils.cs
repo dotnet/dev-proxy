@@ -9,6 +9,8 @@ using Titanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Utils;
 
+internal readonly record struct MethodAndUrl(string Method, string Url);
+
 sealed class GraphUtils(
     HttpClient httpClient,
     ILogger<GraphUtils> logger)
@@ -96,4 +98,17 @@ sealed class GraphUtils(
 
         return newMinimalScopes;
     }
+
+    public static MethodAndUrl GetMethodAndUrl(string methodAndUrlString)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(methodAndUrlString, nameof(methodAndUrlString));
+
+        var info = methodAndUrlString.Split(" ");
+        if (info.Length > 2)
+        {
+            info = [info[0], string.Join(" ", info.Skip(1))];
+        }
+        return new(Method: info[0], Url: info[1]);
+    }
+
 }

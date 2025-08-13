@@ -93,7 +93,7 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
             }
 
             var methodAndUrlString = request.Message;
-            var methodAndUrl = MethodAndUrlUtils.ToMethodAndUrl(methodAndUrlString);
+            var methodAndUrl = GraphUtils.GetMethodAndUrl(methodAndUrlString);
             if (methodAndUrl.Method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
