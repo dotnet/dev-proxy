@@ -116,11 +116,11 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
             if (ProxyUtils.IsGraphBatchUrl(uri))
             {
                 var graphVersion = ProxyUtils.IsGraphBetaUrl(uri) ? "beta" : "v1.0";
-                requestsFromBatch = GetRequestsFromBatch(request.Context?.Session.HttpClient.Request.BodyString!, graphVersion, uri.Host);
+                requestsFromBatch = GraphUtils.GetRequestsFromBatch(request.Context?.Session.HttpClient.Request.BodyString!, graphVersion, uri.Host);
             }
             else
             {
-                methodAndUrl = new(methodAndUrl.Method, GetTokenizedUrl(methodAndUrl.Url));
+                methodAndUrl = new(methodAndUrl.Method, GraphUtils.GetTokenizedUrl(methodAndUrl.Url));
             }
 
             var (type, permissions) = GetPermissionsAndType(request);
@@ -288,41 +288,6 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
         }
     }
 
-    private static MethodAndUrl[] GetRequestsFromBatch(string batchBody, string graphVersion, string graphHostName)
-    {
-        var requests = new List<MethodAndUrl>();
-
-        if (string.IsNullOrEmpty(batchBody))
-        {
-            return [.. requests];
-        }
-
-        try
-        {
-            var batch = JsonSerializer.Deserialize<GraphBatchRequestPayload>(batchBody, ProxyUtils.JsonSerializerOptions);
-            if (batch == null)
-            {
-                return [.. requests];
-            }
-
-            foreach (var request in batch.Requests)
-            {
-                try
-                {
-                    var method = request.Method;
-                    var url = request.Url;
-                    var absoluteUrl = $"https://{graphHostName}/{graphVersion}{url}";
-                    MethodAndUrl methodAndUrl = new(Method: method, Url: GetTokenizedUrl(absoluteUrl));
-                    requests.Add(methodAndUrl);
-                }
-                catch { }
-            }
-        }
-        catch { }
-
-        return [.. requests];
-    }
-
     /// <summary>
     /// Returns permissions and type (delegated or application) from the access token
     /// used on the request.
@@ -375,11 +340,5 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
         {
             return (GraphPermissionsType.Application, []);
         }
-    }
-
-    private static string GetTokenizedUrl(string absoluteUrl)
-    {
-        var sanitizedUrl = ProxyUtils.SanitizeUrl(absoluteUrl);
-        return "/" + string.Concat(new Uri(sanitizedUrl).Segments.Skip(2).Select(Uri.UnescapeDataString));
     }
 }

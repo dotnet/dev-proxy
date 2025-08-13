@@ -91,12 +91,12 @@ public sealed class GraphMinimalPermissionsPlugin(
             if (ProxyUtils.IsGraphBatchUrl(uri))
             {
                 var graphVersion = ProxyUtils.IsGraphBetaUrl(uri) ? "beta" : "v1.0";
-                var requestsFromBatch = GetRequestsFromBatch(request.Context?.Session.HttpClient.Request.BodyString!, graphVersion, uri.Host);
+                var requestsFromBatch = GraphUtils.GetRequestsFromBatch(request.Context?.Session.HttpClient.Request.BodyString!, graphVersion, uri.Host);
                 endpoints.AddRange(requestsFromBatch);
             }
             else
             {
-                methodAndUrl = new(methodAndUrl.Method, GetTokenizedUrl(methodAndUrl.Url));
+                methodAndUrl = new(methodAndUrl.Method, GraphUtils.GetTokenizedUrl(methodAndUrl.Url));
                 endpoints.Add(methodAndUrl);
             }
         }
@@ -176,46 +176,5 @@ public sealed class GraphMinimalPermissionsPlugin(
             Logger.LogError(ex, "An error has occurred while retrieving minimal permissions:");
             return null;
         }
-    }
-
-    private static MethodAndUrl[] GetRequestsFromBatch(string batchBody, string graphVersion, string graphHostName)
-    {
-        var requests = new List<MethodAndUrl>();
-
-        if (string.IsNullOrEmpty(batchBody))
-        {
-            return [.. requests];
-        }
-
-        try
-        {
-            var batch = JsonSerializer.Deserialize<GraphBatchRequestPayload>(batchBody, ProxyUtils.JsonSerializerOptions);
-            if (batch == null)
-            {
-                return [.. requests];
-            }
-
-            foreach (var request in batch.Requests)
-            {
-                try
-                {
-                    var method = request.Method;
-                    var url = request.Url;
-                    var absoluteUrl = $"https://{graphHostName}/{graphVersion}{url}";
-                    MethodAndUrl methodAndUrl = new(Method: method, Url: GetTokenizedUrl(absoluteUrl));
-                    requests.Add(methodAndUrl);
-                }
-                catch { }
-            }
-        }
-        catch { }
-
-        return [.. requests];
-    }
-
-    private static string GetTokenizedUrl(string absoluteUrl)
-    {
-        var sanitizedUrl = ProxyUtils.SanitizeUrl(absoluteUrl);
-        return "/" + string.Concat(new Uri(sanitizedUrl).Segments.Skip(2).Select(Uri.UnescapeDataString));
     }
 }
