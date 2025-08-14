@@ -173,6 +173,11 @@ public sealed class MinimalPermissionsGuidancePlugin(
             ExcludedPermissions = Configuration.PermissionsToExclude
         };
 
+        if (Configuration.PermissionsToExclude?.Any() == true)
+        {
+            Logger.LogInformation("Excluding the following permissions: {Permissions}", string.Join(", ", Configuration.PermissionsToExclude));
+        }
+
         StoreReport(report, e);
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
