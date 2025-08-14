@@ -111,7 +111,10 @@ public sealed class MinimalPermissionsGuidancePlugin(
                     .Distinct()],
                 TokenPermissions = [.. minimalPermissions.TokenPermissions.Distinct()],
                 MinimalPermissions = minimalPermissions.MinimalScopes,
-                ExcessivePermissions = [.. minimalPermissions.TokenPermissions.Except(minimalPermissions.MinimalScopes)],
+                ExcessivePermissions = [.. minimalPermissions.TokenPermissions
+                    .Except(Configuration.PermissionsToExclude ?? [])
+                    .Except(minimalPermissions.MinimalScopes)
+                ],
                 UsesMinimalPermissions = !minimalPermissions.TokenPermissions.Except(minimalPermissions.MinimalScopes).Any()
             };
             results.Add(result);
