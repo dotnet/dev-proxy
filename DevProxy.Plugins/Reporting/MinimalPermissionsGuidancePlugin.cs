@@ -28,6 +28,7 @@ public sealed class MinimalPermissionsGuidancePluginReport
     public required IEnumerable<ApiPermissionError> Errors { get; init; }
     public required IEnumerable<MinimalPermissionsGuidancePluginReportApiResult> Results { get; init; }
     public required IEnumerable<string> UnmatchedRequests { get; init; }
+    public IEnumerable<string>? ExcludedPermissions { get; set; }
 }
 
 public sealed class MinimalPermissionsGuidancePluginConfiguration
@@ -168,7 +169,8 @@ public sealed class MinimalPermissionsGuidancePlugin(
         {
             Results = [.. results],
             UnmatchedRequests = [.. unmatchedRequests],
-            Errors = [.. errors]
+            Errors = [.. errors],
+            ExcludedPermissions = Configuration.PermissionsToExclude
         };
 
         StoreReport(report, e);
