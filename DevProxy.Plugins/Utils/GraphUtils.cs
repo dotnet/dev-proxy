@@ -12,8 +12,6 @@ using Titanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Utils;
 
-internal readonly record struct MethodAndUrl(string Method, string Url);
-
 sealed class GraphUtils(
     HttpClient httpClient,
     ILogger<GraphUtils> logger)
@@ -100,18 +98,6 @@ sealed class GraphUtils(
         _logger.LogDebug("Updated minimal scopes. Original: {Original}, New: {New}", string.Join(", ", minimalScopes), string.Join(", ", newMinimalScopes));
 
         return newMinimalScopes;
-    }
-
-    internal static MethodAndUrl GetMethodAndUrl(string methodAndUrlString)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(methodAndUrlString);
-
-        var info = methodAndUrlString.Split(" ");
-        if (info.Length > 2)
-        {
-            info = [info[0], string.Join(" ", info.Skip(1))];
-        }
-        return new(Method: info[0], Url: info[1]);
     }
 
     internal static string GetTokenizedUrl(string absoluteUrl)
