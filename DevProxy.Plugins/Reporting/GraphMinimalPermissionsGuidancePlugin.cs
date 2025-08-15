@@ -77,9 +77,8 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
             return;
         }
 
-        var methodAndUrlComparer = new MethodAndUrlComparer();
-        var delegatedEndpoints = new List<(string method, string url)>();
-        var applicationEndpoints = new List<(string method, string url)>();
+        var delegatedEndpoints = new List<MethodAndUrl>();
+        var applicationEndpoints = new List<MethodAndUrl>();
 
         // scope for delegated permissions
         IEnumerable<string> scopesToEvaluate = [];
@@ -94,21 +93,21 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
             }
 
             var methodAndUrlString = request.Message;
-            var methodAndUrl = GetMethodAndUrl(methodAndUrlString);
-            if (methodAndUrl.method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase))
+            var methodAndUrl = MethodAndUrlUtils.GetMethodAndUrl(methodAndUrlString);
+            if (methodAndUrl.Method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
-            if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, methodAndUrl.url))
+            if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, methodAndUrl.Url))
             {
-                Logger.LogDebug("URL not matched: {Url}", methodAndUrl.url);
+                Logger.LogDebug("URL not matched: {Url}", methodAndUrl.Url);
                 continue;
             }
 
-            var requestsFromBatch = Array.Empty<(string method, string url)>();
+            var requestsFromBatch = Array.Empty<MethodAndUrl>();
 
-            var uri = new Uri(methodAndUrl.url);
+            var uri = new Uri(methodAndUrl.Url);
             if (!ProxyUtils.IsGraphUrl(uri))
             {
                 continue;
@@ -117,11 +116,11 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
             if (ProxyUtils.IsGraphBatchUrl(uri))
             {
                 var graphVersion = ProxyUtils.IsGraphBetaUrl(uri) ? "beta" : "v1.0";
-                requestsFromBatch = GetRequestsFromBatch(request.Context?.Session.HttpClient.Request.BodyString!, graphVersion, uri.Host);
+                requestsFromBatch = GraphUtils.GetRequestsFromBatch(request.Context?.Session.HttpClient.Request.BodyString!, graphVersion, uri.Host);
             }
             else
             {
-                methodAndUrl = (methodAndUrl.method, GetTokenizedUrl(methodAndUrl.url));
+                methodAndUrl = new(methodAndUrl.Method, GraphUtils.GetTokenizedUrl(methodAndUrl.Url));
             }
 
             var (type, permissions) = GetPermissionsAndType(request);
@@ -162,8 +161,8 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
         }
 
         // Remove duplicates
-        delegatedEndpoints = [.. delegatedEndpoints.Distinct(methodAndUrlComparer)];
-        applicationEndpoints = [.. applicationEndpoints.Distinct(methodAndUrlComparer)];
+        delegatedEndpoints = [.. delegatedEndpoints.Distinct()];
+        applicationEndpoints = [.. applicationEndpoints.Distinct()];
 
         if (delegatedEndpoints.Count == 0 && applicationEndpoints.Count == 0)
         {
@@ -177,8 +176,7 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
 
         Logger.LogWarning("This plugin is in preview and may not return the correct results.\r\nPlease review the permissions and test your app before using them in production.\r\nIf you have any feedback, please open an issue at https://aka.ms/devproxy/issue.\r\n");
 
-        if (Configuration.PermissionsToExclude is not null &&
-            Configuration.PermissionsToExclude.Any())
+        if (Configuration.PermissionsToExclude?.Any() == true)
         {
             Logger.LogInformation("Excluding the following permissions: {Permissions}", string.Join(", ", Configuration.PermissionsToExclude));
         }
@@ -188,7 +186,7 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
             var delegatedPermissionsInfo = new GraphMinimalPermissionsInfo();
             report.DelegatedPermissions = delegatedPermissionsInfo;
 
-            Logger.LogInformation("Evaluating delegated permissions for: {Endpoints}", string.Join(", ", delegatedEndpoints.Select(e => $"{e.method} {e.url}")));
+            Logger.LogInformation("Evaluating delegated permissions for: {Endpoints}", string.Join(", ", delegatedEndpoints.Select(e => $"{e.Method} {e.Url}")));
 
             await EvaluateMinimalScopesAsync(delegatedEndpoints, scopesToEvaluate, GraphPermissionsType.Delegated, delegatedPermissionsInfo, cancellationToken);
         }
@@ -198,7 +196,7 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
             var applicationPermissionsInfo = new GraphMinimalPermissionsInfo();
             report.ApplicationPermissions = applicationPermissionsInfo;
 
-            Logger.LogInformation("Evaluating application permissions for: {Endpoints}", string.Join(", ", applicationEndpoints.Select(e => $"{e.method} {e.url}")));
+            Logger.LogInformation("Evaluating application permissions for: {Endpoints}", string.Join(", ", applicationEndpoints.Select(e => $"{e.Method} {e.Url}")));
 
             await EvaluateMinimalScopesAsync(applicationEndpoints, rolesToEvaluate, GraphPermissionsType.Application, applicationPermissionsInfo, cancellationToken);
         }
@@ -218,7 +216,7 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
     }
 
     private async Task EvaluateMinimalScopesAsync(
-        IEnumerable<(string method, string url)> endpoints,
+        IEnumerable<MethodAndUrl> endpoints,
         IEnumerable<string> permissionsFromAccessToken,
         GraphPermissionsType scopeType,
         GraphMinimalPermissionsInfo permissionsInfo,
@@ -229,12 +227,12 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
             throw new InvalidOperationException("GraphUtils is not initialized. Make sure to call InitializeAsync first.");
         }
 
-        var payload = endpoints.Select(e => new GraphRequestInfo { Method = e.method, Url = e.url });
+        var payload = endpoints.Select(e => new GraphRequestInfo { Method = e.Method, Url = e.Url });
 
         permissionsInfo.Operations = [.. endpoints.Select(e => new GraphMinimalPermissionsOperationInfo
         {
-            Method = e.method,
-            Endpoint = e.url
+            Method = e.Method,
+            Endpoint = e.Url
         })];
         permissionsInfo.PermissionsFromTheToken = permissionsFromAccessToken;
 
@@ -290,40 +288,6 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
         }
     }
 
-    private static (string method, string url)[] GetRequestsFromBatch(string batchBody, string graphVersion, string graphHostName)
-    {
-        var requests = new List<(string method, string url)>();
-
-        if (string.IsNullOrEmpty(batchBody))
-        {
-            return [.. requests];
-        }
-
-        try
-        {
-            var batch = JsonSerializer.Deserialize<GraphBatchRequestPayload>(batchBody, ProxyUtils.JsonSerializerOptions);
-            if (batch == null)
-            {
-                return [.. requests];
-            }
-
-            foreach (var request in batch.Requests)
-            {
-                try
-                {
-                    var method = request.Method;
-                    var url = request.Url;
-                    var absoluteUrl = $"https://{graphHostName}/{graphVersion}{url}";
-                    requests.Add((method, GetTokenizedUrl(absoluteUrl)));
-                }
-                catch { }
-            }
-        }
-        catch { }
-
-        return [.. requests];
-    }
-
     /// <summary>
     /// Returns permissions and type (delegated or application) from the access token
     /// used on the request.
@@ -376,21 +340,5 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
         {
             return (GraphPermissionsType.Application, []);
         }
-    }
-
-    private static (string method, string url) GetMethodAndUrl(string message)
-    {
-        var info = message.Split(" ");
-        if (info.Length > 2)
-        {
-            info = [info[0], string.Join(" ", info.Skip(1))];
-        }
-        return (method: info[0], url: info[1]);
-    }
-
-    private static string GetTokenizedUrl(string absoluteUrl)
-    {
-        var sanitizedUrl = ProxyUtils.SanitizeUrl(absoluteUrl);
-        return "/" + string.Join("", new Uri(sanitizedUrl).Segments.Skip(2).Select(Uri.UnescapeDataString));
     }
 }

@@ -62,8 +62,7 @@ public sealed class GraphMinimalPermissionsGuidancePluginReport : IMarkdownRepor
             transformPermissionsInfo(ApplicationPermissions, "application");
         }
 
-        if (ExcludedPermissions is not null &&
-            ExcludedPermissions.Any())
+        if (ExcludedPermissions?.Any() == true)
         {
             _ = sb.AppendLine("## Excluded permissions")
                 .AppendLine()
@@ -112,8 +111,7 @@ public sealed class GraphMinimalPermissionsGuidancePluginReport : IMarkdownRepor
             transformPermissionsInfo(ApplicationPermissions, "Application");
         }
 
-        if (ExcludedPermissions is not null &&
-            ExcludedPermissions.Any())
+        if (ExcludedPermissions?.Any() == true)
         {
             _ = sb.AppendLine("Excluded: permissions:")
                 .AppendLine()

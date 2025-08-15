@@ -34,7 +34,6 @@ public sealed class MockGeneratorPlugin(
 
         Logger.LogInformation("Creating mocks from recorded requests...");
 
-        var methodAndUrlComparer = new MethodAndUrlComparer();
         var mocks = new List<MockResponse>();
 
         foreach (var request in e.RequestLogs)

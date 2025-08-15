@@ -28,11 +28,13 @@ public sealed class MinimalPermissionsGuidancePluginReport
     public required IEnumerable<ApiPermissionError> Errors { get; init; }
     public required IEnumerable<MinimalPermissionsGuidancePluginReportApiResult> Results { get; init; }
     public required IEnumerable<string> UnmatchedRequests { get; init; }
+    public IEnumerable<string>? ExcludedPermissions { get; set; }
 }
 
 public sealed class MinimalPermissionsGuidancePluginConfiguration
 {
     public string? ApiSpecsFolderPath { get; set; }
+    public IEnumerable<string>? PermissionsToExclude { get; set; }
 }
 
 public sealed class MinimalPermissionsGuidancePlugin(
@@ -56,17 +58,8 @@ public sealed class MinimalPermissionsGuidancePlugin(
     {
         await base.InitializeAsync(e, cancellationToken);
 
-        if (string.IsNullOrWhiteSpace(Configuration.ApiSpecsFolderPath))
-        {
-            Enabled = false;
-            throw new InvalidOperationException("ApiSpecsFolderPath is required.");
-        }
-        Configuration.ApiSpecsFolderPath = ProxyUtils.GetFullPath(Configuration.ApiSpecsFolderPath, ProxyConfiguration.ConfigFile);
-        if (!Path.Exists(Configuration.ApiSpecsFolderPath))
-        {
-            Enabled = false;
-            throw new InvalidOperationException($"ApiSpecsFolderPath '{Configuration.ApiSpecsFolderPath}' does not exist.");
-        }
+        InitializeApiSpecsFolderPath();
+        InitializePermissionsToExclude();
     }
 
     public override async Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
@@ -110,6 +103,11 @@ public sealed class MinimalPermissionsGuidancePlugin(
         {
             var minimalPermissions = apiSpec.CheckMinimalPermissions(requests, Logger);
 
+            IEnumerable<string> excessivePermissions = [.. minimalPermissions.TokenPermissions
+                .Except(Configuration.PermissionsToExclude ?? [])
+                .Except(minimalPermissions.MinimalScopes)
+            ];
+
             var result = new MinimalPermissionsGuidancePluginReportApiResult
             {
                 ApiName = GetApiName(minimalPermissions.OperationsFromRequests.Any() ?
@@ -119,8 +117,8 @@ public sealed class MinimalPermissionsGuidancePlugin(
                     .Distinct()],
                 TokenPermissions = [.. minimalPermissions.TokenPermissions.Distinct()],
                 MinimalPermissions = minimalPermissions.MinimalScopes,
-                ExcessivePermissions = [.. minimalPermissions.TokenPermissions.Except(minimalPermissions.MinimalScopes)],
-                UsesMinimalPermissions = !minimalPermissions.TokenPermissions.Except(minimalPermissions.MinimalScopes).Any()
+                ExcessivePermissions = excessivePermissions,
+                UsesMinimalPermissions = !excessivePermissions.Any()
             };
             results.Add(result);
 
@@ -173,12 +171,43 @@ public sealed class MinimalPermissionsGuidancePlugin(
         {
             Results = [.. results],
             UnmatchedRequests = [.. unmatchedRequests],
-            Errors = [.. errors]
+            Errors = [.. errors],
+            ExcludedPermissions = Configuration.PermissionsToExclude
         };
+
+        if (Configuration.PermissionsToExclude?.Any() == true)
+        {
+            Logger.LogInformation("Excluding the following permissions: {Permissions}", string.Join(", ", Configuration.PermissionsToExclude));
+        }
 
         StoreReport(report, e);
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
+    }
+
+    private void InitializeApiSpecsFolderPath()
+    {
+        if (string.IsNullOrWhiteSpace(Configuration.ApiSpecsFolderPath))
+        {
+            Enabled = false;
+            throw new InvalidOperationException("ApiSpecsFolderPath is required.");
+        }
+
+        Configuration.ApiSpecsFolderPath = ProxyUtils.GetFullPath(Configuration.ApiSpecsFolderPath, ProxyConfiguration.ConfigFile);
+        if (!Path.Exists(Configuration.ApiSpecsFolderPath))
+        {
+            Enabled = false;
+            throw new InvalidOperationException($"ApiSpecsFolderPath '{Configuration.ApiSpecsFolderPath}' does not exist.");
+        }
+    }
+
+    private void InitializePermissionsToExclude()
+    {
+        var key = nameof(MinimalPermissionsGuidancePluginConfiguration.PermissionsToExclude)
+            .ToCamelCase();
+
+        string[] defaultPermissionsToExclude = ["profile", "openid", "offline_access", "email"];
+        Configuration.PermissionsToExclude = GetConfigurationValue(key, Configuration.PermissionsToExclude, defaultPermissionsToExclude);
     }
 
     private async Task<Dictionary<string, OpenApiDocument>> LoadApiSpecsAsync(string apiSpecsFolderPath, CancellationToken cancellationToken)

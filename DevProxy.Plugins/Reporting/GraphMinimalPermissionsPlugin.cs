@@ -60,8 +60,7 @@ public sealed class GraphMinimalPermissionsPlugin(
             return;
         }
 
-        var methodAndUrlComparer = new MethodAndUrlComparer();
-        var endpoints = new List<(string method, string url)>();
+        var endpoints = new List<MethodAndUrl>();
 
         foreach (var request in e.RequestLogs)
         {
@@ -71,19 +70,19 @@ public sealed class GraphMinimalPermissionsPlugin(
             }
 
             var methodAndUrlString = request.Message;
-            var methodAndUrl = GetMethodAndUrl(methodAndUrlString);
-            if (methodAndUrl.method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase))
+            var methodAndUrl = MethodAndUrlUtils.GetMethodAndUrl(methodAndUrlString);
+            if (methodAndUrl.Method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
-            if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, methodAndUrl.url))
+            if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, methodAndUrl.Url))
             {
-                Logger.LogDebug("URL not matched: {Url}", methodAndUrl.url);
+                Logger.LogDebug("URL not matched: {Url}", methodAndUrl.Url);
                 continue;
             }
 
-            var uri = new Uri(methodAndUrl.url);
+            var uri = new Uri(methodAndUrl.Url);
             if (!ProxyUtils.IsGraphUrl(uri))
             {
                 continue;
@@ -92,18 +91,18 @@ public sealed class GraphMinimalPermissionsPlugin(
             if (ProxyUtils.IsGraphBatchUrl(uri))
             {
                 var graphVersion = ProxyUtils.IsGraphBetaUrl(uri) ? "beta" : "v1.0";
-                var requestsFromBatch = GetRequestsFromBatch(request.Context?.Session.HttpClient.Request.BodyString!, graphVersion, uri.Host);
+                var requestsFromBatch = GraphUtils.GetRequestsFromBatch(request.Context?.Session.HttpClient.Request.BodyString!, graphVersion, uri.Host);
                 endpoints.AddRange(requestsFromBatch);
             }
             else
             {
-                methodAndUrl = (methodAndUrl.method, GetTokenizedUrl(methodAndUrl.url));
+                methodAndUrl = new(methodAndUrl.Method, GraphUtils.GetTokenizedUrl(methodAndUrl.Url));
                 endpoints.Add(methodAndUrl);
             }
         }
 
         // Remove duplicates
-        endpoints = [.. endpoints.Distinct(methodAndUrlComparer)];
+        endpoints = [.. endpoints.Distinct()];
 
         if (endpoints.Count == 0)
         {
@@ -111,7 +110,7 @@ public sealed class GraphMinimalPermissionsPlugin(
             return;
         }
 
-        Logger.LogInformation("Retrieving minimal permissions for:\r\n{Endpoints}\r\n", string.Join(Environment.NewLine, endpoints.Select(e => $"- {e.method} {e.url}")));
+        Logger.LogInformation("Retrieving minimal permissions for:\r\n{Endpoints}\r\n", string.Join(Environment.NewLine, endpoints.Select(e => $"- {e.Method} {e.Url}")));
 
         Logger.LogWarning("This plugin is in preview and may not return the correct results.\r\nPlease review the permissions and test your app before using them in production.\r\nIf you have any feedback, please open an issue at https://aka.ms/devproxy/issue.\r\n");
 
@@ -125,7 +124,7 @@ public sealed class GraphMinimalPermissionsPlugin(
     }
 
     private async Task<GraphMinimalPermissionsPluginReport?> DetermineMinimalScopesAsync(
-        IEnumerable<(string method, string url)> endpoints,
+        IEnumerable<MethodAndUrl> endpoints,
         CancellationToken cancellationToken)
     {
         if (_graphUtils is null)
@@ -133,7 +132,7 @@ public sealed class GraphMinimalPermissionsPlugin(
             throw new InvalidOperationException("GraphUtils is not initialized. Make sure to call InitializeAsync first.");
         }
 
-        var payload = endpoints.Select(e => new GraphRequestInfo { Method = e.method, Url = e.url });
+        var payload = endpoints.Select(e => new GraphRequestInfo { Method = e.Method, Url = e.Url });
 
         try
         {
@@ -177,55 +176,5 @@ public sealed class GraphMinimalPermissionsPlugin(
             Logger.LogError(ex, "An error has occurred while retrieving minimal permissions:");
             return null;
         }
-    }
-
-    private static (string method, string url)[] GetRequestsFromBatch(string batchBody, string graphVersion, string graphHostName)
-    {
-        var requests = new List<(string, string)>();
-
-        if (string.IsNullOrEmpty(batchBody))
-        {
-            return [.. requests];
-        }
-
-        try
-        {
-            var batch = JsonSerializer.Deserialize<GraphBatchRequestPayload>(batchBody, ProxyUtils.JsonSerializerOptions);
-            if (batch == null)
-            {
-                return [.. requests];
-            }
-
-            foreach (var request in batch.Requests)
-            {
-                try
-                {
-                    var method = request.Method;
-                    var url = request.Url;
-                    var absoluteUrl = $"https://{graphHostName}/{graphVersion}{url}";
-                    requests.Add((method, GetTokenizedUrl(absoluteUrl)));
-                }
-                catch { }
-            }
-        }
-        catch { }
-
-        return [.. requests];
-    }
-
-    private static (string method, string url) GetMethodAndUrl(string message)
-    {
-        var info = message.Split(" ");
-        if (info.Length > 2)
-        {
-            info = [info[0], string.Join(" ", info.Skip(1))];
-        }
-        return (info[0], info[1]);
-    }
-
-    private static string GetTokenizedUrl(string absoluteUrl)
-    {
-        var sanitizedUrl = ProxyUtils.SanitizeUrl(absoluteUrl);
-        return "/" + string.Join("", new Uri(sanitizedUrl).Segments.Skip(2).Select(Uri.UnescapeDataString));
     }
 }

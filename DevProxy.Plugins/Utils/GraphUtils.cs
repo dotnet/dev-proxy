@@ -2,9 +2,12 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Abstractions.Models;
+using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Models;
 using Microsoft.Extensions.Logging;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Titanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Utils;
@@ -47,9 +50,9 @@ sealed class GraphUtils(
         };
     }
 
-    internal async Task<IEnumerable<string>> UpdateUserScopesAsync(IEnumerable<string> minimalScopes, IEnumerable<(string method, string url)> endpoints, GraphPermissionsType permissionsType)
+    internal async Task<IEnumerable<string>> UpdateUserScopesAsync(IEnumerable<string> minimalScopes, IEnumerable<MethodAndUrl> endpoints, GraphPermissionsType permissionsType)
     {
-        var userEndpoints = endpoints.Where(e => e.url.Contains("/users/{", StringComparison.OrdinalIgnoreCase));
+        var userEndpoints = endpoints.Where(e => e.Url.Contains("/users/{", StringComparison.OrdinalIgnoreCase));
         if (!userEndpoints.Any())
         {
             return minimalScopes;
@@ -60,8 +63,8 @@ sealed class GraphUtils(
         var url = $"https://devxapi-func-prod-eastus.azurewebsites.net/permissions?scopeType={GetScopeTypeString(permissionsType)}";
         var urls = userEndpoints.Select(e =>
         {
-            _logger.LogDebug("Getting permissions for {Method} {Url}", e.method, e.url);
-            return $"{url}&requesturl={e.url}&method={e.method}";
+            _logger.LogDebug("Getting permissions for {Method} {Url}", e.Method, e.Url);
+            return $"{url}&requesturl={e.Url}&method={e.Method}";
         });
         var tasks = urls.Select(u =>
         {
@@ -95,5 +98,46 @@ sealed class GraphUtils(
         _logger.LogDebug("Updated minimal scopes. Original: {Original}, New: {New}", string.Join(", ", minimalScopes), string.Join(", ", newMinimalScopes));
 
         return newMinimalScopes;
+    }
+
+    internal static string GetTokenizedUrl(string absoluteUrl)
+    {
+        var sanitizedUrl = ProxyUtils.SanitizeUrl(absoluteUrl);
+        return "/" + string.Concat(new Uri(sanitizedUrl).Segments.Skip(2).Select(Uri.UnescapeDataString));
+    }
+
+    internal static MethodAndUrl[] GetRequestsFromBatch(string batchBody, string graphVersion, string graphHostName)
+    {
+        var requests = new List<MethodAndUrl>();
+
+        if (string.IsNullOrEmpty(batchBody))
+        {
+            return [.. requests];
+        }
+
+        try
+        {
+            var batch = JsonSerializer.Deserialize<GraphBatchRequestPayload>(batchBody, ProxyUtils.JsonSerializerOptions);
+            if (batch == null)
+            {
+                return [.. requests];
+            }
+
+            foreach (var request in batch.Requests)
+            {
+                try
+                {
+                    var method = request.Method;
+                    var url = request.Url;
+                    var absoluteUrl = $"https://{graphHostName}/{graphVersion}{url}";
+                    MethodAndUrl methodAndUrl = new(Method: method, Url: GetTokenizedUrl(absoluteUrl));
+                    requests.Add(methodAndUrl);
+                }
+                catch { }
+            }
+        }
+        catch { }
+
+        return [.. requests];
     }
 }
