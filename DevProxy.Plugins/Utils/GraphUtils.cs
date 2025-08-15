@@ -102,7 +102,7 @@ sealed class GraphUtils(
         return newMinimalScopes;
     }
 
-    public static MethodAndUrl GetMethodAndUrl(string methodAndUrlString)
+    internal static MethodAndUrl GetMethodAndUrl(string methodAndUrlString)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(methodAndUrlString);
 
@@ -114,13 +114,13 @@ sealed class GraphUtils(
         return new(Method: info[0], Url: info[1]);
     }
 
-    public static string GetTokenizedUrl(string absoluteUrl)
+    internal static string GetTokenizedUrl(string absoluteUrl)
     {
         var sanitizedUrl = ProxyUtils.SanitizeUrl(absoluteUrl);
         return "/" + string.Concat(new Uri(sanitizedUrl).Segments.Skip(2).Select(Uri.UnescapeDataString));
     }
 
-    public static MethodAndUrl[] GetRequestsFromBatch(string batchBody, string graphVersion, string graphHostName)
+    internal static MethodAndUrl[] GetRequestsFromBatch(string batchBody, string graphVersion, string graphHostName)
     {
         var requests = new List<MethodAndUrl>();
 
