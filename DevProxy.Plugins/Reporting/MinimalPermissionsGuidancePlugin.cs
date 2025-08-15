@@ -13,24 +13,6 @@ using Microsoft.OpenApi.Readers;
 
 namespace DevProxy.Plugins.Reporting;
 
-public sealed class MinimalPermissionsGuidancePluginReportApiResult
-{
-    public required string ApiName { get; init; }
-    public required IEnumerable<string> ExcessivePermissions { get; init; }
-    public required IEnumerable<string> MinimalPermissions { get; init; }
-    public required IEnumerable<string> Requests { get; init; }
-    public required IEnumerable<string> TokenPermissions { get; init; }
-    public required bool UsesMinimalPermissions { get; init; }
-}
-
-public sealed class MinimalPermissionsGuidancePluginReport
-{
-    public required IEnumerable<ApiPermissionError> Errors { get; init; }
-    public required IEnumerable<MinimalPermissionsGuidancePluginReportApiResult> Results { get; init; }
-    public required IEnumerable<string> UnmatchedRequests { get; init; }
-    public IEnumerable<string>? ExcludedPermissions { get; set; }
-}
-
 public sealed class MinimalPermissionsGuidancePluginConfiguration
 {
     public string? ApiSpecsFolderPath { get; set; }
