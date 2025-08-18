@@ -430,6 +430,13 @@ public static class ProxyUtils
         }
     }
 
+    public static bool MatchesUrlToWatch(ISet<UrlToWatch> watchedUrls, Uri? url, bool evaluateWildcards = false)
+    {
+        ArgumentNullException.ThrowIfNull(watchedUrls);
+        ArgumentNullException.ThrowIfNull(url);
+        return MatchesUrlToWatch(watchedUrls, url!.AbsoluteUri, evaluateWildcards);
+    }
+
     public static bool MatchesUrlToWatch(ISet<UrlToWatch> watchedUrls, string url, bool evaluateWildcards = false)
     {
         ArgumentNullException.ThrowIfNull(watchedUrls);

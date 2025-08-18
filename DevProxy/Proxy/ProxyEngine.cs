@@ -415,12 +415,15 @@ sealed class ProxyEngine(
 
         HttpResponseMessage? response = null;
         HttpRequestMessage? request = null;
-        foreach (var plugin in _plugins.Where(p => p.Enabled && p.OnRequestAsync is not null))
+        foreach (var plugin in _plugins
+            .Where(p =>
+                p.Enabled
+                && p.OnRequestAsync is not null)) // Only plugins that have OnRequestAsync defined, maybe pre-select matches based on url?
         {
             cts.Token.ThrowIfCancellationRequested();
             try
             {
-                var result = await plugin.OnRequestAsync!(new Abstractions.Models.RequestArguments(arguments.Request), cts.Token);
+                var result = await plugin.OnRequestAsync!(new Abstractions.Models.RequestArguments(arguments.Request, arguments.RequestId), cts.Token);
                 if (result is not null)
                 {
                     if (result.Request is not null)
@@ -431,12 +434,9 @@ sealed class ProxyEngine(
                     else if (result.Response is not null)
                     {
                         response = result.Response;
-                        // TODO: Decide what to do in this case, continue processing or return the response?
-                    }
-                    else
-                    {
-                        // If both are null, we continue processing
-                        continue;
+                        // Plugins no longer have to check if the response is already been set.
+                        // If a plugin sets a response, it is expected to be the final response.
+                        break;
                     }
                 }
             }

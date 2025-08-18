@@ -21,11 +21,11 @@ public abstract class BasePlugin(
 {
     public bool Enabled { get; protected set; } = true;
     protected ILogger Logger { get; } = logger;
-    protected ISet<UrlToWatch> UrlsToWatch { get; } = urlsToWatch;
+    public ISet<UrlToWatch> UrlsToWatch { get; } = urlsToWatch;
 
     public abstract string Name { get; }
-    public Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync { get; set; }
-    public Func<ResponseEventArguments, CancellationToken, Task<ResponseEventResponse?>>? OnResponseAsync { get; set; }
+    public virtual Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync { get; }
+    public virtual Func<ResponseEventArguments, CancellationToken, Task<ResponseEventResponse?>>? OnResponseAsync { get; }
 
     public virtual Option[] GetOptions() => [];
     public virtual Command[] GetCommands() => [];
