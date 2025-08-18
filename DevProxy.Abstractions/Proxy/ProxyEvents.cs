@@ -2,10 +2,8 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using DevProxy.Abstractions.Utils;
 using System.CommandLine;
 using System.Text.Json.Serialization;
-using Unobtanium.Web.Proxy.EventArguments;
 
 namespace DevProxy.Abstractions.Proxy;
 
@@ -15,16 +13,16 @@ public class ProxyEventArgsBase
     public Dictionary<string, object> GlobalData { get; init; } = [];
 }
 
-public class ProxyHttpEventArgsBase(SessionEventArgs session) : ProxyEventArgsBase
+public class ProxyHttpEventArgsBase(object session) : ProxyEventArgsBase
 {
-    public SessionEventArgs Session { get; } = session ??
+    public object Session { get; } = session ??
         throw new ArgumentNullException(nameof(session));
 
-    public bool HasRequestUrlMatch(ISet<UrlToWatch> watchedUrls) =>
-        ProxyUtils.MatchesUrlToWatch(watchedUrls, Session.HttpClient.Request.RequestUri.AbsoluteUri);
+    public static bool HasRequestUrlMatch(ISet<UrlToWatch> _) => true;
+    //ProxyUtils.MatchesUrlToWatch(watchedUrls, Session.HttpClient.Request.RequestUri.AbsoluteUri);
 }
 
-public class ProxyRequestArgs(SessionEventArgs session, ResponseState responseState) :
+public class ProxyRequestArgs(object session, ResponseState responseState) :
     ProxyHttpEventArgsBase(session)
 {
     public ResponseState ResponseState { get; } = responseState ??
@@ -35,7 +33,7 @@ public class ProxyRequestArgs(SessionEventArgs session, ResponseState responseSt
         && HasRequestUrlMatch(watchedUrls);
 }
 
-public class ProxyResponseArgs(SessionEventArgs session, ResponseState responseState) :
+public class ProxyResponseArgs(object session, ResponseState responseState) :
     ProxyHttpEventArgsBase(session)
 {
     public ResponseState ResponseState { get; } = responseState ??
@@ -55,41 +53,49 @@ public class OptionsLoadedArgs(ParseResult parseResult)
 
 public class RequestLog
 {
+    //[JsonIgnore]
+    //public LoggingContext? Context { get; set; }
     [JsonIgnore]
-    public LoggingContext? Context { get; set; }
+    public HttpRequestMessage? Request { get; internal set; }
     public string Message { get; set; }
     public MessageType MessageType { get; set; }
     public string? Method { get; init; }
     public string? PluginName { get; set; }
     public string? Url { get; init; }
 
-    public RequestLog(string message, MessageType messageType, LoggingContext? context) :
-        this(message, messageType, context?.Session.HttpClient.Request.Method, context?.Session.HttpClient.Request.Url, context)
+    public RequestLog(string message, MessageType messageType, object? context)
     {
+        throw new NotImplementedException("This constructor is not implemented. Use the other constructors instead.");
+    }
+
+    public RequestLog(string message, MessageType messageType, HttpRequestMessage requestMessage) :
+        this(message, messageType, requestMessage?.Method.Method, requestMessage?.RequestUri!.AbsoluteUri, _: null)
+    {
+        Request = requestMessage;
     }
 
     public RequestLog(string message, MessageType messageType, string method, string url) :
-        this(message, messageType, method, url, context: null)
+        this(message, messageType, method, url, _: null)
     {
     }
 
-    private RequestLog(string message, MessageType messageType, string? method, string? url, LoggingContext? context)
+    private RequestLog(string message, MessageType messageType, string? method, string? url, object? _)
     {
         Message = message ?? throw new ArgumentNullException(nameof(message));
         MessageType = messageType;
-        Context = context;
+        //Context = context;
         Method = method;
         Url = url;
     }
 
-    public void Deconstruct(out string message, out MessageType messageType, out LoggingContext? context, out string? method, out string? url)
-    {
-        message = Message;
-        messageType = MessageType;
-        context = Context;
-        method = Method;
-        url = Url;
-    }
+    //public void Deconstruct(out string message, out MessageType messageType, out LoggingContext? context, out string? method, out string? url)
+    //{
+    //    message = Message;
+    //    messageType = MessageType;
+    //    context = Context;
+    //    method = Method;
+    //    url = Url;
+    //}
 }
 
 public class RecordingArgs(IEnumerable<RequestLog> requestLogs) : ProxyEventArgsBase

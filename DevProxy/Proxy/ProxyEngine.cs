@@ -5,16 +5,14 @@
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
+using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Net.Http.Headers;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using Unobtanium.Web.Proxy;
 using Unobtanium.Web.Proxy.Events;
-using Unobtanium.Web.Proxy.EventArguments;
-using Unobtanium.Web.Proxy.Helpers;
-using Unobtanium.Web.Proxy.Http;
-using Unobtanium.Web.Proxy.Models;
-using Org.BouncyCastle.Asn1.X509.Qualified;
 
 namespace DevProxy.Proxy;
 
@@ -30,8 +28,8 @@ sealed class ProxyEngine(
     ISet<UrlToWatch> urlsToWatch,
     IProxyStateController proxyController,
     ILogger<ProxyEngine> logger,
-    ProxyServer proxyServer,
-    ProxyServerConfiguration proxyServerConfiguration) : BackgroundService, IDisposable
+    ProxyServerEvents proxyEvents,
+    ICertificateManager certificateManager) : BackgroundService, IDisposable
 {
     internal const string ACTIVITY_SOURCE_NAME = "DevProxy.Proxy.ProxyEngine";
     public static readonly ActivitySource ActivitySource = new(ACTIVITY_SOURCE_NAME);
@@ -49,13 +47,13 @@ sealed class ProxyEngine(
     private readonly IProxyStateController _proxyController = proxyController;
     // Dictionary for plugins to store data between requests
     // the key is HashObject of the SessionEventArgs object
-    private readonly ConcurrentDictionary<int, Dictionary<string, object>> _pluginData = [];
+    private readonly ConcurrentDictionary<string, Dictionary<string, object>> _pluginData = [];
     private InactivityTimer? _inactivityTimer;
     private CancellationToken? _cancellationToken;
 
     //public static X509Certificate2? Certificate => proxyServer?.CertificateManager.RootCertificate;
 
-    private ExceptionHandler ExceptionHandler => ex => _logger.LogError(ex, "An error occurred in a plugin");
+    //private ExceptionHandler ExceptionHandler => ex => _logger.LogError(ex, "An error occurred in a plugin");
 
     //static ProxyEngine()
     //{
@@ -76,7 +74,7 @@ sealed class ProxyEngine(
     {
         _cancellationToken = stoppingToken;
 
-        Debug.Assert(proxyServer is not null, "Proxy server is not initialized");
+        Debug.Assert(proxyEvents is not null, "Proxy server is not initialized");
 
         if (!_urlsToWatch.Any())
         {
@@ -88,17 +86,17 @@ sealed class ProxyEngine(
 
         // TODO: Handle replacement of BeforeRequest
         //proxyServer.BeforeRequest += OnRequestAsync;
-        proxyServerConfiguration.Events.OnRequest += OnRequestAsync;
+        proxyEvents.OnRequest += OnRequestAsync;
 
         // TODO: Handle removal of BeforeResponse
         //proxyServer.BeforeResponse += OnBeforeResponseAsync;
 
         // TODO: Handle replacement of AfterResponse
         //proxyServer.AfterResponse += OnAfterResponseAsync;
-        proxyServerConfiguration.Events.OnResponse += OnResponseAsync;
+        proxyEvents.OnResponse += OnResponseAsync;
 
-        proxyServer.ServerCertificateValidationCallback += OnCertificateValidationAsync;
-        proxyServer.ClientCertificateSelectionCallback += OnCertificateSelectionAsync;
+        //proxyServer.ServerCertificateValidationCallback += OnCertificateValidationAsync;
+        //proxyServer.ClientCertificateSelectionCallback += OnCertificateSelectionAsync;
 
         // Endpoint is configured in IServiceCollectionExtensions.AddProxyConfiguration
         //var ipAddress = string.IsNullOrEmpty(_config.IPAddress) ? IPAddress.Any : IPAddress.Parse(_config.IPAddress);
@@ -108,10 +106,11 @@ sealed class ProxyEngine(
         // Fired when a CONNECT request is received
         //_explicitEndPoint.BeforeTunnelConnectRequest += OnBeforeTunnelConnectRequestAsync;
         // This is superceeded by:
-        proxyServerConfiguration.Events.ShouldDecryptNewConnection = (host, cts) => Task.FromResult(IsProxiedHost(host));// || IsProxiedProcess(...));
+        proxyEvents.ShouldDecryptNewConnection = (host, client, cts) => Task.FromResult(IsProxiedHost(host));// || IsProxiedProcess(...));
         if (_config.InstallCert)
         {
-            await proxyServer.CertificateManager.EnsureRootCertificateAsync(stoppingToken);
+            _ = await certificateManager.GetRootCertificateAsync(false, stoppingToken);
+            // TODO: Execute code to trust certificate
         }
         else
         {
@@ -122,30 +121,29 @@ sealed class ProxyEngine(
         }
 
         //proxyServer.AddEndPoint(_explicitEndPoint);
-        await proxyServer.StartAsync(cancellationToken: stoppingToken);
+        //await proxyServer.StartAsync(cancellationToken: stoppingToken);
 
         // run first-run setup on macOS
         FirstRunSetup();
 
-        ExplicitProxyEndPoint? explicitProxyEndPoint = null;
+        //ExplicitProxyEndPoint? explicitProxyEndPoint = null;
 
-        foreach (var endPoint in proxyServer.ProxyEndPoints)
-        {
-            _logger.LogInformation("Dev Proxy listening on {IPAddress}:{Port}...", endPoint.IpAddress, endPoint.Port);
-            if (explicitProxyEndPoint is null && endPoint is ExplicitProxyEndPoint explicitProxyEnd)
-            {
-                explicitProxyEndPoint = explicitProxyEnd;
-            }
-        }
+        //foreach (var endPoint in proxyServer.ProxyEndPoints)
+        //{
+        //    _logger.LogInformation("Dev Proxy listening on {IPAddress}:{Port}...", endPoint.IpAddress, endPoint.Port);
+        //    if (explicitProxyEndPoint is null && endPoint is ExplicitProxyEndPoint explicitProxyEnd)
+        //    {
+        //        explicitProxyEndPoint = explicitProxyEnd;
+        //    }
+        //}
 
         if (_config.AsSystemProxy)
         {
-            if (RunTime.IsWindows)
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                proxyServer.SetAsSystemHttpProxy(explicitProxyEndPoint!);
-                proxyServer.SetAsSystemHttpsProxy(explicitProxyEndPoint!);
+                //TODO: Implement Windows system proxy toggle
             }
-            else if (RunTime.IsMac)
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             {
                 ToggleSystemProxy(ToggleSystemProxyAction.On, _config.IPAddress, _config.Port);
             }
@@ -185,7 +183,7 @@ sealed class ProxyEngine(
 
         try
         {
-            while (!stoppingToken.IsCancellationRequested && proxyServer.ProxyRunning)
+            while (!stoppingToken.IsCancellationRequested)
             {
                 while (!Console.KeyAvailable)
                 {
@@ -203,7 +201,7 @@ sealed class ProxyEngine(
 
     private void FirstRunSetup()
     {
-        if (!RunTime.IsMac ||
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ||
             _config.NoFirstRun ||
             !HasRunFlag.CreateIfMissing() ||
             !_config.InstallCert)
@@ -321,24 +319,11 @@ sealed class ProxyEngine(
             //{
             //    _explicitEndPoint.BeforeTunnelConnectRequest -= OnBeforeTunnelConnectRequestAsync;
             //}
-
-            if (proxyServer is not null) // Irrelevant is always defined
-            {
-                //ProxyServer.BeforeRequest -= OnRequestAsync;
-                //ProxyServer.BeforeResponse -= OnBeforeResponseAsync;
-                //ProxyServer.AfterResponse -= OnAfterResponseAsync;
-                proxyServer.ServerCertificateValidationCallback -= OnCertificateValidationAsync;
-                proxyServer.ClientCertificateSelectionCallback -= OnCertificateSelectionAsync;
-
-                if (proxyServer.ProxyRunning)
-                {
-                    proxyServer.Stop();
-                }
-            }
+            // proxyServer is stopped automatically when the service is stopped
 
             _inactivityTimer?.Stop();
 
-            if (RunTime.IsMac && _config.AsSystemProxy)
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX) && _config.AsSystemProxy)
             {
                 ToggleSystemProxy(ToggleSystemProxyAction.Off);
             }
@@ -357,18 +342,7 @@ sealed class ProxyEngine(
         await base.StopAsync(cancellationToken);
     }
 
-    async Task OnBeforeTunnelConnectRequestAsync(object sender, TunnelConnectSessionEventArgs e)
-    {
-        // Ensures that only the targeted Https domains are proxyied
-        if (!IsProxiedHost(e.HttpClient.Request.RequestUri.Host) ||
-            !IsProxiedProcess(e))
-        {
-            e.DecryptSsl = false;
-        }
-        await Task.CompletedTask;
-    }
-
-    private bool IsProxiedProcess(TunnelConnectSessionEventArgs e)
+    private bool IsProxiedProcess(ClientDetails clientDetails)
     {
         // If no process names or IDs are specified, we proxy all processes
         if (!_config.WatchPids.Any() &&
@@ -377,14 +351,13 @@ sealed class ProxyEngine(
             return true;
         }
 
-        var processId = GetProcessId(e);
+        var processId = GetProcessId(clientDetails);
         if (processId == -1)
         {
             return false;
         }
 
-        if (_config.WatchPids.Any() &&
-            _config.WatchPids.Contains(processId))
+        if (_config.WatchPids.Contains(processId))
         {
             return true;
         }
@@ -401,110 +374,105 @@ sealed class ProxyEngine(
         return false;
     }
 
-    async Task OnRequestAsync(object sender, SessionEventArgs e)
+    async Task<RequestEventResponse> OnRequestAsync(object _, RequestEventArguments requestEventArguments, CancellationToken cancellationToken)
     {
         _inactivityTimer?.Reset();
-        if (IsProxiedHost(e.HttpClient.Request.RequestUri.Host) &&
-            IsIncludedByHeaders(e.HttpClient.Request.Headers))
+        if (IsProxiedHost(requestEventArguments.Request.RequestUri!.Host) &&
+            IsIncludedByHeaders(requestEventArguments.Request.Headers))
         {
-            if (!_pluginData.TryAdd(e.GetHashCode(), []))
+            if (!_pluginData.TryAdd(requestEventArguments.RequestId, []))
             {
-                throw new InvalidOperationException($"Unable to initialize the plugin data storage for hash key {e.GetHashCode()}");
-            }
-            var responseState = new ResponseState();
-            var proxyRequestArgs = new ProxyRequestArgs(e, responseState)
-            {
-                SessionData = _pluginData[e.GetHashCode()],
-                GlobalData = _proxyController.ProxyState.GlobalData
-            };
-            if (!proxyRequestArgs.HasRequestUrlMatch(_urlsToWatch))
-            {
-                return;
+                throw new InvalidOperationException($"Unable to initialize the plugin data storage for hash key {requestEventArguments.RequestId}");
             }
 
-            // we need to keep the request body for further processing
-            // by plugins
-            e.HttpClient.Request.KeepBody = true;
-            if (e.HttpClient.Request.HasBody)
+            if (!ProxyUtils.MatchesUrlToWatch(_urlsToWatch, requestEventArguments.Request.RequestUri.AbsoluteUri))
             {
-                _ = await e.GetRequestBodyAsString();
+                return RequestEventResponse.ContinueResponse();
             }
 
-            using var scope = _logger.BeginScope(e.HttpClient.Request.Method ?? "", e.HttpClient.Request.Url, e.GetHashCode());
-
-            e.UserData = e.HttpClient.Request;
-
-            var loggingContext = new LoggingContext(e);
-            _logger.LogRequest($"{e.HttpClient.Request.Method} {e.HttpClient.Request.Url}", MessageType.InterceptedRequest, loggingContext);
-            _logger.LogRequest($"{DateTimeOffset.UtcNow}", MessageType.Timestamp, loggingContext);
-
-            await HandleRequestAsync(e, proxyRequestArgs);
-        }
-    }
-
-    // Unobtanium Request handler
-    private async Task<RequestEventResponse> OnRequestAsync(object sender, RequestEventArguments e, CancellationToken cancellationToken)
-    {
-        // Distributed tracing
-        using var activity = ActivitySource.StartActivity(nameof(OnRequestAsync), ActivityKind.Server, e.RequestActivity?.Context ?? default);
-        var uri = e.Request.RequestUri!;
-        var hashCode = e.RequestActivity?.GetHashCode() ?? e.Request.GetHashCode();
-        if (IsProxiedHost(uri.Host)) // && IsIncludedByHeaders??
-        {
-
-            if (!_pluginData.TryAdd(hashCode, []))
+            if (!_pluginData.TryAdd(requestEventArguments.RequestId, []))
             {
                 // Throwing here will break the request....
-                throw new InvalidOperationException($"Unable to initialize the plugin data storage for hash key {hashCode}");
+                throw new InvalidOperationException($"Unable to initialize the plugin data storage for hash key {requestEventArguments.RequestId}");
             }
 
-            // If I start this scope I no longer see logs appear
-            using var scope = _logger.BeginRequestScope(e.Request.Method, uri, hashCode);
+            using var scope = _logger.BeginRequestScope(requestEventArguments.Request.Method, requestEventArguments.Request.RequestUri, requestEventArguments.RequestId);
 
-            _logger.LogInformation("OnRequestAsync {method} {url}", e.Request.Method, uri);
 
-            // This is definity not using structured logging...
-            _logger.LogRequest($"{e.Request.Method} {uri}", MessageType.InterceptedRequest, e.Request.Method.Method, uri.ToString()); //Logging context?
+            //var loggingContext = new LoggingContext(e);
+            _logger.LogRequest($"{requestEventArguments.Request.Method} {requestEventArguments.Request.RequestUri}", MessageType.InterceptedRequest, requestEventArguments.Request);
+            _logger.LogRequest($"{DateTimeOffset.UtcNow}", MessageType.Timestamp, requestEventArguments.Request);
 
-            // Execute the required plugins here and decide what to return.
-            //return RequestEventResponse.EarlyResponse(new HttpResponseMessage(System.Net.HttpStatusCode.UnavailableForLegalReasons));
+            return await HandleRequestAsync(requestEventArguments, cancellationToken);
         }
-        _logger.LogRequest("Done", MessageType.FinishedProcessingRequest);
+
         return RequestEventResponse.ContinueResponse();
     }
 
-    private async Task HandleRequestAsync(SessionEventArgs e, ProxyRequestArgs proxyRequestArgs)
+    private async Task<RequestEventResponse> HandleRequestAsync(RequestEventArguments arguments, CancellationToken cancellationToken)
     {
-        foreach (var plugin in _plugins.Where(p => p.Enabled))
-        {
-            _cancellationToken?.ThrowIfCancellationRequested();
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cancellationToken ?? CancellationToken.None);
 
+        HttpResponseMessage? response = null;
+        HttpRequestMessage? request = null;
+        foreach (var plugin in _plugins.Where(p => p.Enabled && p.OnRequestAsync is not null))
+        {
+            cts.Token.ThrowIfCancellationRequested();
             try
             {
-                await plugin.BeforeRequestAsync(proxyRequestArgs, _cancellationToken ?? CancellationToken.None);
+                var result = await plugin.OnRequestAsync!(new Abstractions.Models.RequestArguments(arguments.Request), cts.Token);
+                if (result is not null)
+                {
+                    if (result.Request is not null)
+                    {
+                        request = result.Request;
+                        // TODO: Decide what to do in this case, continue processing or return the request?
+                    }
+                    else if (result.Response is not null)
+                    {
+                        response = result.Response;
+                        // TODO: Decide what to do in this case, continue processing or return the response?
+                    }
+                    else
+                    {
+                        // If both are null, we continue processing
+                        continue;
+                    }
+                }
             }
             catch (Exception ex)
             {
-                ExceptionHandler(ex);
+                _logger.LogError(ex, "An error occurred in plugin {PluginName} while processing request {RequestMethod} {RequestUrl}",
+                    plugin.Name, arguments.Request.Method, arguments.Request.RequestUri);
+
             }
         }
 
         // We only need to set the proxy header if the proxy has not set a response and the request is going to be sent to the target.
-        if (!proxyRequestArgs.ResponseState.HasBeenSet)
+        if (response is not null)
         {
-            _logger?.LogRequest("Passed through", MessageType.PassedThrough, new(e));
-            AddProxyHeader(e.HttpClient.Request);
+            _ = _pluginData.Remove(arguments.RequestId, out _);
+            return RequestEventResponse.EarlyResponse(response);
         }
+        else if (request is not null)
+        {
+            // If the request is modified, we need to add the Via header
+            AddProxyHeader(request);
+            // We can return the request to be sent to the target
+            return RequestEventResponse.ModifyRequest(request);
+        }
+        // If no plugins modified the request, we add the Via header to the original request
+        AddProxyHeader(arguments.Request);
+        return RequestEventResponse.ModifyRequest(arguments.Request);
     }
 
     private bool IsProxiedHost(string hostName)
     {
-        return true;
         var urlMatch = _hostsToWatch.FirstOrDefault(h => h.Url.IsMatch(hostName));
         return urlMatch is not null && !urlMatch.Exclude;
     }
 
-    private bool IsIncludedByHeaders(HeaderCollection requestHeaders)
+    private bool IsIncludedByHeaders(HttpRequestHeaders requestHeaders)
     {
         if (_config.FilterByHeaders is null)
         {
@@ -518,7 +486,7 @@ sealed class ProxyEngine(
                 string.IsNullOrEmpty(header.Value) ? "(any)" : header.Value
             );
 
-            if (requestHeaders.HeaderExists(header.Name))
+            if (requestHeaders.Contains(header.Name))
             {
                 if (string.IsNullOrEmpty(header.Value))
                 {
@@ -526,7 +494,7 @@ sealed class ProxyEngine(
                     return true;
                 }
 
-                if (requestHeaders.GetHeaders(header.Name)!.Any(h => h.Value.Contains(header.Value, StringComparison.OrdinalIgnoreCase)))
+                if (requestHeaders.Any(h => h.Key.Equals(header.Name, StringComparison.OrdinalIgnoreCase) && (h.Value.ToString()?.Equals(header.Value, StringComparison.OrdinalIgnoreCase) ?? false)))
                 {
                     _logger.LogDebug("Request header {Header} contains value {Value}", header.Name, header.Value);
                     return true;
@@ -542,125 +510,154 @@ sealed class ProxyEngine(
         return false;
     }
 
-    // Modify response
-    // OnBeforeResponseAsync is no longer supported, where was this used for?
-    async Task OnBeforeResponseAsync(object sender, SessionEventArgs e)
-    {
-        // read response headers
-        if (IsProxiedHost(e.HttpClient.Request.RequestUri.Host))
-        {
-            var proxyResponseArgs = new ProxyResponseArgs(e, new())
-            {
-                SessionData = _pluginData[e.GetHashCode()],
-                GlobalData = _proxyController.ProxyState.GlobalData
-            };
-            if (!proxyResponseArgs.HasRequestUrlMatch(_urlsToWatch))
-            {
-                return;
-            }
+    //// Modify response
+    //// OnBeforeResponseAsync is no longer supported, where was this used for?
+    //async Task OnBeforeResponseAsync(object sender, SessionEventArgs e)
+    //{
+    //    // read response headers
+    //    if (IsProxiedHost(e.HttpClient.Request.RequestUri.Host))
+    //    {
+    //        var proxyResponseArgs = new ProxyResponseArgs(e, new())
+    //        {
+    //            SessionData = _pluginData[e.GetHashCode()],
+    //            GlobalData = _proxyController.ProxyState.GlobalData
+    //        };
+    //        if (!proxyResponseArgs.HasRequestUrlMatch(_urlsToWatch))
+    //        {
+    //            return;
+    //        }
 
-            using var scope = _logger.BeginScope(e.HttpClient.Request.Method ?? "", e.HttpClient.Request.Url, e.GetHashCode());
+    //        using var scope = _logger.BeginScope(e.HttpClient.Request.Method ?? "", e.HttpClient.Request.Url, e.GetHashCode());
 
-            // necessary to make the response body available to plugins
-            e.HttpClient.Response.KeepBody = true;
-            if (e.HttpClient.Response.HasBody)
-            {
-                _ = await e.GetResponseBody();
-            }
+    //        // necessary to make the response body available to plugins
+    //        e.HttpClient.Response.KeepBody = true;
+    //        if (e.HttpClient.Response.HasBody)
+    //        {
+    //            _ = await e.GetResponseBody();
+    //        }
 
-            foreach (var plugin in _plugins.Where(p => p.Enabled))
-            {
-                _cancellationToken?.ThrowIfCancellationRequested();
+    //        foreach (var plugin in _plugins.Where(p => p.Enabled))
+    //        {
+    //            _cancellationToken?.ThrowIfCancellationRequested();
 
-                try
-                {
-                    await plugin.BeforeResponseAsync(proxyResponseArgs, _cancellationToken ?? CancellationToken.None);
-                }
-                catch (Exception ex)
-                {
-                    ExceptionHandler(ex);
-                }
-            }
-        }
-    }
-    
-    async Task OnAfterResponseAsync(object sender, SessionEventArgs e)
-    {
-        // read response headers
-        if (IsProxiedHost(e.HttpClient.Request.RequestUri.Host))
-        {
-            var proxyResponseArgs = new ProxyResponseArgs(e, new())
-            {
-                SessionData = _pluginData[e.GetHashCode()],
-                GlobalData = _proxyController.ProxyState.GlobalData
-            };
-            if (!proxyResponseArgs.HasRequestUrlMatch(_urlsToWatch))
-            {
-                // clean up
-                _ = _pluginData.Remove(e.GetHashCode(), out _);
-                return;
-            }
+    //            try
+    //            {
+    //                await plugin.BeforeResponseAsync(proxyResponseArgs, _cancellationToken ?? CancellationToken.None);
+    //            }
+    //            catch (Exception ex)
+    //            {
+    //                ExceptionHandler(ex);
+    //            }
+    //        }
+    //    }
+    //}
 
-            // necessary to repeat to make the response body
-            // of mocked requests available to plugins
-            e.HttpClient.Response.KeepBody = true;
+    //async Task OnAfterResponseAsync(object sender, SessionEventArgs e)
+    //{
+    //    // read response headers
+    //    if (IsProxiedHost(e.HttpClient.Request.RequestUri.Host))
+    //    {
+    //        var proxyResponseArgs = new ProxyResponseArgs(e, new())
+    //        {
+    //            SessionData = _pluginData[e.GetHashCode()],
+    //            GlobalData = _proxyController.ProxyState.GlobalData
+    //        };
+    //        if (!proxyResponseArgs.HasRequestUrlMatch(_urlsToWatch))
+    //        {
+    //            // clean up
+    //            _ = _pluginData.Remove(e.GetHashCode(), out _);
+    //            return;
+    //        }
 
-            using var scope = _logger.BeginScope(e.HttpClient.Request.Method ?? "", e.HttpClient.Request.Url, e.GetHashCode());
+    //        // necessary to repeat to make the response body
+    //        // of mocked requests available to plugins
+    //        e.HttpClient.Response.KeepBody = true;
 
-            var message = $"{e.HttpClient.Request.Method} {e.HttpClient.Request.Url}";
-            var loggingContext = new LoggingContext(e);
-            _logger.LogRequest(message, MessageType.InterceptedResponse, loggingContext);
+    //        using var scope = _logger.BeginScope(e.HttpClient.Request.Method ?? "", e.HttpClient.Request.Url, e.GetHashCode());
 
-            foreach (var plugin in _plugins.Where(p => p.Enabled))
-            {
-                _cancellationToken?.ThrowIfCancellationRequested();
+    //        var message = $"{e.HttpClient.Request.Method} {e.HttpClient.Request.Url}";
+    //        var loggingContext = new LoggingContext(e);
+    //        _logger.LogRequest(message, MessageType.InterceptedResponse, loggingContext);
 
-                try
-                {
-                    await plugin.AfterResponseAsync(proxyResponseArgs, _cancellationToken ?? CancellationToken.None);
-                }
-                catch (Exception ex)
-                {
-                    ExceptionHandler(ex);
-                }
-            }
+    //        foreach (var plugin in _plugins.Where(p => p.Enabled))
+    //        {
+    //            _cancellationToken?.ThrowIfCancellationRequested();
 
-            _logger.LogRequest(message, MessageType.FinishedProcessingRequest, loggingContext);
+    //            try
+    //            {
+    //                await plugin.AfterResponseAsync(proxyResponseArgs, _cancellationToken ?? CancellationToken.None);
+    //            }
+    //            catch (Exception ex)
+    //            {
+    //                ExceptionHandler(ex);
+    //            }
+    //        }
 
-            // clean up
-            _ = _pluginData.Remove(e.GetHashCode(), out _);
-        }
-    }
+    //        _logger.LogRequest(message, MessageType.FinishedProcessingRequest, loggingContext);
+
+    //        // clean up
+    //        _ = _pluginData.Remove(e.GetHashCode(), out _);
+    //    }
+    //}
     
     // Unobtanium ResponseHandler
     private async Task<ResponseEventResponse> OnResponseAsync(object sender, ResponseEventArguments e, CancellationToken cancellationToken)
     {
         // Distributed tracing
         using var activity = ActivitySource.StartActivity(nameof(OnResponseAsync), ActivityKind.Consumer, e.RequestActivity?.Context ?? default);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cancellationToken ?? CancellationToken.None);
         var uri = e.Request.RequestUri!;
-        if (IsProxiedHost(uri.Host)) // This is already checked but lets mimic the existing 
-        {
 
+        using var scope = _logger.BeginRequestScope(e.Request.Method, uri, e.RequestId);
+        var message = $"{e.Request.Method} {e.Response}";
+        _logger.LogRequest(message, MessageType.InterceptedResponse, e.Request);
+        HttpResponseMessage? response = null;
+
+        foreach (var plugin in _plugins.Where(p => p.Enabled && p.OnResponseAsync is not null))
+        {
+            cts.Token.ThrowIfCancellationRequested();
+
+            try
+            {
+                var result = await plugin.OnResponseAsync!(e, cts.Token);
+                if (result is not null)
+                {
+                    if (result.ModifiedResponse is not null)
+                    {
+                        response = result.ModifiedResponse;
+                        // Maybe exit the loop here?
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "An error occurred in plugin {PluginName} while processing response {ResponseStatusCode} for request {RequestMethod} {RequestUrl}",
+                    plugin.Name, e.Response.StatusCode, e.Request.Method, uri);
+            }
         }
-        return ResponseEventResponse.ContinueResponse();
+        _logger.LogRequest(message, MessageType.FinishedProcessingRequest, e.Request);
+        _ = _pluginData.Remove(e.RequestId, out _);
+        return response is not null
+            ? ResponseEventResponse.ModifyResponse(response)
+            : ResponseEventResponse.ContinueResponse();
     }
 
-    // Allows overriding default certificate validation logic
-    Task OnCertificateValidationAsync(object sender, CertificateValidationEventArgs e)
-    {
-        // set IsValid to true/false based on Certificate Errors
-        if (e.SslPolicyErrors == System.Net.Security.SslPolicyErrors.None)
-        {
-            e.IsValid = true;
-        }
+    //// Allows overriding default certificate validation logic
+    //Task OnCertificateValidationAsync(object sender, CertificateValidationEventArgs e)
+    //{
+    //    // set IsValid to true/false based on Certificate Errors
+    //    if (e.SslPolicyErrors == System.Net.Security.SslPolicyErrors.None)
+    //    {
+    //        e.IsValid = true;
+    //    }
 
-        return Task.CompletedTask;
-    }
+    //    return Task.CompletedTask;
+    //}
 
-    // Allows overriding default client certificate selection logic during mutual authentication
-    Task OnCertificateSelectionAsync(object sender, CertificateSelectionEventArgs e) =>
-        // set e.clientCertificate to override
-        Task.CompletedTask;
+    //// Allows overriding default client certificate selection logic during mutual authentication
+    //Task OnCertificateSelectionAsync(object sender, CertificateSelectionEventArgs e) =>
+    //    // set e.clientCertificate to override
+    //    Task.CompletedTask;
 
     private static void PrintHotkeys()
     {
@@ -694,17 +691,17 @@ sealed class ProxyEngine(
         process.WaitForExit();
     }
 
-    private static int GetProcessId(TunnelConnectSessionEventArgs e)
+    private static int GetProcessId(ClientDetails e)
     {
-        if (RunTime.IsWindows)
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            return e.HttpClient.ProcessId.Value;
+            return -1;
         }
 
         var psi = new ProcessStartInfo
         {
             FileName = "lsof",
-            Arguments = $"-i :{e.ClientRemoteEndPoint?.Port}",
+            Arguments = $"-i :{e.Port}",
             UseShellExecute = false,
             RedirectStandardOutput = true,
             CreateNoWindow = true
@@ -718,7 +715,7 @@ sealed class ProxyEngine(
         proc.WaitForExit();
 
         var lines = output.Split([Environment.NewLine], StringSplitOptions.RemoveEmptyEntries);
-        var matchingLine = lines.FirstOrDefault(l => l.Contains($"{e.ClientRemoteEndPoint?.Port}->", StringComparison.OrdinalIgnoreCase));
+        var matchingLine = lines.FirstOrDefault(l => l.Contains($"{e.Port}->", StringComparison.OrdinalIgnoreCase));
         if (matchingLine is null)
         {
             return -1;
@@ -732,7 +729,7 @@ sealed class ProxyEngine(
         return int.TryParse(pidString, out var pid) ? pid : -1;
     }
 
-    private static void AddProxyHeader(Request r) => r.Headers?.AddHeader("Via", $"{r.HttpVersion} dev-proxy/{ProxyUtils.ProductVersion}");
+    private static void AddProxyHeader(HttpRequestMessage r) => r.Headers.TryAddWithoutValidation("Via", $"dev-proxy/{ProxyUtils.ProductVersion}");
 
     public override void Dispose()
     {

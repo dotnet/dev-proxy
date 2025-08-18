@@ -5,6 +5,8 @@
 using DevProxy;
 using DevProxy.Commands;
 using System.Net;
+using Unobtanium.Web.Proxy;
+using Unobtanium.Web.Proxy.Services;
 
 static WebApplication BuildApplication(string[] args, DevProxyConfigOptions options)
 {
@@ -13,6 +15,19 @@ static WebApplication BuildApplication(string[] args, DevProxyConfigOptions opti
     _ = builder.Configuration.ConfigureDevProxyConfig(options);
     _ = builder.Logging.ConfigureDevProxyLogging(builder.Configuration, options);
     _ = builder.Services.ConfigureDevProxyServices(builder.Configuration, options);
+    _ = builder.Services
+        .Configure<ProxyServerOptions>(options =>
+        {
+            options.Port = ProxyServerDefaults.DEFAULT_PORT; // Set the port for the proxy server
+            options.HttpsPort = ProxyServerDefaults.DEFAULT_HTTPS_PORT;
+        })
+        .Configure<CertificateManagerConfiguration>(config =>
+        {
+            config.CachePath = DevProxy.Abstractions.Utils.ProxyUtils.ReplacePathTokens(
+                builder.Configuration.GetValue("certificateCachePath", "certs"));
+        })
+        .AddProxyEvents(new Unobtanium.Web.Proxy.Events.ProxyServerEvents())
+        .AddProxyServices();
 
     var defaultIpAddress = "127.0.0.1";
     var ipAddress = options.IPAddress ??

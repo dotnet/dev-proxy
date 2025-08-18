@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
@@ -23,7 +23,7 @@
     <PackageReference Include="Newtonsoft.Json.Schema" Version="4.0.1" />
     <PackageReference Include="Scriban" Version="6.2.1" />
     <PackageReference Include="System.CommandLine" Version="2.0.0-beta5.25306.1" />
-    <PackageReference Include="Unobtanium.Web.Proxy" Version="0.9.0-beta.1" />
+    <PackageReference Include="Unobtanium.Web.Proxy.Events" Version="0.9.1-beta.2" />
     <PackageReference Include="YamlDotNet" Version="16.3.0" />
   </ItemGroup>
 

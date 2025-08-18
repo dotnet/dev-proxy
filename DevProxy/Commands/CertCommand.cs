@@ -6,33 +6,33 @@ using DevProxy.Abstractions.Utils;
 using System.CommandLine;
 using System.CommandLine.Parsing;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Unobtanium.Web.Proxy;
-using Unobtanium.Web.Proxy.Helpers;
 
 namespace DevProxy.Commands;
 
 sealed class CertCommand : Command
 {
     private readonly ILogger _logger;
-    private readonly ProxyServer _server;
+    private readonly ICertificateManager _certificateManager;
     private readonly Option<bool> _forceOption = new("--force", "-f")
     {
         Description = "Don't prompt for confirmation when removing the certificate"
     };
 
-    public CertCommand(ILogger<CertCommand> logger, ProxyServer server) :
+    public CertCommand(ILogger<CertCommand> logger, ICertificateManager certificateManager) :
         base("cert", "Manage the Dev Proxy certificate")
     {
         _logger = logger;
 
         ConfigureCommand();
-        _server = server;
+        _certificateManager = certificateManager;
     }
 
     private void ConfigureCommand()
     {
         var certEnsureCommand = new Command("ensure", "Ensure certificates are setup (creates root if required). Also makes root certificate trusted.");
-        certEnsureCommand.SetAction(async _ => await EnsureCertAsync());
+        certEnsureCommand.SetAction(async (_, cancellationToken) => await EnsureCertAsync(cancellationToken));
 
         var certRemoveCommand = new Command("remove", "Remove the certificate from Root Store");
         certRemoveCommand.SetAction(RemoveCert);
@@ -45,14 +45,19 @@ sealed class CertCommand : Command
         }.OrderByName());
     }
 
-    private async Task EnsureCertAsync()
+    private async Task EnsureCertAsync(CancellationToken cancellationToken)
     {
         _logger.LogTrace("EnsureCertAsync() called");
 
         try
         {
             _logger.LogInformation("Ensuring certificate exists and is trusted...");
-            await _server.CertificateManager.EnsureRootCertificateAsync();
+            // TODO: Make the computer trust this certificate
+            _ = await _certificateManager.GetRootCertificateAsync(false, cancellationToken);
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                // ...
+            }
             _logger.LogInformation("DONE");
         }
         catch (Exception ex)
@@ -82,7 +87,7 @@ sealed class CertCommand : Command
             _logger.LogInformation("Uninstalling the root certificate...");
 
             RemoveTrustedCertificateOnMac();
-            _server.CertificateManager.RemoveTrustedRootCertificate(machineTrusted: false);
+            // TODO: Implement for Windows/Linux
 
             _logger.LogInformation("DONE");
         }
@@ -120,7 +125,7 @@ sealed class CertCommand : Command
 
     private static void RemoveTrustedCertificateOnMac()
     {
-        if (!RunTime.IsMac)
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
         {
             return;
         }

@@ -5,11 +5,13 @@
 using System.CommandLine;
 using System.Globalization;
 using System.Text.Json;
+using DevProxy.Abstractions.Models;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Unobtanium.Web.Proxy.Events;
 
 namespace DevProxy.Abstractions.Plugins;
 
@@ -22,6 +24,8 @@ public abstract class BasePlugin(
     protected ISet<UrlToWatch> UrlsToWatch { get; } = urlsToWatch;
 
     public abstract string Name { get; }
+    public Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync { get; set; }
+    public Func<ResponseEventArguments, CancellationToken, Task<ResponseEventResponse?>>? OnResponseAsync { get; set; }
 
     public virtual Option[] GetOptions() => [];
     public virtual Command[] GetCommands() => [];

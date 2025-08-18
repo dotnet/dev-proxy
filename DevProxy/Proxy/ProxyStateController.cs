@@ -4,7 +4,6 @@
 
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
-using Unobtanium.Web.Proxy;
 
 namespace DevProxy.Proxy;
 
@@ -21,7 +20,6 @@ sealed class ProxyStateController(
     private readonly IEnumerable<IPlugin> _plugins = plugins;
     private readonly IHostApplicationLifetime _hostApplicationLifetime = hostApplicationLifetime;
     private readonly ILogger _logger = logger;
-    private ExceptionHandler ExceptionHandler => ex => _logger.LogError(ex, "An error occurred in a plugin");
 
     public void StartRecording()
     {
@@ -61,7 +59,7 @@ sealed class ProxyStateController(
             }
             catch (Exception ex)
             {
-                ExceptionHandler(ex);
+                _logger.LogError(ex, "Error in plugin {PluginName} after recording stop", plugin.Name);
             }
         }
         _logger.LogInformation("DONE");
@@ -79,7 +77,7 @@ sealed class ProxyStateController(
             }
             catch (Exception ex)
             {
-                ExceptionHandler(ex);
+                _logger.LogError(ex, "Error in plugin {PluginName} after mock request", plugin.Name);
             }
         }
     }

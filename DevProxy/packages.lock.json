@@ -181,14 +181,11 @@
       },
       "Unobtanium.Web.Proxy": {
         "type": "Direct",
-        "requested": "[0.9.0-beta.1, )",
-        "resolved": "0.9.0-beta.1",
-        "contentHash": "Ae/2f7v3T3NQkRknBhAHqBrY85nJHQr8lxRD/j8B3rMK4KbIlbGe3A6Hd71ponq+sNHnLxa3BPSg8pdldc9RHg==",
+        "requested": "[0.9.1-beta-2, )",
+        "resolved": "0.9.1-beta-2",
+        "contentHash": "/nRDmaQQ9xRqWiSXf4mAN32anOM/e8aZcnD/Kty376d1JliqiKmR58sHS/yO8LITCo2eSGzH+cobm+e8MmpTPQ==",
         "dependencies": {
-          "BouncyCastle.Cryptography": "2.4.0",
-          "Microsoft.Extensions.Logging.Abstractions": "8.0.3",
-          "System.Runtime.CompilerServices.Unsafe": "6.0.0",
-          "Unobtanium.Web.Proxy.Events": "0.9.0-beta.1"
+          "Unobtanium.Web.Proxy.Events": "0.9.1-beta-2"
         }
       },
       "Azure.Core": {
@@ -200,11 +197,6 @@
           "System.ClientModel": "1.4.1",
           "System.Memory.Data": "6.0.1"
         }
-      },
-      "BouncyCastle.Cryptography": {
-        "type": "Transitive",
-        "resolved": "2.4.0",
-        "contentHash": "SwXsAV3sMvAU/Nn31pbjhWurYSjJ+/giI/0n6tCrYoupEK34iIHCuk3STAd9fx8yudM85KkLSVdn951vTng/vQ=="
       },
       "Markdig": {
         "type": "Transitive",
@@ -658,11 +650,6 @@
         "resolved": "6.0.1",
         "contentHash": "yliDgLh9S9Mcy5hBIdZmX6yphYIW3NH+3HN1kV1m7V1e0s7LNTw/tHNjJP4U9nSMEgl3w1TzYv/KA1Tg9NYy6w=="
       },
-      "System.Runtime.CompilerServices.Unsafe": {
-        "type": "Transitive",
-        "resolved": "6.0.0",
-        "contentHash": "/iUeP3tq1S0XdNNoMz5C9twLSrM/TH+qElHkXWaPvuNOt+99G75NrV0OS2EqHx5wMN7popYjpc8oTjC1y16DLg=="
-      },
       "System.Security.Cryptography.ProtectedData": {
         "type": "Transitive",
         "resolved": "4.5.0",
@@ -675,8 +662,8 @@
       },
       "Unobtanium.Web.Proxy.Events": {
         "type": "Transitive",
-        "resolved": "0.9.0-beta.1",
-        "contentHash": "ckgncJ95Tr1GCx3Kv3yJK3sANfJznKIHOqZebqR0w3JblHrNF2VLJ5ALA5YZ5CcO7QuqqXVnfkusapy7QJRFwA==",
+        "resolved": "0.9.1-beta-2",
+        "contentHash": "OaDCVpnDYah/2DDqAwyhFwl/wt1Ggat8yGXF8GqtLDuUqxv/cYtowjI6ZMnKmLM/Bkz6gMM4lSITY0cO0rPVgA==",
         "dependencies": {
           "Microsoft.Extensions.Logging.Abstractions": "8.0.1"
         }
@@ -699,7 +686,7 @@
           "Newtonsoft.Json.Schema": "[4.0.1, )",
           "Scriban": "[6.2.1, )",
           "System.CommandLine": "[2.0.0-beta5.25306.1, )",
-          "Unobtanium.Web.Proxy": "[0.9.0-beta.1, )",
+          "Unobtanium.Web.Proxy.Events": "[0.9.1-beta.2, )",
           "YamlDotNet": "[16.3.0, )"
         }
       }

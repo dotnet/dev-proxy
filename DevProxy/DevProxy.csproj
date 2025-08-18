@@ -49,7 +49,7 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="8.1.1" />
     <PackageReference Include="System.CommandLine" Version="2.0.0-beta5.25306.1" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.9.0" />
-    <PackageReference Include="Unobtanium.Web.Proxy" Version="0.9.0-beta.1" />
+	  <PackageReference Include="Unobtanium.Web.Proxy" Version="0.9.1-beta-2" />
   </ItemGroup>
 
   <ItemGroup>
