@@ -203,8 +203,8 @@ var responseBody = response.BodyString;
 
 **After (Response):**
 ```csharp
-var request = args.HttpRequestMessage;
-var response = args.HttpResponseMessage;
+var request = args.Request;
+var response = args.Response;
 var statusCode = response.StatusCode;
 var responseBody = await response.Content.ReadAsStringAsync();
 ```
@@ -231,9 +231,9 @@ if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
 
 **After (OnRequestLogAsync/OnResponseLogAsync):**
 ```csharp
-if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.HttpRequestMessage.RequestUri))
+if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
 {
-    Logger.LogRequest("URL not matched", MessageType.Skipped, args.HttpRequestMessage);
+    Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
     return;
 }
 ```
@@ -443,15 +443,15 @@ public override Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken c
 ```csharp
 public override Func<ResponseArguments, CancellationToken, Task>? OnResponseLogAsync => (args, cancellationToken) =>
 {
-    if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.HttpRequestMessage.RequestUri))
+    if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
     {
-        Logger.LogRequest("URL not matched", MessageType.Skipped, args.HttpRequestMessage);
+        Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
         return Task.CompletedTask;
     }
 
     if (ShouldProvideGuidance(args.HttpResponseMessage))
     {
-        Logger.LogRequest("Consider optimizing your API queries", MessageType.Tip, args.HttpRequestMessage);
+        Logger.LogRequest("Consider optimizing your API queries", MessageType.Tip, args.Request);
     }
 
     return Task.CompletedTask;
@@ -539,7 +539,7 @@ Logger.LogRequest("Message", MessageType.Info, new LoggingContext(e.Session));
 Logger.LogRequest("Message", MessageType.Info, args.Request);
 
 // New (Response-based methods)
-Logger.LogRequest("Message", MessageType.Info, args.HttpRequestMessage);
+Logger.LogRequest("Message", MessageType.Info, args.Request);
 ```
 
 ### 2. Global Data and Session Data
@@ -675,11 +675,11 @@ public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>?
 - [ ] Update method signature from `AfterResponseAsync` to `OnResponseLogAsync`
 - [ ] Keep return type as `Task` (no PluginResponse needed)
 - [ ] Update input parameter from `ProxyResponseArgs` to `ResponseArguments`
-- [ ] Replace `e.Session.HttpClient.Request` with `args.HttpRequestMessage`
-- [ ] Replace `e.Session.HttpClient.Response` with `args.HttpResponseMessage`
+- [ ] Replace `e.Session.HttpClient.Request` with `args.Request`
+- [ ] Replace `e.Session.HttpClient.Response` with `args.Response`
 - [ ] Replace `e.HasRequestUrlMatch()` with `ProxyUtils.MatchesUrlToWatch()`
 - [ ] Remove any response modification logic (not allowed in OnResponseLogAsync)
-- [ ] Update logging context from `LoggingContext(e.Session)` to `args.HttpRequestMessage`
+- [ ] Update logging context from `LoggingContext(e.Session)` to `args.Request`
 - [ ] Add `IProxyStorage` to constructor if plugin needs global or request-specific data storage
 - [ ] Test the migrated plugin thoroughly
 
@@ -687,12 +687,12 @@ public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>?
 - [ ] Update method signature from `BeforeResponseAsync` to `OnResponseAsync`
 - [ ] Change return type from `Task` to `Task<PluginResponse?>`
 - [ ] Update input parameter from `ProxyResponseArgs` to `ResponseArguments`
-- [ ] Replace `e.Session.HttpClient.Request` with `args.HttpRequestMessage`
-- [ ] Replace `e.Session.HttpClient.Response` with `args.HttpResponseMessage`
+- [ ] Replace `e.Session.HttpClient.Request` with `args.REquest`
+- [ ] Replace `e.Session.HttpClient.Response` with `args.Response`
 - [ ] Replace `e.HasRequestUrlMatch()` with `ProxyUtils.MatchesUrlToWatch()`
 - [ ] Remove `e.ResponseState.HasBeenSet` checks
 - [ ] Return `null` to continue or `PluginResponse` to modify
-- [ ] Update logging context from `LoggingContext(e.Session)` to `args.HttpRequestMessage`
+- [ ] Update logging context from `LoggingContext(e.Session)` to `args.Request`
 - [ ] Add `IProxyStorage` to constructor if plugin needs global or request-specific data storage
 - [ ] Test the migrated plugin thoroughly
 
