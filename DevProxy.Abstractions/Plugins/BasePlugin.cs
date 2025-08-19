@@ -24,7 +24,20 @@ public abstract class BasePlugin(
     public ISet<UrlToWatch> UrlsToWatch { get; } = urlsToWatch;
 
     public abstract string Name { get; }
+
+    /// <summary>
+    /// Implement this to handle requests, if you won't be modifying requests or respond, use <see cref="OnRequestLogAsync"/>.
+    /// </summary>
     public virtual Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync { get; }
+
+    /// <summary>
+    /// Implement this to log requests, you cannot modify the request or response here.
+    /// </summary>
+    public virtual Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync { get; }
+
+    /// <summary>
+    /// Implement this to modify responses from the remote server.
+    /// </summary>
     public virtual Func<ResponseEventArguments, CancellationToken, Task<ResponseEventResponse?>>? OnResponseAsync { get; }
 
     public virtual Option[] GetOptions() => [];

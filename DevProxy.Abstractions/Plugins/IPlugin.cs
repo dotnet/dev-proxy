@@ -20,7 +20,20 @@ public interface IPlugin
     Task InitializeAsync(InitArgs e, CancellationToken cancellationToken);
     void OptionsLoaded(OptionsLoadedArgs e);
 
+
+    /// <summary>
+    /// Implement this to handle requests.
+    /// </summary>
     Func<Models.RequestArguments, CancellationToken, Task<Models.PluginResponse>>? OnRequestAsync { get; }
+
+    /// <summary>
+    /// Implement this to log requests, you cannot modify the request or response here.
+    /// </summary>
+    Func<Models.RequestArguments, CancellationToken, Task>? OnRequestLogAsync { get; }
+
+    /// <summary>
+    /// Implement this to modify responses from the remote server.
+    /// </summary>
     Func<ResponseEventArguments, CancellationToken, Task<ResponseEventResponse?>>? OnResponseAsync { get; }
     Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken);
     Task BeforeResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken);

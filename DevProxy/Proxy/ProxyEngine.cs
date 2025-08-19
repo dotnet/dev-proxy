@@ -413,6 +413,27 @@ sealed class ProxyEngine(
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cancellationToken ?? CancellationToken.None);
 
+        // Plugins that don't modify the request but log it
+        // can be called in parallel, because they don't affect each other.
+        var logPlugins = _plugins.Where(p => p.Enabled && p.OnRequestLogAsync is not null);
+        if (logPlugins.Any())
+        {
+            var logArguments = new Abstractions.Models.RequestArguments(arguments.Request, arguments.RequestId);
+            // Call OnRequestLogAsync for all plugins at the same time and wait for all of them to complete
+            var logTasks = logPlugins
+                .Select(plugin => plugin.OnRequestLogAsync!(logArguments, cts.Token))
+                .ToArray();
+            try
+            {
+                await Task.WhenAll(logTasks);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "An error occurred in a plugin while logging request {RequestMethod} {RequestUrl}",
+                    arguments.Request.Method, arguments.Request.RequestUri);
+            }
+        }
+
         HttpResponseMessage? response = null;
         HttpRequestMessage? request = null;
         foreach (var plugin in _plugins
