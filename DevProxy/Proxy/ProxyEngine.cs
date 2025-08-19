@@ -29,7 +29,8 @@ sealed class ProxyEngine(
     IProxyStateController proxyController,
     ILogger<ProxyEngine> logger,
     ProxyServerEvents proxyEvents,
-    ICertificateManager certificateManager) : BackgroundService, IDisposable
+    ICertificateManager certificateManager,
+    IProxyStorage proxyStorage) : BackgroundService, IDisposable
 {
     internal const string ACTIVITY_SOURCE_NAME = "DevProxy.Proxy.ProxyEngine";
     public static readonly ActivitySource ActivitySource = new(ACTIVITY_SOURCE_NAME);
@@ -47,7 +48,7 @@ sealed class ProxyEngine(
     private readonly IProxyStateController _proxyController = proxyController;
     // Dictionary for plugins to store data between requests
     // the key is HashObject of the SessionEventArgs object
-    private readonly ConcurrentDictionary<string, Dictionary<string, object>> _pluginData = [];
+    //private readonly ConcurrentDictionary<string, Dictionary<string, object>> _pluginData = [];
     private InactivityTimer? _inactivityTimer;
     private CancellationToken? _cancellationToken;
 
@@ -380,21 +381,21 @@ sealed class ProxyEngine(
         if (IsProxiedHost(requestEventArguments.Request.RequestUri!.Host) &&
             IsIncludedByHeaders(requestEventArguments.Request.Headers))
         {
-            if (!_pluginData.TryAdd(requestEventArguments.RequestId, []))
-            {
-                throw new InvalidOperationException($"Unable to initialize the plugin data storage for hash key {requestEventArguments.RequestId}");
-            }
+            //if (!_pluginData.TryAdd(requestEventArguments.RequestId, []))
+            //{
+            //    throw new InvalidOperationException($"Unable to initialize the plugin data storage for hash key {requestEventArguments.RequestId}");
+            //}
 
             if (!ProxyUtils.MatchesUrlToWatch(_urlsToWatch, requestEventArguments.Request.RequestUri.AbsoluteUri))
             {
                 return RequestEventResponse.ContinueResponse();
             }
 
-            if (!_pluginData.TryAdd(requestEventArguments.RequestId, []))
-            {
-                // Throwing here will break the request....
-                throw new InvalidOperationException($"Unable to initialize the plugin data storage for hash key {requestEventArguments.RequestId}");
-            }
+            //if (!_pluginData.TryAdd(requestEventArguments.RequestId, []))
+            //{
+            //    // Throwing here will break the request....
+            //    throw new InvalidOperationException($"Unable to initialize the plugin data storage for hash key {requestEventArguments.RequestId}");
+            //}
 
             using var scope = _logger.BeginRequestScope(requestEventArguments.Request.Method, requestEventArguments.Request.RequestUri, requestEventArguments.RequestId);
 
@@ -418,7 +419,7 @@ sealed class ProxyEngine(
         var logPlugins = _plugins.Where(p => p.Enabled && p.OnRequestLogAsync is not null);
         if (logPlugins.Any())
         {
-            var logArguments = new Abstractions.Models.RequestArguments(arguments.Request, arguments.RequestId);
+            var logArguments = new RequestArguments(arguments.Request, arguments.RequestId);
             // Call OnRequestLogAsync for all plugins at the same time and wait for all of them to complete
             var logTasks = logPlugins
                 .Select(plugin => plugin.OnRequestLogAsync!(logArguments, cts.Token))
@@ -444,7 +445,7 @@ sealed class ProxyEngine(
             cts.Token.ThrowIfCancellationRequested();
             try
             {
-                var result = await plugin.OnRequestAsync!(new Abstractions.Models.RequestArguments(arguments.Request, arguments.RequestId), cts.Token);
+                var result = await plugin.OnRequestAsync!(new RequestArguments(arguments.Request, arguments.RequestId), cts.Token);
                 if (result is not null)
                 {
                     if (result.Request is not null)
@@ -472,7 +473,7 @@ sealed class ProxyEngine(
         // We only need to set the proxy header if the proxy has not set a response and the request is going to be sent to the target.
         if (response is not null)
         {
-            _ = _pluginData.Remove(arguments.RequestId, out _);
+            proxyStorage.RemoveRequestData(arguments.RequestId);
             return RequestEventResponse.EarlyResponse(response);
         }
         else if (request is not null)
@@ -637,7 +638,7 @@ sealed class ProxyEngine(
         if (logPlugins.Any())
         {
             // Call OnResponseLogAsync for all plugins at the same time and wait for all of them to complete
-            var logArguments = new Abstractions.Models.ResponseArguments(e.Request, e.Response, e.RequestId);
+            var logArguments = new ResponseArguments(e.Request, e.Response, e.RequestId);
             var logTasks = logPlugins
                 .Select(plugin => plugin.OnResponseLogAsync!(logArguments, cts.Token))
                 .ToArray();
@@ -658,7 +659,7 @@ sealed class ProxyEngine(
 
             try
             {
-                var result = await plugin.OnResponseAsync!(new Abstractions.Models.ResponseArguments(e.Request, response ?? e.Response, e.RequestId), cts.Token);
+                var result = await plugin.OnResponseAsync!(new ResponseArguments(e.Request, response ?? e.Response, e.RequestId), cts.Token);
                 if (result is not null)
                 {
                     if (result.Request is not null)
@@ -680,7 +681,7 @@ sealed class ProxyEngine(
             }
         }
         _logger.LogRequest(message, MessageType.FinishedProcessingRequest, e.Request);
-        _ = _pluginData.Remove(e.RequestId, out _);
+        proxyStorage.RemoveRequestData(e.RequestId);
         return response is not null
             ? ResponseEventResponse.ModifyResponse(response)
             : ResponseEventResponse.ContinueResponse();

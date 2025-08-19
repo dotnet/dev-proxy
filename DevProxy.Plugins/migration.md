@@ -458,6 +458,75 @@ public override Func<ResponseArguments, CancellationToken, Task>? OnResponseLogA
 };
 ```
 
+### Example 4: Plugin with Storage Requirements
+
+**Before (Old API):**
+```csharp
+public sealed class MyStoragePlugin(
+    ILogger<MyStoragePlugin> logger,
+    ISet<UrlToWatch> urlsToWatch) : BasePlugin(logger, urlsToWatch)
+{
+    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
+    {
+        // Access global data
+        e.GlobalData["RequestCount"] = (int)(e.GlobalData.GetValueOrDefault("RequestCount", 0)) + 1;
+        
+        // Access session data
+        e.SessionData["RequestStartTime"] = DateTime.UtcNow;
+        
+        return Task.CompletedTask;
+    }
+    
+    public override Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)
+    {
+        // Use session data
+        if (e.SessionData.TryGetValue("RequestStartTime", out var startTime))
+        {
+            var duration = DateTime.UtcNow - (DateTime)startTime;
+            Logger.LogInformation("Request took {Duration}ms", duration.TotalMilliseconds);
+        }
+        
+        return Task.CompletedTask;
+    }
+}
+```
+
+**After (New API):**
+```csharp
+public sealed class MyStoragePlugin(
+    ILogger<MyStoragePlugin> logger,
+    ISet<UrlToWatch> urlsToWatch,
+    IProxyStorage proxyStorage) : BasePlugin(logger, urlsToWatch)
+{
+    private readonly IProxyStorage _proxyStorage = proxyStorage;
+    
+    public override Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync => (args, cancellationToken) =>
+    {
+        // Access global data
+        _proxyStorage.GlobalData["RequestCount"] = (int)(_proxyStorage.GlobalData.GetValueOrDefault("RequestCount", 0)) + 1;
+        
+        // Access request-specific data
+        var requestData = _proxyStorage.GetRequestData(args.RequestId);
+        requestData["RequestStartTime"] = DateTime.UtcNow;
+        
+        return Task.CompletedTask;
+    };
+    
+    public override Func<ResponseArguments, CancellationToken, Task>? OnResponseLogAsync => (args, cancellationToken) =>
+    {
+        // Use request-specific data
+        var requestData = _proxyStorage.GetRequestData(args.RequestId);
+        if (requestData.TryGetValue("RequestStartTime", out var startTime))
+        {
+            var duration = DateTime.UtcNow - (DateTime)startTime;
+            Logger.LogInformation("Request took {Duration}ms", duration.TotalMilliseconds);
+        }
+        
+        return Task.CompletedTask;
+    };
+}
+```
+
 ## Important Notes
 
 ### 1. Logging Context
@@ -474,7 +543,60 @@ Logger.LogRequest("Message", MessageType.Info, args.HttpRequestMessage);
 ```
 
 ### 2. Global Data and Session Data
-Global data and session data access patterns will need to be reviewed as they may not be available in the new API. These features may be handled differently or through dependency injection.
+Global data and session data access patterns will need to be reviewed as they may not be available in the new API. These features are now handled through dependency injection using the `IProxyStorage` interface.
+
+**For plugins that need global or request-specific storage:**
+
+Use constructor injection to access the `IProxyStorage` interface:
+
+```csharp
+public sealed class MyPlugin(
+    ILogger<MyPlugin> logger,
+    ISet<UrlToWatch> urlsToWatch,
+    IProxyStorage proxyStorage) : BasePlugin(logger, urlsToWatch)
+{
+    private readonly IProxyStorage _proxyStorage = proxyStorage;
+
+    public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync => (args, cancellationToken) =>
+    {
+        // Access global data (shared across all requests)
+        _proxyStorage.GlobalData["MyKey"] = "MyValue";
+        
+        // Access request-specific data using the request ID
+        var requestData = _proxyStorage.GetRequestData(args.RequestId);
+        requestData["RequestSpecificKey"] = "RequestSpecificValue";
+        
+        return Task.FromResult(PluginResponse.Continue());
+    };
+}
+```
+
+**Migration patterns:**
+
+```csharp
+// Old API - Global Data
+e.GlobalData["MyKey"] = "MyValue";
+var globalValue = e.GlobalData.GetValueOrDefault("MyKey");
+
+// New API - Global Data  
+_proxyStorage.GlobalData["MyKey"] = "MyValue";
+var globalValue = _proxyStorage.GlobalData.GetValueOrDefault("MyKey");
+
+// Old API - Session Data
+e.SessionData["MyKey"] = "MyValue";
+var sessionValue = e.SessionData.GetValueOrDefault("MyKey");
+
+// New API - Request Data
+var requestData = _proxyStorage.GetRequestData(args.RequestId);
+requestData["MyKey"] = "MyValue";
+var requestValue = requestData.GetValueOrDefault("MyKey");
+```
+
+**Important notes about storage:**
+- **Global data** persists across all requests and is shared between all plugins
+- **Request data** is specific to a single request and is automatically cleaned up when the request completes
+- Request data is accessed using the `RequestId` from the `RequestArguments` or `ResponseArguments`
+- For reporting plugins that need to store reports, use global data as shown in `BaseReportingPlugin.StoreReport()`
 
 ### 3. New API Benefits
 The new API methods provide several advantages:
@@ -535,6 +657,7 @@ public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>?
 - [ ] Replace `e.ResponseState.HasBeenSet = true` with `PluginResponse.Respond()`
 - [ ] Replace `return Task.CompletedTask` with `PluginResponse.Continue()`
 - [ ] Update logging context from `LoggingContext(e.Session)` to `args.Request`
+- [ ] Add `IProxyStorage` to constructor if plugin needs global or request-specific data storage
 - [ ] Test the migrated plugin thoroughly
 
 ### For Request Guidance Plugins (OnRequestLogAsync):
@@ -545,6 +668,7 @@ public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>?
 - [ ] Replace `e.HasRequestUrlMatch()` with `ProxyUtils.MatchesUrlToWatch()`
 - [ ] Remove any response modification logic (not allowed in OnRequestLogAsync)
 - [ ] Update logging context from `LoggingContext(e.Session)` to `args.Request`
+- [ ] Add `IProxyStorage` to constructor if plugin needs global or request-specific data storage
 - [ ] Test the migrated plugin thoroughly
 
 ### For Response Guidance Plugins (OnResponseLogAsync):
@@ -556,6 +680,7 @@ public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>?
 - [ ] Replace `e.HasRequestUrlMatch()` with `ProxyUtils.MatchesUrlToWatch()`
 - [ ] Remove any response modification logic (not allowed in OnResponseLogAsync)
 - [ ] Update logging context from `LoggingContext(e.Session)` to `args.HttpRequestMessage`
+- [ ] Add `IProxyStorage` to constructor if plugin needs global or request-specific data storage
 - [ ] Test the migrated plugin thoroughly
 
 ### For Response Modifying Plugins (OnResponseAsync):
@@ -568,6 +693,7 @@ public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>?
 - [ ] Remove `e.ResponseState.HasBeenSet` checks
 - [ ] Return `null` to continue or `PluginResponse` to modify
 - [ ] Update logging context from `LoggingContext(e.Session)` to `args.HttpRequestMessage`
+- [ ] Add `IProxyStorage` to constructor if plugin needs global or request-specific data storage
 - [ ] Test the migrated plugin thoroughly
 
 ## Plugin Migration Categorization
@@ -578,7 +704,7 @@ Based on the inventory, here's how plugins should be migrated:
 1. AuthPlugin
 2. CrudApiPlugin
 3. EntraMockResponsePlugin
-4. GenericRandomErrorPlugin
+4. ~~GenericRandomErrorPlugin~~ (MIGRATED)
 5. GraphMockResponsePlugin
 6. GraphRandomErrorPlugin (already migrated)
 7. LanguageModelFailurePlugin
@@ -619,4 +745,4 @@ Based on the inventory, here's how plugins should be migrated:
 - **DevToolsPlugin**: Uses multiple methods (BeforeRequestAsync, BeforeResponseAsync, AfterResponseAsync, AfterRequestLogAsync)
 - **LatencyPlugin**: Adds delay but doesn't modify responses (could use OnRequestLogAsync)
 
-The new API methods enable better control flow by allowing the proxy to handle modification and logging operations separately, improving both performance and code clarity.The new API methods enable better control flow by allowing the proxy to handle modification and logging operations separately, improving both performance and code clarity.
+The new API methods enable better control flow by allowing the proxy to handle modification and logging operations separately, improving both performance and code clarity.

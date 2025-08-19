@@ -2,7 +2,6 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using DevProxy.Abstractions.Models;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Utils;
@@ -59,42 +58,42 @@ public sealed class ODataPagingGuidancePlugin(
     {
         Logger.LogTrace("{Method} called", nameof(OnResponseLogAsync));
 
-        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.HttpRequestMessage.RequestUri))
+        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, args.HttpRequestMessage);
+            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
             return;
         }
-        if (args.HttpRequestMessage.Method != HttpMethod.Get)
+        if (args.Request.Method != HttpMethod.Get)
         {
-            Logger.LogRequest("Skipping non-GET request", MessageType.Skipped, args.HttpRequestMessage);
+            Logger.LogRequest("Skipping non-GET request", MessageType.Skipped, args.Request);
             return;
         }
-        if ((int)args.HttpResponseMessage.StatusCode >= 300)
+        if ((int)args.Response.StatusCode >= 300)
         {
-            Logger.LogRequest("Skipping non-success response", MessageType.Skipped, args.HttpRequestMessage);
+            Logger.LogRequest("Skipping non-success response", MessageType.Skipped, args.Request);
             return;
         }
 
-        var mediaType = args.HttpResponseMessage.Content?.Headers?.ContentType?.MediaType;
+        var mediaType = args.Response.Content?.Headers?.ContentType?.MediaType;
         if (mediaType is null ||
             (!mediaType.Contains("json", StringComparison.OrdinalIgnoreCase) &&
             !mediaType.Contains("application/atom+xml", StringComparison.OrdinalIgnoreCase)))
         {
-            Logger.LogRequest("Skipping response with unsupported body type", MessageType.Skipped, args.HttpRequestMessage);
+            Logger.LogRequest("Skipping response with unsupported body type", MessageType.Skipped, args.Request);
             return;
         }
 
-        if (args.HttpResponseMessage.Content is null)
+        if (args.Response.Content is null)
         {
-            Logger.LogRequest("Skipping response with no content", MessageType.Skipped, args.HttpRequestMessage);
+            Logger.LogRequest("Skipping response with no content", MessageType.Skipped, args.Request);
             return;
         }
 
         var nextLink = string.Empty;
-        var bodyString = await args.HttpResponseMessage.Content.ReadAsStringAsync(cancellationToken);
+        var bodyString = await args.Response.Content.ReadAsStringAsync(cancellationToken);
         if (string.IsNullOrEmpty(bodyString))
         {
-            Logger.LogRequest("Skipping empty response body", MessageType.Skipped, args.HttpRequestMessage);
+            Logger.LogRequest("Skipping empty response body", MessageType.Skipped, args.Request);
             return;
         }
 
@@ -113,7 +112,7 @@ public sealed class ODataPagingGuidancePlugin(
         }
         else
         {
-            Logger.LogRequest("No next link found in the response", MessageType.Skipped, args.HttpRequestMessage);
+            Logger.LogRequest("No next link found in the response", MessageType.Skipped, args.Request);
         }
 
         Logger.LogTrace("Left {Name}", nameof(OnResponseLogAsync));

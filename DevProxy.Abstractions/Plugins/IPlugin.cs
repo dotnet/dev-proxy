@@ -23,22 +23,22 @@ public interface IPlugin
     /// <summary>
     /// Implement this to handle requests.
     /// </summary>
-    Func<Models.RequestArguments, CancellationToken, Task<Models.PluginResponse>>? OnRequestAsync { get; }
+    Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync { get; }
 
     /// <summary>
     /// Implement this to log requests, you cannot modify the request or response here.
     /// </summary>
-    Func<Models.RequestArguments, CancellationToken, Task>? OnRequestLogAsync { get; }
+    Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync { get; }
 
     /// <summary>
     /// Implement this to modify responses from the remote server.
     /// </summary>
-    Func<Models.ResponseArguments, CancellationToken, Task<Models.PluginResponse?>>? OnResponseAsync { get; }
+    Func<ResponseArguments, CancellationToken, Task<PluginResponse?>>? OnResponseAsync { get; }
 
     /// <summary>
     /// Implement this to modify responses from the remote server.
     /// </summary>
-    Func<Models.ResponseArguments, CancellationToken, Task>? OnResponseLogAsync { get; }
+    Func<ResponseArguments, CancellationToken, Task>? OnResponseLogAsync { get; }
     Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken);
     Task BeforeResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken);
     Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken);

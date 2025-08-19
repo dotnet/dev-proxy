@@ -1,4 +1,4 @@
-﻿namespace DevProxy.Abstractions.Models;
+﻿namespace DevProxy.Abstractions.Plugins;
 public class PluginResponse
 {
     public HttpRequestMessage? Request { get; private set; }

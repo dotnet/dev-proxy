@@ -5,7 +5,6 @@
 using System.CommandLine;
 using System.Globalization;
 using System.Text.Json;
-using DevProxy.Abstractions.Models;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Configuration;

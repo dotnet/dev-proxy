@@ -3,7 +3,6 @@
 // See the LICENSE file in the project root for more information.
 
 using DevProxy.Abstractions.Data;
-using DevProxy.Abstractions.Models;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Utils;

@@ -100,7 +100,7 @@ This document provides an inventory of all plugins in the DevProxy.Plugins proje
 - GetOptions
 - OptionsLoaded
 - InitializeAsync
-- BeforeRequestAsync
+- OnRequestAsync (NEW API - MIGRATED)
 
 **Behavior:** Modifies responses (generates random error responses)
 
@@ -374,11 +374,11 @@ This document provides an inventory of all plugins in the DevProxy.Plugins proje
 ## Summary
 
 - **Total Plugins:** 38
-- **Plugins using BeforeRequestAsync:** 27 (decreased by 3 due to ODataPagingGuidancePlugin and ODSPSearchGuidancePlugin migrations)
+- **Plugins using BeforeRequestAsync:** 26 (decreased by 4 due to ODataPagingGuidancePlugin, ODSPSearchGuidancePlugin, and GenericRandomErrorPlugin migrations)
 - **Plugins using BeforeResponseAsync:** 2 (DevToolsPlugin, RateLimitingPlugin)
 - **Plugins using AfterResponseAsync:** 5 (decreased by 2 due to ODataPagingGuidancePlugin and GraphSdkGuidancePlugin migrations: GraphSelectGuidancePlugin, OpenAITelemetryPlugin)
 - **Plugins using AfterRequestLogAsync:** 1 (DevToolsPlugin)
 - **Plugins using AfterRecordingStopAsync:** 8 (ApiCenterMinimalPermissionsPlugin, ExecutionSummaryPlugin, GraphMinimalPermissionsGuidancePlugin, HttpFileGeneratorPlugin, MockGeneratorPlugin, OpenAITelemetryPlugin, OpenApiSpecGeneratorPlugin, TypeSpecGeneratorPlugin)
-- **Plugins using OnRequestAsync (NEW API):** 1 (GraphRandomErrorPlugin - already migrated)
+- **Plugins using OnRequestAsync (NEW API):** 2 (GraphRandomErrorPlugin, GenericRandomErrorPlugin - migrated)
 - **Plugins using OnRequestLogAsync (NEW API):** 6 (GraphBetaSupportGuidancePlugin, CachingGuidancePlugin, GraphClientRequestIdGuidancePlugin, GraphConnectorGuidancePlugin, ODataPagingGuidancePlugin, ODSPSearchGuidancePlugin - migrated)
 - **Plugins using OnResponseLogAsync (NEW API):** 2 (ODataPagingGuidancePlugin, GraphSdkGuidancePlugin - migrated)

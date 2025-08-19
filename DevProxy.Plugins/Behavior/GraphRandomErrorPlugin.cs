@@ -4,7 +4,6 @@
 
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Plugins;
-using DevProxy.Abstractions.Models;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Utils;
 using Microsoft.Extensions.Configuration;

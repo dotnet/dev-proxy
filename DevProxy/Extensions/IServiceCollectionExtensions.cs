@@ -5,8 +5,10 @@
 using DevProxy;
 using DevProxy.Abstractions.Data;
 using DevProxy.Abstractions.LanguageModel;
+using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Commands;
+using DevProxy.Plugins;
 using DevProxy.Proxy;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
@@ -61,6 +63,7 @@ static class IServiceCollectionExtensions
             .AddSingleton<IProxyConfiguration, ProxyConfiguration>()
             .AddSingleton<IProxyStateController, ProxyStateController>()
             .AddSingleton<IProxyState, ProxyState>()
+            .AddSingleton<IProxyStorage, ProxyStorage>()
             // TODO: Removed the injected certificate
             //.AddSingleton(sp => ProxyEngine.Certificate!) // Why is this injected?
             //.AddSingleton(sp => sp.GetRequiredService<ProxyServer>().CertificateManager.RootCertificate!)
