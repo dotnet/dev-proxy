@@ -8,6 +8,7 @@ This document provides an inventory of all plugins in the DevProxy.Plugins proje
 **Methods Implemented:**
 - InitializeAsync
 - BeforeRequestAsync
+- AfterRecordingStopAsync
 
 **Behavior:** Read-only (collects API permission data for reporting)
 
@@ -107,7 +108,7 @@ This document provides an inventory of all plugins in the DevProxy.Plugins proje
 
 **Base Class:** BasePlugin  
 **Methods Implemented:**
-- AfterResponseAsync
+- OnRequestLogAsync (NEW API - MIGRATED)
 
 **Behavior:** Read-only (provides guidance about beta API usage)
 
@@ -115,7 +116,7 @@ This document provides an inventory of all plugins in the DevProxy.Plugins proje
 
 **Base Class:** BasePlugin  
 **Methods Implemented:**
-- AfterResponseAsync
+- OnRequestLogAsync (NEW API - MIGRATED)
 
 **Behavior:** Read-only (provides guidance about request ID headers)
 
@@ -123,7 +124,7 @@ This document provides an inventory of all plugins in the DevProxy.Plugins proje
 
 **Base Class:** BasePlugin  
 **Methods Implemented:**
-- AfterResponseAsync
+- OnRequestLogAsync (NEW API - MIGRATED)
 
 **Behavior:** Read-only (provides guidance about Graph connector usage)
 
@@ -133,6 +134,7 @@ This document provides an inventory of all plugins in the DevProxy.Plugins proje
 **Methods Implemented:**
 - InitializeAsync
 - BeforeRequestAsync
+- AfterRecordingStopAsync
 
 **Behavior:** Read-only (analyzes and reports on Graph API permissions)
 
@@ -167,7 +169,7 @@ This document provides an inventory of all plugins in the DevProxy.Plugins proje
 
 **Base Class:** BasePlugin  
 **Methods Implemented:**
-- AfterResponseAsync
+- OnResponseLogAsync (NEW API - MIGRATED)
 
 **Behavior:** Read-only (provides guidance about using Graph SDKs)
 
@@ -277,7 +279,7 @@ This document provides an inventory of all plugins in the DevProxy.Plugins proje
 
 **Base Class:** BasePlugin  
 **Methods Implemented:**
-- AfterResponseAsync
+- OnRequestLogAsync (NEW API - MIGRATED)
 
 **Behavior:** Read-only (provides guidance about SharePoint search optimization)
 
@@ -285,7 +287,8 @@ This document provides an inventory of all plugins in the DevProxy.Plugins proje
 
 **Base Class:** BasePlugin  
 **Methods Implemented:**
-- AfterResponseAsync
+- OnRequestLogAsync (NEW API - MIGRATED)
+- OnResponseLogAsync (NEW API - MIGRATED)
 
 **Behavior:** Read-only (provides guidance about OData paging patterns)
 
@@ -304,6 +307,8 @@ This document provides an inventory of all plugins in the DevProxy.Plugins proje
 **Methods Implemented:**
 - InitializeAsync
 - BeforeRequestAsync
+- AfterResponseAsync
+- AfterRecordingStopAsync
 
 **Behavior:** Read-only (collects OpenAI API usage telemetry for reporting)
 
@@ -369,59 +374,11 @@ This document provides an inventory of all plugins in the DevProxy.Plugins proje
 ## Summary
 
 - **Total Plugins:** 38
-- **Plugins using BeforeRequestAsync:** 32
+- **Plugins using BeforeRequestAsync:** 27 (decreased by 3 due to ODataPagingGuidancePlugin and ODSPSearchGuidancePlugin migrations)
 - **Plugins using BeforeResponseAsync:** 2 (DevToolsPlugin, RateLimitingPlugin)
-- **Plugins using AfterResponseAsync:** 9
+- **Plugins using AfterResponseAsync:** 5 (decreased by 2 due to ODataPagingGuidancePlugin and GraphSdkGuidancePlugin migrations: GraphSelectGuidancePlugin, OpenAITelemetryPlugin)
 - **Plugins using AfterRequestLogAsync:** 1 (DevToolsPlugin)
-- **Plugins using AfterRecordingStopAsync:** 4
+- **Plugins using AfterRecordingStopAsync:** 8 (ApiCenterMinimalPermissionsPlugin, ExecutionSummaryPlugin, GraphMinimalPermissionsGuidancePlugin, HttpFileGeneratorPlugin, MockGeneratorPlugin, OpenAITelemetryPlugin, OpenApiSpecGeneratorPlugin, TypeSpecGeneratorPlugin)
 - **Plugins using OnRequestAsync (NEW API):** 1 (GraphRandomErrorPlugin - already migrated)
-- **Plugins using OnResponseAsync (NEW API):** 0
-
-### Behavior Classification
-
-**Response Modifying Plugins (17):** These plugins intercept requests and return custom responses
-- AuthPlugin
-- CrudApiPlugin  
-- EntraMockResponsePlugin
-- GenericRandomErrorPlugin
-- GraphMockResponsePlugin
-- GraphRandomErrorPlugin
-- LanguageModelFailurePlugin
-- LanguageModelRateLimitingPlugin
-- MockRequestPlugin
-- MockResponsePlugin
-- OpenAIMockResponsePlugin
-- RateLimitingPlugin
-- RetryAfterPlugin
-
-**Request Modifying Plugins (1):** These plugins modify requests before they proceed
-- RewritePlugin
-
-**Read-Only Analysis Plugins (20):** These plugins only read request/response data for analysis, guidance, or reporting
-- ApiCenterMinimalPermissionsPlugin
-- ApiCenterOnboardingPlugin
-- ApiCenterProductionVersionPlugin
-- CachingGuidancePlugin
-- DevToolsPlugin
-- ExecutionSummaryPlugin
-- GraphBetaSupportGuidancePlugin
-- GraphClientRequestIdGuidancePlugin
-- GraphConnectorGuidancePlugin
-- GraphMinimalPermissionsGuidancePlugin
-- GraphMinimalPermissionsPlugin
-- GraphSdkGuidancePlugin
-- GraphSelectGuidancePlugin
-- HttpFileGeneratorPlugin
-- LatencyPlugin
-- MinimalCsomPermissionsPlugin
-- MinimalPermissionsGuidancePlugin
-- MinimalPermissionsPlugin
-- MockGeneratorPlugin
-- ODSPSearchGuidancePlugin
-- ODataPagingGuidancePlugin
-- OpenAITelemetryPlugin
-- OpenApiSpecGeneratorPlugin
-- TypeSpecGeneratorPlugin
-- UrlDiscoveryPlugin
-
-**Migration Priority:** Response modifying plugins should be migrated first as they have the most complex logic for creating and returning custom responses. Read-only plugins can potentially remain on the old API longer since they don't affect request flow.
+- **Plugins using OnRequestLogAsync (NEW API):** 6 (GraphBetaSupportGuidancePlugin, CachingGuidancePlugin, GraphClientRequestIdGuidancePlugin, GraphConnectorGuidancePlugin, ODataPagingGuidancePlugin, ODSPSearchGuidancePlugin - migrated)
+- **Plugins using OnResponseLogAsync (NEW API):** 2 (ODataPagingGuidancePlugin, GraphSdkGuidancePlugin - migrated)

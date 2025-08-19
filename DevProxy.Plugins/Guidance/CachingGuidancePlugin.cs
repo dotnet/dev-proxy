@@ -2,11 +2,12 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Abstractions.Models;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Plugins;
+using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Unobtanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Guidance;
 
@@ -32,32 +33,32 @@ public sealed class CachingGuidancePlugin(
 
     public override string Name => nameof(CachingGuidancePlugin);
 
-    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
+    public override Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync => (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
+        Logger.LogTrace("{Method} called", nameof(OnRequestLogAsync));
 
-        ArgumentNullException.ThrowIfNull(e);
+        ArgumentNullException.ThrowIfNull(args);
 
-        if (!e.HasRequestUrlMatch(UrlsToWatch))
+        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
             return Task.CompletedTask;
         }
-        if (string.Equals(e.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+        if (args.Request.Method == HttpMethod.Options)
         {
-            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, args.Request);
             return Task.CompletedTask;
         }
 
-        var request = e.Session.HttpClient.Request;
-        var url = request.RequestUri.AbsoluteUri;
+        var request = args.Request;
+        var url = request.RequestUri!.AbsoluteUri;
         var now = DateTime.Now;
 
         if (!_interceptedRequests.TryGetValue(url, out var value))
         {
             value = now;
             _interceptedRequests.Add(url, value);
-            Logger.LogRequest("First request", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("First request", MessageType.Skipped, args.Request);
             return Task.CompletedTask;
         }
 
@@ -65,19 +66,19 @@ public sealed class CachingGuidancePlugin(
         var secondsSinceLastIntercepted = (now - lastIntercepted).TotalSeconds;
         if (secondsSinceLastIntercepted <= Configuration.CacheThresholdSeconds)
         {
-            Logger.LogRequest(BuildCacheWarningMessage(request, Configuration.CacheThresholdSeconds, lastIntercepted), MessageType.Warning, new LoggingContext(e.Session));
+            Logger.LogRequest(BuildCacheWarningMessage(request, Configuration.CacheThresholdSeconds, lastIntercepted), MessageType.Warning, args.Request);
         }
         else
         {
-            Logger.LogRequest("Request outside of cache window", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Request outside of cache window", MessageType.Skipped, args.Request);
         }
 
         _interceptedRequests[url] = now;
 
-        Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
+        Logger.LogTrace("Left {Name}", nameof(OnRequestLogAsync));
         return Task.CompletedTask;
-    }
+    };
 
-    private static string BuildCacheWarningMessage(Request r, int _warningSeconds, DateTime lastIntercepted) =>
-        $"Another request to {r.RequestUri.PathAndQuery} intercepted within {_warningSeconds} seconds. Last intercepted at {lastIntercepted}. Consider using cache to avoid calling the API too often.";
+    private static string BuildCacheWarningMessage(HttpRequestMessage r, int warningSeconds, DateTime lastIntercepted) =>
+        $"Another request to {r.RequestUri!.PathAndQuery} intercepted within {warningSeconds} seconds. Last intercepted at {lastIntercepted}. Consider using cache to avoid calling the API too often.";
 }

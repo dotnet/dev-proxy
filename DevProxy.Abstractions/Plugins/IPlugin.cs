@@ -6,7 +6,6 @@ using DevProxy.Abstractions.Proxy;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using System.CommandLine;
-using Unobtanium.Web.Proxy.Events;
 
 namespace DevProxy.Abstractions.Plugins;
 
@@ -34,7 +33,12 @@ public interface IPlugin
     /// <summary>
     /// Implement this to modify responses from the remote server.
     /// </summary>
-    Func<ResponseEventArguments, CancellationToken, Task<ResponseEventResponse?>>? OnResponseAsync { get; }
+    Func<Models.ResponseArguments, CancellationToken, Task<Models.PluginResponse?>>? OnResponseAsync { get; }
+
+    /// <summary>
+    /// Implement this to modify responses from the remote server.
+    /// </summary>
+    Func<Models.ResponseArguments, CancellationToken, Task>? OnResponseLogAsync { get; }
     Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken);
     Task BeforeResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken);
     Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken);

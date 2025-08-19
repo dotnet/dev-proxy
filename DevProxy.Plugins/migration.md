@@ -1,4 +1,4 @@
-# Plugin Migration Guide: From Event-Based to Functional API
+﻿# Plugin Migration Guide: From Event-Based to Functional API
 
 This document provides detailed guidance on migrating DevProxy plugins from the old event-based API to the new functional API pattern.
 
@@ -39,8 +39,7 @@ public override Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken c
 ### New API (Functional)
 ```csharp
 // For plugins that need to modify requests or responses
-public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync => 
-    async (args, cancellationToken) =>
+public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync => async (args, cancellationToken) =>
 {
     // Logic to decide whether to intercept
     if (!ShouldIntercept(args.Request)) 
@@ -58,8 +57,7 @@ public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>?
 };
 
 // For guidance plugins that only need to log or analyze requests
-public override Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync => 
-    async (args, cancellationToken) =>
+public override Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync => async (args, cancellationToken) =>
 {
     // Analyze request and provide guidance
     if (ShouldProvideGuidance(args.Request))
@@ -69,27 +67,39 @@ public override Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsy
 };
 
 // For plugins that need to modify responses from remote server
-public override Func<ResponseEventArguments, CancellationToken, Task<ResponseEventResponse?>>? OnResponseAsync => 
-    async (args, cancellationToken) =>
+public override Func<ResponseArguments, CancellationToken, Task<PluginResponse?>>? OnResponseAsync => async (args, cancellationToken) =>
 {
     // Process response and optionally modify it
-    // Return null to continue, or ResponseEventResponse to modify
+    // Return null to continue, or PluginResponse to modify
     return null;
+};
+
+// For guidance plugins that only need to log or analyze responses
+public override Func<ResponseArguments, CancellationToken, Task>? OnResponseLogAsync => async (args, cancellationToken) =>
+{
+    // Analyze response and provide guidance
+    if (ShouldProvideGuidance(args.HttpResponseMessage))
+    {
+        Logger.LogRequest("Response guidance message", MessageType.Tip, args.HttpRequestMessage);
+    }
 };
 ```
 
 ## Key Differences
 
 ### 1. Input Arguments
-- **Old API:** `ProxyRequestArgs e` containing session, response state, and global data
-- **New API:** `RequestArguments args` containing `HttpRequestMessage` and `RequestId`
+- **Old API:** `ProxyRequestArgs e` and `ProxyResponseArgs e` containing session, response state, and global data
+- **New API:** 
+  - `RequestArguments args` containing `HttpRequestMessage` and `RequestId`
+  - `ResponseArguments args` containing `HttpRequestMessage`, `HttpResponseMessage` and `RequestId`
 
 ### 2. Return Values
 - **Old API:** `Task` (void) - side effects through `e.Session` and `e.ResponseState`
 - **New API:** 
   - `Task<PluginResponse>` for `OnRequestAsync` - explicit return values to control flow
-  - `Task` for `OnRequestLogAsync` - read-only logging/analysis
-  - `Task<ResponseEventResponse?>` for `OnResponseAsync` - response modification
+  - `Task` for `OnRequestLogAsync` - read-only logging/analysis of requests
+  - `Task<PluginResponse?>` for `OnResponseAsync` - response modification (return null to continue)
+  - `Task` for `OnResponseLogAsync` - read-only logging/analysis of responses
 
 ### 3. Response Creation
 - **Old API:** Direct manipulation of session: `e.Session.GenericResponse(...)`
@@ -105,24 +115,27 @@ Choose the appropriate new API method based on your plugin's behavior:
 - **`OnRequestAsync`**: Use for plugins that need to intercept and potentially modify or respond to requests
 - **`OnRequestLogAsync`**: Use for guidance plugins that only need to analyze requests and provide logging/guidance (cannot modify requests or responses)
 - **`OnResponseAsync`**: Use for plugins that need to modify responses from the remote server
+- **`OnResponseLogAsync`**: Use for guidance plugins that only need to analyze responses and provide logging/guidance (cannot modify responses)
 
 ## Migration Steps
 
 ### Step 1: Determine the Appropriate New Method
 
-**Response Modifying Plugins** ? Use `OnRequestAsync`:
+**Response Modifying Plugins** → Use `OnRequestAsync`:
 - MockResponsePlugin
 - AuthPlugin  
 - RateLimitingPlugin
 - GenericRandomErrorPlugin
 - etc.
 
-**Guidance/Analysis Plugins** ? Use `OnRequestLogAsync`:
-- CachingGuidancePlugin
-- GraphSdkGuidancePlugin (when migrated from AfterResponseAsync)
-- UrlDiscoveryPlugin
-- Most reporting plugins
-- etc.
+**Guidance/Analysis Plugins** → Use `OnRequestLogAsync` or `OnResponseLogAsync`:
+- CachingGuidancePlugin → `OnRequestLogAsync`
+- GraphSdkGuidancePlugin → `OnResponseLogAsync` (analyzes responses from AfterResponseAsync)
+- UrlDiscoveryPlugin → `OnRequestLogAsync`
+- Most reporting plugins → `OnRequestLogAsync`
+
+**Response Modifying Plugins** → Use `OnResponseAsync`:
+- Plugins that need to modify responses from the remote server
 
 ### Step 2: Change Method Signature
 
@@ -132,23 +145,39 @@ Choose the appropriate new API method based on your plugin's behavior:
 public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
 
 // After
-public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync => 
-    async (args, cancellationToken) =>
+public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync => async (args, cancellationToken) =>
 ```
 
-**For Guidance Plugins (OnRequestLogAsync):**
+**For Request Guidance Plugins (OnRequestLogAsync):**
 ```csharp
 // Before
 public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
 
 // After
-public override Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync => 
-    async (args, cancellationToken) =>
+public override Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync => async (args, cancellationToken) =>
+```
+
+**For Response Guidance Plugins (OnResponseLogAsync):**
+```csharp
+// Before
+public override Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)
+
+// After
+public override Func<ResponseArguments, CancellationToken, Task>? OnResponseLogAsync => async (args, cancellationToken) =>
+```
+
+**For Response Modifying Plugins (OnResponseAsync):**
+```csharp
+// Before
+public override Task BeforeResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)
+
+// After
+public override Func<ResponseArguments, CancellationToken, Task<PluginResponse?>>? OnResponseAsync => async (args, cancellationToken) =>
 ```
 
 ### Step 3: Update Input Data Access
 
-**Before:**
+**Before (Request):**
 ```csharp
 var request = e.Session.HttpClient.Request;
 var url = request.RequestUri;
@@ -156,12 +185,28 @@ var method = request.Method;
 var body = request.BodyString;
 ```
 
-**After:**
+**After (Request):**
 ```csharp
 var request = args.Request;
 var url = request.RequestUri;
 var method = request.Method.Method;
 var body = await request.Content.ReadAsStringAsync();
+```
+
+**Before (Response):**
+```csharp
+var request = e.Session.HttpClient.Request;
+var response = e.Session.HttpClient.Response;
+var statusCode = response.StatusCode;
+var responseBody = response.BodyString;
+```
+
+**After (Response):**
+```csharp
+var request = args.HttpRequestMessage;
+var response = args.HttpResponseMessage;
+var statusCode = response.StatusCode;
+var responseBody = await response.Content.ReadAsStringAsync();
 ```
 
 ### Step 4: Update URL Matching Logic
@@ -184,11 +229,11 @@ if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
 }
 ```
 
-**After (OnRequestLogAsync):**
+**After (OnRequestLogAsync/OnResponseLogAsync):**
 ```csharp
-if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
+if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.HttpRequestMessage.RequestUri))
 {
-    Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
+    Logger.LogRequest("URL not matched", MessageType.Skipped, args.HttpRequestMessage);
     return;
 }
 ```
@@ -208,10 +253,11 @@ if (e.ResponseState.HasBeenSet)
 ```csharp
 // Not needed in new API - flow control is handled by return values
 // OnRequestAsync: Each plugin returns either Continue() or Respond()
-// OnRequestLogAsync: Cannot modify responses, so this check is irrelevant
+// OnRequestLogAsync/OnResponseLogAsync: Cannot modify responses, so this check is irrelevant
+// OnResponseAsync: Return null to continue, or PluginResponse to modify
 ```
 
-### Step 6: Update Response Creation (OnRequestAsync only)
+### Step 6: Update Response Creation (OnRequestAsync and OnResponseAsync only)
 
 **Before:**
 ```csharp
@@ -247,20 +293,20 @@ if (shouldPassThrough)
 }
 ```
 
-**After (OnRequestAsync):**
+**After (OnRequestAsync/OnResponseAsync):**
 ```csharp
 if (shouldPassThrough)
 {
-    Logger.LogRequest("Pass through", MessageType.Skipped, args.Request);
-    return PluginResponse.Continue();
+    Logger.LogRequest("Pass through", MessageType.Skipped, args.Request); // or args.HttpRequestMessage
+    return PluginResponse.Continue(); // or return null for OnResponseAsync
 }
 ```
 
-**After (OnRequestLogAsync):**
+**After (OnRequestLogAsync/OnResponseLogAsync):**
 ```csharp
 if (shouldSkip)
 {
-    Logger.LogRequest("Skipping analysis", MessageType.Skipped, args.Request);
+    Logger.LogRequest("Skipping analysis", MessageType.Skipped, args.Request); // or args.HttpRequestMessage
     return;
 }
 ```
@@ -299,8 +345,7 @@ public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken ca
 
 **After (New API):**
 ```csharp
-public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync => 
-    (args, cancellationToken) =>
+public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync => (args, cancellationToken) =>
 {
     if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
     {
@@ -331,7 +376,7 @@ public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>?
 };
 ```
 
-### Example 2: Guidance Plugin (OnRequestLogAsync)
+### Example 2: Request Guidance Plugin (OnRequestLogAsync)
 
 **Before (Old API):**
 ```csharp
@@ -355,8 +400,7 @@ public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken ca
 
 **After (New API):**
 ```csharp
-public override Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync => 
-    (args, cancellationToken) =>
+public override Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync => (args, cancellationToken) =>
 {
     if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
     {
@@ -373,33 +417,76 @@ public override Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsy
 };
 ```
 
+### Example 3: Response Guidance Plugin (OnResponseLogAsync)
+
+**Before (Old API):**
+```csharp
+public override Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)
+{
+    if (!e.HasRequestUrlMatch(UrlsToWatch))
+    {
+        Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
+        return Task.CompletedTask;
+    }
+
+    var response = e.Session.HttpClient.Response;
+    if (ShouldProvideGuidance(response))
+    {
+        Logger.LogRequest("Consider optimizing your API queries", MessageType.Tip, new(e.Session));
+    }
+
+    return Task.CompletedTask;
+}
+```
+
+**After (New API):**
+```csharp
+public override Func<ResponseArguments, CancellationToken, Task>? OnResponseLogAsync => (args, cancellationToken) =>
+{
+    if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.HttpRequestMessage.RequestUri))
+    {
+        Logger.LogRequest("URL not matched", MessageType.Skipped, args.HttpRequestMessage);
+        return Task.CompletedTask;
+    }
+
+    if (ShouldProvideGuidance(args.HttpResponseMessage))
+    {
+        Logger.LogRequest("Consider optimizing your API queries", MessageType.Tip, args.HttpRequestMessage);
+    }
+
+    return Task.CompletedTask;
+};
+```
+
 ## Important Notes
 
 ### 1. Logging Context
-The logging context changes from `LoggingContext(e.Session)` to just the `HttpRequestMessage`:
+The logging context changes from `LoggingContext(e.Session)` to the appropriate request message:
 ```csharp
 // Old
 Logger.LogRequest("Message", MessageType.Info, new LoggingContext(e.Session));
 
-// New  
+// New (Request-based methods)
 Logger.LogRequest("Message", MessageType.Info, args.Request);
+
+// New (Response-based methods)
+Logger.LogRequest("Message", MessageType.Info, args.HttpRequestMessage);
 ```
 
 ### 2. Global Data and Session Data
 Global data and session data access patterns will need to be reviewed as they may not be available in the new API. These features may be handled differently or through dependency injection.
 
-### 3. OnRequestLogAsync Benefits
-The new `OnRequestLogAsync` method provides several advantages for guidance plugins:
-- **Better Control Flow**: The proxy can respond quickly without waiting for guidance analysis
-- **Clear Intent**: Explicitly indicates the plugin is read-only and cannot modify requests/responses
-- **Performance**: Guidance plugins don't block the request pipeline
-- **Separation of Concerns**: Clearly separates modification logic from analysis logic
+### 3. New API Benefits
+The new API methods provide several advantages:
+- **Better Control Flow**: Clear separation between modifying and logging operations
+- **Clear Intent**: Method names explicitly indicate their purpose and capabilities
+- **Performance**: Logging methods don't block critical paths
+- **Separation of Concerns**: Clear distinction between modification and analysis logic
 
 ### 4. Async Considerations
-Both new API methods expect functions that return Tasks, so you can use async/await within the lambda:
+All new API methods expect functions that return Tasks, so you can use async/await within the lambda:
 ```csharp
-public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync => 
-    async (args, cancellationToken) =>
+public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync => async (args, cancellationToken) =>
 {
     var data = await SomeAsyncOperation(cancellationToken);
     // ... process data
@@ -410,8 +497,7 @@ public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>?
 ### 5. Error Handling
 Error handling should be done within the function and appropriate responses returned:
 ```csharp
-public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync => 
-    async (args, cancellationToken) =>
+public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync => async (args, cancellationToken) =>
 {
     try
     {
@@ -426,7 +512,17 @@ public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>?
 };
 ```
 
-## Migration Checklist
+## Migration instructions
+
+- We have compilation errors, so no need to try to build the project until all plugins are migrated.
+- Instead of `string.Equals(args.Request.Method.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase)`, use `args.Request.Method == HttpMethod.Options` for better performance.
+- Summarize changes in max two lines
+
+### General Migration Steps
+
+1. Migrate plugin according to the new API method (OnRequestAsync, OnRequestLogAsync, OnResponseAsync, or OnResponseLogAsync).
+2. Update inventory.md to reflect the new method, leave the old methods in place using strikethrough.
+3. Update migration.md with the new migration status
 
 ### For Response Modifying Plugins (OnRequestAsync):
 - [ ] Update method signature from `BeforeRequestAsync` to `OnRequestAsync`
@@ -441,7 +537,7 @@ public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>?
 - [ ] Update logging context from `LoggingContext(e.Session)` to `args.Request`
 - [ ] Test the migrated plugin thoroughly
 
-### For Guidance Plugins (OnRequestLogAsync):
+### For Request Guidance Plugins (OnRequestLogAsync):
 - [ ] Update method signature from `BeforeRequestAsync` to `OnRequestLogAsync`
 - [ ] Keep return type as `Task` (no PluginResponse needed)
 - [ ] Update input parameter from `ProxyRequestArgs` to `RequestArguments`
@@ -449,6 +545,29 @@ public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>?
 - [ ] Replace `e.HasRequestUrlMatch()` with `ProxyUtils.MatchesUrlToWatch()`
 - [ ] Remove any response modification logic (not allowed in OnRequestLogAsync)
 - [ ] Update logging context from `LoggingContext(e.Session)` to `args.Request`
+- [ ] Test the migrated plugin thoroughly
+
+### For Response Guidance Plugins (OnResponseLogAsync):
+- [ ] Update method signature from `AfterResponseAsync` to `OnResponseLogAsync`
+- [ ] Keep return type as `Task` (no PluginResponse needed)
+- [ ] Update input parameter from `ProxyResponseArgs` to `ResponseArguments`
+- [ ] Replace `e.Session.HttpClient.Request` with `args.HttpRequestMessage`
+- [ ] Replace `e.Session.HttpClient.Response` with `args.HttpResponseMessage`
+- [ ] Replace `e.HasRequestUrlMatch()` with `ProxyUtils.MatchesUrlToWatch()`
+- [ ] Remove any response modification logic (not allowed in OnResponseLogAsync)
+- [ ] Update logging context from `LoggingContext(e.Session)` to `args.HttpRequestMessage`
+- [ ] Test the migrated plugin thoroughly
+
+### For Response Modifying Plugins (OnResponseAsync):
+- [ ] Update method signature from `BeforeResponseAsync` to `OnResponseAsync`
+- [ ] Change return type from `Task` to `Task<PluginResponse?>`
+- [ ] Update input parameter from `ProxyResponseArgs` to `ResponseArguments`
+- [ ] Replace `e.Session.HttpClient.Request` with `args.HttpRequestMessage`
+- [ ] Replace `e.Session.HttpClient.Response` with `args.HttpResponseMessage`
+- [ ] Replace `e.HasRequestUrlMatch()` with `ProxyUtils.MatchesUrlToWatch()`
+- [ ] Remove `e.ResponseState.HasBeenSet` checks
+- [ ] Return `null` to continue or `PluginResponse` to modify
+- [ ] Update logging context from `LoggingContext(e.Session)` to `args.HttpRequestMessage`
 - [ ] Test the migrated plugin thoroughly
 
 ## Plugin Migration Categorization
@@ -470,35 +589,34 @@ Based on the inventory, here's how plugins should be migrated:
 12. RateLimitingPlugin
 13. RetryAfterPlugin
 
-### OnRequestLogAsync (Guidance/Analysis - 20+ plugins):
+### OnRequestLogAsync (Request Guidance/Analysis - 20+ plugins):
 1. ApiCenterMinimalPermissionsPlugin
 2. ApiCenterOnboardingPlugin
 3. ApiCenterProductionVersionPlugin
-4. CachingGuidancePlugin
+4. CachingGuidancePlugin (MIGRATED)
 5. ExecutionSummaryPlugin
-6. GraphMinimalPermissionsGuidancePlugin
-7. GraphMinimalPermissionsPlugin
-8. HttpFileGeneratorPlugin
-9. MinimalCsomPermissionsPlugin
-10. MinimalPermissionsGuidancePlugin
-11. MinimalPermissionsPlugin
-12. OpenAITelemetryPlugin
-13. OpenApiSpecGeneratorPlugin
-14. TypeSpecGeneratorPlugin
-15. UrlDiscoveryPlugin
+6. GraphClientRequestIdGuidancePlugin (MIGRATED)
+7. GraphConnectorGuidancePlugin (MIGRATED)
+8. GraphMinimalPermissionsGuidancePlugin
+9. GraphMinimalPermissionsPlugin
+10. GraphSelectGuidancePlugin (MIGRATED)
+11. HttpFileGeneratorPlugin
+12. MinimalCsomPermissionsPlugin
+13. MinimalPermissionsGuidancePlugin
+14. MinimalPermissionsPlugin
+15. ~~ODSPSearchGuidancePlugin~~ (MIGRATED)
+16. OpenAITelemetryPlugin
+17. OpenApiSpecGeneratorPlugin
+18. TypeSpecGeneratorPlugin
+19. UrlDiscoveryPlugin
+
+### OnResponseLogAsync (Response Guidance/Analysis - plugins analyzing responses):
+1. ~~GraphSdkGuidancePlugin~~ (MIGRATED)
+2. ~~ODataPagingGuidancePlugin~~ (MIGRATED)
 
 ### Special Cases:
 - **RewritePlugin**: Modifies requests before they proceed (may need custom handling)
 - **DevToolsPlugin**: Uses multiple methods (BeforeRequestAsync, BeforeResponseAsync, AfterResponseAsync, AfterRequestLogAsync)
 - **LatencyPlugin**: Adds delay but doesn't modify responses (could use OnRequestLogAsync)
 
-### Plugins using AfterResponseAsync (may migrate to OnResponseAsync):
-- GraphBetaSupportGuidancePlugin
-- GraphClientRequestIdGuidancePlugin
-- GraphConnectorGuidancePlugin
-- GraphSdkGuidancePlugin
-- GraphSelectGuidancePlugin
-- ODSPSearchGuidancePlugin
-- ODataPagingGuidancePlugin
-
-The `OnRequestLogAsync` method enables better control flow by allowing the proxy to respond quickly while still providing comprehensive guidance and analysis capabilities.
+The new API methods enable better control flow by allowing the proxy to handle modification and logging operations separately, improving both performance and code clarity.The new API methods enable better control flow by allowing the proxy to handle modification and logging operations separately, improving both performance and code clarity.

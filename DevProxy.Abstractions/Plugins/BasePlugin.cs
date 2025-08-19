@@ -38,7 +38,12 @@ public abstract class BasePlugin(
     /// <summary>
     /// Implement this to modify responses from the remote server.
     /// </summary>
-    public virtual Func<ResponseEventArguments, CancellationToken, Task<ResponseEventResponse?>>? OnResponseAsync { get; }
+    public virtual Func<ResponseArguments, CancellationToken, Task<PluginResponse?>>? OnResponseAsync { get; }
+
+    /// <summary>
+    /// Implement this to modify responses from the remote server.
+    /// </summary>
+    public virtual Func<ResponseArguments, CancellationToken, Task>? OnResponseLogAsync { get; }
 
     public virtual Option[] GetOptions() => [];
     public virtual Command[] GetCommands() => [];

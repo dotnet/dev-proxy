@@ -2,12 +2,12 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Abstractions.Models;
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Utils;
 using Microsoft.Extensions.Logging;
-using Unobtanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Guidance;
 
@@ -17,45 +17,42 @@ public sealed class GraphSdkGuidancePlugin(
 {
     public override string Name => nameof(GraphSdkGuidancePlugin);
 
-    public override Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)
+    public override Func<ResponseArguments, CancellationToken, Task>? OnResponseLogAsync => (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(AfterResponseAsync));
+        Logger.LogTrace("{Method} called", nameof(OnResponseLogAsync));
 
-        ArgumentNullException.ThrowIfNull(e);
-
-        var request = e.Session.HttpClient.Request;
-        if (!e.HasRequestUrlMatch(UrlsToWatch))
+        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.HttpRequestMessage.RequestUri))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, args.HttpRequestMessage);
             return Task.CompletedTask;
         }
-        if (string.Equals(e.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+        if (args.HttpRequestMessage.Method == HttpMethod.Options)
         {
-            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, args.HttpRequestMessage);
             return Task.CompletedTask;
         }
 
         // only show the message if there is an error.
-        if (e.Session.HttpClient.Response.StatusCode >= 400)
+        if ((int)args.HttpResponseMessage.StatusCode >= 400)
         {
-            if (WarnNoSdk(request))
+            if (WarnNoSdk(args.HttpRequestMessage))
             {
-                Logger.LogRequest(MessageUtils.BuildUseSdkForErrorsMessage(), MessageType.Tip, new(e.Session));
+                Logger.LogRequest(MessageUtils.BuildUseSdkForErrorsMessage(), MessageType.Tip, args.HttpRequestMessage);
             }
             else
             {
-                Logger.LogRequest("Request issued using SDK", MessageType.Skipped, new(e.Session));
+                Logger.LogRequest("Request issued using SDK", MessageType.Skipped, args.HttpRequestMessage);
             }
         }
         else
         {
-            Logger.LogRequest("Skipping non-error response", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Skipping non-error response", MessageType.Skipped, args.HttpRequestMessage);
         }
 
-        Logger.LogTrace("Left {Name}", nameof(AfterResponseAsync));
+        Logger.LogTrace("Left {Name}", nameof(OnResponseLogAsync));
         return Task.CompletedTask;
-    }
+    };
 
-    private static bool WarnNoSdk(Request request) =>
+    private static bool WarnNoSdk(HttpRequestMessage request) =>
         ProxyUtils.IsGraphRequest(request) && !ProxyUtils.IsSdkRequest(request);
 }

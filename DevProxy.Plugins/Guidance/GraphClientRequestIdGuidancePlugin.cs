@@ -2,12 +2,12 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Abstractions.Models;
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Utils;
 using Microsoft.Extensions.Logging;
-using Unobtanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Guidance;
 
@@ -17,45 +17,45 @@ public sealed class GraphClientRequestIdGuidancePlugin(
 {
     public override string Name => nameof(GraphClientRequestIdGuidancePlugin);
 
-    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
+    public override Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync => (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
+        Logger.LogTrace("{Method} called", nameof(OnRequestLogAsync));
 
-        ArgumentNullException.ThrowIfNull(e);
+        ArgumentNullException.ThrowIfNull(args);
 
-        var request = e.Session.HttpClient.Request;
-        if (!e.HasRequestUrlMatch(UrlsToWatch))
+        var request = args.Request;
+        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
             return Task.CompletedTask;
         }
-        if (string.Equals(e.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+        if (args.Request.Method == HttpMethod.Options)
         {
-            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, args.Request);
             return Task.CompletedTask;
         }
 
         if (WarnNoClientRequestId(request))
         {
-            Logger.LogRequest(BuildAddClientRequestIdMessage(), MessageType.Warning, new(e.Session));
+            Logger.LogRequest(BuildAddClientRequestIdMessage(), MessageType.Warning, args.Request);
 
             if (!ProxyUtils.IsSdkRequest(request))
             {
-                Logger.LogRequest(MessageUtils.BuildUseSdkMessage(), MessageType.Tip, new(e.Session));
+                Logger.LogRequest(MessageUtils.BuildUseSdkMessage(), MessageType.Tip, args.Request);
             }
         }
         else
         {
-            Logger.LogRequest("client-request-id header present", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("client-request-id header present", MessageType.Skipped, args.Request);
         }
 
-        Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
+        Logger.LogTrace("Left {Name}", nameof(OnRequestLogAsync));
         return Task.CompletedTask;
-    }
+    };
 
-    private static bool WarnNoClientRequestId(Request request) =>
+    private static bool WarnNoClientRequestId(HttpRequestMessage request) =>
         ProxyUtils.IsGraphRequest(request) &&
-        !request.Headers.HeaderExists("client-request-id");
+        !request.Headers.Contains("client-request-id");
 
     private static string GetClientRequestIdGuidanceUrl() => "https://aka.ms/devproxy/guidance/client-request-id";
     private static string BuildAddClientRequestIdMessage() =>

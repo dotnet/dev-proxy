@@ -633,6 +633,24 @@ sealed class ProxyEngine(
         var message = $"{e.Request.Method} {e.Response}";
         _logger.LogRequest(message, MessageType.InterceptedResponse, e.Request);
         HttpResponseMessage? response = null;
+        var logPlugins = _plugins.Where(p => p.Enabled && p.OnResponseLogAsync is not null);
+        if (logPlugins.Any())
+        {
+            // Call OnResponseLogAsync for all plugins at the same time and wait for all of them to complete
+            var logArguments = new Abstractions.Models.ResponseArguments(e.Request, e.Response, e.RequestId);
+            var logTasks = logPlugins
+                .Select(plugin => plugin.OnResponseLogAsync!(logArguments, cts.Token))
+                .ToArray();
+            try
+            {
+                await Task.WhenAll(logTasks);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "An error occurred in a plugin while logging response {ResponseStatusCode} for request {RequestMethod} {RequestUrl}",
+                    e.Response.StatusCode, e.Request.Method, uri);
+            }
+        }
 
         foreach (var plugin in _plugins.Where(p => p.Enabled && p.OnResponseAsync is not null))
         {
@@ -640,12 +658,17 @@ sealed class ProxyEngine(
 
             try
             {
-                var result = await plugin.OnResponseAsync!(e, cts.Token);
+                var result = await plugin.OnResponseAsync!(new Abstractions.Models.ResponseArguments(e.Request, response ?? e.Response, e.RequestId), cts.Token);
                 if (result is not null)
                 {
-                    if (result.ModifiedResponse is not null)
+                    if (result.Request is not null)
                     {
-                        response = result.ModifiedResponse;
+                        // If the plugin modified the request, it is a mistake. Faulty behavior.
+                        _logger.LogError("Plugin {PluginName} tried changing the request", plugin.Name);
+                    }
+                    if (result.Response is not null)
+                    {
+                        response = result.Response;
                         // Maybe exit the loop here?
                     }
                 }
