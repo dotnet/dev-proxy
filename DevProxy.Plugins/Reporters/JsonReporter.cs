@@ -12,7 +12,8 @@ namespace DevProxy.Plugins.Reporters;
 
 public class JsonReporter(
     ILogger<JsonReporter> logger,
-    ISet<UrlToWatch> urlsToWatch) : BaseReporter(logger, urlsToWatch)
+    ISet<UrlToWatch> urlsToWatch,
+    IProxyStorage proxyStorage) : BaseReporter(logger, urlsToWatch, proxyStorage)
 {
     private string _fileExtension = ".json";
 

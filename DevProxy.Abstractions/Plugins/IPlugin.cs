@@ -23,26 +23,46 @@ public interface IPlugin
     /// <summary>
     /// Implement this to handle requests.
     /// </summary>
+    /// <remarks>This is <see langword="null"/> by default, so we can filter plugins based on implementation.</remarks>
     Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync { get; }
 
     /// <summary>
     /// Implement this to log requests, you cannot modify the request or response here.
     /// </summary>
+    /// <remarks>This is <see langword="null"/> by default, so we can filter plugins based on implementation.</remarks>
     Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync { get; }
 
     /// <summary>
     /// Implement this to modify responses from the remote server.
     /// </summary>
+    /// <remarks>This is <see langword="null"/> by default, so we can filter plugins based on implementation.</remarks>
     Func<ResponseArguments, CancellationToken, Task<PluginResponse?>>? OnResponseAsync { get; }
 
     /// <summary>
-    /// Implement this to modify responses from the remote server.
+    /// Implement this to log responses from the remote server.
     /// </summary>
+    /// <remarks>Think caching after the fact, combined with <see cref="OnRequestAsync"/>. This is <see langword="null"/> by default, so we can filter plugins based on implementation.</remarks>
     Func<ResponseArguments, CancellationToken, Task>? OnResponseLogAsync { get; }
+
     Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken);
     Task BeforeResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken);
     Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Receiving RequestLog messages for each <see cref="Microsoft.Extensions.Logging.ILoggerExtensions.LogRequest(Microsoft.Extensions.Logging.ILogger, string, MessageType, HttpRequestMessage)"/> call.
+    /// </summary>
+    /// <remarks>This is for collecting log messages not requests itself</remarks>
+    /// <param name="e"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
     Task AfterRequestLogAsync(RequestLogArgs e, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Executes post-processing tasks after a recording has stopped.
+    /// </summary>
+    /// <param name="e">The arguments containing details about the recording that has stopped.</param>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken);
     Task MockRequestAsync(EventArgs e, CancellationToken cancellationToken);
 }

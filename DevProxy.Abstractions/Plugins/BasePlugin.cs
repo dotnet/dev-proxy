@@ -10,7 +10,6 @@ using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Unobtanium.Web.Proxy.Events;
 
 namespace DevProxy.Abstractions.Plugins;
 
@@ -27,16 +26,19 @@ public abstract class BasePlugin(
     /// <summary>
     /// Implement this to handle requests, if you won't be modifying requests or respond, use <see cref="OnRequestLogAsync"/>.
     /// </summary>
+    /// <remarks>This is <see langword="null"/> by default, so we can filter plugins based on implementation.</remarks>
     public virtual Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync { get; }
 
     /// <summary>
     /// Implement this to log requests, you cannot modify the request or response here.
     /// </summary>
+    /// <remarks>This is <see langword="null"/> by default, so we can filter plugins based on implementation.</remarks>
     public virtual Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync { get; }
 
     /// <summary>
     /// Implement this to modify responses from the remote server.
     /// </summary>
+    /// <remarks>This is <see langword="null"/> by default, so we can filter plugins based on implementation.</remarks>
     public virtual Func<ResponseArguments, CancellationToken, Task<PluginResponse?>>? OnResponseAsync { get; }
 
     /// <summary>

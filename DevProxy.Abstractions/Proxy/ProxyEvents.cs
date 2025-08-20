@@ -98,7 +98,7 @@ public class RequestLog
     //}
 }
 
-public class RecordingArgs(IEnumerable<RequestLog> requestLogs) : ProxyEventArgsBase
+public class RecordingArgs(IEnumerable<RequestLog> requestLogs)// : ProxyEventArgsBase
 {
     public IEnumerable<RequestLog> RequestLogs { get; set; } = requestLogs ??
         throw new ArgumentNullException(nameof(requestLogs));

@@ -11,7 +11,8 @@ namespace DevProxy.Plugins.Reporters;
 
 public abstract class BaseReporter(
     ILogger logger,
-    ISet<UrlToWatch> urlsToWatch) : BasePlugin(logger, urlsToWatch)
+    ISet<UrlToWatch> urlsToWatch,
+    IProxyStorage proxyStorage) : BasePlugin(logger, urlsToWatch)
 {
     public abstract string FileExtension { get; }
 
@@ -23,7 +24,7 @@ public abstract class BaseReporter(
 
         await base.AfterRecordingStopAsync(e, cancellationToken);
 
-        if (!e.GlobalData.TryGetValue(ProxyUtils.ReportsKey, out var value) ||
+        if (!proxyStorage.GlobalData.TryGetValue(ProxyUtils.ReportsKey, out var value) ||
             value is not Dictionary<string, object> reports ||
             reports.Count == 0)
         {

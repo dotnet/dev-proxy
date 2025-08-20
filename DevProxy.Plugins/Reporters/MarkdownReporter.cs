@@ -10,7 +10,8 @@ namespace DevProxy.Plugins.Reporters;
 
 public class MarkdownReporter(
     ILogger<MarkdownReporter> logger,
-    ISet<UrlToWatch> urlsToWatch) : BaseReporter(logger, urlsToWatch)
+    ISet<UrlToWatch> urlsToWatch,
+    IProxyStorage proxyStorage) : BaseReporter(logger, urlsToWatch, proxyStorage)
 {
     public override string Name => nameof(MarkdownReporter);
     public override string FileExtension => ".md";
