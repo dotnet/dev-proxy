@@ -28,13 +28,15 @@ public sealed class ApiCenterProductionVersionPlugin(
     ILogger<ApiCenterProductionVersionPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
-    IConfigurationSection pluginConfigurationSection) :
+    IConfigurationSection pluginConfigurationSection,
+    IProxyStorage proxyStorage) :
     BaseReportingPlugin<ApiCenterProductionVersionPluginConfiguration>(
         httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
-        pluginConfigurationSection)
+        pluginConfigurationSection,
+        proxyStorage)
 {
     private ApiCenterClient? _apiCenterClient;
     private Api[]? _apis;
@@ -89,8 +91,8 @@ public sealed class ApiCenterProductionVersionPlugin(
         var interceptedRequests = e.RequestLogs
             .Where(
                 l => l.MessageType == MessageType.InterceptedRequest &&
-                l.Context?.Session is not null &&
-                ProxyUtils.MatchesUrlToWatch(UrlsToWatch, l.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri)
+                l.Request is not null &&
+                ProxyUtils.MatchesUrlToWatch(UrlsToWatch, l.Request!.RequestUri!.AbsoluteUri)
             );
         if (!interceptedRequests.Any())
         {
@@ -238,7 +240,7 @@ public sealed class ApiCenterProductionVersionPlugin(
             }
         }
 
-        StoreReport(report, e);
+        StoreReport(report);
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
     }

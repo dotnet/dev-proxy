@@ -25,7 +25,9 @@ static class MinimalPermissionsUtils
 
         try
         {
-            var token = jwtToken.Split(' ')[1];
+            var token = jwtToken!.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+                ? jwtToken["Bearer ".Length..].Trim()
+                : jwtToken.Trim();
             var handler = new JwtSecurityTokenHandler();
             var jsonToken = handler.ReadToken(token) as JwtSecurityToken;
             var scopes = jsonToken?.Claims

@@ -26,13 +26,15 @@ public sealed class GraphMinimalPermissionsPlugin(
     ILogger<GraphMinimalPermissionsPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
-    IConfigurationSection pluginConfigurationSection) :
+    IConfigurationSection pluginConfigurationSection,
+    IProxyStorage proxyStorage) :
     BaseReportingPlugin<GraphMinimalPermissionsPluginConfiguration>(
         httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
-        pluginConfigurationSection)
+        pluginConfigurationSection,
+        proxyStorage)
 {
     private GraphUtils? _graphUtils;
     private readonly HttpClient _httpClient = httpClient;
@@ -92,7 +94,8 @@ public sealed class GraphMinimalPermissionsPlugin(
             if (ProxyUtils.IsGraphBatchUrl(uri))
             {
                 var graphVersion = ProxyUtils.IsGraphBetaUrl(uri) ? "beta" : "v1.0";
-                var requestsFromBatch = GetRequestsFromBatch(request.Context?.Session.HttpClient.Request.BodyString!, graphVersion, uri.Host);
+                var bodyString = await request.Request!.Content!.ReadAsStringAsync(cancellationToken);
+                var requestsFromBatch = GetRequestsFromBatch(bodyString, graphVersion, uri.Host);
                 endpoints.AddRange(requestsFromBatch);
             }
             else
@@ -118,7 +121,7 @@ public sealed class GraphMinimalPermissionsPlugin(
         var report = await DetermineMinimalScopesAsync(endpoints, cancellationToken);
         if (report is not null)
         {
-            StoreReport(report, e);
+            StoreReport(report);
         }
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));

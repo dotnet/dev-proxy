@@ -24,13 +24,15 @@ public sealed class MinimalCsomPermissionsPlugin(
     ILogger<MinimalCsomPermissionsPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
-    IConfigurationSection pluginConfigurationSection) :
+    IConfigurationSection pluginConfigurationSection,
+    IProxyStorage proxyStorage) :
     BaseReportingPlugin<MinimalCsomPermissionsPluginConfiguration>(
         httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
-        pluginConfigurationSection)
+        pluginConfigurationSection,
+        proxyStorage)
 {
     private CsomTypesDefinitionLoader? _loader;
 
@@ -72,8 +74,9 @@ public sealed class MinimalCsomPermissionsPlugin(
         var interceptedRequests = e.RequestLogs
             .Where(l =>
                 l.MessageType == MessageType.InterceptedRequest &&
-                l.Message.StartsWith("POST", StringComparison.OrdinalIgnoreCase) &&
-                l.Message.Contains("/_vti_bin/client.svc/ProcessQuery", StringComparison.InvariantCultureIgnoreCase)
+                l.Request is not null &&
+                l.Request.RequestUri!.AbsoluteUri.Contains("/_vti_bin/client.svc/ProcessQuery", StringComparison.InvariantCultureIgnoreCase) &&
+                l.Request.Content is not null
             );
         if (!interceptedRequests.Any())
         {
@@ -90,18 +93,13 @@ public sealed class MinimalCsomPermissionsPlugin(
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (request.Context == null)
+            if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Request!.RequestUri!.AbsoluteUri))
             {
+                Logger.LogDebug("URL not matched: {Url}", request.Request.RequestUri.AbsoluteUri);
                 continue;
             }
 
-            if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri))
-            {
-                Logger.LogDebug("URL not matched: {Url}", request.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri);
-                continue;
-            }
-
-            var requestBody = await request.Context.Session.GetRequestBodyAsString(cancellationToken);
+            var requestBody = await request.Request.Content!.ReadAsStringAsync(cancellationToken);
             if (string.IsNullOrEmpty(requestBody))
             {
                 continue;
@@ -161,7 +159,7 @@ public sealed class MinimalCsomPermissionsPlugin(
             Errors = [.. errors]
         };
 
-        StoreReport(report, e);
+        StoreReport(report);
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
     }

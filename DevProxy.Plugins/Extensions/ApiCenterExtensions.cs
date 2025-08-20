@@ -189,17 +189,19 @@ public static class ModelExtensions
                 return apiVersion;
             }
 
-            // check headers
-            Debug.Assert(request.Context is not null);
-            var header = request.Context.Session.HttpClient.Request.Headers.FirstOrDefault(
-                h =>
-                    (!string.IsNullOrEmpty(apiVersion.Name) && h.Value.Contains(apiVersion.Name, StringComparison.OrdinalIgnoreCase)) ||
-                    (!string.IsNullOrEmpty(apiVersion.Properties?.Title) && h.Value.Contains(apiVersion.Properties.Title, StringComparison.OrdinalIgnoreCase))
-            );
-            if (header is not null)
+            // check headers - use the new Request property instead of Context.Session
+            if (request.Request?.Headers != null)
             {
-                logger.LogDebug("Version {Version} found in header {Header}", $"{apiVersion.Name}/{apiVersion.Properties?.Title}", header.Name);
-                return apiVersion;
+                var header = request.Request.Headers.FirstOrDefault(
+                    h =>
+                        (!string.IsNullOrEmpty(apiVersion.Name) && string.Join(", ", h.Value).Contains(apiVersion.Name, StringComparison.OrdinalIgnoreCase)) ||
+                        (!string.IsNullOrEmpty(apiVersion.Properties?.Title) && string.Join(", ", h.Value).Contains(apiVersion.Properties.Title, StringComparison.OrdinalIgnoreCase))
+                );
+                if (header.Key is not null)
+                {
+                    logger.LogDebug("Version {Version} found in header {Header}", $"{apiVersion.Name}/{apiVersion.Properties?.Title}", header.Key);
+                    return apiVersion;
+                }
             }
         }
 

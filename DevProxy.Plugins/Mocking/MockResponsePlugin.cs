@@ -62,6 +62,8 @@ public class MockResponsePlugin(
     private Argument<IEnumerable<string>>? _httpResponseFilesArgument;
     private Option<string>? _httpResponseMocksFileNameOption;
 
+    protected IProxyStorage ProxyStorage => proxyStorage;
+
     public override string Name => nameof(MockResponsePlugin);
 
     public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)

@@ -63,7 +63,7 @@ static class IServiceCollectionExtensions
             .AddSingleton<IProxyConfiguration, ProxyConfiguration>()
             .AddSingleton<IProxyStateController, ProxyStateController>()
             .AddSingleton<IProxyState, ProxyState>()
-            .AddSingleton<IProxyStorage, ProxyStorage>()
+            .AddSingleton<IProxyStorage>(sp => new ProxyStorage(sp.GetRequiredService<IProxyState>()))
             // TODO: Removed the injected certificate
             //.AddSingleton(sp => ProxyEngine.Certificate!) // Why is this injected?
             //.AddSingleton(sp => sp.GetRequiredService<ProxyServer>().CertificateManager.RootCertificate!)

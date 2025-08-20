@@ -114,7 +114,7 @@ public sealed class GenericRandomErrorPlugin(
 
         if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
+            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request, args.RequestId);
             return Task.FromResult(PluginResponse.Continue());
         }
 
@@ -122,11 +122,11 @@ public sealed class GenericRandomErrorPlugin(
 
         if (failMode == GenericRandomErrorFailMode.PassThru && Configuration.Rate != 100)
         {
-            Logger.LogRequest("Pass through", MessageType.Skipped, args.Request);
+            Logger.LogRequest("Pass through", MessageType.Skipped, args.Request, args.RequestId);
             return Task.FromResult(PluginResponse.Continue());
         }
 
-        var response = FailResponse(args.Request);
+        var response = FailResponse(args.Request, args.RequestId);
         if (response != null)
         {
             Logger.LogTrace("Left {Name}", nameof(OnRequestAsync));
@@ -140,7 +140,7 @@ public sealed class GenericRandomErrorPlugin(
     // uses config to determine if a request should be failed
     private GenericRandomErrorFailMode ShouldFail() => _random.Next(1, 100) <= Configuration.Rate ? GenericRandomErrorFailMode.Random : GenericRandomErrorFailMode.PassThru;
 
-    private HttpResponseMessage? FailResponse(HttpRequestMessage request)
+    private HttpResponseMessage? FailResponse(HttpRequestMessage request, string requestId)
     {
         var matchingResponse = GetMatchingErrorResponse(request);
         if (matchingResponse is not null &&
@@ -148,11 +148,11 @@ public sealed class GenericRandomErrorPlugin(
         {
             // pick a random error response for the current request
             var error = matchingResponse.Responses.ElementAt(_random.Next(0, matchingResponse.Responses.Count()));
-            return UpdateProxyResponse(request, error);
+            return UpdateProxyResponse(request, error, requestId);
         }
         else
         {
-            Logger.LogRequest("No matching error response found", MessageType.Skipped, request);
+            Logger.LogRequest("No matching error response found", MessageType.Skipped, request, requestId);
             return null;
         }
     }
@@ -211,7 +211,7 @@ public sealed class GenericRandomErrorPlugin(
         return errorResponse;
     }
 
-    private HttpResponseMessage UpdateProxyResponse(HttpRequestMessage request, GenericErrorResponseResponse error)
+    private HttpResponseMessage UpdateProxyResponse(HttpRequestMessage request, GenericErrorResponseResponse error, string requestId)
     {
         var headers = new List<GenericErrorResponseHeader>();
         if (error.Headers is not null)
@@ -288,7 +288,7 @@ public sealed class GenericRandomErrorPlugin(
             }
         }
 
-        Logger.LogRequest($"{error.StatusCode} {statusCode}", MessageType.Chaos, request);
+        Logger.LogRequest($"{error.StatusCode} {statusCode}", MessageType.Chaos, request, requestId);
         return response;
     }
 

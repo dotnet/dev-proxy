@@ -59,26 +59,26 @@ public sealed class RewritePlugin(
         await _loader.InitFileWatcherAsync(cancellationToken);
     }
 
-    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
+    public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync => (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
+        Logger.LogTrace("{Method} called", nameof(OnRequestAsync));
 
-        ArgumentNullException.ThrowIfNull(e);
-
-        if (!e.HasRequestUrlMatch(UrlsToWatch))
+        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
-            return Task.CompletedTask;
+            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request, args.RequestId);
+            return Task.FromResult(PluginResponse.Continue());
         }
 
         if (Configuration.Rewrites is null ||
             !Configuration.Rewrites.Any())
         {
-            Logger.LogRequest("No rewrites configured", MessageType.Skipped, new(e.Session));
-            return Task.CompletedTask;
+            Logger.LogRequest("No rewrites configured", MessageType.Skipped, args.Request, args.RequestId);
+            return Task.FromResult(PluginResponse.Continue());
         }
 
-        var request = e.Session.HttpClient.Request;
+        var originalUrl = args.Request.RequestUri?.ToString() ?? string.Empty;
+        var newUrl = originalUrl;
+        var wasRewritten = false;
 
         foreach (var rewrite in Configuration.Rewrites)
         {
@@ -88,20 +88,41 @@ public sealed class RewritePlugin(
                 continue;
             }
 
-            var newUrl = Regex.Replace(request.Url, rewrite.In.Url, rewrite.Out.Url, RegexOptions.IgnoreCase);
+            var rewrittenUrl = Regex.Replace(newUrl, rewrite.In.Url, rewrite.Out.Url, RegexOptions.IgnoreCase);
 
-            if (request.Url.Equals(newUrl, StringComparison.OrdinalIgnoreCase))
+            if (newUrl.Equals(rewrittenUrl, StringComparison.OrdinalIgnoreCase))
             {
-                Logger.LogRequest($"{rewrite.In?.Url}", MessageType.Skipped, new(e.Session));
+                Logger.LogRequest($"{rewrite.In?.Url}", MessageType.Skipped, args.Request, args.RequestId);
             }
             else
             {
-                Logger.LogRequest($"{rewrite.In?.Url} > {newUrl}", MessageType.Processed, new(e.Session));
-                request.Url = newUrl;
+                Logger.LogRequest($"{rewrite.In?.Url} > {rewrittenUrl}", MessageType.Processed, args.Request, args.RequestId);
+                newUrl = rewrittenUrl;
+                wasRewritten = true;
             }
         }
 
-        Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
-        return Task.CompletedTask;
-    }
+        if (wasRewritten && Uri.TryCreate(newUrl, UriKind.Absolute, out var newUri))
+        {
+            var newRequest = new HttpRequestMessage(args.Request.Method, newUri);
+
+            // Copy headers
+            foreach (var header in args.Request.Headers)
+            {
+                _ = newRequest.Headers.TryAddWithoutValidation(header.Key, header.Value);
+            }
+
+            // Copy content and content headers
+            if (args.Request.Content != null)
+            {
+                newRequest.Content = args.Request.Content;
+            }
+
+            Logger.LogTrace("Left {Name}", nameof(OnRequestAsync));
+            return Task.FromResult(PluginResponse.Continue(newRequest));
+        }
+
+        Logger.LogTrace("Left {Name}", nameof(OnRequestAsync));
+        return Task.FromResult(PluginResponse.Continue());
+    };
 }

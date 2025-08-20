@@ -4,6 +4,7 @@
 
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -32,22 +33,21 @@ public sealed class LatencyPlugin(
 
     public override string Name => nameof(LatencyPlugin);
 
-    public override async Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
+    public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync => async (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
+        Logger.LogTrace("{Method} called", nameof(OnRequestAsync));
 
-        ArgumentNullException.ThrowIfNull(e);
-
-        if (!e.HasRequestUrlMatch(UrlsToWatch))
+        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
-            return;
+            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request, args.RequestId);
+            return PluginResponse.Continue();
         }
 
         var delay = _random.Next(Configuration.MinMs, Configuration.MaxMs);
-        Logger.LogRequest($"Delaying request for {delay}ms", MessageType.Chaos, new(e.Session));
+        Logger.LogRequest($"Delaying request for {delay}ms", MessageType.Chaos, args.Request, args.RequestId);
         await Task.Delay(delay, cancellationToken);
 
-        Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
-    }
+        Logger.LogTrace("Left {Name}", nameof(OnRequestAsync));
+        return PluginResponse.Continue();
+    };
 }

@@ -68,27 +68,35 @@ public sealed class DevToolsPlugin(
         InitInspector();
     }
 
-    public override async Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
+    public override Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync => async (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
-
-        ArgumentNullException.ThrowIfNull(e);
+        Logger.LogTrace("{Method} called", nameof(OnRequestLogAsync));
 
         if (_webSocket?.IsConnected != true)
         {
             return;
         }
 
-        if (!e.HasRequestUrlMatch(UrlsToWatch))
+        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
             return;
         }
 
-        var requestId = GetRequestId(e.Session.HttpClient.Request);
-        var headers = e.Session.HttpClient.Request.Headers
-            .GroupBy(h => h.Name)
-            .ToDictionary(g => g.Key, g => string.Join(", ", g.Select(h => h.Value)));
+        var requestId = args.RequestId!;
+        var headers = args.Request.Headers
+            .ToDictionary(h => h.Key, h => string.Join(", ", h.Value));
+
+        // Add content headers if they exist
+        if (args.Request.Content?.Headers != null)
+        {
+            foreach (var header in args.Request.Content.Headers)
+            {
+                headers[header.Key] = string.Join(", ", header.Value);
+            }
+        }
+
+        var postData = args.Request.Content != null ? await args.Request.Content.ReadAsStringAsync(cancellationToken) : null;
 
         var requestWillBeSentMessage = new RequestWillBeSentMessage
         {
@@ -96,13 +104,13 @@ public sealed class DevToolsPlugin(
             {
                 RequestId = requestId,
                 LoaderId = "1",
-                DocumentUrl = e.Session.HttpClient.Request.Url,
+                DocumentUrl = args.Request.RequestUri?.ToString() ?? string.Empty,
                 Request = new()
                 {
-                    Url = e.Session.HttpClient.Request.Url,
-                    Method = e.Session.HttpClient.Request.Method,
+                    Url = args.Request.RequestUri?.ToString() ?? string.Empty,
+                    Method = args.Request.Method.Method,
                     Headers = headers,
-                    PostData = e.Session.HttpClient.Request.HasBody ? e.Session.HttpClient.Request.BodyString : null
+                    PostData = postData
                 },
                 Timestamp = (double)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000,
                 WallTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
@@ -126,24 +134,20 @@ public sealed class DevToolsPlugin(
             }
         };
         await _webSocket.SendAsync(requestWillBeSentExtraInfoMessage, cancellationToken);
-    }
+    };
 
-    public override async Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)
+    public override Func<ResponseArguments, CancellationToken, Task>? OnResponseLogAsync => async (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(AfterResponseAsync));
-
-        ArgumentNullException.ThrowIfNull(e);
-
-        await base.AfterResponseAsync(e, cancellationToken);
+        Logger.LogTrace("{Method} called", nameof(OnResponseLogAsync));
 
         if (_webSocket?.IsConnected != true)
         {
             return;
         }
 
-        if (!e.HasRequestUrlMatch(UrlsToWatch))
+        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request, args.RequestId);
             return;
         }
 
@@ -152,22 +156,38 @@ public sealed class DevToolsPlugin(
             Body = string.Empty,
             Base64Encoded = false
         };
-        if (e.Session.HttpClient.Response.HasBody)
+
+        if (args.Response.Content != null)
         {
-            if (IsTextResponse(e.Session.HttpClient.Response.ContentType))
+            var contentType = args.Response.Content.Headers.ContentType?.MediaType;
+            if (IsTextResponse(contentType))
             {
-                body.Body = e.Session.HttpClient.Response.BodyString;
+                body.Body = await args.Response.Content.ReadAsStringAsync(cancellationToken);
                 body.Base64Encoded = false;
             }
             else
             {
-                body.Body = Convert.ToBase64String(e.Session.HttpClient.Response.Body);
+                var bytes = await args.Response.Content.ReadAsByteArrayAsync(cancellationToken);
+                body.Body = Convert.ToBase64String(bytes);
                 body.Base64Encoded = true;
             }
         }
-        _responseBody.Add(e.Session.HttpClient.Request.GetHashCode().ToString(CultureInfo.InvariantCulture), body);
 
-        var requestId = GetRequestId(e.Session.HttpClient.Request);
+        _responseBody.Add(args.Request.GetHashCode().ToString(CultureInfo.InvariantCulture), body);
+
+        var requestId = args.RequestId!;
+
+        var responseHeaders = args.Response.Headers
+            .ToDictionary(h => h.Key, h => string.Join(", ", h.Value));
+
+        // Add content headers if they exist
+        if (args.Response.Content?.Headers != null)
+        {
+            foreach (var header in args.Response.Content.Headers)
+            {
+                responseHeaders[header.Key] = string.Join(", ", header.Value);
+            }
+        }
 
         var responseReceivedMessage = new ResponseReceivedMessage
         {
@@ -179,13 +199,11 @@ public sealed class DevToolsPlugin(
                 Type = "XHR",
                 Response = new()
                 {
-                    Url = e.Session.HttpClient.Request.Url,
-                    Status = e.Session.HttpClient.Response.StatusCode,
-                    StatusText = e.Session.HttpClient.Response.StatusDescription,
-                    Headers = e.Session.HttpClient.Response.Headers
-                        .GroupBy(h => h.Name)
-                        .ToDictionary(g => g.Key, g => string.Join(", ", g.Select(h => h.Value))),
-                    MimeType = e.Session.HttpClient.Response.ContentType
+                    Url = args.Request.RequestUri?.ToString() ?? string.Empty,
+                    Status = (int)args.Response.StatusCode,
+                    StatusText = args.Response.ReasonPhrase ?? string.Empty,
+                    Headers = responseHeaders,
+                    MimeType = args.Response.Content?.Headers.ContentType?.MediaType ?? string.Empty
                 },
                 HasExtraInfo = true
             }
@@ -193,7 +211,7 @@ public sealed class DevToolsPlugin(
 
         await _webSocket.SendAsync(responseReceivedMessage, cancellationToken);
 
-        if (e.Session.HttpClient.Response.ContentType == "text/event-stream")
+        if (args.Response.Content?.Headers.ContentType?.MediaType == "text/event-stream")
         {
             await SendBodyAsDataReceivedAsync(requestId, body.Body, cancellationToken);
         }
@@ -204,11 +222,11 @@ public sealed class DevToolsPlugin(
             {
                 RequestId = requestId,
                 Timestamp = (double)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000,
-                EncodedDataLength = e.Session.HttpClient.Response.HasBody ? e.Session.HttpClient.Response.Body.Length : 0
+                EncodedDataLength = args.Response.Content != null ? (await args.Response.Content.ReadAsByteArrayAsync(cancellationToken)).Length : 0
             }
         };
         await _webSocket.SendAsync(loadingFinishedMessage, cancellationToken);
-    }
+    };
 
     public override async Task AfterRequestLogAsync(RequestLogArgs e, CancellationToken cancellationToken)
     {
@@ -233,8 +251,8 @@ public sealed class DevToolsPlugin(
                     Text = string.Join(" ", e.RequestLog.Message),
                     Level = Entry.GetLevel(e.RequestLog.MessageType),
                     Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                    Url = e.RequestLog.Context?.Session.HttpClient.Request.Url,
-                    NetworkRequestId = GetRequestId(e.RequestLog.Context?.Session.HttpClient.Request)
+                    Url = e.RequestLog.Request?.RequestUri?.ToString(),
+                    NetworkRequestId = e.RequestLog.RequestId!
                 }
             }
         };
@@ -445,16 +463,6 @@ public sealed class DevToolsPlugin(
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
         listener.Stop();
         return port;
-    }
-
-    private static string GetRequestId(Unobtanium.Web.Proxy.Http.Request? request)
-    {
-        if (request is null)
-        {
-            return string.Empty;
-        }
-
-        return request.GetHashCode().ToString(CultureInfo.InvariantCulture);
     }
 
     private static bool IsTextResponse(string? contentType)

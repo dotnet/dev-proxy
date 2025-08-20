@@ -9,7 +9,6 @@ using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Text.Json;
-using Unobtanium.Web.Proxy.Models;
 
 namespace DevProxy.Plugins.Mocking;
 
@@ -32,76 +31,68 @@ public sealed class OpenAIMockResponsePlugin(
         }
     }
 
-    public override async Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
+    public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync => async (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
+        Logger.LogTrace("{Method} called", nameof(OnRequestAsync));
 
-        ArgumentNullException.ThrowIfNull(e);
-
-        if (!e.HasRequestUrlMatch(UrlsToWatch))
+        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
-            return;
-        }
-        if (e.ResponseState.HasBeenSet)
-        {
-            Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.Session));
-            return;
+            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
+            return PluginResponse.Continue();
         }
 
-        var request = e.Session.HttpClient.Request;
-        if (request.Method is null ||
-            !request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase) ||
-            !request.HasBody)
+        if (args.Request.Method != HttpMethod.Post || args.Request.Content is null)
         {
-            Logger.LogRequest("Request is not a POST request with a body", MessageType.Skipped, new(e.Session));
-            return;
+            Logger.LogRequest("Request is not a POST request with a body", MessageType.Skipped, args.Request);
+            return PluginResponse.Continue();
         }
 
-        if (!TryGetOpenAIRequest(request.BodyString, out var openAiRequest))
+        var requestBody = await args.Request.Content.ReadAsStringAsync(cancellationToken);
+        if (!TryGetOpenAIRequest(requestBody, out var openAiRequest))
         {
-            Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new(e.Session));
-            return;
+            Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, args.Request);
+            return PluginResponse.Continue();
         }
 
         if (openAiRequest is OpenAICompletionRequest completionRequest)
         {
             if ((await languageModelClient.GenerateCompletionAsync(completionRequest.Prompt, null, cancellationToken)) is not ILanguageModelCompletionResponse lmResponse)
             {
-                return;
+                return PluginResponse.Continue();
             }
             if (lmResponse.ErrorMessage is not null)
             {
                 Logger.LogError("Error from local language model: {Error}", lmResponse.ErrorMessage);
-                return;
+                return PluginResponse.Continue();
             }
 
             var openAiResponse = lmResponse.ConvertToOpenAIResponse();
-            SendMockResponse<OpenAICompletionResponse>(openAiResponse, lmResponse.RequestUrl ?? string.Empty, e);
+            var httpResponse = CreateMockResponse<OpenAICompletionResponse>(openAiResponse, lmResponse.RequestUrl ?? string.Empty, args.Request);
+            return PluginResponse.Respond(httpResponse);
         }
         else if (openAiRequest is OpenAIChatCompletionRequest chatRequest)
         {
             if ((await languageModelClient
                 .GenerateChatCompletionAsync(chatRequest.Messages, null, cancellationToken)) is not ILanguageModelCompletionResponse lmResponse)
             {
-                return;
+                return PluginResponse.Continue();
             }
             if (lmResponse.ErrorMessage is not null)
             {
                 Logger.LogError("Error from local language model: {Error}", lmResponse.ErrorMessage);
-                return;
+                return PluginResponse.Continue();
             }
 
             var openAiResponse = lmResponse.ConvertToOpenAIResponse();
-            SendMockResponse<OpenAIChatCompletionResponse>(openAiResponse, lmResponse.RequestUrl ?? string.Empty, e);
+            var httpResponse = CreateMockResponse<OpenAIChatCompletionResponse>(openAiResponse, lmResponse.RequestUrl ?? string.Empty, args.Request);
+            return PluginResponse.Respond(httpResponse);
         }
         else
         {
             Logger.LogError("Unknown OpenAI request type.");
+            return PluginResponse.Continue();
         }
-
-        Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
-    }
+    };
 
     private bool TryGetOpenAIRequest(string content, out OpenAIRequest? request)
     {
@@ -142,18 +133,21 @@ public sealed class OpenAIMockResponsePlugin(
         }
     }
 
-    private void SendMockResponse<TResponse>(OpenAIResponse response, string localLmUrl, ProxyRequestArgs e) where TResponse : OpenAIResponse
+    private HttpResponseMessage CreateMockResponse<TResponse>(OpenAIResponse response, string localLmUrl, HttpRequestMessage originalRequest) where TResponse : OpenAIResponse
     {
-        e.Session.GenericResponse(
-            // we need this cast or else the JsonSerializer drops derived properties
-            JsonSerializer.Serialize((TResponse)response, ProxyUtils.JsonSerializerOptions),
-            HttpStatusCode.OK,
-            [
-                new HttpHeader("content-type", "application/json"),
-                new HttpHeader("access-control-allow-origin", "*")
-            ]
-        );
-        e.ResponseState.HasBeenSet = true;
-        Logger.LogRequest($"200 {localLmUrl}", MessageType.Mocked, new(e.Session));
+        var httpResponse = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                // we need this cast or else the JsonSerializer drops derived properties
+                JsonSerializer.Serialize((TResponse)response, ProxyUtils.JsonSerializerOptions),
+                System.Text.Encoding.UTF8,
+                "application/json"
+            )
+        };
+
+        httpResponse.Headers.Add("access-control-allow-origin", "*");
+
+        Logger.LogRequest($"200 {localLmUrl}", MessageType.Mocked, originalRequest);
+        return httpResponse;
     }
 }

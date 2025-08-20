@@ -14,7 +14,6 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Web;
-using Unobtanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Generation;
 
@@ -42,13 +41,15 @@ public sealed class TypeSpecGeneratorPlugin(
     ISet<UrlToWatch> urlsToWatch,
     ILanguageModelClient languageModelClient,
     IProxyConfiguration proxyConfiguration,
-    IConfigurationSection pluginConfigurationSection) :
+    IConfigurationSection pluginConfigurationSection,
+    IProxyStorage proxyStorage) :
     BaseReportingPlugin<TypeSpecGeneratorPluginConfiguration>(
         httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
-        pluginConfigurationSection)
+        pluginConfigurationSection,
+        proxyStorage)
 {
     public static readonly string GeneratedTypeSpecFilesKey = "GeneratedTypeSpecFiles";
 
@@ -70,18 +71,18 @@ public sealed class TypeSpecGeneratorPlugin(
 
         var typeSpecFiles = new List<TypeSpecFile>();
 
-        foreach (var request in e.RequestLogs)
+        foreach (var request in e.RequestLogs.Where(l =>
+            l.MessageType == MessageType.InterceptedRequest
+            && l.Request is not null
+            && l.Response is not null
+            && l.Request.Method != HttpMethod.Options))
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (request.MessageType != MessageType.InterceptedResponse ||
-              request.Context is null ||
-              request.Context.Session is null ||
+            if (
               request.Url is null ||
               request.Method is null ||
-              // TypeSpec does not support OPTIONS requests
-              string.Equals(request.Context.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase) ||
-              !ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri))
+              !ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Request!.RequestUri!.AbsoluteUri))
             {
                 continue;
             }
@@ -127,11 +128,11 @@ public sealed class TypeSpecGeneratorPlugin(
             {
                 ServerUrl = kvp.Key,
                 FileName = kvp.Value
-            })), e);
+            })));
 
         // store the generated TypeSpec files in the global data
         // for use by other plugins
-        e.GlobalData[GeneratedTypeSpecFilesKey] = generatedTypeSpecFiles;
+        ProxyStorage.GlobalData[GeneratedTypeSpecFilesKey] = generatedTypeSpecFiles;
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
     }
@@ -140,18 +141,19 @@ public sealed class TypeSpecGeneratorPlugin(
     {
         Logger.LogTrace("Entered {Name}", nameof(GetOperationAsync));
 
-        Debug.Assert(request.Context is not null, "request.Context is null");
+        Debug.Assert(request.Request is not null, "request.Request is null");
+        Debug.Assert(request.Response is not null, "request.Response is null");
         Debug.Assert(request.Method is not null, "request.Method is null");
         Debug.Assert(request.Url is not null, "request.Url is null");
 
         var url = new Uri(request.Url);
-        var httpRequest = request.Context.Session.HttpClient.Request;
-        var httpResponse = request.Context.Session.HttpClient.Response;
+        var httpRequest = request.Request;
+        var httpResponse = request.Response;
 
-        var (route, parameters) = await GetRouteAndParametersAsync(url);
+        var (route, parameters) = GetRouteAndParametersAsync(url);
         var op = new Operation
         {
-            Name = await GetOperationNameAsync(request.Method, url),
+            Name = GetOperationName(request.Method, url),
             Description = await GetOperationDescriptionAsync(request.Method, url),
             Method = Enum.Parse<HttpVerb>(request.Method, true),
             Route = route,
@@ -170,13 +172,13 @@ public sealed class TypeSpecGeneratorPlugin(
         return op;
     }
 
-    private void ProcessAuth(Request httpRequest, TypeSpecFile doc, Operation op)
+    private void ProcessAuth(HttpRequestMessage httpRequest, TypeSpecFile doc, Operation op)
     {
         Logger.LogTrace("Entered {Name}", nameof(ProcessAuth));
 
         var authHeaders = httpRequest.Headers
-            .Where(h => Http.AuthHeaders.Contains(h.Name.ToLowerInvariant()))
-            .Select(h => (h.Name, h.Value));
+            .Where(h => Http.AuthHeaders.Contains(h.Key.ToLowerInvariant()))
+            .Select(h => (h.Key, string.Join(", ", h.Value)));
 
         foreach (var (name, value) in authHeaders)
         {
@@ -197,7 +199,7 @@ public sealed class TypeSpecGeneratorPlugin(
             return;
         }
 
-        var query = HttpUtility.ParseQueryString(httpRequest.RequestUri.Query);
+        var query = HttpUtility.ParseQueryString(httpRequest.RequestUri?.Query ?? string.Empty);
         var authQueryParam = query.AllKeys
             .FirstOrDefault(k => k is not null && Http.AuthHeaders.Contains(k.ToLowerInvariant()));
         if (authQueryParam is not null)
@@ -321,17 +323,18 @@ public sealed class TypeSpecGeneratorPlugin(
         return false;
     }
 
-    private async Task ProcessRequestBodyAsync(Request httpRequest, TypeSpecFile doc, Operation op, string lastSegment)
+    private async Task ProcessRequestBodyAsync(HttpRequestMessage httpRequest, TypeSpecFile doc, Operation op, string lastSegment)
     {
         Logger.LogTrace("Entered {Name}", nameof(ProcessRequestBodyAsync));
 
-        if (!httpRequest.HasBody)
+        if (httpRequest.Content is null)
         {
             Logger.LogDebug("Request has no body, skipping...");
             return;
         }
 
-        var models = await GetModelsFromStringAsync(httpRequest.BodyString, lastSegment.ToPascalCase());
+        var requestBody = await httpRequest.Content.ReadAsStringAsync();
+        var models = await GetModelsFromStringAsync(requestBody, lastSegment.ToPascalCase());
         if (models.Length > 0)
         {
             foreach (var model in models)
@@ -342,7 +345,7 @@ public sealed class TypeSpecGeneratorPlugin(
             var rootModel = models.Last();
             op.Parameters.Add(new()
             {
-                Name = await GetParameterNameAsync(rootModel),
+                Name = GetParameterNameAsync(rootModel),
                 Value = rootModel.Name,
                 In = ParameterLocation.Body
             });
@@ -351,22 +354,22 @@ public sealed class TypeSpecGeneratorPlugin(
         Logger.LogTrace("Left {Name}", nameof(ProcessRequestBodyAsync));
     }
 
-    private void ProcessRequestHeaders(Request httpRequest, Operation op)
+    private void ProcessRequestHeaders(HttpRequestMessage httpRequest, Operation op)
     {
         Logger.LogTrace("Entered {Name}", nameof(ProcessRequestHeaders));
 
         foreach (var header in httpRequest.Headers)
         {
-            if (Http.StandardHeaders.Contains(header.Name.ToLowerInvariant()) ||
-                Http.AuthHeaders.Contains(header.Name.ToLowerInvariant()))
+            if (Http.StandardHeaders.Contains(header.Key.ToLowerInvariant()) ||
+                Http.AuthHeaders.Contains(header.Key.ToLowerInvariant()))
             {
                 continue;
             }
 
             op.Parameters.Add(new()
             {
-                Name = header.Name,
-                Value = GetValueType(header.Value),
+                Name = header.Key,
+                Value = GetValueType(string.Join(", ", header.Value)),
                 In = ParameterLocation.Header
             });
         }
@@ -374,7 +377,7 @@ public sealed class TypeSpecGeneratorPlugin(
         Logger.LogTrace("Left {Name}", nameof(ProcessRequestHeaders));
     }
 
-    private async Task ProcessResponseAsync(Response? httpResponse, TypeSpecFile doc, Operation op, string lastSegment, Uri url)
+    private async Task ProcessResponseAsync(HttpResponseMessage? httpResponse, TypeSpecFile doc, Operation op, string lastSegment, Uri url)
     {
         Logger.LogTrace("Entered {Name}", nameof(ProcessResponseAsync));
 
@@ -390,7 +393,7 @@ public sealed class TypeSpecGeneratorPlugin(
         {
             res = new()
             {
-                StatusCode = httpResponse.StatusCode,
+                StatusCode = (int)httpResponse.StatusCode,
                 BodyType = "string"
             };
         }
@@ -398,16 +401,17 @@ public sealed class TypeSpecGeneratorPlugin(
         {
             res = new()
             {
-                StatusCode = httpResponse.StatusCode,
+                StatusCode = (int)httpResponse.StatusCode,
                 Headers = httpResponse.Headers
-                    .Where(h => !Http.StandardHeaders.Contains(h.Name.ToLowerInvariant()) &&
-                                !Http.AuthHeaders.Contains(h.Name.ToLowerInvariant()))
-                    .ToDictionary(h => h.Name.ToCamelCase(), h => h.Value.GetType().Name)
+                    .Where(h => !Http.StandardHeaders.Contains(h.Key.ToLowerInvariant()) &&
+                                !Http.AuthHeaders.Contains(h.Key.ToLowerInvariant()))
+                    .ToDictionary(h => h.Key.ToCamelCase(), h => string.Join(", ", h.Value).GetType().Name)
             };
 
-            if (httpResponse.HasBody)
+            if (httpResponse.Content is not null)
             {
-                var models = await GetModelsFromStringAsync(httpResponse.BodyString, lastSegment.ToPascalCase(), httpResponse.StatusCode >= 400);
+                var responseBody = await httpResponse.Content.ReadAsStringAsync();
+                var models = await GetModelsFromStringAsync(responseBody, lastSegment.ToPascalCase(), (int)httpResponse.StatusCode >= 400);
                 if (models.Length > 0)
                 {
                     foreach (var model in models)
@@ -419,7 +423,7 @@ public sealed class TypeSpecGeneratorPlugin(
                     if (rootModel.IsArray)
                     {
                         res.BodyType = $"{rootModel.Name}[]";
-                        op.Name = await GetOperationNameAsync("list", url);
+                        op.Name = GetOperationName("list", url);
                     }
                     else
                     {
@@ -438,11 +442,11 @@ public sealed class TypeSpecGeneratorPlugin(
         Logger.LogTrace("Left {Name}", nameof(ProcessResponseAsync));
     }
 
-    private async Task<string> GetParameterNameAsync(Model model)
+    private string GetParameterNameAsync(Model model)
     {
         Logger.LogTrace("Entered {Name}", nameof(GetParameterNameAsync));
 
-        var name = model.IsArray ? SanitizeName(await MakeSingularAsync(model.Name)) : model.Name;
+        var name = model.IsArray ? SanitizeName(MakeSingularAsync(model.Name)) : model.Name;
         if (string.IsNullOrEmpty(name))
         {
             name = model.Name;
@@ -506,15 +510,15 @@ public sealed class TypeSpecGeneratorPlugin(
         return ns;
     }
 
-    private async Task<string> GetOperationNameAsync(string method, Uri url)
+    private string GetOperationName(string method, Uri url)
     {
-        Logger.LogTrace("Entered {Name}", nameof(GetOperationNameAsync));
+        Logger.LogTrace("Entered {Name}", nameof(GetOperationName));
 
         var lastSegment = GetLastNonParametrizableSegment(url);
         Logger.LogDebug("Url: {Url}", url);
         Logger.LogDebug("Last non-parametrizable segment: {LastSegment}", lastSegment);
 
-        var name = method == "list" ? lastSegment : await MakeSingularAsync(lastSegment);
+        var name = method == "list" ? lastSegment : MakeSingularAsync(lastSegment);
         if (string.IsNullOrEmpty(name))
         {
             name = lastSegment;
@@ -538,7 +542,7 @@ public sealed class TypeSpecGeneratorPlugin(
         }
 
         Logger.LogDebug("Operation name: {OperationName}", operationName);
-        Logger.LogTrace("Left {Name}", nameof(GetOperationNameAsync));
+        Logger.LogTrace("Left {Name}", nameof(GetOperationName));
 
         return operationName;
     }
@@ -608,113 +612,42 @@ public sealed class TypeSpecGeneratorPlugin(
         for (var i = segments.Length - 1; i >= 0; i--)
         {
             var segment = segments[i].Trim('/');
-            if (!IsParametrizable(segment))
-            {
-                Logger.LogDebug("Last non-parametrizable segment: {Segment}", segment);
-                Logger.LogTrace("Left {Name}", nameof(GetLastNonParametrizableSegment));
-
-                return segment;
-            }
-        }
-
-        Logger.LogDebug("No non-parametrizable segment found, returning empty string");
-        Logger.LogTrace("Left {Name}", nameof(GetLastNonParametrizableSegment));
-
-        return string.Empty;
-    }
-
-    private bool IsParametrizable(string segment)
-    {
-        Logger.LogTrace("Entered {Name}", nameof(IsParametrizable));
-
-        var isParametrizable = Guid.TryParse(segment, out _) ||
-          int.TryParse(segment, out _);
-
-        Logger.LogDebug("Is segment '{Segment}' parametrizable? {IsParametrizable}", segment, isParametrizable);
-        Logger.LogTrace("Left {Name}", nameof(IsParametrizable));
-
-        return isParametrizable;
-    }
-
-    private async Task<(string Route, Parameter[] Parameters)> GetRouteAndParametersAsync(Uri url)
-    {
-        Logger.LogTrace("Entered {Name}", nameof(GetRouteAndParametersAsync));
-
-        var route = new List<string>();
-        var parameters = new List<Parameter>();
-        var previousSegment = "item";
-
-        foreach (var segment in url.Segments)
-        {
-            Logger.LogDebug("Processing segment: {Segment}", segment);
-
-            var segmentTrimmed = segment.Trim('/');
-            if (string.IsNullOrEmpty(segmentTrimmed))
+            Logger.LogDebug("Segment: {Segment}", segment);
+            if (string.IsNullOrEmpty(segment) || segment.StartsWith('{'))
             {
                 continue;
             }
 
-            if (IsParametrizable(segmentTrimmed))
-            {
-                var paramName = $"{previousSegment}Id";
-                parameters.Add(new()
-                {
-                    Name = paramName,
-                    Value = GetValueType(segmentTrimmed),
-                    In = ParameterLocation.Path
-                });
-                route.Add($"{{{paramName}}}");
-            }
-            else
-            {
-                previousSegment = SanitizeName(await MakeSingularAsync(segmentTrimmed));
-                if (string.IsNullOrEmpty(previousSegment))
-                {
-                    previousSegment = SanitizeName(segmentTrimmed);
-                    if (previousSegment.Length == 0)
-                    {
-                        previousSegment = GetRandomName();
-                    }
-                }
-                previousSegment = previousSegment.ToCamelCase();
-                route.Add(segmentTrimmed);
-            }
+            Logger.LogTrace("Left {Name}", nameof(GetLastNonParametrizableSegment));
+            return segment;
         }
 
-        if (url.Query.Length > 0)
+        Logger.LogTrace("Left {Name}", nameof(GetLastNonParametrizableSegment));
+        return string.Empty;
+    }
+
+    private string SanitizeName(string name)
+    {
+        Logger.LogTrace("Entered {Name}", nameof(SanitizeName));
+
+        if (string.IsNullOrEmpty(name))
         {
-            Logger.LogDebug("Processing query string: {Query}", url.Query);
-
-            var query = HttpUtility.ParseQueryString(url.Query);
-            foreach (string key in query.Keys)
-            {
-                if (Http.AuthHeaders.Contains(key.ToLowerInvariant()))
-                {
-                    Logger.LogDebug("Skipping auth header: {Key}", key);
-                    continue;
-                }
-
-                parameters.Add(new()
-                {
-                    Name = key.ToCamelFromKebabCase(),
-                    Value = GetValueType(query[key]),
-                    In = ParameterLocation.Query
-                });
-            }
-        }
-        else
-        {
-            Logger.LogDebug("No query string found in URL: {Url}", url);
+            Logger.LogTrace("Left {Name}", nameof(SanitizeName));
+            return string.Empty;
         }
 
-        Logger.LogTrace("Left {Name}", nameof(GetRouteAndParametersAsync));
+        // remove invalid characters
+        name = Regex.Replace(name, @"[^a-zA-Z0-9_]", "_", RegexOptions.Compiled);
+        Logger.LogDebug("Sanitized name: {Name}", name);
 
-        return (string.Join('/', route), parameters.ToArray());
+        Logger.LogTrace("Left {Name}", nameof(SanitizeName));
+
+        return name;
     }
 
     private async Task<Model[]> GetModelsFromStringAsync(string? str, string name, bool isError = false)
     {
-        Logger.LogTrace("Entered {Same}", nameof(GetModelsFromStringAsync));
+        Logger.LogTrace("Entered {Name}", nameof(GetModelsFromStringAsync));
 
         if (string.IsNullOrEmpty(str))
         {
@@ -733,7 +666,7 @@ public sealed class TypeSpecGeneratorPlugin(
         }
         catch (Exception ex)
         {
-            Logger.LogDebug("Failed to parse JSON string, returning empty model list. Exception: {Ex}", ex.Message);
+            Logger.LogDebug("Failed to parse JSON token: {Ex}", ex.Message);
 
             // If the string is not a valid JSON, we return an empty model list
             Logger.LogTrace("Left {Name}", nameof(GetModelsFromStringAsync));
@@ -749,9 +682,7 @@ public sealed class TypeSpecGeneratorPlugin(
     {
         Logger.LogTrace("Entered {Name}", nameof(AddModelFromJsonElementAsync));
 
-#pragma warning disable IDE0010
         switch (jsonElement.ValueKind)
-#pragma warning restore IDE0010
         {
             case JsonValueKind.String:
                 return "string";
@@ -773,7 +704,7 @@ public sealed class TypeSpecGeneratorPlugin(
 
                 var model = new Model
                 {
-                    Name = await GetModelNameAsync(name),
+                    Name = GetModelName(name),
                     IsError = isError
                 };
 
@@ -806,16 +737,18 @@ public sealed class TypeSpecGeneratorPlugin(
                 return $"{modelName}[]";
             case JsonValueKind.Null:
                 return "null";
+            case JsonValueKind.Undefined:
+                return string.Empty;
             default:
                 return string.Empty;
         }
     }
 
-    private async Task<string> GetModelNameAsync(string name)
+    private string GetModelName(string name)
     {
-        Logger.LogTrace("Entered {Name}", nameof(GetModelNameAsync));
+        Logger.LogTrace("Entered {Name}", nameof(GetModelName));
 
-        var modelName = SanitizeName(await MakeSingularAsync(name));
+        var modelName = SanitizeName(MakeSingularAsync(name));
         if (string.IsNullOrEmpty(modelName))
         {
             modelName = SanitizeName(name);
@@ -828,60 +761,32 @@ public sealed class TypeSpecGeneratorPlugin(
         modelName = modelName.ToPascalCase();
 
         Logger.LogDebug("Model name: {ModelName}", modelName);
-        Logger.LogTrace("Left {Name}", nameof(GetModelNameAsync));
+        Logger.LogTrace("Left {Name}", nameof(GetModelName));
 
         return modelName;
     }
-
-    private async Task<string> MakeSingularAsync(string noun, CancellationToken cancellationToken = default)
+    private string MakeSingularAsync(string noun)
     {
         Logger.LogTrace("Entered {Name}", nameof(MakeSingularAsync));
 
-        var singularNoun = await languageModelClient.GenerateChatCompletionAsync("singular_noun", new()
+        var singular = noun;
+        if (noun.EndsWith("ies", StringComparison.OrdinalIgnoreCase))
         {
-            { "noun", noun }
-        }, cancellationToken);
-        var singular = singularNoun?.Response;
-
-        if (string.IsNullOrEmpty(singular) ||
-            singular.Contains(' ', StringComparison.OrdinalIgnoreCase))
+            singular = noun[0..^3] + 'y';
+        }
+        else if (noun.EndsWith("es", StringComparison.OrdinalIgnoreCase))
         {
-            if (noun.EndsWith("ies", StringComparison.OrdinalIgnoreCase))
-            {
-                singular = noun[0..^3] + 'y';
-            }
-            else if (noun.EndsWith("es", StringComparison.OrdinalIgnoreCase))
-            {
-                singular = noun[0..^2];
-            }
-            else if (noun.EndsWith('s') && !noun.EndsWith("ss", StringComparison.OrdinalIgnoreCase))
-            {
-                singular = noun[0..^1];
-            }
-            else
-            {
-                singular = noun;
-            }
-
-            Logger.LogDebug("Failed to get singular form of {Noun} from LLM. Using fallback: {Singular}", noun, singular);
+            singular = noun[0..^2];
+        }
+        else if (noun.EndsWith('s') || noun.EndsWith('S'))
+        {
+            singular = noun[0..^1];
         }
 
         Logger.LogDebug("Singular form of '{Noun}': {Singular}", noun, singular);
         Logger.LogTrace("Left {Name}", nameof(MakeSingularAsync));
 
         return singular;
-    }
-
-    private string SanitizeName(string name)
-    {
-        Logger.LogTrace("Entered {Name}", nameof(SanitizeName));
-
-        var sanitized = Regex.Replace(name, "[^a-zA-Z0-9_]", "");
-
-        Logger.LogDebug("Sanitized name: {Name} to: {Sanitized}", name, sanitized);
-        Logger.LogTrace("Left {Name}", nameof(SanitizeName));
-
-        return sanitized;
     }
 
     private string GetValueType(string? value)
@@ -910,5 +815,111 @@ public sealed class TypeSpecGeneratorPlugin(
         }
 
         return "string";
+    }
+
+    private string GetJsonType(JsonElement element)
+    {
+        Logger.LogTrace("Entered {Name}", nameof(GetJsonType));
+
+        return element.ValueKind switch
+        {
+            JsonValueKind.Object => "object",
+            JsonValueKind.Array => "array",
+            JsonValueKind.String => "string",
+            JsonValueKind.Number => element.TryGetInt32(out _) ? "int32" : "float64",
+            JsonValueKind.True or JsonValueKind.False => "boolean",
+            JsonValueKind.Undefined or JsonValueKind.Null => "null",
+            _ => "string"
+        };
+    }
+
+    private (string Route, Parameter[] Parameters) GetRouteAndParametersAsync(Uri url)
+    {
+        Logger.LogTrace("Entered {Name}", nameof(GetRouteAndParametersAsync));
+
+        var route = new List<string>();
+        var parameters = new List<Parameter>();
+        var previousSegment = "item";
+
+        foreach (var segment in url.Segments)
+        {
+            Logger.LogDebug("Processing segment: {Segment}", segment);
+
+            var segmentTrimmed = segment.Trim('/');
+            if (string.IsNullOrEmpty(segmentTrimmed))
+            {
+                continue;
+            }
+
+            if (IsParametrizable(segmentTrimmed))
+            {
+                var paramName = $"{previousSegment}Id";
+                parameters.Add(new()
+                {
+                    Name = paramName,
+                    Value = GetValueType(segmentTrimmed),
+                    In = ParameterLocation.Path
+                });
+                route.Add($"{{{paramName}}}");
+            }
+            else
+            {
+                previousSegment = SanitizeName(MakeSingularAsync(segmentTrimmed));
+                if (string.IsNullOrEmpty(previousSegment))
+                {
+                    previousSegment = SanitizeName(segmentTrimmed);
+                    if (previousSegment.Length == 0)
+                    {
+                        previousSegment = GetRandomName();
+                    }
+                }
+                previousSegment = previousSegment.ToCamelCase();
+                route.Add(segmentTrimmed);
+            }
+        }
+
+        if (url.Query.Length > 0)
+        {
+            Logger.LogDebug("Processing query string: {Query}", url.Query);
+
+
+            var query = HttpUtility.ParseQueryString(url.Query);
+            foreach (string key in query.Keys)
+            {
+                if (Http.AuthHeaders.Contains(key.ToLowerInvariant()))
+                {
+                    Logger.LogDebug("Skipping auth header: {Key}", key);
+                    continue;
+                }
+
+                parameters.Add(new()
+                {
+                    Name = key.ToCamelFromKebabCase(),
+                    Value = GetValueType(query[key]),
+                    In = ParameterLocation.Query
+                });
+            }
+        }
+        else
+        {
+            Logger.LogDebug("No query string found in URL: {Url}", url);
+        }
+
+        Logger.LogTrace("Left {Name}", nameof(GetRouteAndParametersAsync));
+
+        return (string.Join('/', route), parameters.ToArray());
+    }
+
+    private bool IsParametrizable(string segment)
+    {
+        Logger.LogTrace("Entered {Name}", nameof(IsParametrizable));
+
+        var isParametrizable = Guid.TryParse(segment, out _) ||
+          int.TryParse(segment, out _);
+
+        Logger.LogDebug("Is segment '{Segment}' parametrizable? {IsParametrizable}", segment, isParametrizable);
+        Logger.LogTrace("Left {Name}", nameof(IsParametrizable));
+
+        return isParametrizable;
     }
 }

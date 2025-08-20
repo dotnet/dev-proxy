@@ -59,6 +59,9 @@ public class RequestLog
     public HttpRequestMessage? Request { get; internal set; }
 
     [JsonIgnore]
+    public string? RequestId { get; internal set; }
+
+    [JsonIgnore]
     public HttpResponseMessage? Response { get; internal set; }
 
     public string Message { get; set; }
@@ -72,11 +75,12 @@ public class RequestLog
         throw new NotImplementedException("This constructor is not implemented. Use the other constructors instead.");
     }
 
-    public RequestLog(string message, MessageType messageType, HttpRequestMessage requestMessage, HttpResponseMessage? responseMessage = null) :
+    public RequestLog(string message, MessageType messageType, HttpRequestMessage requestMessage, string? requestId = null, HttpResponseMessage? responseMessage = null) :
         this(message, messageType, requestMessage?.Method.Method, requestMessage?.RequestUri!.AbsoluteUri, _: null)
     {
         Request = requestMessage;
         Response = responseMessage;
+        RequestId = requestId;
     }
 
     public RequestLog(string message, MessageType messageType, string method, string url) :

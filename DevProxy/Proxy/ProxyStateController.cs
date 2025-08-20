@@ -49,7 +49,6 @@ sealed class ProxyStateController(
         ProxyState.RequestLogs.Clear();
         var recordingArgs = new RecordingArgs(clonedLogs)
         {
-            GlobalData = ProxyState.GlobalData
         };
         foreach (var plugin in _plugins.Where(p => p.Enabled))
         {

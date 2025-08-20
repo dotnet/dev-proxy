@@ -32,7 +32,7 @@ static class OpenApiDocumentExtensions
             logger.LogDebug("Checking request {Request}...", methodAndUrl);
             var (method, url) = (methodAndUrlChunks[0].ToUpperInvariant(), methodAndUrlChunks[1]);
 
-            var scopesFromTheToken = MinimalPermissionsUtils.GetScopesFromToken(request.Context?.Session.HttpClient.Request.Headers.First(h => h.Name.Equals("authorization", StringComparison.OrdinalIgnoreCase)).Value, logger);
+            var scopesFromTheToken = MinimalPermissionsUtils.GetScopesFromToken(request.Request!.Headers.Authorization?.Parameter, logger);
             if (scopesFromTheToken.Length != 0)
             {
                 tokenPermissions.AddRange(scopesFromTheToken);

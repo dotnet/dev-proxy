@@ -173,14 +173,14 @@ public sealed class GraphRandomErrorPlugin(
 
         if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
+            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request, args.RequestId);
             return Task.FromResult(PluginResponse.Continue());
         }
 
         var failMode = ShouldFail();
         if (failMode == GraphRandomErrorFailMode.PassThru && Configuration.Rate != 100)
         {
-            Logger.LogRequest("Pass through", MessageType.Skipped, args.Request);
+            Logger.LogRequest("Pass through", MessageType.Skipped, args.Request, args.RequestId);
             return Task.FromResult(PluginResponse.Continue());
         }
         // If the request is a batch request, we will handle it in BeforeRequestAsync
@@ -192,7 +192,7 @@ public sealed class GraphRandomErrorPlugin(
         else
         {
             //Logger.LogRequest("Pass through", MessageType.Skipped, args.Request);
-            return Task.FromResult(PluginResponse.Respond(FailResponse(args.Request)));
+            return Task.FromResult(PluginResponse.Respond(FailResponse(args.Request, args.RequestId)));
         }
     };
 
@@ -245,7 +245,7 @@ public sealed class GraphRandomErrorPlugin(
     //    UpdateProxyResponse(e, errorStatus);
     //}
 
-    private HttpResponseMessage FailResponse(HttpRequestMessage e)
+    private HttpResponseMessage FailResponse(HttpRequestMessage e, string requestId)
     {
         var methodStatusCodes = _methodStatusCode[e.Method.Method ?? "GET"];
         var errorStatus = methodStatusCodes[_random.Next(0, methodStatusCodes.Length)];
@@ -263,7 +263,7 @@ public sealed class GraphRandomErrorPlugin(
                     }
                 }), ProxyUtils.JsonSerializerOptions))
         };
-        Logger.LogRequest($"{(int)errorStatus} {errorStatus}", MessageType.Chaos, e);
+        Logger.LogRequest($"{(int)errorStatus} {errorStatus}", MessageType.Chaos, e, requestId);
         return response;
     }
 

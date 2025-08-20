@@ -5,8 +5,6 @@
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
-using System;
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Runtime.InteropServices;
@@ -401,8 +399,8 @@ sealed class ProxyEngine(
 
 
             //var loggingContext = new LoggingContext(e);
-            _logger.LogRequest($"{requestEventArguments.Request.Method} {requestEventArguments.Request.RequestUri}", MessageType.InterceptedRequest, requestEventArguments.Request);
-            _logger.LogRequest($"{DateTimeOffset.UtcNow}", MessageType.Timestamp, requestEventArguments.Request);
+            _logger.LogRequest($"{requestEventArguments.Request.Method} {requestEventArguments.Request.RequestUri}", MessageType.InterceptedRequest, requestEventArguments.Request, requestEventArguments.RequestId);
+            _logger.LogRequest($"{DateTimeOffset.UtcNow}", MessageType.Timestamp, requestEventArguments.Request, requestEventArguments.RequestId);
 
             return await HandleRequestAsync(requestEventArguments, cancellationToken);
         }
@@ -621,10 +619,33 @@ sealed class ProxyEngine(
     //        _ = _pluginData.Remove(e.GetHashCode(), out _);
     //    }
     //}
-    
+
     // Unobtanium ResponseHandler
     private async Task<ResponseEventResponse> OnResponseAsync(object sender, ResponseEventArguments e, CancellationToken cancellationToken)
     {
+        try
+        {
+            return await OnResponseInternalAsync(sender, e, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogDebug("Request was cancelled before response completed");
+            return ResponseEventResponse.ContinueResponse();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "An error occurred while processing response {ResponseStatusCode} for request {RequestMethod} {RequestUrl}",
+                e.Response.StatusCode, e.Request.Method, e.Request.RequestUri);
+            return ResponseEventResponse.ContinueResponse();
+        }
+    }
+    private async Task<ResponseEventResponse> OnResponseInternalAsync(object _, ResponseEventArguments e, CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogDebug("Request was cancelled before response completed");
+            return ResponseEventResponse.ContinueResponse();
+        }
         // Distributed tracing
         using var activity = ActivitySource.StartActivity(nameof(OnResponseAsync), ActivityKind.Consumer, e.RequestActivity?.Context ?? default);
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cancellationToken ?? CancellationToken.None);
@@ -632,7 +653,7 @@ sealed class ProxyEngine(
 
         using var scope = _logger.BeginRequestScope(e.Request.Method, uri, e.RequestId);
         var message = $"{e.Request.Method} {e.Response}";
-        _logger.LogRequest(message, MessageType.InterceptedResponse, e.Request);
+        _logger.LogRequest(message, MessageType.InterceptedResponse, e.Request, e.RequestId, e.Response);
         HttpResponseMessage? response = null;
         var logPlugins = _plugins.Where(p => p.Enabled && p.OnResponseLogAsync is not null);
         if (logPlugins.Any())
@@ -645,6 +666,10 @@ sealed class ProxyEngine(
             try
             {
                 await Task.WhenAll(logTasks);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogDebug("Request was cancelled before response completed");
             }
             catch (Exception ex)
             {
@@ -680,7 +705,7 @@ sealed class ProxyEngine(
                     plugin.Name, e.Response.StatusCode, e.Request.Method, uri);
             }
         }
-        _logger.LogRequest(message, MessageType.FinishedProcessingRequest, e.Request);
+        _logger.LogRequest(message, MessageType.FinishedProcessingRequest, e.Request, e.RequestId, response);
         proxyStorage.RemoveRequestData(e.RequestId);
         return response is not null
             ? ResponseEventResponse.ModifyResponse(response)

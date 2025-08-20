@@ -80,7 +80,7 @@ public override Func<ResponseArguments, CancellationToken, Task>? OnResponseLogA
     // Analyze response and provide guidance
     if (ShouldProvideGuidance(args.HttpResponseMessage))
     {
-        Logger.LogRequest("Response guidance message", MessageType.Tip, args.HttpRequestMessage);
+        Logger.LogRequest("Response guidance message", MessageType.Tip, args.HttpRequestMessage, args.RequestId);
     }
 };
 ```
@@ -224,7 +224,7 @@ if (!e.HasRequestUrlMatch(UrlsToWatch))
 ```csharp
 if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
 {
-    Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
+    Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request, args.RequestId);
     return PluginResponse.Continue();
 }
 ```
@@ -233,7 +233,7 @@ if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
 ```csharp
 if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
 {
-    Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
+    Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request, args.RequestId);
     return;
 }
 ```
@@ -297,7 +297,7 @@ if (shouldPassThrough)
 ```csharp
 if (shouldPassThrough)
 {
-    Logger.LogRequest("Pass through", MessageType.Skipped, args.Request); // or args.HttpRequestMessage
+    Logger.LogRequest("Pass through", MessageType.Skipped, args.Request, args.RequestId); // or args.HttpRequestMessage
     return PluginResponse.Continue(); // or return null for OnResponseAsync
 }
 ```
@@ -306,7 +306,7 @@ if (shouldPassThrough)
 ```csharp
 if (shouldSkip)
 {
-    Logger.LogRequest("Skipping analysis", MessageType.Skipped, args.Request); // or args.HttpRequestMessage
+    Logger.LogRequest("Skipping analysis", MessageType.Skipped, args.Request, args.RequestId); // or args.HttpRequestMessage
     return;
 }
 ```
@@ -404,13 +404,13 @@ public override Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsy
 {
     if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
     {
-        Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
+        Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request, args.RequestId);
         return Task.CompletedTask;
     }
 
     if (ShouldProvideGuidance(args.Request))
     {
-        Logger.LogRequest("Consider using cache for better performance", MessageType.Tip, args.Request);
+        Logger.LogRequest("Consider using cache for better performance", MessageType.Tip, args.Request, args.RequestId);
     }
 
     return Task.CompletedTask;
@@ -445,13 +445,13 @@ public override Func<ResponseArguments, CancellationToken, Task>? OnResponseLogA
 {
     if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
     {
-        Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
+        Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request, args.RequestId);
         return Task.CompletedTask;
     }
 
     if (ShouldProvideGuidance(args.HttpResponseMessage))
     {
-        Logger.LogRequest("Consider optimizing your API queries", MessageType.Tip, args.Request);
+        Logger.LogRequest("Consider optimizing your API queries", MessageType.Tip, args.Request, args.RequestId);
     }
 
     return Task.CompletedTask;
@@ -536,10 +536,10 @@ The logging context changes from `LoggingContext(e.Session)` to the appropriate 
 Logger.LogRequest("Message", MessageType.Info, new LoggingContext(e.Session));
 
 // New (Request-based methods)
-Logger.LogRequest("Message", MessageType.Info, args.Request);
+Logger.LogRequest("Message", MessageType.Info, args.Request, args.RequestId);
 
 // New (Response-based methods)
-Logger.LogRequest("Message", MessageType.Info, args.Request);
+Logger.LogRequest("Message", MessageType.Info, args.Request, args.RequestId, args.Response);
 ```
 
 ### 2. Global Data and Session Data
@@ -687,7 +687,7 @@ public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>?
 - [ ] Update method signature from `BeforeResponseAsync` to `OnResponseAsync`
 - [ ] Change return type from `Task` to `Task<PluginResponse?>`
 - [ ] Update input parameter from `ProxyResponseArgs` to `ResponseArguments`
-- [ ] Replace `e.Session.HttpClient.Request` with `args.REquest`
+- [ ] Replace `e.Session.HttpClient.Request` with `args.Request`
 - [ ] Replace `e.Session.HttpClient.Response` with `args.Response`
 - [ ] Replace `e.HasRequestUrlMatch()` with `ProxyUtils.MatchesUrlToWatch()`
 - [ ] Remove `e.ResponseState.HasBeenSet` checks

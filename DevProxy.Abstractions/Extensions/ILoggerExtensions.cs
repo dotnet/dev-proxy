@@ -18,9 +18,9 @@ public static class ILoggerExtensions
         logger.Log(new RequestLog(message, messageType, method, url));
     }
 
-    public static void LogRequest(this ILogger logger, string message, MessageType messageType, HttpRequestMessage httpRequestMessage)
+    public static void LogRequest(this ILogger logger, string message, MessageType messageType, HttpRequestMessage httpRequestMessage, string? requestId = null, HttpResponseMessage? httpResponse = null)
     {
-        logger.Log(new RequestLog(message, messageType, httpRequestMessage));
+        logger.Log(new RequestLog(message, messageType, httpRequestMessage, requestId, httpResponse));
     }
 
     public static void Log(this ILogger logger, RequestLog message)
