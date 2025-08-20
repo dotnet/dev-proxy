@@ -6,7 +6,6 @@ using DevProxy.Abstractions.Models;
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
-using DevProxy.Plugins.Behavior;
 using DevProxy.Plugins.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,8 +20,6 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using Unobtanium.Web.Proxy.Http;
-using Unobtanium.Web.Proxy.Models;
 
 namespace DevProxy.Plugins.Mocking;
 
@@ -44,7 +41,8 @@ public class MockResponsePlugin(
     ILogger<MockResponsePlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
-    IConfigurationSection pluginConfigurationSection) :
+    IConfigurationSection pluginConfigurationSection,
+    IProxyStorage proxyStorage) :
     BasePlugin<MockResponseConfiguration>(
         httpClient,
         logger,
@@ -154,43 +152,39 @@ public class MockResponsePlugin(
         ValidateMocks();
     }
 
-    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
+    public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync => async (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
+        Logger.LogTrace("{Method} called", nameof(OnRequestAsync));
 
-        ArgumentNullException.ThrowIfNull(e);
-
-        var request = e.Session.HttpClient.Request;
-        var state = e.ResponseState;
         if (Configuration.NoMocks)
         {
-            Logger.LogRequest("Mocks disabled", MessageType.Skipped, new(e.Session));
-            return Task.CompletedTask;
-        }
-        if (!e.ShouldExecute(UrlsToWatch))
-        {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
-            return Task.CompletedTask;
+            Logger.LogRequest("Mocks disabled", MessageType.Skipped, args.Request);
+            return PluginResponse.Continue();
         }
 
-        var matchingResponse = GetMatchingMockResponse(request);
+        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
+        {
+            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
+            return PluginResponse.Continue();
+        }
+
+        var matchingResponse = await GetMatchingMockResponse(args.Request);
         if (matchingResponse is not null)
         {
             // we need to clone the response so that we're not modifying
             // the original that might be used in other requests
             var clonedResponse = (MockResponse)matchingResponse.Clone();
-            ProcessMockResponseInternal(e, clonedResponse);
-            state.HasBeenSet = true;
-            return Task.CompletedTask;
+            var httpResponse = ProcessMockResponseInternal(args.Request, clonedResponse, args.RequestId);
+            return PluginResponse.Respond(httpResponse);
         }
         else if (Configuration.BlockUnmockedRequests)
         {
-            ProcessMockResponseInternal(e, new()
+            var errorResponse = ProcessMockResponseInternal(args.Request, new()
             {
                 Request = new()
                 {
-                    Url = request.Url,
-                    Method = request.Method ?? ""
+                    Url = args.Request.RequestUri!.ToString(),
+                    Method = args.Request.Method.Method
                 },
                 Response = new()
                 {
@@ -198,25 +192,24 @@ public class MockResponsePlugin(
                     Body = new GraphErrorResponseBody(new()
                     {
                         Code = "Bad Gateway",
-                        Message = $"No mock response found for {request.Method} {request.Url}"
+                        Message = $"No mock response found for {args.Request.Method} {args.Request.RequestUri}"
                     })
                 }
-            });
-            state.HasBeenSet = true;
-            return Task.CompletedTask;
+            }, args.RequestId);
+            return PluginResponse.Respond(errorResponse);
         }
 
-        Logger.LogRequest("No matching mock response found", MessageType.Skipped, new(e.Session));
+        Logger.LogRequest("No matching mock response found", MessageType.Skipped, args.Request);
 
-        Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
-        return Task.CompletedTask;
-    }
+        Logger.LogTrace("Left {Name}", nameof(OnRequestAsync));
+        return PluginResponse.Continue();
+    };
 
-    protected virtual void ProcessMockResponse(ref byte[] body, IList<MockResponseHeader> headers, ProxyRequestArgs e, MockResponse? matchingResponse)
+    protected virtual void ProcessMockResponse(ref byte[] body, IList<MockResponseHeader> headers, HttpRequestMessage request, MockResponse? matchingResponse)
     {
     }
 
-    protected virtual void ProcessMockResponse(ref string? body, IList<MockResponseHeader> headers, ProxyRequestArgs e, MockResponse? matchingResponse)
+    protected virtual void ProcessMockResponse(ref string? body, IList<MockResponseHeader> headers, HttpRequestMessage request, MockResponse? matchingResponse)
     {
         if (string.IsNullOrEmpty(body))
         {
@@ -224,7 +217,7 @@ public class MockResponsePlugin(
         }
 
         var bytes = Encoding.UTF8.GetBytes(body);
-        ProcessMockResponse(ref bytes, headers, e, matchingResponse);
+        ProcessMockResponse(ref bytes, headers, request, matchingResponse);
         body = Encoding.UTF8.GetString(bytes);
     }
 
@@ -281,7 +274,7 @@ public class MockResponsePlugin(
         );
     }
 
-    private MockResponse? GetMatchingMockResponse(Request request)
+    private async Task<MockResponse?> GetMatchingMockResponse(HttpRequestMessage request)
     {
         if (Configuration.NoMocks ||
             Configuration.Mocks is null ||
@@ -290,44 +283,47 @@ public class MockResponsePlugin(
             return null;
         }
 
-        var mockResponse = Configuration.Mocks.FirstOrDefault(mockResponse =>
+        var requestUrl = request.RequestUri!.ToString();
+        var requestMethod = request.Method.Method;
+
+        MockResponse? matchingMockResponse = null;
+
+        foreach (var mockResponse in Configuration.Mocks)
         {
             if (mockResponse.Request is null)
             {
-                return false;
+                continue;
             }
 
-            if (mockResponse.Request.Method != request.Method)
+            if (mockResponse.Request.Method != requestMethod)
             {
-                return false;
+                continue;
             }
 
-            if (mockResponse.Request.Url == request.Url &&
-                HasMatchingBody(mockResponse, request) &&
-                IsNthRequest(mockResponse))
+            var urlMatches = false;
+            if (mockResponse.Request.Url == requestUrl)
             {
-                return true;
+                urlMatches = true;
             }
-
-            // check if the URL contains a wildcard
-            // if it doesn't, it's not a match for the current request for sure
-            if (!mockResponse.Request.Url.Contains('*', StringComparison.OrdinalIgnoreCase))
+            else if (mockResponse.Request.Url.Contains('*', StringComparison.OrdinalIgnoreCase))
             {
-                return false;
+                // turn mock URL with wildcard into a regex and match against the request URL
+                urlMatches = Regex.IsMatch(requestUrl, ProxyUtils.PatternToRegex(mockResponse.Request.Url));
             }
 
-            // turn mock URL with wildcard into a regex and match against the request URL
-            return Regex.IsMatch(request.Url, ProxyUtils.PatternToRegex(mockResponse.Request.Url)) &&
-                HasMatchingBody(mockResponse, request) &&
-                IsNthRequest(mockResponse);
-        });
-
-        if (mockResponse is not null && mockResponse.Request is not null)
-        {
-            _ = _appliedMocks.AddOrUpdate(mockResponse.Request.Url, 1, (_, value) => ++value);
+            if (urlMatches && await HasMatchingBody(mockResponse, request) && IsNthRequest(mockResponse))
+            {
+                matchingMockResponse = mockResponse;
+                break;
+            }
         }
 
-        return mockResponse;
+        if (matchingMockResponse is not null && matchingMockResponse.Request is not null)
+        {
+            _ = _appliedMocks.AddOrUpdate(matchingMockResponse.Request.Url, 1, (_, value) => ++value);
+        }
+
+        return matchingMockResponse;
     }
 
     private bool IsNthRequest(MockResponse mockResponse)
@@ -344,12 +340,11 @@ public class MockResponsePlugin(
         return mockResponse.Request.Nth == nth;
     }
 
-    private void ProcessMockResponseInternal(ProxyRequestArgs e, MockResponse matchingResponse)
+    private HttpResponseMessage ProcessMockResponseInternal(HttpRequestMessage request, MockResponse matchingResponse, RequestId requestId)
     {
         string? body = null;
-        var requestId = Guid.NewGuid().ToString();
         var requestDate = DateTime.Now.ToString(CultureInfo.CurrentCulture);
-        var headers = ProxyUtils.BuildGraphResponseHeaders(e.Session.HttpClient.Request, requestId, requestDate);
+        var headers = ProxyUtils.BuildGraphResponseHeaders(request, requestId, requestDate);
         var statusCode = HttpStatusCode.OK;
         if (matchingResponse.Response?.StatusCode is not null)
         {
@@ -368,7 +363,9 @@ public class MockResponsePlugin(
             headers.Add(new("content-type", "application/json"));
         }
 
-        if (e.SessionData.TryGetValue(nameof(RateLimitingPlugin), out var pluginData) &&
+        // Check for rate limiting headers from RateLimitingPlugin using new storage API
+        var requestData = proxyStorage.GetRequestData(requestId);
+        if (requestData.TryGetValue(nameof(Behavior.RateLimitingPlugin), out var pluginData) &&
             pluginData is List<MockResponseHeader> rateLimitingHeaders)
         {
             ProxyUtils.MergeHeaders(headers, rateLimitingHeaders);
@@ -388,17 +385,21 @@ public class MockResponsePlugin(
                 var filePath = Path.Combine(Path.GetDirectoryName(Configuration.MocksFile) ?? "", ProxyUtils.ReplacePathTokens(bodyString.Trim('"')[1..]));
                 if (!File.Exists(filePath))
                 {
-
                     Logger.LogError("File {FilePath} not found. Serving file path in the mock response", filePath);
                     body = bodyString;
                 }
                 else
                 {
                     var bodyBytes = File.ReadAllBytes(filePath);
-                    ProcessMockResponse(ref bodyBytes, headers, e, matchingResponse);
-                    e.Session.GenericResponse(bodyBytes, statusCode, headers.Select(h => new HttpHeader(h.Name, h.Value)));
-                    Logger.LogRequest($"{matchingResponse.Response.StatusCode ?? 200} {matchingResponse.Request?.Url}", MessageType.Mocked, new LoggingContext(e.Session));
-                    return;
+                    ProcessMockResponse(ref bodyBytes, headers, request, matchingResponse);
+                    var response = new HttpResponseMessage(statusCode);
+                    foreach (var header in headers)
+                    {
+                        _ = response.Headers.TryAddWithoutValidation(header.Name, header.Value);
+                    }
+                    response.Content = new ByteArrayContent(bodyBytes);
+                    Logger.LogRequest($"{matchingResponse.Response.StatusCode ?? 200} {matchingResponse.Request?.Url}", MessageType.Mocked, request);
+                    return response;
                 }
             }
             else
@@ -416,10 +417,22 @@ public class MockResponsePlugin(
                 _ = headers.Remove(contentTypeHeader);
             }
         }
-        ProcessMockResponse(ref body, headers, e, matchingResponse);
-        e.Session.GenericResponse(body ?? string.Empty, statusCode, headers.Select(h => new HttpHeader(h.Name, h.Value)));
 
-        Logger.LogRequest($"{matchingResponse.Response?.StatusCode ?? 200} {matchingResponse.Request?.Url}", MessageType.Mocked, new(e.Session));
+        ProcessMockResponse(ref body, headers, request, matchingResponse);
+
+        var httpResponse = new HttpResponseMessage(statusCode);
+        foreach (var header in headers)
+        {
+            _ = httpResponse.Headers.TryAddWithoutValidation(header.Name, header.Value);
+        }
+
+        if (!string.IsNullOrEmpty(body))
+        {
+            httpResponse.Content = new StringContent(body, Encoding.UTF8, "application/json");
+        }
+
+        Logger.LogRequest($"{matchingResponse.Response?.StatusCode ?? 200} {matchingResponse.Request?.Url}", MessageType.Mocked, request);
+        return httpResponse;
     }
 
     private async Task GenerateMocksFromHttpResponsesAsync(ParseResult parseResult)
@@ -491,9 +504,9 @@ public class MockResponsePlugin(
         Logger.LogTrace("Left {Method}", nameof(GenerateMocksFromHttpResponsesAsync));
     }
 
-    private static bool HasMatchingBody(MockResponse mockResponse, Request request)
+    private static async Task<bool> HasMatchingBody(MockResponse mockResponse, HttpRequestMessage request)
     {
-        if (request.Method == "GET")
+        if (request.Method == HttpMethod.Get)
         {
             // GET requests don't have a body so we can't match on it
             return true;
@@ -505,13 +518,21 @@ public class MockResponsePlugin(
             return true;
         }
 
-        if (!request.HasBody || string.IsNullOrEmpty(request.BodyString))
+        if (request.Content is null)
         {
             // mock defines a body fragment but the request has no body
             // so it can't match
             return false;
         }
 
-        return request.BodyString.Contains(mockResponse.Request.BodyFragment, StringComparison.OrdinalIgnoreCase);
+        var requestBody = await request.Content.ReadAsStringAsync();
+        if (string.IsNullOrEmpty(requestBody))
+        {
+            // mock defines a body fragment but the request has no body
+            // so it can't match
+            return false;
+        }
+
+        return requestBody.Contains(mockResponse.Request.BodyFragment, StringComparison.OrdinalIgnoreCase);
     }
 }

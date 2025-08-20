@@ -9,14 +9,15 @@ using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Mocking;
 using DevProxy.Plugins.Utils;
 using Microsoft.Extensions.Logging;
+using System.Net.Http.Json;
 using System.Text.Json;
-using Unobtanium.Web.Proxy.EventArguments;
 
 namespace DevProxy.Plugins.Generation;
 
 public sealed class MockGeneratorPlugin(
     ILogger<MockGeneratorPlugin> logger,
-    ISet<UrlToWatch> urlsToWatch) : BaseReportingPlugin(logger, urlsToWatch)
+    ISet<UrlToWatch> urlsToWatch,
+    IProxyStorage proxyStorage) : BaseReportingPlugin(logger, urlsToWatch, proxyStorage)
 {
     public override string Name => nameof(MockGeneratorPlugin);
 
@@ -42,9 +43,7 @@ public sealed class MockGeneratorPlugin(
             cancellationToken.ThrowIfCancellationRequested();
 
             if (request.MessageType != MessageType.InterceptedResponse ||
-              request.Context is null ||
-              request.Context.Session is null ||
-              !ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri))
+              !ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Request!.RequestUri!.AbsoluteUri))
             {
                 continue;
             }
@@ -53,10 +52,16 @@ public sealed class MockGeneratorPlugin(
             Logger.LogDebug("Processing request {MethodAndUrlString}...", methodAndUrlString);
 
             var (method, url) = GetMethodAndUrl(methodAndUrlString);
-            var response = request.Context.Session.HttpClient.Response;
+            var response = request.Response;
+
+            if (response is null)
+            {
+                Logger.LogDebug("No response found for request {MethodAndUrlString}. Skipping", methodAndUrlString);
+                continue;
+            }
 
             var newHeaders = new List<MockResponseHeader>();
-            newHeaders.AddRange(response.Headers.Select(h => new MockResponseHeader(h.Name, h.Value)));
+            newHeaders.AddRange(response.Headers.Select(h => new MockResponseHeader(h.Key, string.Join(';', h.Value))));
             var mock = new MockResponse
             {
                 Request = new()
@@ -66,9 +71,9 @@ public sealed class MockGeneratorPlugin(
                 },
                 Response = new()
                 {
-                    StatusCode = response.StatusCode,
+                    StatusCode = (int)response.StatusCode,
                     Headers = newHeaders,
-                    Body = await GetResponseBodyAsync(request.Context.Session, cancellationToken)
+                    Body = await GetResponseBodyAsync(request.Response!, cancellationToken)
                 }
             };
             // skip mock if it's 200 but has no body
@@ -97,7 +102,7 @@ public sealed class MockGeneratorPlugin(
 
         Logger.LogInformation("Created mock file {FileName} with {MocksCount} mocks", fileName, mocks.Count);
 
-        StoreReport(fileName, e);
+        StoreReport(fileName);
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
     }
@@ -108,28 +113,24 @@ public sealed class MockGeneratorPlugin(
     /// </summary>
     /// <param name="session">Request session</param>
     /// <returns>Response body or @filename for binary responses</returns>
-    private async Task<dynamic?> GetResponseBodyAsync(SessionEventArgs session, CancellationToken cancellationToken)
+    private async Task<dynamic?> GetResponseBodyAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         Logger.LogDebug("Getting response body...");
 
-        var response = session.HttpClient.Response;
-        if (response.ContentType is null || !response.HasBody)
+        if (response.Content is null)
         {
             Logger.LogDebug("Response has no content-type set or has no body. Skipping");
             return null;
         }
 
-        if (response.ContentType.Contains("application/json", StringComparison.OrdinalIgnoreCase))
+        if (response.Content.Headers.ContentType?.MediaType?.Contains("application/json", StringComparison.OrdinalIgnoreCase) ?? false)
         {
             Logger.LogDebug("Response is JSON");
 
             try
             {
                 Logger.LogDebug("Reading response body as string...");
-                var body = response.IsBodyRead ? response.BodyString : await session.GetResponseBodyAsString(cancellationToken);
-                Logger.LogDebug("Body: {Body}", body);
-                Logger.LogDebug("Deserializing response body...");
-                return JsonSerializer.Deserialize<dynamic>(body, ProxyUtils.JsonSerializerOptions);
+                return await response.Content.ReadFromJsonAsync<dynamic>(ProxyUtils.JsonSerializerOptions, cancellationToken);
             }
             catch (Exception ex)
             {
@@ -144,7 +145,7 @@ public sealed class MockGeneratorPlugin(
         {
             var filename = $"response-{Guid.NewGuid()}.bin";
             Logger.LogDebug("Reading response body as bytes...");
-            var body = await session.GetResponseBody(cancellationToken);
+            var body = await response.Content.ReadAsByteArrayAsync(cancellationToken);
             Logger.LogDebug("Writing response body to {Filename}...", filename);
             await File.WriteAllBytesAsync(filename, body, cancellationToken);
             return $"@{filename}";

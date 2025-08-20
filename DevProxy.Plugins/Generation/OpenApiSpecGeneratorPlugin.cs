@@ -19,8 +19,6 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Web;
-using Unobtanium.Web.Proxy.EventArguments;
-using Unobtanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Generation;
 
@@ -66,13 +64,15 @@ public sealed class OpenApiSpecGeneratorPlugin(
     ISet<UrlToWatch> urlsToWatch,
     ILanguageModelClient languageModelClient,
     IProxyConfiguration proxyConfiguration,
-    IConfigurationSection pluginConfigurationSection) :
+    IConfigurationSection pluginConfigurationSection,
+    IProxyStorage proxyStorage) :
     BaseReportingPlugin<OpenApiSpecGeneratorPluginConfiguration>(
         httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
-        pluginConfigurationSection)
+        pluginConfigurationSection,
+        proxyStorage)
 {
     public static readonly string GeneratedOpenApiSpecsKey = "GeneratedOpenApiSpecs";
 
@@ -99,17 +99,15 @@ public sealed class OpenApiSpecGeneratorPlugin(
             cancellationToken.ThrowIfCancellationRequested();
 
             if (request.MessageType != MessageType.InterceptedResponse ||
-              request.Context is null ||
-              request.Context.Session is null ||
-              !ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri))
+              !ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Request!.RequestUri!.AbsoluteUri))
             {
                 continue;
             }
 
             if (!Configuration.IncludeOptionsRequests &&
-                string.Equals(request.Context.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+                request.Request!.Method == HttpMethod.Options)
             {
-                Logger.LogDebug("Skipping OPTIONS request {Url}...", request.Context.Session.HttpClient.Request.RequestUri);
+                Logger.LogDebug("Skipping OPTIONS request {Url}...", request.Request.RequestUri);
                 continue;
             }
 
@@ -118,22 +116,22 @@ public sealed class OpenApiSpecGeneratorPlugin(
 
             try
             {
-                var pathItem = GetOpenApiPathItem(request.Context.Session);
-                var parametrizedPath = ParametrizePath(pathItem, request.Context.Session.HttpClient.Request.RequestUri);
+                var pathItem = await GetOpenApiPathItem(request.Request, request.Response);
+                var parametrizedPath = ParametrizePath(pathItem, request.Request.RequestUri!);
                 var operationInfo = pathItem.Operations.First();
                 operationInfo.Value.OperationId = await GetOperationIdAsync(
                     operationInfo.Key.ToString(),
-                    request.Context.Session.HttpClient.Request.RequestUri.GetLeftPart(UriPartial.Authority),
+                    request.Request.RequestUri.GetLeftPart(UriPartial.Authority),
                     parametrizedPath,
                     cancellationToken
                 );
                 operationInfo.Value.Description = await GetOperationDescriptionAsync(
                     operationInfo.Key.ToString(),
-                    request.Context.Session.HttpClient.Request.RequestUri.GetLeftPart(UriPartial.Authority),
+                    request.Request.RequestUri.GetLeftPart(UriPartial.Authority),
                     parametrizedPath,
                     cancellationToken
                 );
-                AddOrMergePathItem(openApiDocs, pathItem, request.Context.Session.HttpClient.Request.RequestUri, parametrizedPath);
+                AddOrMergePathItem(openApiDocs, pathItem, request.Request.RequestUri, parametrizedPath);
             }
             catch (Exception ex)
             {
@@ -176,11 +174,11 @@ public sealed class OpenApiSpecGeneratorPlugin(
             {
                 ServerUrl = kvp.Key,
                 FileName = kvp.Value
-            })), e);
+            })));
 
         // store the generated OpenAPI specs in the global data
         // for use by other plugins
-        e.GlobalData[GeneratedOpenApiSpecsKey] = generatedOpenApiSpecs;
+        ProxyStorage.GlobalData[GeneratedOpenApiSpecsKey] = generatedOpenApiSpecs;
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
     }
@@ -206,17 +204,15 @@ public sealed class OpenApiSpecGeneratorPlugin(
 
     /**
      * Creates an OpenAPI PathItem from an intercepted request and response pair.
-     * @param session The intercepted session.
+     * @param httpRequest The HTTP request message.
+     * @param httpResponse The HTTP response message.
      */
-    private OpenApiPathItem GetOpenApiPathItem(SessionEventArgs session)
+    private async Task<OpenApiPathItem> GetOpenApiPathItem(HttpRequestMessage httpRequest, HttpResponseMessage? httpResponse)
     {
-        var request = session.HttpClient.Request;
-        var response = session.HttpClient.Response;
-
-        var resource = GetLastNonTokenSegment(request.RequestUri.Segments);
+        var resource = GetLastNonTokenSegment(httpRequest.RequestUri!.Segments);
         var path = new OpenApiPathItem();
 
-        var method = request.Method?.ToUpperInvariant() switch
+        var method = httpRequest.Method.Method.ToUpperInvariant() switch
         {
             "DELETE" => OperationType.Delete,
             "GET" => OperationType.Get,
@@ -226,7 +222,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
             "POST" => OperationType.Post,
             "PUT" => OperationType.Put,
             "TRACE" => OperationType.Trace,
-            _ => throw new NotSupportedException($"Method {request.Method} is not supported")
+            _ => throw new NotSupportedException($"Method {httpRequest.Method} is not supported")
         };
         var operation = new OpenApiOperation
         {
@@ -235,50 +231,51 @@ public sealed class OpenApiSpecGeneratorPlugin(
             // will be replaced later after the path has been parametrized
             OperationId = $"{method}.{resource}"
         };
-        SetParametersFromQueryString(operation, HttpUtility.ParseQueryString(request.RequestUri.Query));
-        SetParametersFromRequestHeaders(operation, request.Headers);
-        SetRequestBody(operation, request);
-        SetResponseFromSession(operation, response);
+        SetParametersFromQueryString(operation, HttpUtility.ParseQueryString(httpRequest.RequestUri.Query));
+        SetParametersFromRequestHeaders(operation, httpRequest.Headers);
+        await SetRequestBody(operation, httpRequest);
+        await SetResponseFromHttpResponseMessage(operation, httpResponse);
 
         path.Operations.Add(method, operation);
 
         return path;
     }
 
-    private void SetRequestBody(OpenApiOperation operation, Request request)
+    private async Task SetRequestBody(OpenApiOperation operation, HttpRequestMessage httpRequest)
     {
-        if (!request.HasBody)
+        if (httpRequest.Content is null)
         {
             Logger.LogDebug("  Request has no body");
             return;
         }
 
-        if (request.ContentType is null)
+        var contentType = httpRequest.Content.Headers.ContentType?.MediaType;
+        if (contentType is null)
         {
             Logger.LogDebug("  Request has no content type");
             return;
         }
 
         Logger.LogDebug("  Processing request body...");
+        var bodyString = await httpRequest.Content.ReadAsStringAsync();
         operation.RequestBody = new()
         {
             Content = new Dictionary<string, OpenApiMediaType>
             {
                 {
-                    GetMediaType(request.ContentType),
+                    GetMediaType(contentType),
                     new()
                     {
-                        Schema = GetSchemaFromBody(GetMediaType(request.ContentType), request.BodyString)
+                        Schema = GetSchemaFromBody(GetMediaType(contentType), bodyString)
                     }
                 }
             }
         };
     }
 
-    private void SetParametersFromRequestHeaders(OpenApiOperation operation, HeaderCollection headers)
+    private void SetParametersFromRequestHeaders(OpenApiOperation operation, System.Net.Http.Headers.HttpRequestHeaders headers)
     {
-        if (headers is null ||
-            !headers.Any())
+        if (headers is null || !headers.Any())
         {
             Logger.LogDebug("  Request has no headers");
             return;
@@ -287,27 +284,27 @@ public sealed class OpenApiSpecGeneratorPlugin(
         Logger.LogDebug("  Processing request headers...");
         foreach (var header in headers)
         {
-            var lowerCaseHeaderName = header.Name.ToLowerInvariant();
+            var lowerCaseHeaderName = header.Key.ToLowerInvariant();
             if (Http.StandardHeaders.Contains(lowerCaseHeaderName))
             {
-                Logger.LogDebug("    Skipping standard header {HeaderName}", header.Name);
+                Logger.LogDebug("    Skipping standard header {HeaderName}", header.Key);
                 continue;
             }
 
             if (Http.AuthHeaders.Contains(lowerCaseHeaderName))
             {
-                Logger.LogDebug("    Skipping auth header {HeaderName}", header.Name);
+                Logger.LogDebug("    Skipping auth header {HeaderName}", header.Key);
                 continue;
             }
 
             operation.Parameters.Add(new()
             {
-                Name = header.Name,
+                Name = header.Key,
                 In = ParameterLocation.Header,
                 Required = false,
                 Schema = new() { Type = "string" }
             });
-            Logger.LogDebug("    Added header {HeaderName}", header.Name);
+            Logger.LogDebug("    Added header {HeaderName}", header.Key);
         }
     }
 
@@ -352,9 +349,9 @@ public sealed class OpenApiSpecGeneratorPlugin(
         parameter.Schema.Default = new OpenApiString(value.ToString());
     }
 
-    private void SetResponseFromSession(OpenApiOperation operation, Response response)
+    private async Task SetResponseFromHttpResponseMessage(OpenApiOperation operation, HttpResponseMessage? httpResponse)
     {
-        if (response is null)
+        if (httpResponse is null)
         {
             Logger.LogDebug("  No response to process");
             return;
@@ -364,16 +361,20 @@ public sealed class OpenApiSpecGeneratorPlugin(
 
         var openApiResponse = new OpenApiResponse
         {
-            Description = response.StatusDescription
+            Description = httpResponse.ReasonPhrase ?? httpResponse.StatusCode.ToString()
         };
-        var responseCode = response.StatusCode.ToString(CultureInfo.InvariantCulture);
-        if (response.HasBody)
+        var responseCode = ((int)httpResponse.StatusCode).ToString(CultureInfo.InvariantCulture);
+
+        if (httpResponse.Content is not null)
         {
             Logger.LogDebug("    Response has body");
 
-            openApiResponse.Content.Add(GetMediaType(response.ContentType), new()
+            var contentType = httpResponse.Content.Headers.ContentType?.MediaType;
+            var responseBody = await httpResponse.Content.ReadAsStringAsync();
+
+            openApiResponse.Content.Add(GetMediaType(contentType), new()
             {
-                Schema = GetSchemaFromBody(GetMediaType(response.ContentType), response.BodyString)
+                Schema = GetSchemaFromBody(GetMediaType(contentType), responseBody)
             });
         }
         else
@@ -381,36 +382,36 @@ public sealed class OpenApiSpecGeneratorPlugin(
             Logger.LogDebug("    Response doesn't have body");
         }
 
-        if (response.Headers is not null && response.Headers.Any())
+        if (httpResponse.Headers is not null && httpResponse.Headers.Any())
         {
             Logger.LogDebug("    Response has headers");
 
-            foreach (var header in response.Headers)
+            foreach (var header in httpResponse.Headers)
             {
-                var lowerCaseHeaderName = header.Name.ToLowerInvariant();
+                var lowerCaseHeaderName = header.Key.ToLowerInvariant();
                 if (Http.StandardHeaders.Contains(lowerCaseHeaderName))
                 {
-                    Logger.LogDebug("    Skipping standard header {HeaderName}", header.Name);
+                    Logger.LogDebug("    Skipping standard header {HeaderName}", header.Key);
                     continue;
                 }
 
                 if (Http.AuthHeaders.Contains(lowerCaseHeaderName))
                 {
-                    Logger.LogDebug("    Skipping auth header {HeaderName}", header.Name);
+                    Logger.LogDebug("    Skipping auth header {HeaderName}", header.Key);
                     continue;
                 }
 
-                if (openApiResponse.Headers.ContainsKey(header.Name))
+                if (openApiResponse.Headers.ContainsKey(header.Key))
                 {
-                    Logger.LogDebug("    Header {HeaderName} already exists in response", header.Name);
+                    Logger.LogDebug("    Header {HeaderName} already exists in response", header.Key);
                     continue;
                 }
 
-                openApiResponse.Headers.Add(header.Name, new()
+                openApiResponse.Headers.Add(header.Key, new()
                 {
                     Schema = new() { Type = "string" }
                 });
-                Logger.LogDebug("    Added header {HeaderName}", header.Name);
+                Logger.LogDebug("    Added header {HeaderName}", header.Key);
             }
         }
         else
@@ -469,6 +470,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
                     new() { Url = serverUrl }
                 ],
                 Paths = [],
+
                 Extensions = new Dictionary<string, IOpenApiExtension>
                 {
                     { "x-ms-generated-by", new GeneratedByOpenApiExtension() }
@@ -670,6 +672,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
         for (var i = 0; i < segments.Length; i++)
         {
             var segment = requestUri.Segments[i].Trim('/');
+
             if (string.IsNullOrEmpty(segment))
             {
                 continue;

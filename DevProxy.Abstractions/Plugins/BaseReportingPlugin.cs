@@ -11,18 +11,19 @@ namespace DevProxy.Abstractions.Plugins;
 
 public abstract class BaseReportingPlugin(
     ILogger logger,
-    ISet<UrlToWatch> urlsToWatch) : BasePlugin(logger, urlsToWatch)
+    ISet<UrlToWatch> urlsToWatch,
+    IProxyStorage proxyStorage) : BasePlugin(logger, urlsToWatch)
 {
-    protected virtual void StoreReport(object report, ProxyEventArgsBase e)
+    protected IProxyStorage ProxyStorage => proxyStorage;
+    protected virtual void StoreReport(object report)
     {
-        ArgumentNullException.ThrowIfNull(e);
 
         if (report is null)
         {
             return;
         }
 
-        ((Dictionary<string, object>)e.GlobalData[ProxyUtils.ReportsKey])[Name] = report;
+        ((Dictionary<string, object>)ProxyStorage.GlobalData[ProxyUtils.ReportsKey])[Name] = report;
     }
 }
 
@@ -31,7 +32,8 @@ public abstract class BaseReportingPlugin<TConfiguration>(
     ILogger logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
-    IConfigurationSection configurationSection) :
+    IConfigurationSection configurationSection,
+    IProxyStorage proxyStorage) :
     BasePlugin<TConfiguration>(
         httpClient,
         logger,
@@ -39,15 +41,15 @@ public abstract class BaseReportingPlugin<TConfiguration>(
         proxyConfiguration,
         configurationSection) where TConfiguration : new()
 {
-    protected virtual void StoreReport(object report, ProxyEventArgsBase e)
+    protected IProxyStorage ProxyStorage => proxyStorage;
+    protected virtual void StoreReport(object report)
     {
-        ArgumentNullException.ThrowIfNull(e);
 
         if (report is null)
         {
             return;
         }
 
-        ((Dictionary<string, object>)e.GlobalData[ProxyUtils.ReportsKey])[Name] = report;
+        ((Dictionary<string, object>)ProxyStorage.GlobalData[ProxyUtils.ReportsKey])[Name] = report;
     }
 }

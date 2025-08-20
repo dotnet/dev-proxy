@@ -14,12 +14,10 @@ using System.Diagnostics;
 using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Security.Claims;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Web;
-using Unobtanium.Web.Proxy.EventArguments;
-using Unobtanium.Web.Proxy.Http;
-using Unobtanium.Web.Proxy.Models;
 
 namespace DevProxy.Plugins.Mocking;
 
@@ -156,36 +154,28 @@ public sealed class AuthPlugin(
         Enabled = false;
     }
 
-    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
+    public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync => (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
+        Logger.LogTrace("{Method} called", nameof(OnRequestAsync));
 
-        ArgumentNullException.ThrowIfNull(e);
-
-        if (!e.HasRequestUrlMatch(UrlsToWatch))
+        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
-            return Task.CompletedTask;
-        }
-        if (e.ResponseState.HasBeenSet)
-        {
-            Logger.LogRequest("Response already set", MessageType.Skipped, new(e.Session));
-            return Task.CompletedTask;
+            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
+            return Task.FromResult(PluginResponse.Continue());
         }
 
-        if (!AuthorizeRequest(e.Session))
+        if (!AuthorizeRequest(args.Request))
         {
-            SendUnauthorizedResponse(e.Session);
-            e.ResponseState.HasBeenSet = true;
+            return Task.FromResult(PluginResponse.Respond(BuildUnauthorizedResponse(args.Request)));
         }
         else
         {
-            Logger.LogRequest("Request authorized", MessageType.Normal, new(e.Session));
+            Logger.LogRequest("Request authorized", MessageType.Normal, args.Request);
         }
 
-        Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
-        return Task.CompletedTask;
-    }
+        Logger.LogTrace("Left {Name}", nameof(OnRequestAsync));
+        return Task.FromResult(PluginResponse.Continue());
+    };
 
     private async Task SetupOpenIdConnectConfigurationAsync(string metadataUrl)
     {
@@ -201,20 +191,20 @@ public sealed class AuthPlugin(
         }
     }
 
-    private bool AuthorizeRequest(SessionEventArgs session)
+    private bool AuthorizeRequest(HttpRequestMessage request)
     {
         Debug.Assert(Configuration is not null);
         Debug.Assert(Configuration.Type is not null);
 
         return Configuration.Type switch
         {
-            AuthPluginAuthType.ApiKey => AuthorizeApiKeyRequest(session),
-            AuthPluginAuthType.OAuth2 => AuthorizeOAuth2Request(session),
+            AuthPluginAuthType.ApiKey => AuthorizeApiKeyRequest(request),
+            AuthPluginAuthType.OAuth2 => AuthorizeOAuth2Request(request),
             _ => false,
         };
     }
 
-    private bool AuthorizeApiKeyRequest(SessionEventArgs session)
+    private bool AuthorizeApiKeyRequest(HttpRequestMessage request)
     {
         Logger.LogDebug("Authorizing request using API key");
 
@@ -222,23 +212,23 @@ public sealed class AuthPlugin(
         Debug.Assert(Configuration.ApiKey is not null);
         Debug.Assert(Configuration.ApiKey.AllowedKeys is not null);
 
-        var apiKey = GetApiKey(session);
+        var apiKey = GetApiKey(request);
         if (apiKey is null)
         {
-            Logger.LogRequest("401 Unauthorized. API key not found.", MessageType.Failed, new(session));
+            Logger.LogRequest("401 Unauthorized. API key not found.", MessageType.Failed, request);
             return false;
         }
 
         var isKeyValid = Configuration.ApiKey.AllowedKeys.Contains(apiKey);
         if (!isKeyValid)
         {
-            Logger.LogRequest($"401 Unauthorized. API key {apiKey} is not allowed.", MessageType.Failed, new(session));
+            Logger.LogRequest($"401 Unauthorized. API key {apiKey} is not allowed.", MessageType.Failed, request);
         }
 
         return isKeyValid;
     }
 
-    private bool AuthorizeOAuth2Request(SessionEventArgs session)
+    private bool AuthorizeOAuth2Request(HttpRequestMessage request)
     {
         Logger.LogDebug("Authorizing request using OAuth2");
 
@@ -247,7 +237,7 @@ public sealed class AuthPlugin(
         Debug.Assert(Configuration.OAuth2.MetadataUrl is not null);
         Debug.Assert(_openIdConnectConfiguration is not null);
 
-        var token = GetOAuth2Token(session);
+        var token = GetOAuth2Token(request);
         if (token is null)
         {
             return false;
@@ -276,20 +266,20 @@ public sealed class AuthPlugin(
         try
         {
             var claimsPrincipal = handler.ValidateToken(token, validationParameters, out _);
-            return ValidateTenants(claimsPrincipal, session) &&
-                ValidateApplications(claimsPrincipal, session) &&
-                ValidatePrincipals(claimsPrincipal, session) &&
-                ValidateRoles(claimsPrincipal, session) &&
-                ValidateScopes(claimsPrincipal, session);
+            return ValidateTenants(claimsPrincipal, request) &&
+                ValidateApplications(claimsPrincipal, request) &&
+                ValidatePrincipals(claimsPrincipal, request) &&
+                ValidateRoles(claimsPrincipal, request) &&
+                ValidateScopes(claimsPrincipal, request);
         }
         catch (Exception ex)
         {
-            Logger.LogRequest($"401 Unauthorized. The specified token is not valid: {ex.Message}", MessageType.Failed, new(session));
+            Logger.LogRequest($"401 Unauthorized. The specified token is not valid: {ex.Message}", MessageType.Failed, request);
             return false;
         }
     }
 
-    private bool ValidatePrincipals(ClaimsPrincipal claimsPrincipal, SessionEventArgs session)
+    private bool ValidatePrincipals(ClaimsPrincipal claimsPrincipal, HttpRequestMessage request)
     {
         Debug.Assert(Configuration is not null);
         Debug.Assert(Configuration.OAuth2 is not null);
@@ -303,14 +293,14 @@ public sealed class AuthPlugin(
         var principalId = claimsPrincipal.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value;
         if (principalId is null)
         {
-            Logger.LogRequest("401 Unauthorized. The specified token doesn't have the oid claim.", MessageType.Failed, new(session));
+            Logger.LogRequest("401 Unauthorized. The specified token doesn't have the oid claim.", MessageType.Failed, request);
             return false;
         }
 
         if (!Configuration.OAuth2.AllowedPrincipals.Contains(principalId))
         {
             var principals = string.Join(", ", Configuration.OAuth2.AllowedPrincipals);
-            Logger.LogRequest($"401 Unauthorized. The specified token is not issued for an allowed principal. Allowed principals: {principals}, found: {principalId}", MessageType.Failed, new(session));
+            Logger.LogRequest($"401 Unauthorized. The specified token is not issued for an allowed principal. Allowed principals: {principals}, found: {principalId}", MessageType.Failed, request);
             return false;
         }
 
@@ -319,7 +309,7 @@ public sealed class AuthPlugin(
         return true;
     }
 
-    private bool ValidateApplications(ClaimsPrincipal claimsPrincipal, SessionEventArgs session)
+    private bool ValidateApplications(ClaimsPrincipal claimsPrincipal, HttpRequestMessage request)
     {
         Debug.Assert(Configuration is not null);
         Debug.Assert(Configuration.OAuth2 is not null);
@@ -333,21 +323,21 @@ public sealed class AuthPlugin(
         var tokenVersion = claimsPrincipal.FindFirst("ver")?.Value;
         if (tokenVersion is null)
         {
-            Logger.LogRequest("401 Unauthorized. The specified token doesn't have the ver claim.", MessageType.Failed, new(session));
+            Logger.LogRequest("401 Unauthorized. The specified token doesn't have the ver claim.", MessageType.Failed, request);
             return false;
         }
 
         var appId = claimsPrincipal.FindFirst(tokenVersion == "1.0" ? "appid" : "azp")?.Value;
         if (appId is null)
         {
-            Logger.LogRequest($"401 Unauthorized. The specified token doesn't have the {(tokenVersion == "v1.0" ? "appid" : "azp")} claim.", MessageType.Failed, new(session));
+            Logger.LogRequest($"401 Unauthorized. The specified token doesn't have the {(tokenVersion == "v1.0" ? "appid" : "azp")} claim.", MessageType.Failed, request);
             return false;
         }
 
         if (!Configuration.OAuth2.AllowedApplications.Contains(appId))
         {
             var applications = string.Join(", ", Configuration.OAuth2.AllowedApplications);
-            Logger.LogRequest($"401 Unauthorized. The specified token is not issued by an allowed application. Allowed applications: {applications}, found: {appId}", MessageType.Failed, new(session));
+            Logger.LogRequest($"401 Unauthorized. The specified token is not issued by an allowed application. Allowed applications: {applications}, found: {appId}", MessageType.Failed, request);
             return false;
         }
 
@@ -356,7 +346,7 @@ public sealed class AuthPlugin(
         return true;
     }
 
-    private bool ValidateTenants(ClaimsPrincipal claimsPrincipal, SessionEventArgs session)
+    private bool ValidateTenants(ClaimsPrincipal claimsPrincipal, HttpRequestMessage request)
     {
         Debug.Assert(Configuration is not null);
         Debug.Assert(Configuration.OAuth2 is not null);
@@ -370,14 +360,14 @@ public sealed class AuthPlugin(
         var tenantId = claimsPrincipal.FindFirst("http://schemas.microsoft.com/identity/claims/tenantid")?.Value;
         if (tenantId is null)
         {
-            Logger.LogRequest("401 Unauthorized. The specified token doesn't have the tid claim.", MessageType.Failed, new(session));
+            Logger.LogRequest("401 Unauthorized. The specified token doesn't have the tid claim.", MessageType.Failed, request);
             return false;
         }
 
         if (!Configuration.OAuth2.AllowedTenants.Contains(tenantId))
         {
             var tenants = string.Join(", ", Configuration.OAuth2.AllowedTenants);
-            Logger.LogRequest($"401 Unauthorized. The specified token is not issued by an allowed tenant. Allowed tenants: {tenants}, found: {tenantId}", MessageType.Failed, new(session));
+            Logger.LogRequest($"401 Unauthorized. The specified token is not issued by an allowed tenant. Allowed tenants: {tenants}, found: {tenantId}", MessageType.Failed, request);
             return false;
         }
 
@@ -386,7 +376,7 @@ public sealed class AuthPlugin(
         return true;
     }
 
-    private bool ValidateRoles(ClaimsPrincipal claimsPrincipal, SessionEventArgs session)
+    private bool ValidateRoles(ClaimsPrincipal claimsPrincipal, HttpRequestMessage request)
     {
         Debug.Assert(Configuration is not null);
         Debug.Assert(Configuration.OAuth2 is not null);
@@ -404,7 +394,7 @@ public sealed class AuthPlugin(
         var rolesRequired = string.Join(", ", Configuration.OAuth2.Roles);
         if (!Configuration.OAuth2.Roles.Any(r => HasPermission(r, rolesFromTheToken)))
         {
-            Logger.LogRequest($"401 Unauthorized. The specified token does not have the necessary role(s). Required one of: {rolesRequired}, found: {rolesFromTheToken}", MessageType.Failed, new(session));
+            Logger.LogRequest($"401 Unauthorized. The specified token does not have the necessary role(s). Required one of: {rolesRequired}, found: {rolesFromTheToken}", MessageType.Failed, request);
             return false;
         }
 
@@ -413,7 +403,7 @@ public sealed class AuthPlugin(
         return true;
     }
 
-    private bool ValidateScopes(ClaimsPrincipal claimsPrincipal, SessionEventArgs session)
+    private bool ValidateScopes(ClaimsPrincipal claimsPrincipal, HttpRequestMessage request)
     {
         Debug.Assert(Configuration is not null);
         Debug.Assert(Configuration.OAuth2 is not null);
@@ -431,7 +421,7 @@ public sealed class AuthPlugin(
         var scopesRequired = string.Join(", ", Configuration.OAuth2.Scopes);
         if (!Configuration.OAuth2.Scopes.Any(s => HasPermission(s, scopesFromTheToken)))
         {
-            Logger.LogRequest($"401 Unauthorized. The specified token does not have the necessary scope(s). Required one of: {scopesRequired}, found: {scopesFromTheToken}", MessageType.Failed, new LoggingContext(session));
+            Logger.LogRequest($"401 Unauthorized. The specified token does not have the necessary scope(s). Required one of: {scopesRequired}, found: {scopesFromTheToken}", MessageType.Failed, request);
             return false;
         }
 
@@ -440,29 +430,26 @@ public sealed class AuthPlugin(
         return true;
     }
 
-    private string? GetOAuth2Token(SessionEventArgs session)
+    private string? GetOAuth2Token(HttpRequestMessage request)
     {
-        var tokenParts = session.HttpClient.Request.Headers
-            .FirstOrDefault(h => h.Name.Equals("Authorization", StringComparison.OrdinalIgnoreCase))
-            ?.Value
-            ?.Split(' ');
-
-        if (tokenParts is null)
+        var authHeaderValue = request.Headers.Authorization?.ToString();
+        if (authHeaderValue is null)
         {
-            Logger.LogRequest("401 Unauthorized. Authorization header not found.", MessageType.Failed, new(session));
+            Logger.LogRequest("401 Unauthorized. Authorization header not found.", MessageType.Failed, request);
             return null;
         }
 
+        var tokenParts = authHeaderValue.Split(' ');
         if (tokenParts.Length != 2 || tokenParts[0] != "Bearer")
         {
-            Logger.LogRequest("401 Unauthorized. The specified token is not a valid Bearer token.", MessageType.Failed, new(session));
+            Logger.LogRequest("401 Unauthorized. The specified token is not a valid Bearer token.", MessageType.Failed, request);
             return null;
         }
 
         return tokenParts[1];
     }
 
-    private string? GetApiKey(SessionEventArgs session)
+    private string? GetApiKey(HttpRequestMessage request)
     {
         Debug.Assert(Configuration is not null);
         Debug.Assert(Configuration.ApiKey is not null);
@@ -480,9 +467,9 @@ public sealed class AuthPlugin(
             Logger.LogDebug("Getting API key from parameter {Param} in {In}", parameter.Name, parameter.In);
             apiKey = parameter.In switch
             {
-                AuthPluginApiKeyIn.Header => GetApiKeyFromHeader(session.HttpClient.Request, parameter.Name),
-                AuthPluginApiKeyIn.Query => GetApiKeyFromQuery(session.HttpClient.Request, parameter.Name),
-                AuthPluginApiKeyIn.Cookie => GetApiKeyFromCookie(session.HttpClient.Request, parameter.Name),
+                AuthPluginApiKeyIn.Header => GetApiKeyFromHeader(request, parameter.Name),
+                AuthPluginApiKeyIn.Query => GetApiKeyFromQuery(request, parameter.Name),
+                AuthPluginApiKeyIn.Cookie => GetApiKeyFromCookie(request, parameter.Name),
                 _ => null
             };
             Logger.LogDebug("API key from parameter {Param} in {In}: {ApiKey}", parameter.Name, parameter.In, apiKey ?? "(not found)");
@@ -496,7 +483,7 @@ public sealed class AuthPlugin(
         return apiKey;
     }
 
-    private static void SendUnauthorizedResponse(SessionEventArgs e)
+    private static HttpResponseMessage BuildUnauthorizedResponse(HttpRequestMessage request)
     {
         var body = new
         {
@@ -505,19 +492,18 @@ public sealed class AuthPlugin(
                 message = "Unauthorized"
             }
         };
-        SendJsonResponse(JsonSerializer.Serialize(body, ProxyUtils.JsonSerializerOptions), HttpStatusCode.Unauthorized, e);
-    }
 
-    private static void SendJsonResponse(string body, HttpStatusCode statusCode, SessionEventArgs e)
-    {
-        var headers = new List<HttpHeader> {
-            new("content-type", "application/json; charset=utf-8")
-        };
-        if (e.HttpClient.Request.Headers.Any(h => h.Name.Equals("Origin", StringComparison.OrdinalIgnoreCase)))
+        var response = new HttpResponseMessage(HttpStatusCode.Unauthorized)
         {
-            headers.Add(new("access-control-allow-origin", "*"));
+            Content = new StringContent(JsonSerializer.Serialize(body, ProxyUtils.JsonSerializerOptions), Encoding.UTF8, "application/json")
+        };
+
+        if (request.Headers.TryGetValues("Origin", out var _))
+        {
+            _ = response.Headers.TryAddWithoutValidation("access-control-allow-origin", "*");
         }
-        e.GenericResponse(body, statusCode, headers);
+
+        return response;
     }
 
     private static bool HasPermission(string permission, string permissionString)
@@ -531,9 +517,15 @@ public sealed class AuthPlugin(
         return permissions.Contains(permission, StringComparer.OrdinalIgnoreCase);
     }
 
-    private static string? GetApiKeyFromCookie(Request request, string cookieName)
+    private static string? GetApiKeyFromCookie(HttpRequestMessage request, string cookieName)
     {
-        var cookies = ParseCookies(request.Headers.FirstOrDefault(h => h.Name.Equals("Cookie", StringComparison.OrdinalIgnoreCase))?.Value);
+        if (!request.Headers.TryGetValues("Cookie", out var cookieValues))
+        {
+            return null;
+        }
+
+        var cookieHeader = cookieValues.FirstOrDefault();
+        var cookies = ParseCookies(cookieHeader);
         if (cookies is null)
         {
             return null;
@@ -562,14 +554,18 @@ public sealed class AuthPlugin(
         return cookies;
     }
 
-    private static string? GetApiKeyFromQuery(Request request, string paramName)
+    private static string? GetApiKeyFromQuery(HttpRequestMessage request, string paramName)
     {
-        var queryParameters = HttpUtility.ParseQueryString(request.RequestUri.Query);
+        var queryParameters = HttpUtility.ParseQueryString(request.RequestUri?.Query ?? string.Empty);
         return queryParameters[paramName];
     }
 
-    private static string? GetApiKeyFromHeader(Request request, string headerName)
+    private static string? GetApiKeyFromHeader(HttpRequestMessage request, string headerName)
     {
-        return request.Headers.FirstOrDefault(h => h.Name == headerName)?.Value;
+        if (request.Headers.TryGetValues(headerName, out var values))
+        {
+            return values.FirstOrDefault();
+        }
+        return null;
     }
 }

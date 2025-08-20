@@ -11,62 +11,60 @@ using DevProxy.Plugins.Utils;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
 using System.Net;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Unobtanium.Web.Proxy.Http;
-using Unobtanium.Web.Proxy.Models;
 
 namespace DevProxy.Plugins.Behavior;
 
 public sealed class RetryAfterPlugin(
     ILogger<RetryAfterPlugin> logger,
-    ISet<UrlToWatch> urlsToWatch) : BasePlugin(logger, urlsToWatch)
+    ISet<UrlToWatch> urlsToWatch,
+    IProxyStorage proxyStorage) : BasePlugin(logger, urlsToWatch)
 {
+    private readonly IProxyStorage _proxyStorage = proxyStorage;
     public static readonly string ThrottledRequestsKey = "ThrottledRequests";
 
     public override string Name => nameof(RetryAfterPlugin);
 
-    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
+    public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync => (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
+        Logger.LogTrace("{Method} called", nameof(OnRequestAsync));
 
-        ArgumentNullException.ThrowIfNull(e);
-
-        if (!e.HasRequestUrlMatch(UrlsToWatch))
+        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
-            return Task.CompletedTask;
-        }
-        if (e.ResponseState.HasBeenSet)
-        {
-            Logger.LogRequest("Response already set", MessageType.Skipped, new(e.Session));
-            return Task.CompletedTask;
-        }
-        if (string.Equals(e.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
-        {
-            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new(e.Session));
-            return Task.CompletedTask;
+            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
+            return Task.FromResult(PluginResponse.Continue());
         }
 
-        ThrottleIfNecessary(e);
+        if (args.Request.Method == HttpMethod.Options)
+        {
+            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, args.Request);
+            return Task.FromResult(PluginResponse.Continue());
+        }
 
-        Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
-        return Task.CompletedTask;
-    }
+        var throttleResponse = CheckIfThrottled(args.Request);
+        if (throttleResponse != null)
+        {
+            return Task.FromResult(PluginResponse.Respond(throttleResponse));
+        }
 
-    private void ThrottleIfNecessary(ProxyRequestArgs e)
+        Logger.LogTrace("Left {Name}", nameof(OnRequestAsync));
+        return Task.FromResult(PluginResponse.Continue());
+    };
+
+    private HttpResponseMessage? CheckIfThrottled(HttpRequestMessage request)
     {
-        var request = e.Session.HttpClient.Request;
-        if (!e.GlobalData.TryGetValue(ThrottledRequestsKey, out var value))
+        if (!_proxyStorage.GlobalData.TryGetValue(ThrottledRequestsKey, out var value))
         {
-            Logger.LogRequest("Request not throttled", MessageType.Skipped, new(e.Session));
-            return;
+            Logger.LogRequest("Request not throttled", MessageType.Skipped, request);
+            return null;
         }
 
         if (value is not List<ThrottlerInfo> throttledRequests)
         {
-            Logger.LogRequest("Request not throttled", MessageType.Skipped, new(e.Session));
-            return;
+            Logger.LogRequest("Request not throttled", MessageType.Skipped, request);
+            return null;
         }
 
         var expiredThrottlers = throttledRequests.Where(t => t.ResetTime < DateTime.Now).ToArray();
@@ -77,8 +75,8 @@ public sealed class RetryAfterPlugin(
 
         if (throttledRequests.Count == 0)
         {
-            Logger.LogRequest("Request not throttled", MessageType.Skipped, new(e.Session));
-            return;
+            Logger.LogRequest("Request not throttled", MessageType.Skipped, request);
+            return null;
         }
 
         foreach (var throttler in throttledRequests)
@@ -86,23 +84,22 @@ public sealed class RetryAfterPlugin(
             var throttleInfo = throttler.ShouldThrottle(request, throttler.ThrottlingKey);
             if (throttleInfo.ThrottleForSeconds > 0)
             {
-                var message = $"Calling {request.Url} before waiting for the Retry-After period. Request will be throttled. Throttling on {throttler.ThrottlingKey}.";
-                Logger.LogRequest(message, MessageType.Failed, new(e.Session));
+                var message = $"Calling {request.RequestUri} before waiting for the Retry-After period. Request will be throttled. Throttling on {throttler.ThrottlingKey}.";
+                Logger.LogRequest(message, MessageType.Failed, request);
 
                 throttler.ResetTime = DateTime.Now.AddSeconds(throttleInfo.ThrottleForSeconds);
-                UpdateProxyResponse(e, throttleInfo, string.Join(' ', message));
-                return;
+                return BuildThrottleResponse(request, throttleInfo, string.Join(' ', message));
             }
         }
 
-        Logger.LogRequest("Request not throttled", MessageType.Skipped, new(e.Session));
+        Logger.LogRequest("Request not throttled", MessageType.Skipped, request);
+        return null;
     }
 
-    private static void UpdateProxyResponse(ProxyRequestArgs e, ThrottlingInfo throttlingInfo, string message)
+    private static HttpResponseMessage BuildThrottleResponse(HttpRequestMessage request, ThrottlingInfo throttlingInfo, string message)
     {
         var headers = new List<MockResponseHeader>();
         var body = string.Empty;
-        var request = e.Session.HttpClient.Request;
 
         // override the response body and headers for the error response
         if (ProxyUtils.IsGraphRequest(request))
@@ -128,7 +125,7 @@ public sealed class RetryAfterPlugin(
         else
         {
             // ProxyUtils.BuildGraphResponseHeaders already includes CORS headers
-            if (request.Headers.Any(h => h.Name.Equals("Origin", StringComparison.OrdinalIgnoreCase)))
+            if (request.Headers.TryGetValues("Origin", out var _))
             {
                 headers.Add(new("Access-Control-Allow-Origin", "*"));
                 headers.Add(new("Access-Control-Expose-Headers", throttlingInfo.RetryAfterHeaderName));
@@ -137,9 +134,18 @@ public sealed class RetryAfterPlugin(
 
         headers.Add(new(throttlingInfo.RetryAfterHeaderName, throttlingInfo.ThrottleForSeconds.ToString(CultureInfo.InvariantCulture)));
 
-        e.Session.GenericResponse(body ?? string.Empty, HttpStatusCode.TooManyRequests, headers.Select(h => new HttpHeader(h.Name, h.Value)));
-        e.ResponseState.HasBeenSet = true;
+        var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+        {
+            Content = new StringContent(body ?? string.Empty, Encoding.UTF8, "application/json")
+        };
+
+        foreach (var header in headers)
+        {
+            _ = response.Headers.TryAddWithoutValidation(header.Name, header.Value);
+        }
+
+        return response;
     }
 
-    private static string BuildApiErrorMessage(Request r, string message) => $"{message} {(ProxyUtils.IsGraphRequest(r) ? ProxyUtils.IsSdkRequest(r) ? "" : string.Join(' ', MessageUtils.BuildUseSdkForErrorsMessage()) : "")}";
+    private static string BuildApiErrorMessage(HttpRequestMessage r, string message) => $"{message} {(ProxyUtils.IsGraphRequest(r) ? ProxyUtils.IsSdkRequest(r) ? "" : string.Join(' ', MessageUtils.BuildUseSdkForErrorsMessage()) : "")}";
 }
