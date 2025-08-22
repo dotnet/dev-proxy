@@ -173,7 +173,7 @@ public sealed class DevToolsPlugin(
             }
         }
 
-        _responseBody.Add(args.Request.GetHashCode().ToString(CultureInfo.InvariantCulture), body);
+        _responseBody.Add(args.RequestId, body);
 
         var requestId = args.RequestId!;
 
