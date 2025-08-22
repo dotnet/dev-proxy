@@ -69,7 +69,7 @@ sealed class ProxyConsoleFormatter : ConsoleFormatter
         [MessageType.Timestamp] = (Console.BackgroundColor, ConsoleColor.Gray)
     };
 
-    private readonly ConcurrentDictionary<int, List<object>> _messages = [];
+    private readonly ConcurrentDictionary<string, List<object>> _messages = [];
     private readonly ProxyConsoleFormatterOptions _options;
     private readonly HashSet<MessageType> _filteredMessageTypes;
 
@@ -118,16 +118,20 @@ sealed class ProxyConsoleFormatter : ConsoleFormatter
 
         if (messageType == MessageType.FinishedProcessingRequest)
         {
-            FlushLogsForRequest(requestId.Value, textWriter);
+            FlushLogsForRequest(requestId, textWriter);
         }
         else
         {
-            BufferRequestLog(requestLog, category, requestId.Value);
+            BufferRequestLog(requestLog, category, requestId);
         }
     }
 
-    private void FlushLogsForRequest(int requestId, TextWriter textWriter)
+    private void FlushLogsForRequest(string? requestId, TextWriter textWriter)
     {
+        if (string.IsNullOrEmpty(requestId) || textWriter is null)
+        {
+            return;
+        }
         if (!_messages.TryGetValue(requestId, out var messages))
         {
             return;
@@ -153,8 +157,12 @@ sealed class ProxyConsoleFormatter : ConsoleFormatter
         _ = _messages.TryRemove(requestId, out _);
     }
 
-    private void BufferRequestLog(RequestLog requestLog, string category, int requestId)
+    private void BufferRequestLog(RequestLog requestLog, string category, string? requestId)
     {
+        if (string.IsNullOrEmpty(requestId))
+        {
+            return;
+        }
         requestLog.PluginName = category == DefaultCategoryName ? null : category;
         var messages = _messages.GetOrAdd(requestId, _ => []);
         messages.Add(requestLog);
@@ -170,7 +178,7 @@ sealed class ProxyConsoleFormatter : ConsoleFormatter
         else
         {
             var message = LogEntry.FromLogEntry(logEntry);
-            var messages = _messages.GetOrAdd(requestId.Value, _ => []);
+            var messages = _messages.GetOrAdd(requestId, _ => []);
             messages.Add(message);
         }
     }
@@ -289,15 +297,15 @@ sealed class ProxyConsoleFormatter : ConsoleFormatter
     private static (ConsoleColor bg, ConsoleColor fg) GetMessageTypeColor(MessageType messageType) =>
         _messageTypeColors.TryGetValue(messageType, out var color) ? color : (Console.BackgroundColor, Console.ForegroundColor);
 
-    private static int? GetRequestIdScope(IExternalScopeProvider? scopeProvider)
+    private static string? GetRequestIdScope(IExternalScopeProvider? scopeProvider)
     {
-        int? requestId = null;
+        string? requestId = null;
         scopeProvider?.ForEachScope((scope, _) =>
         {
             if (scope is Dictionary<string, object> dictionary &&
                 dictionary.TryGetValue(nameof(requestId), out var req))
             {
-                requestId = (int)req;
+                requestId = $"{req}";
             }
         }, "");
         return requestId;

@@ -41,13 +41,14 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
     ILogger<GraphMinimalPermissionsGuidancePlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
-    IConfigurationSection pluginConfigurationSection) :
+    IConfigurationSection pluginConfigurationSection,
+    IProxyStorage proxyStorage) :
     BaseReportingPlugin<GraphMinimalPermissionsGuidancePluginConfiguration>(
         httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
-        pluginConfigurationSection)
+        pluginConfigurationSection, proxyStorage)
 {
     private GraphUtils? _graphUtils;
     private readonly HttpClient _httpClient = httpClient;
@@ -117,7 +118,9 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
             if (ProxyUtils.IsGraphBatchUrl(uri))
             {
                 var graphVersion = ProxyUtils.IsGraphBetaUrl(uri) ? "beta" : "v1.0";
-                requestsFromBatch = GetRequestsFromBatch(request.Context?.Session.HttpClient.Request.BodyString!, graphVersion, uri.Host);
+                var requestBody = request.Request?.Content != null ?
+                    await request.Request.Content.ReadAsStringAsync(cancellationToken) : string.Empty;
+                requestsFromBatch = GetRequestsFromBatch(requestBody, graphVersion, uri.Host);
             }
             else
             {
@@ -203,7 +206,7 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
             await EvaluateMinimalScopesAsync(applicationEndpoints, rolesToEvaluate, GraphPermissionsType.Application, applicationPermissionsInfo, cancellationToken);
         }
 
-        StoreReport(report, e);
+        StoreReport(report);
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
     }
@@ -332,13 +335,15 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
     /// </summary>
     private static (GraphPermissionsType type, IEnumerable<string> permissions) GetPermissionsAndType(RequestLog request)
     {
-        var authHeader = request.Context?.Session.HttpClient.Request.Headers.GetFirstHeader("Authorization");
-        if (authHeader == null)
+        // Try to get Authorization header from the new Request property first
+        var authHeaderValue = request.Request?.Headers.Authorization?.ToString();
+
+        if (string.IsNullOrEmpty(authHeaderValue))
         {
             return (GraphPermissionsType.Application, []);
         }
 
-        var token = authHeader.Value.Replace("Bearer ", string.Empty, StringComparison.OrdinalIgnoreCase);
+        var token = authHeaderValue.Replace("Bearer ", string.Empty, StringComparison.OrdinalIgnoreCase);
         var tokenChunks = token.Split('.');
         if (tokenChunks.Length != 3)
         {

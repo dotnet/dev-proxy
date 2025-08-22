@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using DevProxy.Abstractions.Models;
+using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Configuration;
@@ -41,30 +42,32 @@ public sealed class EntraMockResponsePlugin(
     ISet<UrlToWatch> urlsToWatch,
     X509Certificate2 certificate,
     IProxyConfiguration proxyConfiguration,
-    IConfigurationSection pluginConfigurationSection) :
+    IConfigurationSection pluginConfigurationSection,
+    IProxyStorage proxyStorage) :
     MockResponsePlugin(
         httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
-        pluginConfigurationSection)
+        pluginConfigurationSection,
+        proxyStorage)
 {
     private string? lastNonce;
 
     public override string Name => nameof(EntraMockResponsePlugin);
 
     // Running on POST requests with a body
-    protected override void ProcessMockResponse(ref byte[] body, IList<MockResponseHeader> headers, ProxyRequestArgs e, MockResponse? matchingResponse)
+    protected override void ProcessMockResponse(ref byte[] body, IList<MockResponseHeader> headers, HttpRequestMessage request, MockResponse? matchingResponse)
     {
-        ArgumentNullException.ThrowIfNull(e);
+        ArgumentNullException.ThrowIfNull(request);
 
-        base.ProcessMockResponse(ref body, headers, e, matchingResponse);
+        base.ProcessMockResponse(ref body, headers, request, matchingResponse);
 
         var bodyString = Encoding.UTF8.GetString(body);
         var changed = false;
 
-        StoreLastNonce(e);
-        UpdateMsalStateInBody(ref bodyString, e, ref changed);
+        StoreLastNonce(request);
+        UpdateMsalStateInBody(ref bodyString, request, ref changed);
         UpdateIdToken(ref bodyString, ref changed);
         UpdateDevProxyKeyId(ref bodyString, ref changed);
         UpdateDevProxyCertificateChain(ref bodyString, ref changed);
@@ -76,12 +79,12 @@ public sealed class EntraMockResponsePlugin(
     }
 
     // Running on GET requests without a body
-    protected override void ProcessMockResponse(ref string? body, IList<MockResponseHeader> headers, ProxyRequestArgs e, MockResponse? matchingResponse)
+    protected override void ProcessMockResponse(ref string? body, IList<MockResponseHeader> headers, HttpRequestMessage request, MockResponse? matchingResponse)
     {
-        base.ProcessMockResponse(ref body, headers, e, matchingResponse);
+        base.ProcessMockResponse(ref body, headers, request, matchingResponse);
 
-        StoreLastNonce(e);
-        UpdateMsalStateInHeaders(headers, e);
+        StoreLastNonce(request);
+        UpdateMsalStateInHeaders(headers, request);
     }
 
     private void UpdateDevProxyCertificateChain(ref string bodyString, ref bool changed)
@@ -107,11 +110,11 @@ public sealed class EntraMockResponsePlugin(
         changed = true;
     }
 
-    private void StoreLastNonce(ProxyRequestArgs e)
+    private void StoreLastNonce(HttpRequestMessage request)
     {
-        if (e.Session.HttpClient.Request.RequestUri.Query.Contains("nonce=", StringComparison.OrdinalIgnoreCase))
+        if (request.RequestUri?.Query.Contains("nonce=", StringComparison.OrdinalIgnoreCase) == true)
         {
-            var queryString = HttpUtility.ParseQueryString(e.Session.HttpClient.Request.RequestUri.Query);
+            var queryString = HttpUtility.ParseQueryString(request.RequestUri.Query);
             lastNonce = queryString["nonce"];
         }
     }
@@ -177,30 +180,30 @@ public sealed class EntraMockResponsePlugin(
         return base64 + padding;
     }
 
-    private static void UpdateMsalStateInHeaders(IList<MockResponseHeader> headers, ProxyRequestArgs e)
+    private static void UpdateMsalStateInHeaders(IList<MockResponseHeader> headers, HttpRequestMessage request)
     {
         var locationHeader = headers.FirstOrDefault(h => h.Name.Equals("Location", StringComparison.OrdinalIgnoreCase));
 
         if (locationHeader is null ||
-            !e.Session.HttpClient.Request.RequestUri.Query.Contains("state=", StringComparison.OrdinalIgnoreCase))
+            request.RequestUri?.Query.Contains("state=", StringComparison.OrdinalIgnoreCase) != true)
         {
             return;
         }
 
-        var queryString = HttpUtility.ParseQueryString(e.Session.HttpClient.Request.RequestUri.Query);
+        var queryString = HttpUtility.ParseQueryString(request.RequestUri.Query);
         var msalState = queryString["state"];
         locationHeader.Value = locationHeader.Value.Replace("state=@dynamic", $"state={msalState}", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static void UpdateMsalStateInBody(ref string body, ProxyRequestArgs e, ref bool changed)
+    private static void UpdateMsalStateInBody(ref string body, HttpRequestMessage request, ref bool changed)
     {
         if (!body.Contains("state=@dynamic", StringComparison.OrdinalIgnoreCase) ||
-          !e.Session.HttpClient.Request.RequestUri.Query.Contains("state=", StringComparison.OrdinalIgnoreCase))
+          request.RequestUri?.Query.Contains("state=", StringComparison.OrdinalIgnoreCase) != true)
         {
             return;
         }
 
-        var queryString = HttpUtility.ParseQueryString(e.Session.HttpClient.Request.RequestUri.Query);
+        var queryString = HttpUtility.ParseQueryString(request.RequestUri.Query);
         var msalState = queryString["state"];
         body = body.Replace("state=@dynamic", $"state={msalState}", StringComparison.OrdinalIgnoreCase);
         changed = true;

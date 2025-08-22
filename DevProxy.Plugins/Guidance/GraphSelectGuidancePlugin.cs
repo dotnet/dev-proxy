@@ -8,7 +8,6 @@ using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
-using Titanium.Web.Proxy.EventArguments;
 
 namespace DevProxy.Plugins.Guidance;
 
@@ -29,53 +28,53 @@ public sealed class GraphSelectGuidancePlugin(
         _ = _msGraphDb.GenerateDbAsync(true, cancellationToken);
     }
 
-    public override Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)
+    public override Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync => (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(AfterResponseAsync));
+        Logger.LogTrace("{Method} called", nameof(OnRequestLogAsync));
 
-        ArgumentNullException.ThrowIfNull(e);
+        ArgumentNullException.ThrowIfNull(args);
 
-        if (!e.HasRequestUrlMatch(UrlsToWatch))
+        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
             return Task.CompletedTask;
         }
-        if (string.Equals(e.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+        if (args.Request.Method == HttpMethod.Options)
         {
-            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, args.Request);
             return Task.CompletedTask;
         }
 
-        if (WarnNoSelect(e.Session))
+        if (WarnNoSelect(args.Request))
         {
-            Logger.LogRequest(BuildUseSelectMessage(), MessageType.Warning, new(e.Session));
+            Logger.LogRequest(BuildUseSelectMessage(), MessageType.Warning, args.Request);
         }
 
-        Logger.LogTrace("Left {Name}", nameof(AfterResponseAsync));
+        Logger.LogTrace("Left {Name}", nameof(OnRequestLogAsync));
         return Task.CompletedTask;
-    }
+    };
 
-    private bool WarnNoSelect(SessionEventArgs session)
+    private bool WarnNoSelect(HttpRequestMessage request)
     {
-        var request = session.HttpClient.Request;
         if (!ProxyUtils.IsGraphRequest(request) ||
-            request.Method != "GET")
+            request.Method != HttpMethod.Get)
         {
-            Logger.LogRequest("Not a Microsoft Graph GET request", MessageType.Skipped, new(session));
+            Logger.LogRequest("Not a Microsoft Graph GET request", MessageType.Skipped, request);
             return false;
         }
 
-        var graphVersion = ProxyUtils.GetGraphVersion(request.RequestUri.AbsoluteUri);
+        var graphVersion = ProxyUtils.GetGraphVersion(request.RequestUri!.AbsoluteUri);
         var tokenizedUrl = GetTokenizedUrl(request.RequestUri.AbsoluteUri);
 
         if (EndpointSupportsSelect(graphVersion, tokenizedUrl))
         {
-            return !request.Url.Contains("$select", StringComparison.OrdinalIgnoreCase) &&
-            !request.Url.Contains("%24select", StringComparison.OrdinalIgnoreCase);
+            var url = request.RequestUri.AbsoluteUri;
+            return !url.Contains("$select", StringComparison.OrdinalIgnoreCase) &&
+            !url.Contains("%24select", StringComparison.OrdinalIgnoreCase);
         }
         else
         {
-            Logger.LogRequest("Endpoint does not support $select", MessageType.Skipped, new(session));
+            Logger.LogRequest("Endpoint does not support $select", MessageType.Skipped, request);
             return false;
         }
     }

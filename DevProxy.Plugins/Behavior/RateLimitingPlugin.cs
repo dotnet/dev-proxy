@@ -13,10 +13,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
 using System.Net;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Titanium.Web.Proxy.Http;
-using Titanium.Web.Proxy.Models;
 
 namespace DevProxy.Plugins.Behavior;
 
@@ -53,7 +52,8 @@ public sealed class RateLimitingPlugin(
     ILogger<RateLimitingPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
-    IConfigurationSection pluginConfigurationSection) :
+    IConfigurationSection pluginConfigurationSection,
+    IProxyStorage proxyStorage) :
     BasePlugin<RateLimitConfiguration>(
         httpClient,
         logger,
@@ -61,8 +61,7 @@ public sealed class RateLimitingPlugin(
         proxyConfiguration,
         pluginConfigurationSection)
 {
-    // initial values so that we know when we intercept the
-    // first request and can set the initial values
+    private readonly IProxyStorage _proxyStorage = proxyStorage;
     private int _resourcesRemaining = -1;
     private DateTime _resetTime = DateTime.MinValue;
     private RateLimitingCustomResponseLoader? _loader;
@@ -83,23 +82,14 @@ public sealed class RateLimitingPlugin(
         }
     }
 
-    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
+    public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync => (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
+        Logger.LogTrace("{Method} called", nameof(OnRequestAsync));
 
-        ArgumentNullException.ThrowIfNull(e);
-
-        var session = e.Session;
-        var state = e.ResponseState;
-        if (state.HasBeenSet)
+        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
-            Logger.LogRequest("Response already set", MessageType.Skipped, new(e.Session));
-            return Task.CompletedTask;
-        }
-        if (!e.HasRequestUrlMatch(UrlsToWatch))
-        {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
-            return Task.CompletedTask;
+            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
+            return Task.FromResult(PluginResponse.Continue());
         }
 
         // set the initial values for the first request
@@ -124,106 +114,122 @@ public sealed class RateLimitingPlugin(
         if (_resourcesRemaining < 0)
         {
             _resourcesRemaining = 0;
-            var request = e.Session.HttpClient.Request;
 
-            Logger.LogRequest($"Exceeded resource limit when calling {request.Url}. Request will be throttled", MessageType.Failed, new(e.Session));
+            Logger.LogRequest($"Exceeded resource limit when calling {args.Request.RequestUri}. Request will be throttled", MessageType.Failed, args.Request);
             if (Configuration.WhenLimitExceeded == RateLimitResponseWhenLimitExceeded.Throttle)
             {
-                if (!e.GlobalData.TryGetValue(RetryAfterPlugin.ThrottledRequestsKey, out var value))
+                // Add throttling info to global data for RetryAfterPlugin coordination
+                if (!_proxyStorage.GlobalData.TryGetValue(RetryAfterPlugin.ThrottledRequestsKey, out var value))
                 {
                     value = new List<ThrottlerInfo>();
-                    e.GlobalData.Add(RetryAfterPlugin.ThrottledRequestsKey, value);
+                    _proxyStorage.GlobalData.Add(RetryAfterPlugin.ThrottledRequestsKey, value);
                 }
 
                 var throttledRequests = value as List<ThrottlerInfo>;
                 throttledRequests?.Add(new(
-                    BuildThrottleKey(request),
+                    BuildThrottleKey(args.Request),
                     ShouldThrottle,
                     _resetTime
                 ));
-                ThrottleResponse(e);
-                state.HasBeenSet = true;
+
+                return Task.FromResult(PluginResponse.Respond(BuildThrottleResponse(args.Request)));
             }
             else
             {
                 if (Configuration.CustomResponse is not null)
                 {
-                    var headersList = Configuration.CustomResponse.Headers is not null ?
-                        Configuration.CustomResponse.Headers.Select(h => new HttpHeader(h.Name, h.Value)).ToList() :
-                        [];
-
-                    var retryAfterHeader = headersList.FirstOrDefault(h => h.Name.Equals(Configuration.HeaderRetryAfter, StringComparison.OrdinalIgnoreCase));
-                    if (retryAfterHeader is not null && retryAfterHeader.Value == "@dynamic")
-                    {
-                        headersList.Add(new(Configuration.HeaderRetryAfter, ((int)(_resetTime - DateTime.Now).TotalSeconds).ToString(CultureInfo.InvariantCulture)));
-                        _ = headersList.Remove(retryAfterHeader);
-                    }
-
-                    var headers = headersList.ToArray();
-
-                    // allow custom throttling response
                     var responseCode = (HttpStatusCode)(Configuration.CustomResponse.StatusCode ?? 200);
+
+                    // Add throttling info for TooManyRequests responses
                     if (responseCode == HttpStatusCode.TooManyRequests)
                     {
-                        if (!e.GlobalData.TryGetValue(RetryAfterPlugin.ThrottledRequestsKey, out var value))
+                        if (!_proxyStorage.GlobalData.TryGetValue(RetryAfterPlugin.ThrottledRequestsKey, out var value))
                         {
                             value = new List<ThrottlerInfo>();
-                            e.GlobalData.Add(RetryAfterPlugin.ThrottledRequestsKey, value);
+                            _proxyStorage.GlobalData.Add(RetryAfterPlugin.ThrottledRequestsKey, value);
                         }
 
                         var throttledRequests = value as List<ThrottlerInfo>;
                         throttledRequests?.Add(new(
-                            BuildThrottleKey(request),
+                            BuildThrottleKey(args.Request),
                             ShouldThrottle,
                             _resetTime
                         ));
                     }
 
-                    string body = Configuration.CustomResponse.Body is not null ?
-                        JsonSerializer.Serialize(Configuration.CustomResponse.Body, ProxyUtils.JsonSerializerOptions) :
-                        "";
-                    e.Session.GenericResponse(body, responseCode, headers);
-                    state.HasBeenSet = true;
+                    var response = new HttpResponseMessage(responseCode)
+                    {
+                        Content = new StringContent(
+                            Configuration.CustomResponse.Body is not null ?
+                                JsonSerializer.Serialize(Configuration.CustomResponse.Body, ProxyUtils.JsonSerializerOptions) :
+                                string.Empty,
+                            Encoding.UTF8,
+                            "application/json")
+                    };
+
+                    // Add headers
+                    if (Configuration.CustomResponse.Headers is not null)
+                    {
+                        foreach (var header in Configuration.CustomResponse.Headers)
+                        {
+                            var headerValue = header.Value;
+                            if (header.Name.Equals(Configuration.HeaderRetryAfter, StringComparison.OrdinalIgnoreCase) && headerValue == "@dynamic")
+                            {
+                                headerValue = ((int)(_resetTime - DateTime.Now).TotalSeconds).ToString(CultureInfo.InvariantCulture);
+                            }
+                            _ = response.Headers.TryAddWithoutValidation(header.Name, headerValue);
+                        }
+                    }
+
+                    return Task.FromResult(PluginResponse.Respond(response));
                 }
                 else
                 {
-                    Logger.LogRequest($"Custom behavior not set. {Configuration.CustomResponseFile} not found.", MessageType.Failed, new(e.Session));
+                    Logger.LogRequest($"Custom behavior not set. {Configuration.CustomResponseFile} not found.", MessageType.Failed, args.Request);
+                    var response = new HttpResponseMessage(HttpStatusCode.InternalServerError)
+                    {
+                        Content = new StringContent("Custom response file not found.", Encoding.UTF8, "text/plain")
+                    };
+                    return Task.FromResult(PluginResponse.Respond(response));
                 }
             }
         }
         else
         {
-            Logger.LogRequest($"Resources remaining: {_resourcesRemaining}", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest($"Resources remaining: {_resourcesRemaining}", MessageType.Skipped, args.Request);
         }
 
-        StoreRateLimitingHeaders(e);
-        return Task.CompletedTask;
-    }
+        StoreRateLimitingHeaders(args);
+        return Task.FromResult(PluginResponse.Continue());
+    };
 
-    public override Task BeforeResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)
+    public override Func<ResponseArguments, CancellationToken, Task<PluginResponse?>>? OnResponseAsync => (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(BeforeResponseAsync));
+        Logger.LogTrace("{Method} called", nameof(OnResponseAsync));
 
-        ArgumentNullException.ThrowIfNull(e);
-
-        if (!e.HasRequestUrlMatch(UrlsToWatch))
+        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
-            return Task.CompletedTask;
-        }
-        if (e.ResponseState.HasBeenSet)
-        {
-            Logger.LogRequest("Response already set", MessageType.Skipped, new(e.Session));
-            return Task.CompletedTask;
+            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
+            return Task.FromResult<PluginResponse?>(null);
         }
 
-        UpdateProxyResponse(e, HttpStatusCode.OK);
+        // Add rate limiting headers to the response if we have them stored
+        var requestData = _proxyStorage.GetRequestData(args.RequestId);
+        if (requestData.TryGetValue(Name, out var pluginData) &&
+            pluginData is List<MockResponseHeader> rateLimitingHeaders)
+        {
+            var response = args.Response;
+            foreach (var header in rateLimitingHeaders)
+            {
+                _ = response.Headers.TryAddWithoutValidation(header.Name, header.Value);
+            }
+        }
 
-        Logger.LogTrace("Left {Name}", nameof(BeforeResponseAsync));
-        return Task.CompletedTask;
-    }
+        Logger.LogTrace("Left {Name}", nameof(OnResponseAsync));
+        return Task.FromResult<PluginResponse?>(null);
+    };
 
-    private ThrottlingInfo ShouldThrottle(Request request, string throttlingKey)
+    private ThrottlingInfo ShouldThrottle(HttpRequestMessage request, string throttlingKey)
     {
         var throttleKeyForRequest = BuildThrottleKey(request);
         return new(throttleKeyForRequest == throttlingKey ?
@@ -231,62 +237,54 @@ public sealed class RateLimitingPlugin(
             Configuration.HeaderRetryAfter);
     }
 
-    private void ThrottleResponse(ProxyRequestArgs e) => UpdateProxyResponse(e, HttpStatusCode.TooManyRequests);
-
-    private void UpdateProxyResponse(ProxyHttpEventArgsBase e, HttpStatusCode errorStatus)
+    private HttpResponseMessage BuildThrottleResponse(HttpRequestMessage request)
     {
         var headers = new List<MockResponseHeader>();
         var body = string.Empty;
-        var request = e.Session.HttpClient.Request;
-        var response = e.Session.HttpClient.Response;
 
         // resources exceeded
-        if (errorStatus == HttpStatusCode.TooManyRequests)
+        if (ProxyUtils.IsGraphRequest(request))
         {
-            if (ProxyUtils.IsGraphRequest(request))
-            {
-                var requestId = Guid.NewGuid().ToString();
-                var requestDate = DateTime.Now.ToString(CultureInfo.CurrentCulture);
-                headers.AddRange(ProxyUtils.BuildGraphResponseHeaders(request, requestId, requestDate));
+            var requestId = Guid.NewGuid().ToString();
+            var requestDate = DateTime.Now.ToString(CultureInfo.CurrentCulture);
+            headers.AddRange(ProxyUtils.BuildGraphResponseHeaders(request, requestId, requestDate));
 
-                body = JsonSerializer.Serialize(new GraphErrorResponseBody(
-                    new()
+            body = JsonSerializer.Serialize(new GraphErrorResponseBody(
+                new()
+                {
+                    Code = new Regex("([A-Z])").Replace(HttpStatusCode.TooManyRequests.ToString(), m => { return $" {m.Groups[1]}"; }).Trim(),
+                    Message = BuildApiErrorMessage(request),
+                    InnerError = new()
                     {
-                        Code = new Regex("([A-Z])").Replace(errorStatus.ToString(), m => { return $" {m.Groups[1]}"; }).Trim(),
-                        Message = BuildApiErrorMessage(request),
-                        InnerError = new()
-                        {
-                            RequestId = requestId,
-                            Date = requestDate
-                        }
-                    }),
-                    ProxyUtils.JsonSerializerOptions
-                );
-            }
-
-            headers.Add(new(Configuration.HeaderRetryAfter, ((int)(_resetTime - DateTime.Now).TotalSeconds).ToString(CultureInfo.InvariantCulture)));
-            if (request.Headers.Any(h => h.Name.Equals("Origin", StringComparison.OrdinalIgnoreCase)))
-            {
-                headers.Add(new("Access-Control-Allow-Origin", "*"));
-                headers.Add(new("Access-Control-Expose-Headers", Configuration.HeaderRetryAfter));
-            }
-
-            e.Session.GenericResponse(body ?? string.Empty, errorStatus, [.. headers.Select(h => new HttpHeader(h.Name, h.Value))]);
-            return;
+                        RequestId = requestId,
+                        Date = requestDate
+                    }
+                }),
+                ProxyUtils.JsonSerializerOptions
+            );
         }
 
-        if (e.SessionData.TryGetValue(Name, out var pluginData) &&
-            pluginData is List<MockResponseHeader> rateLimitingHeaders)
+        headers.Add(new(Configuration.HeaderRetryAfter, ((int)(_resetTime - DateTime.Now).TotalSeconds).ToString(CultureInfo.InvariantCulture)));
+        if (request.Headers.TryGetValues("Origin", out var _))
         {
-            ProxyUtils.MergeHeaders(headers, rateLimitingHeaders);
+            headers.Add(new("Access-Control-Allow-Origin", "*"));
+            headers.Add(new("Access-Control-Expose-Headers", Configuration.HeaderRetryAfter));
         }
 
-        // add headers to the original API response, avoiding duplicates
-        headers.ForEach(h => e.Session.HttpClient.Response.Headers.RemoveHeader(h.Name));
-        e.Session.HttpClient.Response.Headers.AddHeaders(headers.Select(h => new HttpHeader(h.Name, h.Value)).ToArray());
+        var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+        {
+            Content = new StringContent(body ?? string.Empty, Encoding.UTF8, "application/json")
+        };
+
+        foreach (var header in headers)
+        {
+            _ = response.Headers.TryAddWithoutValidation(header.Name, header.Value);
+        }
+
+        return response;
     }
 
-    private void StoreRateLimitingHeaders(ProxyRequestArgs e)
+    private void StoreRateLimitingHeaders(RequestArguments args)
     {
         // add rate limiting headers if reached the threshold percentage
         if (_resourcesRemaining > Configuration.RateLimit - (Configuration.RateLimit * Configuration.WarningThresholdPercent / 100))
@@ -305,15 +303,15 @@ public sealed class RateLimitingPlugin(
             new(Configuration.HeaderReset, reset)
         ]);
 
-        ExposeRateLimitingForCors(headers, e);
+        ExposeRateLimitingForCors(headers, args.Request);
 
-        e.SessionData.Add(Name, headers);
+        var requestData = _proxyStorage.GetRequestData(args.RequestId);
+        requestData.Add(Name, headers);
     }
 
-    private void ExposeRateLimitingForCors(List<MockResponseHeader> headers, ProxyRequestArgs e)
+    private void ExposeRateLimitingForCors(List<MockResponseHeader> headers, HttpRequestMessage request)
     {
-        var request = e.Session.HttpClient.Request;
-        if (request.Headers.FirstOrDefault((h) => h.Name.Equals("Origin", StringComparison.OrdinalIgnoreCase)) is null)
+        if (!request.Headers.TryGetValues("Origin", out var _))
         {
             return;
         }
@@ -322,9 +320,9 @@ public sealed class RateLimitingPlugin(
         headers.Add(new("Access-Control-Expose-Headers", $"{Configuration.HeaderLimit}, {Configuration.HeaderRemaining}, {Configuration.HeaderReset}, {Configuration.HeaderRetryAfter}"));
     }
 
-    private static string BuildApiErrorMessage(Request r) => $"Some error was generated by the proxy. {(ProxyUtils.IsGraphRequest(r) ? ProxyUtils.IsSdkRequest(r) ? "" : string.Join(' ', MessageUtils.BuildUseSdkForErrorsMessage()) : "")}";
+    private static string BuildApiErrorMessage(HttpRequestMessage r) => $"Some error was generated by the proxy. {(ProxyUtils.IsGraphRequest(r) ? ProxyUtils.IsSdkRequest(r) ? "" : string.Join(' ', MessageUtils.BuildUseSdkForErrorsMessage()) : "")}";
 
-    private static string BuildThrottleKey(Request r)
+    private static string BuildThrottleKey(HttpRequestMessage r)
     {
         if (ProxyUtils.IsGraphRequest(r))
         {
@@ -332,7 +330,7 @@ public sealed class RateLimitingPlugin(
         }
         else
         {
-            return r.RequestUri.Host;
+            return r.RequestUri?.Host ?? string.Empty;
         }
     }
 }

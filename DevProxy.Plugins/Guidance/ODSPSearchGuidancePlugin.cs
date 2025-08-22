@@ -6,7 +6,6 @@ using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Logging;
-using Titanium.Web.Proxy.EventArguments;
 
 namespace DevProxy.Plugins.Guidance;
 
@@ -16,39 +15,36 @@ public sealed class ODSPSearchGuidancePlugin(
 {
     public override string Name => nameof(ODSPSearchGuidancePlugin);
 
-    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
+    public override Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync => (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
+        Logger.LogTrace("{Method} called", nameof(OnRequestLogAsync));
 
-        ArgumentNullException.ThrowIfNull(e);
-
-        if (!e.HasRequestUrlMatch(UrlsToWatch))
+        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
             return Task.CompletedTask;
         }
-        if (string.Equals(e.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+        if (args.Request.Method == HttpMethod.Options)
         {
-            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, args.Request);
             return Task.CompletedTask;
         }
 
-        if (WarnDeprecatedSearch(e.Session))
+        if (WarnDeprecatedSearch(args.Request))
         {
-            Logger.LogRequest(BuildUseGraphSearchMessage(), MessageType.Warning, new LoggingContext(e.Session));
+            Logger.LogRequest(BuildUseGraphSearchMessage(), MessageType.Warning, args.Request);
         }
 
-        Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
+        Logger.LogTrace("Left {Name}", nameof(OnRequestLogAsync));
         return Task.CompletedTask;
-    }
+    };
 
-    private bool WarnDeprecatedSearch(SessionEventArgs session)
+    private bool WarnDeprecatedSearch(HttpRequestMessage request)
     {
-        var request = session.HttpClient.Request;
         if (!ProxyUtils.IsGraphRequest(request) ||
-            request.Method != "GET")
+            request.Method != HttpMethod.Get)
         {
-            Logger.LogRequest("Not a Microsoft Graph GET request", MessageType.Skipped, new(session));
+            Logger.LogRequest("Not a Microsoft Graph GET request", MessageType.Skipped, request);
             return false;
         }
 
@@ -58,15 +54,16 @@ public sealed class ODSPSearchGuidancePlugin(
         // graph.microsoft.com/{version}/sites/{site-id}/drive/root/search(q='{search-text}')
         // graph.microsoft.com/{version}/users/{user-id}/drive/root/search(q='{search-text}')
         // graph.microsoft.com/{version}/sites?search={query}
-        if (request.RequestUri.AbsolutePath.Contains("/search(q=", StringComparison.OrdinalIgnoreCase) ||
+        if (request.RequestUri != null &&
+            (request.RequestUri.AbsolutePath.Contains("/search(q=", StringComparison.OrdinalIgnoreCase) ||
             (request.RequestUri.AbsolutePath.EndsWith("/sites", StringComparison.OrdinalIgnoreCase) &&
-            request.RequestUri.Query.Contains("search=", StringComparison.OrdinalIgnoreCase)))
+            request.RequestUri.Query.Contains("search=", StringComparison.OrdinalIgnoreCase))))
         {
             return true;
         }
         else
         {
-            Logger.LogRequest("Not a SharePoint search request", MessageType.Skipped, new(session));
+            Logger.LogRequest("Not a SharePoint search request", MessageType.Skipped, request);
             return false;
         }
     }

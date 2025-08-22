@@ -29,13 +29,15 @@ public sealed class ApiCenterOnboardingPlugin(
     ILogger<ApiCenterOnboardingPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
-    IConfigurationSection pluginConfigurationSection) :
+    IConfigurationSection pluginConfigurationSection,
+    IProxyStorage proxyStorage) :
     BaseReportingPlugin<ApiCenterOnboardingPluginConfiguration>(
         httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
-        pluginConfigurationSection)
+        pluginConfigurationSection,
+        proxyStorage)
 {
     private ApiCenterClient? _apiCenterClient;
     private Api[]? _apis;
@@ -181,7 +183,7 @@ public sealed class ApiCenterOnboardingPlugin(
             {
                 ExistingApis = [.. existingApis],
                 NewApis = []
-            }, e);
+            });
             return;
         }
 
@@ -196,7 +198,7 @@ public sealed class ApiCenterOnboardingPlugin(
                 Method = a.method,
                 Url = a.url
             })]
-        }, e);
+        });
 
         var apisPerSchemeAndHost = newApis.GroupBy(x =>
         {
@@ -218,7 +220,7 @@ public sealed class ApiCenterOnboardingPlugin(
             return;
         }
 
-        var generatedOpenApiSpecs = e.GlobalData.TryGetValue(OpenApiSpecGeneratorPlugin.GeneratedOpenApiSpecsKey, out var specs) ? specs as Dictionary<string, string> : [];
+        var generatedOpenApiSpecs = ProxyStorage.GlobalData.TryGetValue(OpenApiSpecGeneratorPlugin.GeneratedOpenApiSpecsKey, out var specs) ? specs as Dictionary<string, string> : [];
         await CreateApisInApiCenterAsync(apisPerSchemeAndHost, generatedOpenApiSpecs!, cancellationToken);
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));

@@ -12,7 +12,6 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using Titanium.Web.Proxy.Http;
 
 namespace DevProxy.Abstractions.Utils;
 
@@ -84,14 +83,14 @@ public static class ProxyUtils
         JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
     }
 
-    public static bool IsGraphRequest(Request request)
+    public static bool IsGraphRequest(HttpRequestMessage request)
     {
         ArgumentNullException.ThrowIfNull(request);
 
         return IsGraphUrl(request.RequestUri);
     }
 
-    public static bool IsGraphUrl(Uri uri)
+    public static bool IsGraphUrl(Uri? uri)
     {
         ArgumentNullException.ThrowIfNull(uri);
 
@@ -116,18 +115,18 @@ public static class ProxyUtils
         return absoluteRequestUrl;
     }
 
-    public static bool IsSdkRequest(Request request)
+    public static bool IsSdkRequest(HttpRequestMessage request)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        return request.Headers.HeaderExists("SdkVersion");
+        return request.Headers.Contains("SdkVersion");
     }
 
-    public static bool IsGraphBetaRequest(Request request) =>
+    public static bool IsGraphBetaRequest(HttpRequestMessage request) =>
         IsGraphRequest(request) &&
         IsGraphBetaUrl(request.RequestUri);
 
-    public static bool IsGraphBetaUrl(Uri uri)
+    public static bool IsGraphBetaUrl(Uri? uri)
     {
         ArgumentNullException.ThrowIfNull(uri);
 
@@ -141,7 +140,7 @@ public static class ProxyUtils
     /// <param name="requestId">string a guid representing the a unique identifier for the request</param>
     /// <param name="requestDate">string representation of the date and time the request was made</param>
     /// <returns>IList<MockResponseHeader> with defaults consistent with Microsoft Graph. Automatically adds CORS headers when the Origin header is present</returns>
-    public static IList<MockResponseHeader> BuildGraphResponseHeaders(Request request, string requestId, string requestDate)
+    public static IList<MockResponseHeader> BuildGraphResponseHeaders(HttpRequestMessage request, string requestId, string requestDate)
     {
         if (!IsGraphRequest(request))
         {
@@ -158,7 +157,7 @@ public static class ProxyUtils
                 new ("Date", requestDate),
                 new ("Content-Type", "application/json")
             };
-        if (request.Headers.FirstOrDefault((h) => h.Name.Equals("Origin", StringComparison.OrdinalIgnoreCase)) is not null)
+        if (request.Headers.Contains("Origin"))
         {
             headers.Add(new("Access-Control-Allow-Origin", "*"));
             headers.Add(new("Access-Control-Expose-Headers", "ETag, Location, Preference-Applied, Content-Range, request-id, client-request-id, ReadWriteConsistencyToken, SdkVersion, WWW-Authenticate, x-ms-client-gcc-tenant, Retry-After"));
@@ -429,6 +428,13 @@ public static class ProxyUtils
 
             allHeaders.Add(header);
         }
+    }
+
+    public static bool MatchesUrlToWatch(ISet<UrlToWatch> watchedUrls, Uri? url, bool evaluateWildcards = false)
+    {
+        ArgumentNullException.ThrowIfNull(watchedUrls);
+        ArgumentNullException.ThrowIfNull(url);
+        return MatchesUrlToWatch(watchedUrls, url!.AbsoluteUri, evaluateWildcards);
     }
 
     public static bool MatchesUrlToWatch(ISet<UrlToWatch> watchedUrls, string url, bool evaluateWildcards = false)

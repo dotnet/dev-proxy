@@ -2,11 +2,10 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using Titanium.Web.Proxy.Http;
 
 namespace DevProxy.Abstractions.Plugins;
 
-public class ThrottlerInfo(string throttlingKey, Func<Request, string, ThrottlingInfo> shouldThrottle, DateTime resetTime)
+public class ThrottlerInfo(string throttlingKey, Func<HttpRequestMessage, string, ThrottlingInfo> shouldThrottle, DateTime resetTime)
 {
     /// <summary>
     /// Time when the throttling window will be reset
@@ -20,7 +19,7 @@ public class ThrottlerInfo(string throttlingKey, Func<Request, string, Throttlin
     /// Returns an instance of ThrottlingInfo that contains information
     /// whether the request should be throttled or not.
     /// </summary>
-    public Func<Request, string, ThrottlingInfo> ShouldThrottle { get; private set; } = shouldThrottle ?? throw new ArgumentNullException(nameof(shouldThrottle));
+    public Func<HttpRequestMessage, string, ThrottlingInfo> ShouldThrottle { get; private set; } = shouldThrottle ?? throw new ArgumentNullException(nameof(shouldThrottle));
     /// <summary>
     /// Throttling key used to identify which requests should be throttled.
     /// Can be set to a hostname, full URL or a custom string value, that

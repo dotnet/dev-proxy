@@ -28,13 +28,14 @@ public sealed class ExecutionSummaryPlugin(
     ILogger<ExecutionSummaryPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
-    IConfigurationSection pluginConfigurationSection) :
+    IConfigurationSection pluginConfigurationSection,
+    IProxyStorage proxyStorage) :
     BaseReportingPlugin<ExecutionSummaryPluginConfiguration>(
         httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
-        pluginConfigurationSection)
+        pluginConfigurationSection, proxyStorage)
 {
     private const string _groupByOptionName = "--summary-group-by";
     private const string _requestsInterceptedMessage = "Requests intercepted";
@@ -90,8 +91,8 @@ public sealed class ExecutionSummaryPlugin(
         var interceptedRequests = e.RequestLogs
             .Where(
                 l => l.MessageType == MessageType.InterceptedRequest &&
-                l.Context?.Session is not null &&
-                ProxyUtils.MatchesUrlToWatch(UrlsToWatch, l.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri)
+                l.Request is not null &&
+                ProxyUtils.MatchesUrlToWatch(UrlsToWatch, l.Request.RequestUri?.AbsoluteUri ?? string.Empty)
             );
 
         ExecutionSummaryPluginReportBase report = Configuration.GroupBy switch
@@ -101,7 +102,7 @@ public sealed class ExecutionSummaryPlugin(
             _ => throw new NotImplementedException()
         };
 
-        StoreReport(report, e);
+        StoreReport(report);
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
         return Task.CompletedTask;
@@ -230,9 +231,9 @@ public sealed class ExecutionSummaryPlugin(
 
     private static string GetMethodAndUrl(RequestLog requestLog)
     {
-        return requestLog.Context is not null
-            ? $"{requestLog.Context.Session.HttpClient.Request.Method} {requestLog.Context.Session.HttpClient.Request.RequestUri}"
-            : "Undefined";
+        return requestLog.Request is not null
+            ? $"{requestLog.Request.Method.Method} {requestLog.Request.RequestUri}"
+            : $"{requestLog.Method} {requestLog.Url}";
     }
 
 #pragma warning disable IDE0072

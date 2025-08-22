@@ -10,7 +10,8 @@ namespace DevProxy.Plugins.Reporters;
 
 public class PlainTextReporter(
     ILogger<PlainTextReporter> logger,
-    ISet<UrlToWatch> urlsToWatch) : BaseReporter(logger, urlsToWatch)
+    ISet<UrlToWatch> urlsToWatch,
+    IProxyStorage proxyStorage) : BaseReporter(logger, urlsToWatch, proxyStorage)
 {
     public override string Name => nameof(PlainTextReporter);
     public override string FileExtension => ".txt";

@@ -47,51 +47,43 @@ public sealed class LanguageModelFailurePlugin(
 
     public override string Name => nameof(LanguageModelFailurePlugin);
 
-    public override async Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
+    public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync => async (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
+        Logger.LogTrace("{Method} called", nameof(OnRequestAsync));
 
-        ArgumentNullException.ThrowIfNull(e);
-
-        if (!e.HasRequestUrlMatch(UrlsToWatch))
+        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
-            return;
-        }
-        if (e.ResponseState.HasBeenSet)
-        {
-            Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.Session));
-            return;
+            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request, args.RequestId);
+            return PluginResponse.Continue();
         }
 
-        var request = e.Session.HttpClient.Request;
-        if (request.Method is null ||
-            !request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase) ||
-            !request.HasBody)
+        if (args.Request.Method != HttpMethod.Post || args.Request.Content == null)
         {
-            Logger.LogRequest("Request is not a POST request with a body", MessageType.Skipped, new(e.Session));
-            return;
+            Logger.LogRequest("Request is not a POST request with a body", MessageType.Skipped, args.Request, args.RequestId);
+            return PluginResponse.Continue();
         }
 
-        if (!TryGetOpenAIRequest(request.BodyString, out var openAiRequest))
+        var requestBody = await args.Request.Content.ReadAsStringAsync(cancellationToken);
+        if (!TryGetOpenAIRequest(requestBody, out var openAiRequest))
         {
-            Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new(e.Session));
-            return;
+            Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, args.Request, args.RequestId);
+            return PluginResponse.Continue();
         }
 
         var (faultName, faultPrompt) = GetFault();
         if (faultPrompt is null)
         {
             Logger.LogError("Failed to get fault prompt. Passing request as-is.");
-            return;
+            return PluginResponse.Continue();
         }
 
+        string modifiedRequestBody;
         if (openAiRequest is OpenAICompletionRequest completionRequest)
         {
             completionRequest.Prompt += "\n\n" + faultPrompt;
             Logger.LogDebug("Modified completion request prompt: {Prompt}", completionRequest.Prompt);
-            Logger.LogRequest($"Simulating fault {faultName}", MessageType.Chaos, new(e.Session));
-            e.Session.SetRequestBodyString(JsonSerializer.Serialize(completionRequest, ProxyUtils.JsonSerializerOptions));
+            Logger.LogRequest($"Simulating fault {faultName}", MessageType.Chaos, args.Request, args.RequestId);
+            modifiedRequestBody = JsonSerializer.Serialize(completionRequest, ProxyUtils.JsonSerializerOptions);
         }
         else if (openAiRequest is OpenAIChatCompletionRequest chatRequest)
         {
@@ -113,18 +105,43 @@ public sealed class LanguageModelFailurePlugin(
             };
 
             Logger.LogDebug("Added fault prompt to messages: {Prompt}", faultPrompt);
-            Logger.LogRequest($"Simulating fault {faultName}", MessageType.Chaos, new(e.Session));
-            e.Session.SetRequestBodyString(JsonSerializer.Serialize(newRequest, ProxyUtils.JsonSerializerOptions));
+            Logger.LogRequest($"Simulating fault {faultName}", MessageType.Chaos, args.Request, args.RequestId);
+            modifiedRequestBody = JsonSerializer.Serialize(newRequest, ProxyUtils.JsonSerializerOptions);
         }
         else
         {
             Logger.LogDebug("Unknown OpenAI request type. Passing request as-is.");
+            return PluginResponse.Continue();
         }
 
-        await Task.CompletedTask;
+        // Create new request with modified body
+        var modifiedRequest = new HttpRequestMessage(args.Request.Method, args.Request.RequestUri)
+        {
+            Content = new StringContent(modifiedRequestBody, System.Text.Encoding.UTF8, "application/json")
+        };
 
-        Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
-    }
+        // Copy headers from original request
+        foreach (var header in args.Request.Headers)
+        {
+            _ = modifiedRequest.Headers.TryAddWithoutValidation(header.Key, header.Value);
+        }
+
+        // Copy content headers if they exist
+        if (args.Request.Content?.Headers != null)
+        {
+            foreach (var header in args.Request.Content.Headers)
+            {
+                if (!header.Key.Equals("Content-Type", StringComparison.OrdinalIgnoreCase) &&
+                    !header.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase))
+                {
+                    _ = modifiedRequest.Content.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                }
+            }
+        }
+
+        Logger.LogTrace("Left {Name}", nameof(OnRequestAsync));
+        return PluginResponse.Continue(modifiedRequest);
+    };
 
     private bool TryGetOpenAIRequest(string content, out OpenAIRequest? request)
     {

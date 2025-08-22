@@ -12,9 +12,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
 using System.Net;
+using System.Text;
 using System.Text.Json;
-using Titanium.Web.Proxy.Http;
-using Titanium.Web.Proxy.Models;
 
 namespace DevProxy.Plugins.Behavior;
 
@@ -40,7 +39,8 @@ public sealed class LanguageModelRateLimitingPlugin(
     ILogger<LanguageModelRateLimitingPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
-    IConfigurationSection pluginConfigurationSection) :
+    IConfigurationSection pluginConfigurationSection,
+    IProxyStorage proxyStorage) :
     BasePlugin<LanguageModelRateLimitConfiguration>(
         httpClient,
         logger,
@@ -48,8 +48,7 @@ public sealed class LanguageModelRateLimitingPlugin(
         proxyConfiguration,
         pluginConfigurationSection)
 {
-    // initial values so that we know when we intercept the
-    // first request and can set the initial values
+    private readonly IProxyStorage _proxyStorage = proxyStorage;
     private int _promptTokensRemaining = -1;
     private int _completionTokensRemaining = -1;
     private DateTime _resetTime = DateTime.MinValue;
@@ -71,38 +70,27 @@ public sealed class LanguageModelRateLimitingPlugin(
         }
     }
 
-    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
+    public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync => async (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
+        Logger.LogTrace("{Method} called", nameof(OnRequestAsync));
 
-        ArgumentNullException.ThrowIfNull(e);
-
-        var session = e.Session;
-        var state = e.ResponseState;
-        if (state.HasBeenSet)
+        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
-            Logger.LogRequest("Response already set", MessageType.Skipped, new(e.Session));
-            return Task.CompletedTask;
-        }
-        if (!e.HasRequestUrlMatch(UrlsToWatch))
-        {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
-            return Task.CompletedTask;
+            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
+            return PluginResponse.Continue();
         }
 
-        var request = e.Session.HttpClient.Request;
-        if (request.Method is null ||
-            !request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase) ||
-            !request.HasBody)
+        if (args.Request.Method != HttpMethod.Post || args.Request.Content == null)
         {
-            Logger.LogRequest("Request is not a POST request with a body", MessageType.Skipped, new(e.Session));
-            return Task.CompletedTask;
+            Logger.LogRequest("Request is not a POST request with a body", MessageType.Skipped, args.Request);
+            return PluginResponse.Continue();
         }
 
-        if (!TryGetOpenAIRequest(request.BodyString, out var openAiRequest))
+        var bodyString = await args.Request.Content.ReadAsStringAsync(cancellationToken);
+        if (!TryGetOpenAIRequest(bodyString, out var openAiRequest))
         {
-            Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new(e.Session));
-            return Task.CompletedTask;
+            Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, args.Request);
+            return PluginResponse.Continue();
         }
 
         // set the initial values for the first request
@@ -127,71 +115,83 @@ public sealed class LanguageModelRateLimitingPlugin(
         // check if we have tokens available
         if (_promptTokensRemaining <= 0 || _completionTokensRemaining <= 0)
         {
-            Logger.LogRequest($"Exceeded token limit when calling {request.Url}. Request will be throttled", MessageType.Failed, new(e.Session));
+            Logger.LogRequest($"Exceeded token limit when calling {args.Request.RequestUri}. Request will be throttled", MessageType.Failed, args.Request);
 
             if (Configuration.WhenLimitExceeded == TokenLimitResponseWhenExceeded.Throttle)
             {
-                if (!e.GlobalData.TryGetValue(RetryAfterPlugin.ThrottledRequestsKey, out var value))
+                // Add throttling info to global data for RetryAfterPlugin coordination
+                if (!_proxyStorage.GlobalData.TryGetValue(RetryAfterPlugin.ThrottledRequestsKey, out var value))
                 {
                     value = new List<ThrottlerInfo>();
-                    e.GlobalData.Add(RetryAfterPlugin.ThrottledRequestsKey, value);
+                    _proxyStorage.GlobalData.Add(RetryAfterPlugin.ThrottledRequestsKey, value);
                 }
 
                 var throttledRequests = value as List<ThrottlerInfo>;
                 throttledRequests?.Add(new(
-                    BuildThrottleKey(request),
+                    BuildThrottleKey(args.Request),
                     ShouldThrottle,
                     _resetTime
                 ));
-                ThrottleResponse(e);
-                state.HasBeenSet = true;
+
+                return PluginResponse.Respond(BuildThrottleResponse(args.Request));
             }
             else
             {
                 if (Configuration.CustomResponse is not null)
                 {
-                    var headersList = Configuration.CustomResponse.Headers is not null ?
-                        Configuration.CustomResponse.Headers.Select(h => new HttpHeader(h.Name, h.Value)).ToList() :
-                        [];
-
-                    var retryAfterHeader = headersList.FirstOrDefault(h => h.Name.Equals(Configuration.HeaderRetryAfter, StringComparison.OrdinalIgnoreCase));
-                    if (retryAfterHeader is not null && retryAfterHeader.Value == "@dynamic")
-                    {
-                        headersList.Add(new(Configuration.HeaderRetryAfter, ((int)(_resetTime - DateTime.Now).TotalSeconds).ToString(CultureInfo.InvariantCulture)));
-                        _ = headersList.Remove(retryAfterHeader);
-                    }
-
-                    var headers = headersList.ToArray();
-
-                    // allow custom throttling response
                     var responseCode = (HttpStatusCode)(Configuration.CustomResponse.StatusCode ?? 200);
+
+                    // Add throttling info for TooManyRequests responses
                     if (responseCode == HttpStatusCode.TooManyRequests)
                     {
-                        if (!e.GlobalData.TryGetValue(RetryAfterPlugin.ThrottledRequestsKey, out var value))
+                        if (!_proxyStorage.GlobalData.TryGetValue(RetryAfterPlugin.ThrottledRequestsKey, out var value))
                         {
                             value = new List<ThrottlerInfo>();
-                            e.GlobalData.Add(RetryAfterPlugin.ThrottledRequestsKey, value);
+                            _proxyStorage.GlobalData.Add(RetryAfterPlugin.ThrottledRequestsKey, value);
                         }
 
                         var throttledRequests = value as List<ThrottlerInfo>;
                         throttledRequests?.Add(new(
-                            BuildThrottleKey(request),
+                            BuildThrottleKey(args.Request),
                             ShouldThrottle,
                             _resetTime
                         ));
                     }
 
-                    string body = Configuration.CustomResponse.Body is not null ?
-                        JsonSerializer.Serialize(Configuration.CustomResponse.Body, ProxyUtils.JsonSerializerOptions) :
-                        "";
-                    e.Session.GenericResponse(body, responseCode, headers);
-                    state.HasBeenSet = true;
+                    var response = new HttpResponseMessage(responseCode)
+                    {
+                        Content = new StringContent(
+                            Configuration.CustomResponse.Body is not null ?
+                                JsonSerializer.Serialize(Configuration.CustomResponse.Body, ProxyUtils.JsonSerializerOptions) :
+                                string.Empty,
+                            Encoding.UTF8,
+                            "application/json")
+                    };
+
+                    // Add headers
+                    if (Configuration.CustomResponse.Headers is not null)
+                    {
+                        foreach (var header in Configuration.CustomResponse.Headers)
+                        {
+                            var headerValue = header.Value;
+                            if (header.Name.Equals(Configuration.HeaderRetryAfter, StringComparison.OrdinalIgnoreCase) && headerValue == "@dynamic")
+                            {
+                                headerValue = ((int)(_resetTime - DateTime.Now).TotalSeconds).ToString(CultureInfo.InvariantCulture);
+                            }
+                            _ = response.Headers.TryAddWithoutValidation(header.Name, headerValue);
+                        }
+                    }
+
+                    return PluginResponse.Respond(response);
                 }
                 else
                 {
-                    Logger.LogRequest($"Custom behavior not set. {Configuration.CustomResponseFile} not found.", MessageType.Failed, new(e.Session));
-                    e.Session.GenericResponse("Custom response file not found.", HttpStatusCode.InternalServerError, []);
-                    state.HasBeenSet = true;
+                    Logger.LogRequest($"Custom behavior not set. {Configuration.CustomResponseFile} not found.", MessageType.Failed, args.Request);
+                    var response = new HttpResponseMessage(HttpStatusCode.InternalServerError)
+                    {
+                        Content = new StringContent("Custom response file not found.", Encoding.UTF8, "text/plain")
+                    };
+                    return PluginResponse.Respond(response);
                 }
             }
         }
@@ -200,41 +200,37 @@ public sealed class LanguageModelRateLimitingPlugin(
             Logger.LogDebug("Tokens remaining - Prompt: {PromptTokensRemaining}, Completion: {CompletionTokensRemaining}", _promptTokensRemaining, _completionTokensRemaining);
         }
 
-        return Task.CompletedTask;
-    }
+        return PluginResponse.Continue();
+    };
 
-    public override Task BeforeResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)
+    public override Func<ResponseArguments, CancellationToken, Task<PluginResponse?>>? OnResponseAsync => async (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(BeforeResponseAsync));
+        Logger.LogTrace("{Method} called", nameof(OnResponseAsync));
 
-        ArgumentNullException.ThrowIfNull(e);
-
-        if (!e.HasRequestUrlMatch(UrlsToWatch))
+        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
-            return Task.CompletedTask;
+            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
+            return null;
         }
 
-        var request = e.Session.HttpClient.Request;
-        if (request.Method is null ||
-            !request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase) ||
-            !request.HasBody)
+        if (args.Request.Method != HttpMethod.Post || args.Request.Content == null)
         {
             Logger.LogDebug("Skipping non-POST request");
-            return Task.CompletedTask;
+            return null;
         }
 
-        if (!TryGetOpenAIRequest(request.BodyString, out var openAiRequest))
+        var bodyString = await args.Request.Content.ReadAsStringAsync(cancellationToken);
+        if (!TryGetOpenAIRequest(bodyString, out var openAiRequest))
         {
             Logger.LogDebug("Skipping non-OpenAI request");
-            return Task.CompletedTask;
+            return null;
         }
 
         // Read the response body to get token usage
-        var response = e.Session.HttpClient.Response;
-        if (response.HasBody)
+        var httpResponse = args.Response;
+        if (httpResponse.Content != null)
         {
-            var responseBody = response.BodyString;
+            var responseBody = await httpResponse.Content.ReadAsStringAsync(cancellationToken);
             if (!string.IsNullOrEmpty(responseBody))
             {
                 try
@@ -257,7 +253,7 @@ public sealed class LanguageModelRateLimitingPlugin(
                             _completionTokensRemaining = 0;
                         }
 
-                        Logger.LogRequest($"Consumed {promptTokens} prompt tokens and {completionTokens} completion tokens. Remaining - Prompt: {_promptTokensRemaining}, Completion: {_completionTokensRemaining}", MessageType.Processed, new(e.Session));
+                        Logger.LogRequest($"Consumed {promptTokens} prompt tokens and {completionTokens} completion tokens. Remaining - Prompt: {_promptTokensRemaining}, Completion: {_completionTokensRemaining}", MessageType.Processed, args.Request);
                     }
                 }
                 catch (JsonException ex)
@@ -267,9 +263,9 @@ public sealed class LanguageModelRateLimitingPlugin(
             }
         }
 
-        Logger.LogTrace("Left {Name}", nameof(BeforeResponseAsync));
-        return Task.CompletedTask;
-    }
+        Logger.LogTrace("Left {Name}", nameof(OnResponseAsync));
+        return null;
+    };
 
     private bool TryGetOpenAIRequest(string content, out OpenAIRequest? request)
     {
@@ -310,7 +306,7 @@ public sealed class LanguageModelRateLimitingPlugin(
         }
     }
 
-    private ThrottlingInfo ShouldThrottle(Request request, string throttlingKey)
+    private ThrottlingInfo ShouldThrottle(HttpRequestMessage request, string throttlingKey)
     {
         var throttleKeyForRequest = BuildThrottleKey(request);
         return new(throttleKeyForRequest == throttlingKey ?
@@ -318,12 +314,8 @@ public sealed class LanguageModelRateLimitingPlugin(
             Configuration.HeaderRetryAfter);
     }
 
-    private void ThrottleResponse(ProxyRequestArgs e)
+    private HttpResponseMessage BuildThrottleResponse(HttpRequestMessage request)
     {
-        var headers = new List<MockResponseHeader>();
-        var body = string.Empty;
-        var request = e.Session.HttpClient.Request;
-
         // Build standard OpenAI error response for token limit exceeded
         var openAiError = new
         {
@@ -335,17 +327,23 @@ public sealed class LanguageModelRateLimitingPlugin(
                 code = "insufficient_quota"
             }
         };
-        body = JsonSerializer.Serialize(openAiError, ProxyUtils.JsonSerializerOptions);
+        var body = JsonSerializer.Serialize(openAiError, ProxyUtils.JsonSerializerOptions);
 
-        headers.Add(new(Configuration.HeaderRetryAfter, ((int)(_resetTime - DateTime.Now).TotalSeconds).ToString(CultureInfo.InvariantCulture)));
-        if (request.Headers.Any(h => h.Name.Equals("Origin", StringComparison.OrdinalIgnoreCase)))
+        var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests)
         {
-            headers.Add(new("Access-Control-Allow-Origin", "*"));
-            headers.Add(new("Access-Control-Expose-Headers", Configuration.HeaderRetryAfter));
+            Content = new StringContent(body, Encoding.UTF8, "application/json")
+        };
+
+        _ = response.Headers.TryAddWithoutValidation(Configuration.HeaderRetryAfter, ((int)(_resetTime - DateTime.Now).TotalSeconds).ToString(CultureInfo.InvariantCulture));
+
+        if (request.Headers.TryGetValues("Origin", out var _))
+        {
+            _ = response.Headers.TryAddWithoutValidation("Access-Control-Allow-Origin", "*");
+            _ = response.Headers.TryAddWithoutValidation("Access-Control-Expose-Headers", Configuration.HeaderRetryAfter);
         }
 
-        e.Session.GenericResponse(body, HttpStatusCode.TooManyRequests, [.. headers.Select(h => new HttpHeader(h.Name, h.Value))]);
+        return response;
     }
 
-    private static string BuildThrottleKey(Request r) => r.RequestUri.Host;
+    private static string BuildThrottleKey(HttpRequestMessage r) => r.RequestUri?.Host ?? string.Empty;
 }

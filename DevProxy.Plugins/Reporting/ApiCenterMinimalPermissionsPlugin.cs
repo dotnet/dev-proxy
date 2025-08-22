@@ -29,13 +29,15 @@ public sealed class ApiCenterMinimalPermissionsPlugin(
     ILogger<ApiCenterMinimalPermissionsPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
-    IConfigurationSection pluginConfigurationSection) :
+    IConfigurationSection pluginConfigurationSection,
+    IProxyStorage proxyStorage) :
     BaseReportingPlugin<ApiCenterMinimalPermissionsPluginConfiguration>(
         httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
-        pluginConfigurationSection)
+        pluginConfigurationSection,
+        proxyStorage)
 {
     private ApiCenterClient? _apiCenterClient;
     private Api[]? _apis;
@@ -92,9 +94,9 @@ public sealed class ApiCenterMinimalPermissionsPlugin(
             .Where(l =>
                 l.MessageType == MessageType.InterceptedRequest &&
                 !l.Message.StartsWith("OPTIONS", StringComparison.OrdinalIgnoreCase) &&
-                l.Context?.Session is not null &&
-                ProxyUtils.MatchesUrlToWatch(UrlsToWatch, l.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri) &&
-                l.Context.Session.HttpClient.Request.Headers.Any(h => h.Name.Equals("authorization", StringComparison.OrdinalIgnoreCase))
+                l.Request is not null &&
+                ProxyUtils.MatchesUrlToWatch(UrlsToWatch, l.Request.RequestUri?.AbsoluteUri ?? string.Empty) &&
+                l.Request.Headers.Authorization is not null
             );
         if (!interceptedRequests.Any())
         {
@@ -199,7 +201,7 @@ public sealed class ApiCenterMinimalPermissionsPlugin(
             Errors = [.. errors]
         };
 
-        StoreReport(report, e);
+        StoreReport(report);
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
     }

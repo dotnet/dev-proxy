@@ -8,13 +8,14 @@ using System.Security.Cryptography.X509Certificates;
 using System.ComponentModel.DataAnnotations;
 using DevProxy.Proxy;
 using DevProxy.Abstractions.Proxy;
+using Unobtanium.Web.Proxy;
 
 namespace DevProxy.ApiControllers;
 
 [ApiController]
 [Route("[controller]")]
 #pragma warning disable CA1515 // required for the API controller
-public sealed class ProxyController(IProxyStateController proxyStateController, IProxyConfiguration proxyConfiguration) : ControllerBase
+public sealed class ProxyController(IProxyStateController proxyStateController, IProxyConfiguration proxyConfiguration, ICertificateManager certificateManager) : ControllerBase
 #pragma warning restore CA1515
 {
     private readonly IProxyStateController _proxyStateController = proxyStateController;
@@ -100,7 +101,7 @@ public sealed class ProxyController(IProxyStateController proxyStateController, 
     }
 
     [HttpGet("rootCertificate")]
-    public IActionResult GetRootCertificate([FromQuery][Required] string format)
+    public async Task<IActionResult> GetRootCertificateAsync([FromQuery][Required] string format, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(format))
         {
@@ -114,7 +115,7 @@ public sealed class ProxyController(IProxyStateController proxyStateController, 
             return ValidationProblem(ModelState);
         }
 
-        var certificate = ProxyEngine.ProxyServer.CertificateManager.RootCertificate;
+        var certificate = await certificateManager.GetRootCertificateAsync(false, cancellationToken);
         if (certificate == null)
         {
             var problemDetails = new ProblemDetails

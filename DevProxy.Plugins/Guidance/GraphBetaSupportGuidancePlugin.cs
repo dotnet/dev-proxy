@@ -15,33 +15,33 @@ public sealed class GraphBetaSupportGuidancePlugin(
 {
     public override string Name => nameof(GraphBetaSupportGuidancePlugin);
 
-    public override Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)
+    public override Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync => (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(AfterResponseAsync));
+        Logger.LogTrace("{Method} called", nameof(OnRequestLogAsync));
 
-        ArgumentNullException.ThrowIfNull(e);
+        ArgumentNullException.ThrowIfNull(args);
 
-        var request = e.Session.HttpClient.Request;
-        if (!e.HasRequestUrlMatch(UrlsToWatch))
+        var request = args.Request;
+        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
             return Task.CompletedTask;
         }
-        if (string.Equals(e.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+        if (args.Request.Method == HttpMethod.Options)
         {
-            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, args.Request);
             return Task.CompletedTask;
         }
         if (!ProxyUtils.IsGraphBetaRequest(request))
         {
-            Logger.LogRequest("Not a Microsoft Graph beta request", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Not a Microsoft Graph beta request", MessageType.Skipped, args.Request);
             return Task.CompletedTask;
         }
 
-        Logger.LogRequest(BuildBetaSupportMessage(), MessageType.Warning, new(e.Session));
-        Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
+        Logger.LogRequest(BuildBetaSupportMessage(), MessageType.Warning, args.Request);
+        Logger.LogTrace("Left {Name}", nameof(OnRequestLogAsync));
         return Task.CompletedTask;
-    }
+    };
 
     private static string GetBetaSupportGuidanceUrl() => "https://aka.ms/devproxy/guidance/beta-support";
     private static string BuildBetaSupportMessage() =>

@@ -7,7 +7,6 @@ using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Utils;
 using Microsoft.Extensions.Logging;
-using Titanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Guidance;
 
@@ -17,45 +16,42 @@ public sealed class GraphSdkGuidancePlugin(
 {
     public override string Name => nameof(GraphSdkGuidancePlugin);
 
-    public override Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)
+    public override Func<ResponseArguments, CancellationToken, Task>? OnResponseLogAsync => (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(AfterResponseAsync));
+        Logger.LogTrace("{Method} called", nameof(OnResponseLogAsync));
 
-        ArgumentNullException.ThrowIfNull(e);
-
-        var request = e.Session.HttpClient.Request;
-        if (!e.HasRequestUrlMatch(UrlsToWatch))
+        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
             return Task.CompletedTask;
         }
-        if (string.Equals(e.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+        if (args.Request.Method == HttpMethod.Options)
         {
-            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, args.Request);
             return Task.CompletedTask;
         }
 
         // only show the message if there is an error.
-        if (e.Session.HttpClient.Response.StatusCode >= 400)
+        if ((int)args.Response.StatusCode >= 400)
         {
-            if (WarnNoSdk(request))
+            if (WarnNoSdk(args.Request))
             {
-                Logger.LogRequest(MessageUtils.BuildUseSdkForErrorsMessage(), MessageType.Tip, new(e.Session));
+                Logger.LogRequest(MessageUtils.BuildUseSdkForErrorsMessage(), MessageType.Tip, args.Request);
             }
             else
             {
-                Logger.LogRequest("Request issued using SDK", MessageType.Skipped, new(e.Session));
+                Logger.LogRequest("Request issued using SDK", MessageType.Skipped, args.Request);
             }
         }
         else
         {
-            Logger.LogRequest("Skipping non-error response", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Skipping non-error response", MessageType.Skipped, args.Request);
         }
 
-        Logger.LogTrace("Left {Name}", nameof(AfterResponseAsync));
+        Logger.LogTrace("Left {Name}", nameof(OnResponseLogAsync));
         return Task.CompletedTask;
-    }
+    };
 
-    private static bool WarnNoSdk(Request request) =>
+    private static bool WarnNoSdk(HttpRequestMessage request) =>
         ProxyUtils.IsGraphRequest(request) && !ProxyUtils.IsSdkRequest(request);
 }

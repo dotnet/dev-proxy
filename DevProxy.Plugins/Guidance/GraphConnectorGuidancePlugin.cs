@@ -34,37 +34,42 @@ public sealed class GraphConnectorGuidancePlugin(
 {
     public override string Name => nameof(GraphConnectorGuidancePlugin);
 
-    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
+    public override Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync => async (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
+        Logger.LogTrace("{Method} called", nameof(OnRequestLogAsync));
 
-        ArgumentNullException.ThrowIfNull(e);
+        ArgumentNullException.ThrowIfNull(args);
 
-        if (!e.HasRequestUrlMatch(UrlsToWatch))
+        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
-            return Task.CompletedTask;
+            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request);
+            return;
         }
-        if (!string.Equals(e.Session.HttpClient.Request.Method, "PATCH", StringComparison.OrdinalIgnoreCase))
+        if (args.Request.Method != HttpMethod.Patch)
         {
-            Logger.LogRequest("Skipping non-PATCH request", MessageType.Skipped, new(e.Session));
-            return Task.CompletedTask;
+            Logger.LogRequest("Skipping non-PATCH request", MessageType.Skipped, args.Request);
+            return;
         }
 
         try
         {
-            var schemaString = e.Session.HttpClient.Request.BodyString;
+            var schemaString = string.Empty;
+            if (args.Request.Content is not null)
+            {
+                schemaString = await args.Request.Content.ReadAsStringAsync(cancellationToken);
+            }
+
             if (string.IsNullOrEmpty(schemaString))
             {
-                Logger.LogRequest("No schema found in the request body.", MessageType.Failed, new(e.Session));
-                return Task.CompletedTask;
+                Logger.LogRequest("No schema found in the request body.", MessageType.Failed, args.Request);
+                return;
             }
 
             var schema = JsonSerializer.Deserialize<ExternalConnectionSchema>(schemaString, ProxyUtils.JsonSerializerOptions);
             if (schema is null || schema.Properties is null)
             {
-                Logger.LogRequest("Invalid schema found in the request body.", MessageType.Failed, new(e.Session));
-                return Task.CompletedTask;
+                Logger.LogRequest("Invalid schema found in the request body.", MessageType.Failed, args.Request);
+                return;
             }
 
             bool hasTitle = false, hasIconUrl = false, hasUrl = false;
@@ -99,12 +104,12 @@ public sealed class GraphConnectorGuidancePlugin(
 
                 Logger.LogRequest(
                     $"The schema is missing the following semantic labels: {string.Join(", ", missingLabels.Where(s => !string.IsNullOrEmpty(s)))}. Ingested content might not show up in Microsoft Copilot for Microsoft 365. More information: https://aka.ms/devproxy/guidance/gc/ux",
-                    MessageType.Failed, new(e.Session)
+                    MessageType.Failed, args.Request
                 );
             }
             else
             {
-                Logger.LogRequest("The schema contains all the required semantic labels.", MessageType.Skipped, new(e.Session));
+                Logger.LogRequest("The schema contains all the required semantic labels.", MessageType.Skipped, args.Request);
             }
         }
         catch (Exception ex)
@@ -112,7 +117,6 @@ public sealed class GraphConnectorGuidancePlugin(
             Logger.LogError(ex, "An error has occurred while deserializing the request body");
         }
 
-        Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
-        return Task.CompletedTask;
-    }
+        Logger.LogTrace("Left {Name}", nameof(OnRequestLogAsync));
+    };
 }

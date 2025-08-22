@@ -15,8 +15,7 @@ using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Titanium.Web.Proxy.Http;
-using Titanium.Web.Proxy.Models;
+using System.Text;
 
 namespace DevProxy.Plugins.Behavior;
 
@@ -40,7 +39,8 @@ public sealed class GenericRandomErrorPlugin(
     ILogger<GenericRandomErrorPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
-    IConfigurationSection pluginConfigurationSection) :
+    IConfigurationSection pluginConfigurationSection,
+    IProxyStorage proxyStorage) :
     BasePlugin<GenericRandomErrorConfiguration>(
         httpClient,
         logger,
@@ -108,62 +108,62 @@ public sealed class GenericRandomErrorPlugin(
         }
     }
 
-    public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
+    public override Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync => (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
+        Logger.LogTrace("{Method} called", nameof(OnRequestAsync));
 
-        ArgumentNullException.ThrowIfNull(e);
-
-        if (!e.HasRequestUrlMatch(UrlsToWatch))
+        if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
-            return Task.CompletedTask;
-        }
-        if (e.ResponseState.HasBeenSet)
-        {
-            Logger.LogRequest("Response already set", MessageType.Skipped, new(e.Session));
-            return Task.CompletedTask;
+            Logger.LogRequest("URL not matched", MessageType.Skipped, args.Request, args.RequestId);
+            return Task.FromResult(PluginResponse.Continue());
         }
 
         var failMode = ShouldFail();
 
         if (failMode == GenericRandomErrorFailMode.PassThru && Configuration.Rate != 100)
         {
-            Logger.LogRequest("Pass through", MessageType.Skipped, new(e.Session));
-            return Task.CompletedTask;
+            Logger.LogRequest("Pass through", MessageType.Skipped, args.Request, args.RequestId);
+            return Task.FromResult(PluginResponse.Continue());
         }
-        FailResponse(e);
 
-        Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
-        return Task.CompletedTask;
-    }
+        var response = FailResponse(args.Request, args.RequestId);
+        if (response != null)
+        {
+            Logger.LogTrace("Left {Name}", nameof(OnRequestAsync));
+            return Task.FromResult(PluginResponse.Respond(response));
+        }
+
+        Logger.LogTrace("Left {Name}", nameof(OnRequestAsync));
+        return Task.FromResult(PluginResponse.Continue());
+    };
 
     // uses config to determine if a request should be failed
     private GenericRandomErrorFailMode ShouldFail() => _random.Next(1, 100) <= Configuration.Rate ? GenericRandomErrorFailMode.Random : GenericRandomErrorFailMode.PassThru;
 
-    private void FailResponse(ProxyRequestArgs e)
+    private HttpResponseMessage? FailResponse(HttpRequestMessage request, string requestId)
     {
-        var matchingResponse = GetMatchingErrorResponse(e.Session.HttpClient.Request);
+        var matchingResponse = GetMatchingErrorResponse(request);
         if (matchingResponse is not null &&
             matchingResponse.Responses is not null)
         {
             // pick a random error response for the current request
             var error = matchingResponse.Responses.ElementAt(_random.Next(0, matchingResponse.Responses.Count()));
-            UpdateProxyResponse(e, error);
+            return UpdateProxyResponse(request, error, requestId);
         }
         else
         {
-            Logger.LogRequest("No matching error response found", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("No matching error response found", MessageType.Skipped, request, requestId);
+            return null;
         }
     }
 
-    private ThrottlingInfo ShouldThrottle(Request request, string throttlingKey)
+    private ThrottlingInfo ShouldThrottle(HttpRequestMessage request, string throttlingKey)
     {
         var throttleKeyForRequest = BuildThrottleKey(request);
         return new(throttleKeyForRequest == throttlingKey ? Configuration.RetryAfterInSeconds : 0, "Retry-After");
     }
 
-    private GenericErrorResponse? GetMatchingErrorResponse(Request request)
+    private GenericErrorResponse? GetMatchingErrorResponse(HttpRequestMessage request)
     {
         if (Configuration.Errors is null ||
             !Configuration.Errors.Any())
@@ -183,13 +183,13 @@ public sealed class GenericRandomErrorPlugin(
                 return false;
             }
 
-            if (errorResponse.Request.Method != request.Method)
+            if (errorResponse.Request.Method != request.Method.Method)
             {
                 return false;
             }
 
-            if (errorResponse.Request.Url == request.Url &&
-                HasMatchingBody(errorResponse, request))
+            if (errorResponse.Request.Url == request.RequestUri?.ToString() &&
+                HasMatchingBodyAsync(errorResponse, request).GetAwaiter().GetResult())
             {
                 return true;
             }
@@ -203,32 +203,34 @@ public sealed class GenericRandomErrorPlugin(
 
             // turn mock URL with wildcard into a regex and match against the request URL
             var errorResponseUrlRegex = Regex.Escape(errorResponse.Request.Url).Replace("\\*", ".*", StringComparison.OrdinalIgnoreCase);
-            return Regex.IsMatch(request.Url, $"^{errorResponseUrlRegex}$") &&
-                HasMatchingBody(errorResponse, request);
+            return request.RequestUri != null &&
+                   Regex.IsMatch(request.RequestUri.ToString(), $"^{errorResponseUrlRegex}$") &&
+                   HasMatchingBodyAsync(errorResponse, request).GetAwaiter().GetResult();
         });
 
         return errorResponse;
     }
 
-    private void UpdateProxyResponse(ProxyRequestArgs e, GenericErrorResponseResponse error)
+    private HttpResponseMessage UpdateProxyResponse(HttpRequestMessage request, GenericErrorResponseResponse error, string requestId)
     {
-        var session = e.Session;
-        var request = session.HttpClient.Request;
         var headers = new List<GenericErrorResponseHeader>();
         if (error.Headers is not null)
         {
             headers.AddRange(error.Headers);
         }
 
+        // Note: Global data handling for throttling is temporarily disabled
+        // This needs to be addressed with a proper service for managing throttled requests
+        // TODO: Implement proper throttling service for the new API
         if (error.StatusCode == (int)HttpStatusCode.TooManyRequests &&
             error.Headers is not null &&
             error.Headers.FirstOrDefault(h => h.Name is "Retry-After" or "retry-after")?.Value == "@dynamic")
         {
             var retryAfterDate = DateTime.Now.AddSeconds(Configuration.RetryAfterInSeconds);
-            if (!e.GlobalData.TryGetValue(RetryAfterPlugin.ThrottledRequestsKey, out var value))
+            if (!proxyStorage.GlobalData.TryGetValue(RetryAfterPlugin.ThrottledRequestsKey, out var value))
             {
                 value = new List<ThrottlerInfo>();
-                e.GlobalData.Add(RetryAfterPlugin.ThrottledRequestsKey, value);
+                proxyStorage.GlobalData.Add(RetryAfterPlugin.ThrottledRequestsKey, value);
             }
             var throttledRequests = value as List<ThrottlerInfo>;
             throttledRequests?.Add(new(BuildThrottleKey(request), ShouldThrottle, retryAfterDate));
@@ -240,6 +242,9 @@ public sealed class GenericRandomErrorPlugin(
 
         var statusCode = (HttpStatusCode)(error.StatusCode ?? 400);
         var body = error.Body is null ? string.Empty : JsonSerializer.Serialize(error.Body, ProxyUtils.JsonSerializerOptions);
+
+        var response = new HttpResponseMessage(statusCode);
+
         // we get a JSON string so need to start with the opening quote
         if (body.StartsWith("\"@"))
         {
@@ -252,20 +257,39 @@ public sealed class GenericRandomErrorPlugin(
             if (!File.Exists(filePath))
             {
                 Logger.LogError("File {FilePath} not found. Serving file path in the mock response", (string?)filePath);
-                session.GenericResponse(body, statusCode, headers.Select(h => new HttpHeader(h.Name, h.Value)));
+                response.Content = new StringContent(body, Encoding.UTF8, "application/json");
             }
             else
             {
                 var bodyBytes = File.ReadAllBytes(filePath);
-                session.GenericResponse(bodyBytes, statusCode, headers.Select(h => new HttpHeader(h.Name, h.Value)));
+                response.Content = new ByteArrayContent(bodyBytes);
             }
         }
         else
         {
-            session.GenericResponse(body, statusCode, headers.Select(h => new HttpHeader(h.Name, h.Value)));
+            response.Content = new StringContent(body, Encoding.UTF8, "application/json");
         }
-        e.ResponseState.HasBeenSet = true;
-        Logger.LogRequest($"{error.StatusCode} {statusCode}", MessageType.Chaos, new(e.Session));
+
+        // Add headers to response
+        foreach (var header in headers)
+        {
+            if (header.Name.Equals("Content-Type", StringComparison.OrdinalIgnoreCase))
+            {
+                // Content-Type header goes on the content, not the response
+                if (response.Content != null)
+                {
+                    _ = response.Content.Headers.Remove("Content-Type");
+                    response.Content.Headers.Add("Content-Type", header.Value);
+                }
+            }
+            else
+            {
+                response.Headers.Add(header.Name, header.Value);
+            }
+        }
+
+        Logger.LogRequest($"{error.StatusCode} {statusCode}", MessageType.Chaos, request, requestId);
+        return response;
     }
 
     private void ValidateErrors()
@@ -316,9 +340,9 @@ public sealed class GenericRandomErrorPlugin(
         );
     }
 
-    private static bool HasMatchingBody(GenericErrorResponse errorResponse, Request request)
+    private static async Task<bool> HasMatchingBodyAsync(GenericErrorResponse errorResponse, HttpRequestMessage request)
     {
-        if (request.Method == "GET")
+        if (request.Method == HttpMethod.Get)
         {
             // GET requests don't have a body so we can't match on it
             return true;
@@ -330,16 +354,24 @@ public sealed class GenericRandomErrorPlugin(
             return true;
         }
 
-        if (!request.HasBody || string.IsNullOrEmpty(request.BodyString))
+        if (request.Content == null)
         {
             // error response defines a body fragment but the request has no body
             // so it can't match
             return false;
         }
 
-        return request.BodyString.Contains(errorResponse.Request.BodyFragment, StringComparison.OrdinalIgnoreCase);
+        var requestBody = await request.Content.ReadAsStringAsync();
+        if (string.IsNullOrEmpty(requestBody))
+        {
+            // error response defines a body fragment but the request has no body
+            // so it can't match
+            return false;
+        }
+
+        return requestBody.Contains(errorResponse.Request.BodyFragment, StringComparison.OrdinalIgnoreCase);
     }
 
     // throttle requests per host
-    private static string BuildThrottleKey(Request r) => r.RequestUri.Host;
+    private static string BuildThrottleKey(HttpRequestMessage request) => request.RequestUri?.Host ?? "";
 }

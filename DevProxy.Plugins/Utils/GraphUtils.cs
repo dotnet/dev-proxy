@@ -5,7 +5,6 @@
 using DevProxy.Plugins.Models;
 using Microsoft.Extensions.Logging;
 using System.Net.Http.Json;
-using Titanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Utils;
 
@@ -17,7 +16,7 @@ sealed class GraphUtils(
     private readonly ILogger _logger = logger;
 
     // throttle requests per workload
-    public static string BuildThrottleKey(Request r) => BuildThrottleKey(r.RequestUri);
+    public static string BuildThrottleKey(HttpRequestMessage r) => BuildThrottleKey(r.RequestUri!);
 
     public static string BuildThrottleKey(Uri uri)
     {

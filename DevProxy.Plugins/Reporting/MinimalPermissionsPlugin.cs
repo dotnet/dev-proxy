@@ -24,13 +24,15 @@ public sealed class MinimalPermissionsPlugin(
     ILogger<MinimalPermissionsPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
-    IConfigurationSection pluginConfigurationSection) :
+    IConfigurationSection pluginConfigurationSection,
+    IProxyStorage proxyStorage) :
     BaseReportingPlugin<MinimalPermissionsPluginConfiguration>(
         httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
-        pluginConfigurationSection)
+        pluginConfigurationSection,
+        proxyStorage)
 {
     private Dictionary<string, OpenApiDocument>? _apiSpecsByUrl;
 
@@ -63,9 +65,9 @@ public sealed class MinimalPermissionsPlugin(
         var interceptedRequests = e.RequestLogs
             .Where(l =>
                 l.MessageType == MessageType.InterceptedRequest &&
-                !l.Message.StartsWith("OPTIONS", StringComparison.OrdinalIgnoreCase) &&
-                l.Context?.Session is not null &&
-                ProxyUtils.MatchesUrlToWatch(UrlsToWatch, l.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri)
+                l.Request is not null &&
+                l.Request.Method != HttpMethod.Options &&
+                ProxyUtils.MatchesUrlToWatch(UrlsToWatch, l.Request!.RequestUri!.AbsoluteUri)
             );
         if (!interceptedRequests.Any())
         {
@@ -142,7 +144,7 @@ public sealed class MinimalPermissionsPlugin(
             Errors = [.. errors]
         };
 
-        StoreReport(report, e);
+        StoreReport(report);
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
     }

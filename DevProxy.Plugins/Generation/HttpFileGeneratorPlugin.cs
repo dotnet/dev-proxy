@@ -83,13 +83,15 @@ public sealed class HttpFileGeneratorPlugin(
     ILogger<HttpFileGeneratorPlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration proxyConfiguration,
-    IConfigurationSection pluginConfigurationSection) :
+    IConfigurationSection pluginConfigurationSection,
+    IProxyStorage proxyStorage) :
     BaseReportingPlugin<HttpFileGeneratorPluginConfiguration>(
         httpClient,
         logger,
         urlsToWatch,
         proxyConfiguration,
-        pluginConfigurationSection)
+        pluginConfigurationSection,
+        proxyStorage)
 {
     public static readonly string GeneratedHttpFilesKey = "GeneratedHttpFiles";
 
@@ -122,11 +124,11 @@ public sealed class HttpFileGeneratorPlugin(
         Logger.LogInformation("Created HTTP file {FileName}", fileName);
 
         var generatedHttpFiles = new[] { fileName };
-        StoreReport(new HttpFileGeneratorPluginReport(generatedHttpFiles), e);
+        StoreReport(new HttpFileGeneratorPluginReport(generatedHttpFiles));
 
         // store the generated HTTP files in the global data
         // for use by other plugins
-        e.GlobalData[GeneratedHttpFilesKey] = generatedHttpFiles;
+        ProxyStorage.GlobalData[GeneratedHttpFilesKey] = generatedHttpFiles;
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
     }
@@ -135,22 +137,22 @@ public sealed class HttpFileGeneratorPlugin(
     {
         var httpFile = new HttpFile();
 
-        foreach (var request in requestLogs)
+        foreach (var request in requestLogs.Where(l =>
+            l.MessageType == MessageType.InterceptedResponse
+            && l.Request is not null
+            && l.Response is not null))
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (request.MessageType != MessageType.InterceptedResponse ||
-              request.Context is null ||
-              request.Context.Session is null ||
-              !ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri))
+            if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Request!.RequestUri!.AbsoluteUri))
             {
                 continue;
             }
 
             if (!Configuration.IncludeOptionsRequests &&
-                string.Equals(request.Context.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+                request.Request.Method == HttpMethod.Options)
             {
-                Logger.LogDebug("Skipping OPTIONS request {Url}...", request.Context.Session.HttpClient.Request.RequestUri);
+                Logger.LogDebug("Skipping OPTIONS request {Url}...", request.Request.RequestUri);
                 continue;
             }
 
@@ -162,8 +164,8 @@ public sealed class HttpFileGeneratorPlugin(
             {
                 Method = methodAndUrl[0],
                 Url = methodAndUrl[1],
-                Body = request.Context.Session.HttpClient.Request.HasBody ? await request.Context.Session.GetRequestBodyAsString(cancellationToken) : null,
-                Headers = [.. request.Context.Session.HttpClient.Request.Headers.Select(h => new HttpFileRequestHeader { Name = h.Name, Value = h.Value })]
+                Body = request.Request.Content is not null ? await request.Request.Content.ReadAsStringAsync(cancellationToken) : null,
+                Headers = [.. request.Request.Headers.Select(h => new HttpFileRequestHeader { Name = h.Key, Value = string.Join(',', h.Value) })]
             });
         }
 
