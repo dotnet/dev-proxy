@@ -384,6 +384,10 @@ sealed class ProxyEngine(
             //    throw new InvalidOperationException($"Unable to initialize the plugin data storage for hash key {requestEventArguments.RequestId}");
             //}
 
+            using var scope = _logger.BeginRequestScope(requestEventArguments.Request.Method, requestEventArguments.Request.RequestUri, requestEventArguments.RequestId);
+            _logger.LogRequest($"{requestEventArguments.Request.Method} {requestEventArguments.Request.RequestUri}", MessageType.InterceptedRequest, requestEventArguments.Request, requestEventArguments.RequestId);
+            _logger.LogRequest($"{DateTimeOffset.UtcNow}", MessageType.Timestamp, requestEventArguments.Request, requestEventArguments.RequestId);
+
             if (!ProxyUtils.MatchesUrlToWatch(_urlsToWatch, requestEventArguments.Request.RequestUri.AbsoluteUri))
             {
                 return RequestEventResponse.ContinueResponse();
@@ -395,12 +399,7 @@ sealed class ProxyEngine(
             //    throw new InvalidOperationException($"Unable to initialize the plugin data storage for hash key {requestEventArguments.RequestId}");
             //}
 
-            using var scope = _logger.BeginRequestScope(requestEventArguments.Request.Method, requestEventArguments.Request.RequestUri, requestEventArguments.RequestId);
-
-
             //var loggingContext = new LoggingContext(e);
-            _logger.LogRequest($"{requestEventArguments.Request.Method} {requestEventArguments.Request.RequestUri}", MessageType.InterceptedRequest, requestEventArguments.Request, requestEventArguments.RequestId);
-            _logger.LogRequest($"{DateTimeOffset.UtcNow}", MessageType.Timestamp, requestEventArguments.Request, requestEventArguments.RequestId);
 
             return await HandleRequestAsync(requestEventArguments, cancellationToken);
         }
@@ -472,12 +471,14 @@ sealed class ProxyEngine(
         if (response is not null)
         {
             proxyStorage.RemoveRequestData(arguments.RequestId);
+            _logger.LogRequest($"{arguments.Request.Method} {arguments.Request.RequestUri}", MessageType.Mocked, arguments.Request, arguments.RequestId);
             return RequestEventResponse.EarlyResponse(response);
         }
         else if (request is not null)
         {
             // If the request is modified, we need to add the Via header
             AddProxyHeader(request);
+            _logger.LogRequest($"{arguments.Request.Method} {arguments.Request.RequestUri}", MessageType.Processed, arguments.Request, arguments.RequestId);
             // We can return the request to be sent to the target
             return RequestEventResponse.ModifyRequest(request);
         }
@@ -629,7 +630,7 @@ sealed class ProxyEngine(
         }
         catch (OperationCanceledException)
         {
-            _logger.LogDebug("Request was cancelled before response completed");
+            _logger.LogInformation("Request was cancelled before response completed");
             return ResponseEventResponse.ContinueResponse();
         }
         catch (Exception ex)
@@ -644,6 +645,7 @@ sealed class ProxyEngine(
         if (cancellationToken.IsCancellationRequested)
         {
             _logger.LogDebug("Request was cancelled before response completed");
+            _logger.LogRequest($"{e.Request.Method} {e.Request.RequestUri}", MessageType.Failed, e.Request, e.RequestId);
             return ResponseEventResponse.ContinueResponse();
         }
         // Distributed tracing
@@ -653,7 +655,7 @@ sealed class ProxyEngine(
 
         using var scope = _logger.BeginRequestScope(e.Request.Method, uri, e.RequestId);
         var message = $"{e.Request.Method} {e.Response}";
-        _logger.LogRequest(message, MessageType.InterceptedResponse, e.Request, e.RequestId, e.Response);
+        _logger.LogRequest(message, MessageType.Normal, e.Request, e.RequestId);
         HttpResponseMessage? response = null;
         var logPlugins = _plugins.Where(p => p.Enabled && p.OnResponseLogAsync is not null);
         if (logPlugins.Any())
@@ -704,6 +706,15 @@ sealed class ProxyEngine(
                 _logger.LogError(ex, "An error occurred in plugin {PluginName} while processing response {ResponseStatusCode} for request {RequestMethod} {RequestUrl}",
                     plugin.Name, e.Response.StatusCode, e.Request.Method, uri);
             }
+        }
+        if (response is not null)
+        {
+            _logger.LogRequest(message, MessageType.Mocked, e.Request, e.RequestId);
+        }
+        else
+        {
+            response = e.Response;
+            _logger.LogRequest(message, MessageType.Processed, e.Request, e.RequestId);
         }
         _logger.LogRequest(message, MessageType.FinishedProcessingRequest, e.Request, e.RequestId, response);
         proxyStorage.RemoveRequestData(e.RequestId);
