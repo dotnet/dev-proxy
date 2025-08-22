@@ -12,6 +12,7 @@ public class GraphBatchRequestPayload
 public class GraphBatchRequestPayloadRequest
 {
     public object? Body { get; set; }
+    public IEnumerable<string>? DependsOn { get; set; }
 #pragma warning disable CA2227
     public Dictionary<string, string>? Headers { get; set; } = [];
 #pragma warning restore CA2227

@@ -251,6 +251,7 @@ public sealed class GraphRandomErrorPlugin(
         var errorStatus = methodStatusCodes[_random.Next(0, methodStatusCodes.Length)];
         var response = new HttpResponseMessage(errorStatus)
         {
+
             Content = new StringContent(JsonSerializer.Serialize(new GraphErrorResponseBody(
                 new()
                 {
@@ -261,6 +262,7 @@ public sealed class GraphRandomErrorPlugin(
                         RequestId = Guid.NewGuid().ToString(),
                         Date = DateTime.Now.ToString(CultureInfo.CurrentCulture)
                     }
+
                 }), ProxyUtils.JsonSerializerOptions))
         };
         Logger.LogRequest($"{(int)errorStatus} {errorStatus}", MessageType.Chaos, e, requestId);
