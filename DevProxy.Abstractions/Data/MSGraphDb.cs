@@ -65,7 +65,11 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
             }
 
             await CreateDbAsync(cancellationToken);
+
+            SetDbJournaling(false);
             await FillDataAsync(cancellationToken);
+            SetDbJournaling(true);
+
 
             _logger.LogInformation("Microsoft Graph database successfully updated");
 
@@ -211,6 +215,21 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
             {
                 _logger.LogError(ex, "Error loading OpenAPI file {FilePath}", filePath);
             }
+        }
+    }
+
+    private void SetDbJournaling(bool enabled)
+    {
+        using var command = Connection.CreateCommand();
+        if (enabled)
+        {
+            command.CommandText = "PRAGMA journal_mode = DELETE;";
+            _ = command.ExecuteNonQuery();
+        }
+        else
+        {
+            command.CommandText = "PRAGMA journal_mode = OFF;";
+            _ = command.ExecuteNonQuery();
         }
     }
 
