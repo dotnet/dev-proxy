@@ -197,7 +197,7 @@ public sealed class MinimalPermissionsGuidancePlugin(
         if (!Path.Exists(Configuration.ApiSpecsFolderPath))
         {
             Enabled = false;
-            throw new InvalidOperationException($"ApiSpecsFolderPath '{Configuration.ApiSpecsFolderPath}' does not exist.");
+            throw new FileNotFoundException($"ApiSpecsFolderPath '{Configuration.ApiSpecsFolderPath}' does not exist.");
         }
     }
 

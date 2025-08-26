@@ -113,7 +113,7 @@ public sealed class GraphMinimalPermissionsGuidancePluginReport : IMarkdownRepor
 
         if (ExcludedPermissions?.Any() == true)
         {
-            _ = sb.AppendLine("Excluded: permissions:")
+            _ = sb.AppendLine("Excluded permissions:")
                 .AppendLine()
                 .AppendLine(string.Join(", ", ExcludedPermissions));
         }
