@@ -57,7 +57,7 @@
 
   <ItemGroup>
     <None Update="msgraph-openapi-v1.db">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="devproxyrc.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
