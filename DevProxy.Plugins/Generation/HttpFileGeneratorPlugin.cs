@@ -102,7 +102,7 @@ public sealed class HttpFileGeneratorPlugin(
 
     public override async Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
     {
-        Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
+        Logger.LogTrace("{Method} called", nameof(AfterRecordingStopAsync));
 
         ArgumentNullException.ThrowIfNull(e);
 

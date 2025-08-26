@@ -15,9 +15,9 @@ public sealed class GraphBetaSupportGuidancePlugin(
 {
     public override string Name => nameof(GraphBetaSupportGuidancePlugin);
 
-    public override Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync => (args, cancellationToken) =>
+    public override Func<RequestArguments, CancellationToken, Task>? ProvideRequestGuidanceAsync => (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(OnRequestLogAsync));
+        Logger.LogTrace("{Method} called", nameof(ProvideRequestGuidanceAsync));
 
         ArgumentNullException.ThrowIfNull(args);
 
@@ -39,7 +39,7 @@ public sealed class GraphBetaSupportGuidancePlugin(
         }
 
         Logger.LogRequest(BuildBetaSupportMessage(), MessageType.Warning, args.Request);
-        Logger.LogTrace("Left {Name}", nameof(OnRequestLogAsync));
+        Logger.LogTrace("Left {Name}", nameof(ProvideRequestGuidanceAsync));
         return Task.CompletedTask;
     };
 

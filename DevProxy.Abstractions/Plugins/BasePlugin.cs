@@ -17,72 +17,57 @@ public abstract class BasePlugin(
     ILogger logger,
     ISet<UrlToWatch> urlsToWatch) : IPlugin
 {
+    /// <inheritdoc/>
     public bool Enabled { get; protected set; } = true;
-    protected ILogger Logger { get; } = logger;
-    public ISet<UrlToWatch> UrlsToWatch { get; } = urlsToWatch;
-
-    public abstract string Name { get; }
 
     /// <summary>
-    /// Implement this to handle requests, if you won't be modifying requests or respond, use <see cref="OnRequestLogAsync"/>.
+    /// List of URLs to watch for this plugin.
     /// </summary>
-    /// <remarks>This is <see langword="null"/> by default, so we can filter plugins based on implementation.</remarks>
+    public ISet<UrlToWatch> UrlsToWatch { get; } = urlsToWatch;
+    /// <inheritdoc/>
+    public abstract string Name { get; }
+    protected ILogger Logger { get; } = logger;
+    /// <inheritdoc/>
     public virtual Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync { get; }
 
-    /// <summary>
-    /// Implement this to log requests, you cannot modify the request or response here.
-    /// </summary>
-    /// <remarks>This is <see langword="null"/> by default, so we can filter plugins based on implementation.</remarks>
-    public virtual Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync { get; }
+    /// <inheritdoc/>
+    public virtual Func<RequestArguments, CancellationToken, Task>? ProvideRequestGuidanceAsync { get; }
 
-    /// <summary>
-    /// Implement this to modify responses from the remote server.
-    /// </summary>
-    /// <remarks>This is <see langword="null"/> by default, so we can filter plugins based on implementation.</remarks>
+    /// <inheritdoc/>
     public virtual Func<ResponseArguments, CancellationToken, Task<PluginResponse?>>? OnResponseAsync { get; }
 
-    /// <summary>
-    /// Implement this to modify responses from the remote server.
-    /// </summary>
-    public virtual Func<ResponseArguments, CancellationToken, Task>? OnResponseLogAsync { get; }
+    /// <inheritdoc/>
+    public virtual Func<ResponseArguments, CancellationToken, Task>? ProvideResponseGuidanceAsync { get; }
 
+    /// <inheritdoc/>
     public virtual Option[] GetOptions() => [];
+    /// <inheritdoc/>
     public virtual Command[] GetCommands() => [];
 
+    /// <inheritdoc/>
     public virtual Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
     {
         return Task.CompletedTask;
     }
 
+    /// <inheritdoc/>
     public virtual void OptionsLoaded(OptionsLoadedArgs e)
     {
     }
 
-    public virtual Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
-    {
-        return Task.CompletedTask;
-    }
-
-    public virtual Task BeforeResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)
-    {
-        return Task.CompletedTask;
-    }
-
-    public virtual Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)
-    {
-        return Task.CompletedTask;
-    }
-
+    /// <inheritdoc/>
     public virtual Task AfterRequestLogAsync(RequestLogArgs e, CancellationToken cancellationToken)
     {
         return Task.CompletedTask;
     }
 
+    /// <inheritdoc/>
     public virtual Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
     {
         return Task.CompletedTask;
     }
 
+    /// <inheritdoc/>
     public virtual Task MockRequestAsync(EventArgs e, CancellationToken cancellationToken)
     {
         return Task.CompletedTask;

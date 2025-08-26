@@ -9,14 +9,36 @@ using System.CommandLine;
 
 namespace DevProxy.Abstractions.Plugins;
 
+/// <summary>
+/// The interface that all plugins must implement.
+/// </summary>
+/// <remarks>We made it easy for you with the <see cref="BasePlugin"/></remarks>
 public interface IPlugin
 {
+    /// <summary>
+    /// Name of the plugin.
+    /// </summary>
     string Name { get; }
+
+    /// <summary>
+    /// Whether the plugin is enabled or not.
+    /// </summary>
     bool Enabled { get; }
     Option[] GetOptions();
     Command[] GetCommands();
 
+    /// <summary>
+    /// Called once after the plugin is constructed, but before any requests are handled.
+    /// </summary>
+    /// <param name="e"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
     Task InitializeAsync(InitArgs e, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Handles the event triggered when options are successfully loaded.
+    /// </summary>
+    /// <param name="e">An <see cref="OptionsLoadedArgs"/> instance containing the event data, including the loaded options.</param>
     void OptionsLoaded(OptionsLoadedArgs e);
 
 
@@ -27,10 +49,10 @@ public interface IPlugin
     Func<RequestArguments, CancellationToken, Task<PluginResponse>>? OnRequestAsync { get; }
 
     /// <summary>
-    /// Implement this to log requests, you cannot modify the request or response here.
+    /// Implement this to provide guidance for requests, you cannot modify the request or response here.
     /// </summary>
     /// <remarks>This is <see langword="null"/> by default, so we can filter plugins based on implementation.</remarks>
-    Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync { get; }
+    Func<RequestArguments, CancellationToken, Task>? ProvideRequestGuidanceAsync { get; }
 
     /// <summary>
     /// Implement this to modify responses from the remote server.
@@ -39,14 +61,10 @@ public interface IPlugin
     Func<ResponseArguments, CancellationToken, Task<PluginResponse?>>? OnResponseAsync { get; }
 
     /// <summary>
-    /// Implement this to log responses from the remote server.
+    /// Implement this to provide guidance based on responses from the remote server.
     /// </summary>
     /// <remarks>Think caching after the fact, combined with <see cref="OnRequestAsync"/>. This is <see langword="null"/> by default, so we can filter plugins based on implementation.</remarks>
-    Func<ResponseArguments, CancellationToken, Task>? OnResponseLogAsync { get; }
-
-    Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken);
-    Task BeforeResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken);
-    Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken);
+    Func<ResponseArguments, CancellationToken, Task>? ProvideResponseGuidanceAsync { get; }
 
     /// <summary>
     /// Receiving RequestLog messages for each <see cref="Microsoft.Extensions.Logging.ILoggerExtensions.LogRequest(Microsoft.Extensions.Logging.ILogger, string, MessageType, HttpRequestMessage)"/> call.
@@ -64,6 +82,13 @@ public interface IPlugin
     /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
     /// <returns>A task that represents the asynchronous operation.</returns>
     Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="e"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
     Task MockRequestAsync(EventArgs e, CancellationToken cancellationToken);
 }
 

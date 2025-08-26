@@ -413,13 +413,13 @@ sealed class ProxyEngine(
 
         // Plugins that don't modify the request but log it
         // can be called in parallel, because they don't affect each other.
-        var logPlugins = _plugins.Where(p => p.Enabled && p.OnRequestLogAsync is not null);
+        var logPlugins = _plugins.Where(p => p.Enabled && p.ProvideRequestGuidanceAsync is not null);
         if (logPlugins.Any())
         {
             var logArguments = new RequestArguments(arguments.Request, arguments.RequestId);
             // Call OnRequestLogAsync for all plugins at the same time and wait for all of them to complete
             var logTasks = logPlugins
-                .Select(plugin => plugin.OnRequestLogAsync!(logArguments, cts.Token))
+                .Select(plugin => plugin.ProvideRequestGuidanceAsync!(logArguments, cts.Token))
                 .ToArray();
             try
             {
@@ -657,13 +657,13 @@ sealed class ProxyEngine(
         var message = $"{e.Request.Method} {e.Response}";
         _logger.LogRequest(message, MessageType.Normal, e.Request, e.RequestId);
         HttpResponseMessage? response = null;
-        var logPlugins = _plugins.Where(p => p.Enabled && p.OnResponseLogAsync is not null);
+        var logPlugins = _plugins.Where(p => p.Enabled && p.ProvideResponseGuidanceAsync is not null);
         if (logPlugins.Any())
         {
             // Call OnResponseLogAsync for all plugins at the same time and wait for all of them to complete
             var logArguments = new ResponseArguments(e.Request, e.Response, e.RequestId);
             var logTasks = logPlugins
-                .Select(plugin => plugin.OnResponseLogAsync!(logArguments, cts.Token))
+                .Select(plugin => plugin.ProvideResponseGuidanceAsync!(logArguments, cts.Token))
                 .ToArray();
             try
             {
@@ -722,23 +722,6 @@ sealed class ProxyEngine(
             ? ResponseEventResponse.ModifyResponse(response)
             : ResponseEventResponse.ContinueResponse();
     }
-
-    //// Allows overriding default certificate validation logic
-    //Task OnCertificateValidationAsync(object sender, CertificateValidationEventArgs e)
-    //{
-    //    // set IsValid to true/false based on Certificate Errors
-    //    if (e.SslPolicyErrors == System.Net.Security.SslPolicyErrors.None)
-    //    {
-    //        e.IsValid = true;
-    //    }
-
-    //    return Task.CompletedTask;
-    //}
-
-    //// Allows overriding default client certificate selection logic during mutual authentication
-    //Task OnCertificateSelectionAsync(object sender, CertificateSelectionEventArgs e) =>
-    //    // set e.clientCertificate to override
-    //    Task.CompletedTask;
 
     private static void PrintHotkeys()
     {

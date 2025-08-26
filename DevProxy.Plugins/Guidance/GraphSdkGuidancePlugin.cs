@@ -16,9 +16,9 @@ public sealed class GraphSdkGuidancePlugin(
 {
     public override string Name => nameof(GraphSdkGuidancePlugin);
 
-    public override Func<ResponseArguments, CancellationToken, Task>? OnResponseLogAsync => (args, cancellationToken) =>
+    public override Func<ResponseArguments, CancellationToken, Task>? ProvideResponseGuidanceAsync => (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(OnResponseLogAsync));
+        Logger.LogTrace("{Method} called", nameof(ProvideResponseGuidanceAsync));
 
         if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
@@ -48,7 +48,7 @@ public sealed class GraphSdkGuidancePlugin(
             Logger.LogRequest("Skipping non-error response", MessageType.Skipped, args.Request);
         }
 
-        Logger.LogTrace("Left {Name}", nameof(OnResponseLogAsync));
+        Logger.LogTrace("Left {Name}", nameof(ProvideResponseGuidanceAsync));
         return Task.CompletedTask;
     };
 

@@ -28,9 +28,9 @@ public sealed class GraphSelectGuidancePlugin(
         _ = _msGraphDb.GenerateDbAsync(true, cancellationToken);
     }
 
-    public override Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync => (args, cancellationToken) =>
+    public override Func<RequestArguments, CancellationToken, Task>? ProvideRequestGuidanceAsync => (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(OnRequestLogAsync));
+        Logger.LogTrace("{Method} called", nameof(ProvideRequestGuidanceAsync));
 
         ArgumentNullException.ThrowIfNull(args);
 
@@ -50,7 +50,7 @@ public sealed class GraphSelectGuidancePlugin(
             Logger.LogRequest(BuildUseSelectMessage(), MessageType.Warning, args.Request);
         }
 
-        Logger.LogTrace("Left {Name}", nameof(OnRequestLogAsync));
+        Logger.LogTrace("Left {Name}", nameof(ProvideRequestGuidanceAsync));
         return Task.CompletedTask;
     };
 

@@ -686,7 +686,6 @@
           "Newtonsoft.Json.Schema": "[4.0.1, )",
           "Scriban": "[6.2.1, )",
           "System.CommandLine": "[2.0.0-beta5.25306.1, )",
-          "Unobtanium.Web.Proxy.Events": "[0.9.1-beta.2, )",
           "YamlDotNet": "[16.3.0, )"
         }
       }

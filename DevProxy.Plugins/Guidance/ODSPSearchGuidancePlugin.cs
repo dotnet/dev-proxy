@@ -15,9 +15,9 @@ public sealed class ODSPSearchGuidancePlugin(
 {
     public override string Name => nameof(ODSPSearchGuidancePlugin);
 
-    public override Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync => (args, cancellationToken) =>
+    public override Func<RequestArguments, CancellationToken, Task>? ProvideRequestGuidanceAsync => (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(OnRequestLogAsync));
+        Logger.LogTrace("{Method} called", nameof(ProvideRequestGuidanceAsync));
 
         if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
@@ -35,7 +35,7 @@ public sealed class ODSPSearchGuidancePlugin(
             Logger.LogRequest(BuildUseGraphSearchMessage(), MessageType.Warning, args.Request);
         }
 
-        Logger.LogTrace("Left {Name}", nameof(OnRequestLogAsync));
+        Logger.LogTrace("Left {Name}", nameof(ProvideRequestGuidanceAsync));
         return Task.CompletedTask;
     };
 

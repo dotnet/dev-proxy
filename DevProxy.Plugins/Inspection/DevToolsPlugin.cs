@@ -68,9 +68,9 @@ public sealed class DevToolsPlugin(
         InitInspector();
     }
 
-    public override Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync => async (args, cancellationToken) =>
+    public override Func<RequestArguments, CancellationToken, Task>? ProvideRequestGuidanceAsync => async (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(OnRequestLogAsync));
+        Logger.LogTrace("{Method} called", nameof(ProvideRequestGuidanceAsync));
 
         if (_webSocket?.IsConnected != true)
         {
@@ -136,9 +136,9 @@ public sealed class DevToolsPlugin(
         await _webSocket.SendAsync(requestWillBeSentExtraInfoMessage, cancellationToken);
     };
 
-    public override Func<ResponseArguments, CancellationToken, Task>? OnResponseLogAsync => async (args, cancellationToken) =>
+    public override Func<ResponseArguments, CancellationToken, Task>? ProvideResponseGuidanceAsync => async (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(OnResponseLogAsync));
+        Logger.LogTrace("{Method} called", nameof(ProvideResponseGuidanceAsync));
 
         if (_webSocket?.IsConnected != true)
         {

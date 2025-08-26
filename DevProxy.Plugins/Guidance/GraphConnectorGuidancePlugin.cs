@@ -34,9 +34,9 @@ public sealed class GraphConnectorGuidancePlugin(
 {
     public override string Name => nameof(GraphConnectorGuidancePlugin);
 
-    public override Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync => async (args, cancellationToken) =>
+    public override Func<RequestArguments, CancellationToken, Task>? ProvideRequestGuidanceAsync => async (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(OnRequestLogAsync));
+        Logger.LogTrace("{Method} called", nameof(ProvideRequestGuidanceAsync));
 
         ArgumentNullException.ThrowIfNull(args);
 
@@ -117,6 +117,6 @@ public sealed class GraphConnectorGuidancePlugin(
             Logger.LogError(ex, "An error has occurred while deserializing the request body");
         }
 
-        Logger.LogTrace("Left {Name}", nameof(OnRequestLogAsync));
+        Logger.LogTrace("Left {Name}", nameof(ProvideRequestGuidanceAsync));
     };
 }

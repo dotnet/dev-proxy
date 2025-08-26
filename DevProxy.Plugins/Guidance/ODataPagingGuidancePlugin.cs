@@ -19,9 +19,9 @@ public sealed class ODataPagingGuidancePlugin(
 
     public override string Name => nameof(ODataPagingGuidancePlugin);
 
-    public override Func<RequestArguments, CancellationToken, Task>? OnRequestLogAsync => (args, cancellationToken) =>
+    public override Func<RequestArguments, CancellationToken, Task>? ProvideRequestGuidanceAsync => (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(OnRequestLogAsync));
+        Logger.LogTrace("{Method} called", nameof(ProvideRequestGuidanceAsync));
 
         if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
@@ -50,13 +50,13 @@ public sealed class ODataPagingGuidancePlugin(
             Logger.LogRequest("Not an OData paging URL", MessageType.Skipped, args.Request);
         }
 
-        Logger.LogTrace("Left {Name}", nameof(OnRequestLogAsync));
+        Logger.LogTrace("Left {Name}", nameof(ProvideRequestGuidanceAsync));
         return Task.CompletedTask;
     };
 
-    public override Func<ResponseArguments, CancellationToken, Task>? OnResponseLogAsync => async (args, cancellationToken) =>
+    public override Func<ResponseArguments, CancellationToken, Task>? ProvideResponseGuidanceAsync => async (args, cancellationToken) =>
     {
-        Logger.LogTrace("{Method} called", nameof(OnResponseLogAsync));
+        Logger.LogTrace("{Method} called", nameof(ProvideResponseGuidanceAsync));
 
         if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, args.Request.RequestUri))
         {
@@ -115,7 +115,7 @@ public sealed class ODataPagingGuidancePlugin(
             Logger.LogRequest("No next link found in the response", MessageType.Skipped, args.Request);
         }
 
-        Logger.LogTrace("Left {Name}", nameof(OnResponseLogAsync));
+        Logger.LogTrace("Left {Name}", nameof(ProvideResponseGuidanceAsync));
     };
 
     private string GetNextLinkFromJson(string responseBody)

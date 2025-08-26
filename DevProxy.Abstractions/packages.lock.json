@@ -95,15 +95,6 @@
         "resolved": "2.0.0-beta5.25306.1",
         "contentHash": "ce0wuowuh13Cd7GXqLCq77/YWlxQMxrVCMIO/2/QUP6CdP/JWnlYSN/N3/55wwGsUwa9CvPuT8ddjgyypUr5ag=="
       },
-      "Unobtanium.Web.Proxy.Events": {
-        "type": "Direct",
-        "requested": "[0.9.1-beta.2, )",
-        "resolved": "0.9.1-beta.2",
-        "contentHash": "8vO+KuRBp/UsvNtUtsKx2hdBGoYzPu2wQoAcQL63UnT6hphPCdqm2mt6JNgH6bprI4f9cbn/O3ny+EP5ftEV0Q==",
-        "dependencies": {
-          "Microsoft.Extensions.Logging.Abstractions": "8.0.1"
-        }
-      },
       "YamlDotNet": {
         "type": "Direct",
         "requested": "[16.3.0, )",
