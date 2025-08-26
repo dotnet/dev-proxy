@@ -90,6 +90,9 @@ public sealed class AuthPlugin(
 
     public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
     {
+        // Disable by default to support early exits on configuration errors
+        Enabled = false;
+
         await base.InitializeAsync(e, cancellationToken);
 
         if (Configuration.Type == null)
@@ -153,7 +156,8 @@ public sealed class AuthPlugin(
             await SetupOpenIdConnectConfigurationAsync(Configuration.OAuth2.MetadataUrl);
         }
 
-        Enabled = false;
+        // Enable the plugin after successful initialization
+        Enabled = true;
     }
 
     public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
