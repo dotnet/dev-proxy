@@ -126,9 +126,10 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
 
             var insertEndpoint = Connection.CreateCommand();
             insertEndpoint.CommandText = "INSERT INTO endpoints (path, graphVersion, hasSelect) VALUES (@path, @graphVersion, @hasSelect)";
-            _ = insertEndpoint.Parameters.Add(new("@path", null));
-            _ = insertEndpoint.Parameters.Add(new("@graphVersion", null));
-            _ = insertEndpoint.Parameters.Add(new("@hasSelect", null));
+            var pathParam = insertEndpoint.Parameters.Add(new("@path", null));
+            var graphVersionParam = insertEndpoint.Parameters.Add(new("@graphVersion", null));
+            var hasSelectParam = insertEndpoint.Parameters.Add(new("@hasSelect", null));
+            await insertEndpoint.PrepareAsync(cancellationToken);
 
             foreach (var path in document.Paths)
             {
@@ -148,9 +149,9 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
                 var hasSelect = getOperation.Parameters.Any(p => p.Name == "$select");
 
                 _logger.LogTrace("Inserting endpoint {GraphVersion}{Key} with hasSelect={HasSelect}...", graphVersion, path.Key, hasSelect);
-                insertEndpoint.Parameters["@path"].Value = path.Key;
-                insertEndpoint.Parameters["@graphVersion"].Value = graphVersion;
-                insertEndpoint.Parameters["@hasSelect"].Value = hasSelect;
+                pathParam.Value = path.Key;
+                graphVersionParam.Value = graphVersion;
+                hasSelectParam.Value = hasSelect;
                 _ = await insertEndpoint.ExecuteNonQueryAsync(cancellationToken);
                 i++;
             }
