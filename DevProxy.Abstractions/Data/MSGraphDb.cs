@@ -211,7 +211,8 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
 
             try
             {
-                var openApiDocument = await new OpenApiStreamReader().ReadAsync(file.OpenRead(), cancellationToken);
+                await using var fileStream = file.OpenRead();
+                var openApiDocument = await new OpenApiStreamReader().ReadAsync(fileStream, cancellationToken);
                 _openApiDocuments[version] = openApiDocument.OpenApiDocument;
 
                 _logger.LogDebug("Added OpenAPI file {FilePath} for {Version}", filePath, version);
