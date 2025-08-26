@@ -110,6 +110,8 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
     private async Task FillDataAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Filling database...");
+        
+        await using var transaction = await Connection.BeginTransactionAsync(cancellationToken);
 
         var i = 0;
 
@@ -153,6 +155,8 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
                 i++;
             }
         }
+
+        await transaction.CommitAsync(cancellationToken);
 
         _logger.LogInformation("Inserted {EndpointCount} endpoints in the database", i);
     }
