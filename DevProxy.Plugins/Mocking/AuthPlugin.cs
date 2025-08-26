@@ -90,10 +90,10 @@ public sealed class AuthPlugin(
 
     public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
     {
+        await base.InitializeAsync(e, cancellationToken);
+
         // Disable by default to support early exits on configuration errors
         Enabled = false;
-
-        await base.InitializeAsync(e, cancellationToken);
 
         if (Configuration.Type == null)
         {
