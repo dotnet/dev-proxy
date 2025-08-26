@@ -92,6 +92,9 @@ public sealed class AuthPlugin(
     {
         await base.InitializeAsync(e, cancellationToken);
 
+        // Disable by default to support early exits on configuration errors
+        Enabled = false;
+
         if (Configuration.Type == null)
         {
             Logger.LogError("Auth type is required");
@@ -153,7 +156,8 @@ public sealed class AuthPlugin(
             await SetupOpenIdConnectConfigurationAsync(Configuration.OAuth2.MetadataUrl);
         }
 
-        Enabled = false;
+        // Enable the plugin after successful initialization
+        Enabled = true;
     }
 
     public override Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
