@@ -5,7 +5,6 @@
 using DevProxy.Commands;
 using DevProxy.Logging;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Logging.Console;
 
 #pragma warning disable IDE0130
 namespace Microsoft.Extensions.Logging;

@@ -191,7 +191,7 @@ public sealed class GraphRandomErrorPlugin(
         }
         else
         {
-            //Logger.LogRequest("Pass through", MessageType.Skipped, args.Request);
+            Logger.LogRequest("Pass through", MessageType.Chaos, args.Request);
             return Task.FromResult(PluginResponse.Respond(FailResponse(args.Request, args.RequestId)));
         }
     };

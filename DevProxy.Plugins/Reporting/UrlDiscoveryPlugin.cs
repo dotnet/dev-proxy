@@ -15,7 +15,8 @@ public sealed class UrlDiscoveryPlugin(
 {
     public override string Name => nameof(UrlDiscoveryPlugin);
 
-    public override Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
+    public override Func<RecordingArgs, CancellationToken, Task>? HandleRecordingStopAsync => AfterRecordingStopAsync;
+    public Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterRecordingStopAsync));
 

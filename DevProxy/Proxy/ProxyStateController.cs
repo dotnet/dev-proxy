@@ -50,11 +50,11 @@ sealed class ProxyStateController(
         var recordingArgs = new RecordingArgs(clonedLogs)
         {
         };
-        foreach (var plugin in _plugins.Where(p => p.Enabled))
+        foreach (var plugin in _plugins.Where(p => p.Enabled && p.HandleRecordingStopAsync is not null))
         {
             try
             {
-                await plugin.AfterRecordingStopAsync(recordingArgs, cancellationToken);
+                await plugin.HandleRecordingStopAsync!(recordingArgs, cancellationToken);
             }
             catch (Exception ex)
             {

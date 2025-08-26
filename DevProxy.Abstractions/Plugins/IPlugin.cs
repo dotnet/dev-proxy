@@ -67,13 +67,23 @@ public interface IPlugin
     Func<ResponseArguments, CancellationToken, Task>? ProvideResponseGuidanceAsync { get; }
 
     /// <summary>
+    /// Implement this to receive RequestLog messages for each <see cref="Microsoft.Extensions.Logging.ILoggerExtensions.LogRequest(Microsoft.Extensions.Logging.ILogger, string, MessageType, HttpRequestMessage)"/> call.
+    /// </summary>
+    Func<RequestLogArgs, CancellationToken, Task>? HandleRequestLogAsync { get; }
+
+    /// <summary>
+    /// Executes post-processing tasks after a recording has stopped.
+    /// </summary>
+    Func<RecordingArgs, CancellationToken, Task>? HandleRecordingStopAsync { get; }
+
+    /// <summary>
     /// Receiving RequestLog messages for each <see cref="Microsoft.Extensions.Logging.ILoggerExtensions.LogRequest(Microsoft.Extensions.Logging.ILogger, string, MessageType, HttpRequestMessage)"/> call.
     /// </summary>
     /// <remarks>This is for collecting log messages not requests itself</remarks>
     /// <param name="e"></param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
-    Task AfterRequestLogAsync(RequestLogArgs e, CancellationToken cancellationToken);
+    //Task AfterRequestLogAsync(RequestLogArgs e, CancellationToken cancellationToken);
 
     /// <summary>
     /// Executes post-processing tasks after a recording has stopped.
@@ -81,7 +91,7 @@ public interface IPlugin
     /// <param name="e">The arguments containing details about the recording that has stopped.</param>
     /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
     /// <returns>A task that represents the asynchronous operation.</returns>
-    Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken);
+    //Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken);
 
     /// <summary>
     /// 

@@ -13,7 +13,6 @@ using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text.Json;
-using System.Globalization;
 using System.Text;
 
 namespace DevProxy.Plugins.Inspection;
@@ -228,7 +227,9 @@ public sealed class DevToolsPlugin(
         await _webSocket.SendAsync(loadingFinishedMessage, cancellationToken);
     };
 
-    public override async Task AfterRequestLogAsync(RequestLogArgs e, CancellationToken cancellationToken)
+    public override Func<RequestLogArgs, CancellationToken, Task>? HandleRequestLogAsync => AfterRequestLogAsync;
+
+    public async Task AfterRequestLogAsync(RequestLogArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterRequestLogAsync));
 

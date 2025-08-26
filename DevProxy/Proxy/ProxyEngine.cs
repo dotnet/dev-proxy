@@ -5,6 +5,7 @@
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
+using System;
 using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Runtime.InteropServices;
@@ -410,15 +411,17 @@ sealed class ProxyEngine(
     private async Task<RequestEventResponse> HandleRequestAsync(RequestEventArguments arguments, CancellationToken cancellationToken)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cancellationToken ?? CancellationToken.None);
+        using var scope = _logger.BeginRequestScope(arguments.Request.Method, arguments.Request.RequestUri!, arguments.RequestId);
+        _logger.LogRequest($"{arguments.Request.Method} {arguments.Request.RequestUri}", MessageType.InterceptedRequest, arguments.Request, arguments.RequestId);
 
-        // Plugins that don't modify the request but log it
+        // Plugins that don't modify the request but provide guidance on them
         // can be called in parallel, because they don't affect each other.
-        var logPlugins = _plugins.Where(p => p.Enabled && p.ProvideRequestGuidanceAsync is not null);
-        if (logPlugins.Any())
+        var guidancePlugins = _plugins.Where(p => p.Enabled && p.ProvideRequestGuidanceAsync is not null);
+        if (guidancePlugins.Any())
         {
             var logArguments = new RequestArguments(arguments.Request, arguments.RequestId);
             // Call OnRequestLogAsync for all plugins at the same time and wait for all of them to complete
-            var logTasks = logPlugins
+            var logTasks = guidancePlugins
                 .Select(plugin => plugin.ProvideRequestGuidanceAsync!(logArguments, cts.Token))
                 .ToArray();
             try
@@ -427,6 +430,7 @@ sealed class ProxyEngine(
             }
             catch (Exception ex)
             {
+                //_logger.LogRequest(ex.Message, MessageType.Failed, arguments.Request, arguments.RequestId);
                 _logger.LogError(ex, "An error occurred in a plugin while logging request {RequestMethod} {RequestUrl}",
                     arguments.Request.Method, arguments.Request.RequestUri);
             }
@@ -471,14 +475,16 @@ sealed class ProxyEngine(
         if (response is not null)
         {
             proxyStorage.RemoveRequestData(arguments.RequestId);
-            _logger.LogRequest($"{arguments.Request.Method} {arguments.Request.RequestUri}", MessageType.Mocked, arguments.Request, arguments.RequestId);
+            _logger.LogRequest($"{(int)response.StatusCode} {response.StatusCode}", MessageType.Mocked, arguments.Request, arguments.RequestId);
+            _logger.LogRequest("Done", MessageType.FinishedProcessingRequest, arguments.Request, arguments.RequestId, response);
             return RequestEventResponse.EarlyResponse(response);
         }
         else if (request is not null)
         {
             // If the request is modified, we need to add the Via header
             AddProxyHeader(request);
-            _logger.LogRequest($"{arguments.Request.Method} {arguments.Request.RequestUri}", MessageType.Processed, arguments.Request, arguments.RequestId);
+            _logger.LogRequest("Request modified by plugin", MessageType.InterceptedRequest, arguments.Request, arguments.RequestId);
+            //_logger.LogRequest($"{arguments.Request.Method} {arguments.Request.RequestUri}", MessageType.Processed, arguments.Request, arguments.RequestId);
             // We can return the request to be sent to the target
             return RequestEventResponse.ModifyRequest(request);
         }
@@ -622,11 +628,11 @@ sealed class ProxyEngine(
     //}
 
     // Unobtanium ResponseHandler
-    private async Task<ResponseEventResponse> OnResponseAsync(object sender, ResponseEventArguments e, CancellationToken cancellationToken)
+    private async Task<ResponseEventResponse> OnResponseAsync(object sender, ResponseEventArguments arguments, CancellationToken cancellationToken)
     {
         try
         {
-            return await OnResponseInternalAsync(sender, e, cancellationToken);
+            return await OnResponseInternalAsync(sender, arguments, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -636,33 +642,32 @@ sealed class ProxyEngine(
         catch (Exception ex)
         {
             _logger.LogError(ex, "An error occurred while processing response {ResponseStatusCode} for request {RequestMethod} {RequestUrl}",
-                e.Response.StatusCode, e.Request.Method, e.Request.RequestUri);
+                arguments.Response.StatusCode, arguments.Request.Method, arguments.Request.RequestUri);
             return ResponseEventResponse.ContinueResponse();
         }
     }
-    private async Task<ResponseEventResponse> OnResponseInternalAsync(object _, ResponseEventArguments e, CancellationToken cancellationToken)
+    private async Task<ResponseEventResponse> OnResponseInternalAsync(object _, ResponseEventArguments arguments, CancellationToken cancellationToken)
     {
         if (cancellationToken.IsCancellationRequested)
         {
             _logger.LogDebug("Request was cancelled before response completed");
-            _logger.LogRequest($"{e.Request.Method} {e.Request.RequestUri}", MessageType.Failed, e.Request, e.RequestId);
+            _logger.LogRequest($"{arguments.Request.Method} {arguments.Request.RequestUri}", MessageType.Failed, arguments.Request, arguments.RequestId);
             return ResponseEventResponse.ContinueResponse();
         }
         // Distributed tracing
-        using var activity = ActivitySource.StartActivity(nameof(OnResponseAsync), ActivityKind.Consumer, e.RequestActivity?.Context ?? default);
+        using var activity = ActivitySource.StartActivity(nameof(OnResponseAsync), ActivityKind.Consumer, arguments.RequestActivity?.Context ?? default);
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cancellationToken ?? CancellationToken.None);
-        var uri = e.Request.RequestUri!;
+        var uri = arguments.Request.RequestUri!;
 
-        using var scope = _logger.BeginRequestScope(e.Request.Method, uri, e.RequestId);
-        var message = $"{e.Request.Method} {e.Response}";
-        _logger.LogRequest(message, MessageType.Normal, e.Request, e.RequestId);
+        using var scope = _logger.BeginRequestScope(arguments.Request.Method, uri, arguments.RequestId);
+        _logger.LogRequest($"Server response: {(int)arguments.Response.StatusCode} {arguments.Response.StatusCode}", MessageType.Normal, arguments.Request, arguments.RequestId);
         HttpResponseMessage? response = null;
-        var logPlugins = _plugins.Where(p => p.Enabled && p.ProvideResponseGuidanceAsync is not null);
-        if (logPlugins.Any())
+        var guidancePlugins = _plugins.Where(p => p.Enabled && p.ProvideResponseGuidanceAsync is not null);
+        if (guidancePlugins.Any())
         {
             // Call OnResponseLogAsync for all plugins at the same time and wait for all of them to complete
-            var logArguments = new ResponseArguments(e.Request, e.Response, e.RequestId);
-            var logTasks = logPlugins
+            var logArguments = new ResponseArguments(arguments.Request, arguments.Response, arguments.RequestId);
+            var logTasks = guidancePlugins
                 .Select(plugin => plugin.ProvideResponseGuidanceAsync!(logArguments, cts.Token))
                 .ToArray();
             try
@@ -676,7 +681,7 @@ sealed class ProxyEngine(
             catch (Exception ex)
             {
                 _logger.LogError(ex, "An error occurred in a plugin while logging response {ResponseStatusCode} for request {RequestMethod} {RequestUrl}",
-                    e.Response.StatusCode, e.Request.Method, uri);
+                    arguments.Response.StatusCode, arguments.Request.Method, uri);
             }
         }
 
@@ -686,7 +691,7 @@ sealed class ProxyEngine(
 
             try
             {
-                var result = await plugin.OnResponseAsync!(new ResponseArguments(e.Request, response ?? e.Response, e.RequestId), cts.Token);
+                var result = await plugin.OnResponseAsync!(new ResponseArguments(arguments.Request, response ?? arguments.Response, arguments.RequestId), cts.Token);
                 if (result is not null)
                 {
                     if (result.Request is not null)
@@ -704,20 +709,20 @@ sealed class ProxyEngine(
             catch (Exception ex)
             {
                 _logger.LogError(ex, "An error occurred in plugin {PluginName} while processing response {ResponseStatusCode} for request {RequestMethod} {RequestUrl}",
-                    plugin.Name, e.Response.StatusCode, e.Request.Method, uri);
+                    plugin.Name, arguments.Response.StatusCode, arguments.Request.Method, uri);
             }
         }
         if (response is not null)
         {
-            _logger.LogRequest(message, MessageType.Mocked, e.Request, e.RequestId);
+            _logger.LogRequest($"Mocked response: {(int)response.StatusCode} {response.StatusCode}", MessageType.Mocked, arguments.Request, arguments.RequestId);
         }
         else
         {
-            response = e.Response;
-            _logger.LogRequest(message, MessageType.Processed, e.Request, e.RequestId);
+            response = arguments.Response;
+            _logger.LogRequest($"Return unmodified response {(int)response.StatusCode} {response.StatusCode}", MessageType.Processed, arguments.Request, arguments.RequestId);
         }
-        _logger.LogRequest(message, MessageType.FinishedProcessingRequest, e.Request, e.RequestId, response);
-        proxyStorage.RemoveRequestData(e.RequestId);
+        _logger.LogRequest("Done", MessageType.FinishedProcessingRequest, arguments.Request, arguments.RequestId);
+        proxyStorage.RemoveRequestData(arguments.RequestId);
         return response is not null
             ? ResponseEventResponse.ModifyResponse(response)
             : ResponseEventResponse.ContinueResponse();

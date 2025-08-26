@@ -15,7 +15,7 @@ internal class ProxyStorage : IProxyStorage
     }
     public Dictionary<string, object> GlobalData { get; private set; }
 
-    Dictionary<string, object> IProxyStorage.GlobalData => throw new NotImplementedException();
+    //Dictionary<string, object> IProxyStorage.GlobalData => throw new NotImplementedException();
 
     public Dictionary<string, object> GetRequestData(RequestId id) => _requestData.TryGetValue(id, out var data) ? data : [];
     public void RemoveRequestData(RequestId id) => _requestData.Remove(id, out _);

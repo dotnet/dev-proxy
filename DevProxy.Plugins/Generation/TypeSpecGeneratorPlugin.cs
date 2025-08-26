@@ -55,7 +55,8 @@ public sealed class TypeSpecGeneratorPlugin(
 
     public override string Name => nameof(TypeSpecGeneratorPlugin);
 
-    public override async Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
+    public override Func<RecordingArgs, CancellationToken, Task>? HandleRecordingStopAsync => AfterRecordingStopAsync;
+    public async Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterRecordingStopAsync));
 

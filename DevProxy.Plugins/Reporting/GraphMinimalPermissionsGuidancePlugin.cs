@@ -65,8 +65,8 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
 
         InitializePermissionsToExclude();
     }
-
-    public override async Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
+    public override Func<RecordingArgs, CancellationToken, Task>? HandleRecordingStopAsync => AfterRecordingStopAsync;
+    public async Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterRecordingStopAsync));
 

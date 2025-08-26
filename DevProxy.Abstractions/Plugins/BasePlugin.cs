@@ -40,6 +40,12 @@ public abstract class BasePlugin(
     public virtual Func<ResponseArguments, CancellationToken, Task>? ProvideResponseGuidanceAsync { get; }
 
     /// <inheritdoc/>
+    public virtual Func<RequestLogArgs, CancellationToken, Task>? HandleRequestLogAsync { get; }
+
+    /// <inheritdoc/>
+    public virtual Func<RecordingArgs, CancellationToken, Task>? HandleRecordingStopAsync { get; }
+
+    /// <inheritdoc/>
     public virtual Option[] GetOptions() => [];
     /// <inheritdoc/>
     public virtual Command[] GetCommands() => [];
@@ -55,17 +61,11 @@ public abstract class BasePlugin(
     {
     }
 
-    /// <inheritdoc/>
-    public virtual Task AfterRequestLogAsync(RequestLogArgs e, CancellationToken cancellationToken)
-    {
-        return Task.CompletedTask;
-    }
-
-    /// <inheritdoc/>
-    public virtual Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
-    {
-        return Task.CompletedTask;
-    }
+    ///// <inheritdoc/>
+    //public virtual Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
+    //{
+    //    return Task.CompletedTask;
+    //}
 
     /// <inheritdoc/>
     public virtual Task MockRequestAsync(EventArgs e, CancellationToken cancellationToken)
