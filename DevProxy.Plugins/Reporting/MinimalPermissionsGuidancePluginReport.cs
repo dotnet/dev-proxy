@@ -86,7 +86,7 @@ public sealed class MinimalPermissionsGuidancePluginReport : IMarkdownReport, IP
             _ = sb.AppendLine("## Errors")
                 .AppendLine()
                 .AppendLine("| Request | Error |")
-                .AppendLine("| ----------| ------------- |")
+                .AppendLine("| --------| ----- |")
                 .AppendJoin(Environment.NewLine, Errors.Select(error => $"| {error.Request} | {error.Error} |"))
                 .AppendLine()
                 .AppendLine();
@@ -114,14 +114,16 @@ public sealed class MinimalPermissionsGuidancePluginReport : IMarkdownReport, IP
 
         var sb = new StringBuilder();
         _ = sb.AppendLine("Minimal Permissions Report")
-              .AppendLine("==========================");
+              .AppendLine("==========================")
+              .AppendLine();
 
         foreach (var result in Results)
         {
             var apiTitle = $"API: {result.ApiName}";
             _ = sb.AppendLine()
                 .AppendLine(apiTitle)
-                .AppendLine(new string('-', apiTitle.Length));
+                .AppendLine(new string('-', apiTitle.Length))
+                .AppendLine();
 
             _ = sb.AppendLine("Requests:")
                 .AppendJoin(Environment.NewLine, result.Requests.Select(r => $"- {r}")).AppendLine()
@@ -136,7 +138,9 @@ public sealed class MinimalPermissionsGuidancePluginReport : IMarkdownReport, IP
                 .AppendLine();
 
             _ = sb.AppendLine("Excessive permissions")
-                .AppendLine("---------------------");
+                .AppendLine("---------------------")
+                .AppendLine();
+
             _ = result.UsesMinimalPermissions
                 ? sb.AppendLine("The token has the minimal permissions required.")
                 : sb.AppendLine("The following permissions included in the token are unnecessary:")
@@ -149,6 +153,7 @@ public sealed class MinimalPermissionsGuidancePluginReport : IMarkdownReport, IP
             _ = sb.AppendLine()
                 .AppendLine("Unmatched Requests")
                 .AppendLine("------------------")
+                .AppendLine()
                 .AppendLine("The following requests could not be matched:")
                 .AppendJoin(Environment.NewLine, UnmatchedRequests.Select(r => $"- {r}")).AppendLine()
                 .AppendLine();
@@ -159,6 +164,7 @@ public sealed class MinimalPermissionsGuidancePluginReport : IMarkdownReport, IP
             _ = sb.AppendLine()
                 .AppendLine("Errors")
                 .AppendLine("------")
+                .AppendLine()
                 .AppendLine("The following errors occurred while finding permissions for requests:")
                 .AppendJoin(Environment.NewLine, Errors.Select(error => $"- For request '{error.Request}': {error.Error}"))
                 .AppendLine()
@@ -170,6 +176,7 @@ public sealed class MinimalPermissionsGuidancePluginReport : IMarkdownReport, IP
             _ = sb.AppendLine()
                 .AppendLine("Excluded Permissions")
                 .AppendLine("--------------------")
+                .AppendLine()
                 .AppendLine("The following permissions were excluded from the analysis:")
                 .AppendJoin(", ", ExcludedPermissions).AppendLine();
         }
