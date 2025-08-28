@@ -70,7 +70,6 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
             await FillDataAsync(cancellationToken);
             SetDbJournaling(true);
 
-
             _logger.LogInformation("Microsoft Graph database successfully updated");
 
             return 0;
@@ -110,7 +109,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
     private async Task FillDataAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Filling database...");
-        
+
         await using var transaction = await Connection.BeginTransactionAsync(cancellationToken);
 
         var i = 0;
