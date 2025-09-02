@@ -64,7 +64,15 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
                 return 1;
             }
 
-            await UpdateOpenAPIGraphFilesIfNecessaryAsync(appFolder, cancellationToken);
+            var isApiModified = await UpdateOpenAPIGraphFilesIfNecessaryAsync(appFolder, cancellationToken);
+
+            if (!isApiModified)
+            {
+                UpdateLastWriteTime(dbFileInfo);
+                _logger.LogInformation("Microsoft Graph database is already updated");
+                return 1;
+            }
+
             await LoadOpenAPIFilesAsync(appFolder, cancellationToken);
             if (_openApiDocuments.Count < 1)
             {
@@ -87,6 +95,8 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
         }
 
     }
+
+    private static void UpdateLastWriteTime(FileInfo fileInfo) => fileInfo.LastWriteTime = DateTime.Now;
 
     private async Task CreateDbAsync(CancellationToken cancellationToken)
     {
@@ -169,9 +179,11 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
         _logger.LogInformation("Inserted {EndpointCount} endpoints in the database", i);
     }
 
-    private async Task UpdateOpenAPIGraphFilesIfNecessaryAsync(string folder, CancellationToken cancellationToken)
+    private async Task<bool> UpdateOpenAPIGraphFilesIfNecessaryAsync(string folder, CancellationToken cancellationToken)
     {
         _logger.LogInformation("Checking for updated OpenAPI files...");
+
+        var isApiUpdated = false;
 
         foreach (var version in graphVersions)
         {
@@ -192,12 +204,15 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
                 await File.WriteAllTextAsync(file.FullName, response, cancellationToken);
 
                 _logger.LogDebug("Downloaded OpenAPI file from {Url} to {File}", url, file);
+
+                isApiUpdated = true;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error updating OpenAPI files");
             }
         }
+        return isApiUpdated;
     }
 
     private async Task LoadOpenAPIFilesAsync(string folder, CancellationToken cancellationToken)
