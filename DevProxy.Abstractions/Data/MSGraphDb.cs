@@ -25,6 +25,12 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
 
     private static string GetOpenApiSpecUrl(string version) => $"https://raw.githubusercontent.com/microsoftgraph/msgraph-metadata/master/openapi/{version}/openapi.yaml";
 
+    private static string GetBaseGraphOpenApiFileName(string version) => $"graph-{version.Replace(".", "_", StringComparison.OrdinalIgnoreCase)}-openapi";
+
+    private static string GetGraphOpenApiYamlFileName(string version) => $"{GetBaseGraphOpenApiFileName(version)}.yaml";
+
+    private static string GetGraphOpenApiEtagFileName(string version) => $"{GetBaseGraphOpenApiFileName(version)}.etag.txt";
+
     public SqliteConnection Connection
     {
         get
@@ -83,8 +89,6 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
         }
 
     }
-
-    private static string GetGraphOpenApiYamlFileName(string version) => $"graph-{version.Replace(".", "_", StringComparison.OrdinalIgnoreCase)}-openapi.yaml";
 
     private async Task CreateDbAsync(CancellationToken cancellationToken)
     {
