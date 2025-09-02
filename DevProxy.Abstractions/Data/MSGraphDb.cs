@@ -74,9 +74,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
 
             await CreateDbAsync(cancellationToken);
 
-            SetDbJournaling(false);
             await FillDataAsync(cancellationToken);
-            SetDbJournaling(true);
 
             _logger.LogInformation("Microsoft Graph database is successfully updated");
 
@@ -115,6 +113,8 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
     private async Task FillDataAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Filling database...");
+
+        SetDbJournaling(false);
 
         await using var transaction = await Connection.BeginTransactionAsync(cancellationToken);
 
@@ -163,6 +163,8 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
         }
 
         await transaction.CommitAsync(cancellationToken);
+
+        SetDbJournaling(true);
 
         _logger.LogInformation("Inserted {EndpointCount} endpoints in the database", i);
     }
