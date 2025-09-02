@@ -57,7 +57,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
         try
         {
             var dbFileInfo = new FileInfo(MSGraphDbFilePath);
-            var modifiedToday = dbFileInfo.Exists && dbFileInfo.LastWriteTime.Date == DateTime.Now.Date;
+            var modifiedToday = IsModifiedToday(dbFileInfo);
             if (modifiedToday && skipIfUpdatedToday)
             {
                 _logger.LogInformation("Microsoft Graph database has already been updated today");
@@ -95,6 +95,8 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
         }
 
     }
+
+    private static bool IsModifiedToday(FileInfo fileInfo) => fileInfo.Exists && fileInfo.LastWriteTime.Date == DateTime.Now.Date;
 
     private static void UpdateLastWriteTime(FileInfo fileInfo) => fileInfo.LastWriteTime = DateTime.Now;
 
@@ -191,7 +193,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
             {
                 var file = new FileInfo(Path.Combine(folder, GetGraphOpenApiYamlFileName(version)));
                 _logger.LogDebug("Checking for updated OpenAPI file {File}...", file);
-                if (file.Exists && file.LastWriteTime.Date == DateTime.Now.Date)
+                if (IsModifiedToday(file))
                 {
                     _logger.LogInformation("File {File} has already been updated today", file);
                     continue;
