@@ -202,8 +202,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
                 var url = GetOpenApiSpecUrl(version);
                 _logger.LogInformation("Downloading OpenAPI file from {Url}...", url);
 
-                var response = await _httpClient.GetStringAsync(url, cancellationToken);
-                await File.WriteAllTextAsync(file.FullName, response, cancellationToken);
+                await DownloadOpenAPIFileAsync(file, url, cancellationToken);
 
                 _logger.LogDebug("Downloaded OpenAPI file from {Url} to {File}", url, file);
 
@@ -215,6 +214,12 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
             }
         }
         return isApiUpdated;
+    }
+
+    private async Task DownloadOpenAPIFileAsync(FileInfo file, string url, CancellationToken cancellationToken)
+    {
+        var response = await _httpClient.GetStringAsync(url, cancellationToken);
+        await File.WriteAllTextAsync(file.FullName, response, cancellationToken);
     }
 
     private async Task LoadOpenAPIFilesAsync(string folder, CancellationToken cancellationToken)
