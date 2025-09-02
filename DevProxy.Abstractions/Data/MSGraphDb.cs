@@ -60,7 +60,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
             var modifiedToday = dbFileInfo.Exists && dbFileInfo.LastWriteTime.Date == DateTime.Now.Date;
             if (modifiedToday && skipIfUpdatedToday)
             {
-                _logger.LogInformation("Microsoft Graph database already updated today");
+                _logger.LogInformation("Microsoft Graph database has already been updated today");
                 return 1;
             }
 
@@ -78,7 +78,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
             await FillDataAsync(cancellationToken);
             SetDbJournaling(true);
 
-            _logger.LogInformation("Microsoft Graph database successfully updated");
+            _logger.LogInformation("Microsoft Graph database is successfully updated");
 
             return 0;
         }
@@ -179,7 +179,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
                 _logger.LogDebug("Checking for updated OpenAPI file {File}...", file);
                 if (file.Exists && file.LastWriteTime.Date == DateTime.Now.Date)
                 {
-                    _logger.LogInformation("File {File} already updated today", file);
+                    _logger.LogInformation("File {File} has already been updated today", file);
                     continue;
                 }
 
