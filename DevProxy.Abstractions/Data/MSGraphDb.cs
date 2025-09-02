@@ -23,6 +23,8 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
     // v1 refers to v1 of the db schema, not the graph version
     public static string MSGraphDbFilePath => Path.Combine(ProxyUtils.AppFolder!, "msgraph-openapi-v1.db");
 
+    private static string GetOpenApiSpecUrl(string version) => $"https://raw.githubusercontent.com/microsoftgraph/msgraph-metadata/master/openapi/{version}/openapi.yaml";
+
     public SqliteConnection Connection
     {
         get
@@ -177,7 +179,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
                     continue;
                 }
 
-                var url = $"https://raw.githubusercontent.com/microsoftgraph/msgraph-metadata/master/openapi/{version}/openapi.yaml";
+                var url = GetOpenApiSpecUrl(version);
                 _logger.LogInformation("Downloading OpenAPI file from {Url}...", url);
 
                 var response = await _httpClient.GetStringAsync(url, cancellationToken);
