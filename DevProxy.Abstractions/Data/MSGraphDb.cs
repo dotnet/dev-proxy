@@ -66,12 +66,18 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
                 return 1;
             }
 
-            var isApiModified = await UpdateOpenAPIGraphFilesIfNecessaryAsync(appFolder, cancellationToken);
+            var (isApiModified, errorCount) = await UpdateOpenAPIGraphFilesIfNecessaryAsync(appFolder, cancellationToken);
+
+            if (errorCount > 0)
+            {
+                _logger.LogWarning("Unable to generate Microsoft Graph database");
+                return 1;
+            }
 
             if (!isApiModified)
             {
                 UpdateLastWriteTime(dbFileInfo);
-                _logger.LogDebug("Updated the last-write-time of Microsoft Graph database {File}", dbFileInfo);
+                _logger.LogDebug("Updated the last-write-time attribute of Microsoft Graph database {File}", dbFileInfo);
                 _logger.LogInformation("Microsoft Graph database is already updated");
                 return 1;
             }
@@ -184,11 +190,12 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
         _logger.LogInformation("Inserted {EndpointCount} endpoints in the database", i);
     }
 
-    private async Task<bool> UpdateOpenAPIGraphFilesIfNecessaryAsync(string folder, CancellationToken cancellationToken)
+    private async Task<(bool isApiUpdated, int errors)> UpdateOpenAPIGraphFilesIfNecessaryAsync(string folder, CancellationToken cancellationToken)
     {
         _logger.LogInformation("Checking for updated OpenAPI files...");
 
         var isApiUpdated = false;
+        var errorCount = 0;
 
         foreach (var version in graphVersions)
         {
@@ -212,10 +219,11 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
             }
             catch (Exception ex)
             {
+                errorCount++;
                 _logger.LogError(ex, "Error updating OpenAPI files");
             }
         }
-        return isApiUpdated;
+        return (isApiUpdated, errorCount);
     }
 
     private async Task<bool> DownloadOpenAPIFileAsync(string url, FileInfo yamlFile, FileInfo etagFile, CancellationToken cancellationToken)
@@ -237,7 +245,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
         if (response.StatusCode == HttpStatusCode.NotModified)
         {
             UpdateLastWriteTime(yamlFile);
-            _logger.LogDebug("Updated the last-write-time of OpenAPI file {File}", yamlFile);
+            _logger.LogDebug("Updated the last-write-time attribute of OpenAPI file {File}", yamlFile);
             return false;
         }
 
