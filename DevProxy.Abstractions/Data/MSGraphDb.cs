@@ -7,6 +7,8 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using Microsoft.OpenApi.Readers;
+using System.Net;
+using System.Net.Http.Headers;
 
 namespace DevProxy.Abstractions.Data;
 
@@ -191,22 +193,21 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
         {
             try
             {
-                var file = new FileInfo(Path.Combine(folder, GetGraphOpenApiYamlFileName(version)));
-                _logger.LogDebug("Checking for updated OpenAPI file {File}...", file);
-                if (IsModifiedToday(file))
+                var yamlFile = new FileInfo(Path.Combine(folder, GetGraphOpenApiYamlFileName(version)));
+                _logger.LogDebug("Checking for updated OpenAPI file {File}...", yamlFile);
+                if (IsModifiedToday(yamlFile))
                 {
-                    _logger.LogInformation("File {File} has already been updated today", file);
+                    _logger.LogInformation("File {File} has already been updated today", yamlFile);
                     continue;
                 }
 
                 var url = GetOpenApiSpecUrl(version);
                 _logger.LogInformation("Downloading OpenAPI file from {Url}...", url);
 
-                await DownloadOpenAPIFileAsync(file, url, cancellationToken);
+                var etagFile = new FileInfo(Path.Combine(folder, GetGraphOpenApiEtagFileName(version)));
+                isApiUpdated |= await DownloadOpenAPIFileAsync(url, yamlFile, etagFile, cancellationToken);
 
-                _logger.LogDebug("Downloaded OpenAPI file from {Url} to {File}", url, file);
-
-                isApiUpdated = true;
+                _logger.LogDebug("Downloaded OpenAPI file from {Url} to {File}", url, yamlFile);
             }
             catch (Exception ex)
             {
@@ -216,10 +217,46 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
         return isApiUpdated;
     }
 
-    private async Task DownloadOpenAPIFileAsync(FileInfo file, string url, CancellationToken cancellationToken)
+    private async Task<bool> DownloadOpenAPIFileAsync(string url, FileInfo yamlFile, FileInfo etagFile, CancellationToken cancellationToken)
     {
-        var response = await _httpClient.GetStringAsync(url, cancellationToken);
-        await File.WriteAllTextAsync(file.FullName, response, cancellationToken);
+        var tag = string.Empty;
+        if (etagFile.Exists)
+        {
+            tag = await File.ReadAllTextAsync(etagFile.FullName, cancellationToken);
+        }
+
+        using var requestMessage = new HttpRequestMessage(HttpMethod.Get, url);
+        if (!string.IsNullOrWhiteSpace(tag))
+        {
+            requestMessage.Headers.IfNoneMatch.Add(new EntityTagHeaderValue(tag));
+        }
+
+        var response = await _httpClient.SendAsync(requestMessage, cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.NotModified)
+        {
+            UpdateLastWriteTime(yamlFile);
+            return false;
+        }
+
+        //save the new OpenAPI spec
+        var _ = response.EnsureSuccessStatusCode();
+        await using var contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        await using var fileStream = new FileStream(yamlFile.FullName,
+            new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write, Share = FileShare.None }
+        );
+        await contentStream.CopyToAsync(fileStream, cancellationToken);
+
+        if (response.Headers.ETag != null)
+        {
+            await File.WriteAllTextAsync(etagFile.FullName, response.Headers.ETag.Tag, cancellationToken);
+        }
+        else
+        {
+            etagFile.Delete();
+        }
+
+        return true;
     }
 
     private async Task LoadOpenAPIFilesAsync(string folder, CancellationToken cancellationToken)
