@@ -71,6 +71,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
             if (!isApiModified)
             {
                 UpdateLastWriteTime(dbFileInfo);
+                _logger.LogDebug("Updated the last-write-time of Microsoft Graph database {File}", dbFileInfo);
                 _logger.LogInformation("Microsoft Graph database is already updated");
                 return 1;
             }
@@ -236,6 +237,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
         if (response.StatusCode == HttpStatusCode.NotModified)
         {
             UpdateLastWriteTime(yamlFile);
+            _logger.LogDebug("Updated the last-write-time of OpenAPI file {File}", yamlFile);
             return false;
         }
 
