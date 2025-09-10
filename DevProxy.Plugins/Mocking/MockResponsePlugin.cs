@@ -374,6 +374,8 @@ public class MockResponsePlugin(
             ProxyUtils.MergeHeaders(headers, rateLimitingHeaders);
         }
 
+        ReplacePlaceholders(matchingResponse.Response, e.Session.HttpClient.Request, Logger);
+
         if (matchingResponse.Response?.Body is not null)
         {
             var bodyString = JsonSerializer.Serialize(matchingResponse.Response.Body, ProxyUtils.JsonSerializerOptions) as string;
@@ -513,5 +515,210 @@ public class MockResponsePlugin(
         }
 
         return request.BodyString.Contains(mockResponse.Request.BodyFragment, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void ReplacePlaceholders(MockResponseResponse? response, Request request, ILogger logger)
+    {
+        logger.LogTrace("{Method} called", nameof(ReplacePlaceholders));
+
+        if (response is null ||
+            response.Body is null || request.BodyString is null)
+        {
+            logger.LogTrace("Body is empty. Skipping replacing placeholders");
+            return;
+        }
+
+        try
+        {
+            var requestBody = JsonSerializer.Deserialize<JsonElement>(request.BodyString, ProxyUtils.JsonSerializerOptions);
+
+            response.Body = ReplacePlaceholdersInObject(response.Body, requestBody, logger);
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to parse request body as JSON");
+            logger.LogWarning("Failed to parse request body as JSON. Placeholders in the mock response won't be replaced.");
+        }
+
+        logger.LogTrace("Left {Method}", nameof(ReplacePlaceholders));
+    }
+
+    private static object? ReplacePlaceholdersInObject(object? obj, JsonElement requestBody, ILogger logger)
+    {
+        logger.LogTrace("{Method} called", nameof(ReplacePlaceholdersInObject));
+
+        if (obj is null)
+        {
+            return null;
+        }
+
+        // Handle JsonElement (which is what we get from System.Text.Json)
+        if (obj is JsonElement element)
+        {
+            return ReplacePlaceholdersInJsonElement(element, requestBody, logger);
+        }
+
+        // Handle string values - check for placeholders
+        if (obj is string strValue)
+        {
+            return ReplacePlaceholderInString(strValue, requestBody, logger);
+        }
+
+        // For other types, convert to JsonElement and process
+        var json = JsonSerializer.Serialize(obj);
+        var jsonElement = JsonSerializer.Deserialize<JsonElement>(json);
+        return ReplacePlaceholdersInJsonElement(jsonElement, requestBody, logger);
+    }
+
+    private static object? ReplacePlaceholdersInJsonElement(JsonElement element, JsonElement requestBody, ILogger logger)
+    {
+        logger.LogTrace("{Method} called", nameof(ReplacePlaceholdersInJsonElement));
+
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                var resultObj = new Dictionary<string, object?>();
+                foreach (var property in element.EnumerateObject())
+                {
+                    resultObj[property.Name] = ReplacePlaceholdersInJsonElement(property.Value, requestBody, logger);
+                }
+                return resultObj;
+
+            case JsonValueKind.Array:
+                var resultArray = new List<object?>();
+                foreach (var item in element.EnumerateArray())
+                {
+                    resultArray.Add(ReplacePlaceholdersInJsonElement(item, requestBody, logger));
+                }
+                return resultArray;
+            case JsonValueKind.String:
+                return ReplacePlaceholderInString(element.GetString() ?? "", requestBody, logger);
+            case JsonValueKind.Number:
+                return GetSafeNumber(element, logger);
+            case JsonValueKind.True:
+                return true;
+            case JsonValueKind.False:
+                return false;
+            case JsonValueKind.Null:
+            case JsonValueKind.Undefined:
+                return null;
+            default:
+                return element.ToString();
+        }
+    }
+
+#pragma warning disable CA1859
+    // CA1859: This method must return object? because it may return different concrete types (string, int, bool, etc.) based on the JSON content.
+    private static object? ReplacePlaceholderInString(string value, JsonElement requestBody, ILogger logger)
+#pragma warning restore CA1859
+    {
+        logger.LogTrace("{Method} called", nameof(ReplacePlaceholderInString));
+
+        logger.LogDebug("Processing value: {Value}", value);
+
+        // Check if the value starts with @request.body.
+        if (!value.StartsWith("@request.body.", StringComparison.OrdinalIgnoreCase))
+        {
+            logger.LogDebug("Value {Value} does not start with @request.body. Skipping", value);
+            return value;
+        }
+
+        // Extract the property path after @request.body.
+        var propertyPath = value["@request.body.".Length..];
+
+        logger.LogDebug("Extracted property path: {PropertyPath}", propertyPath);
+
+        return GetValueFromRequestBody(requestBody, propertyPath, logger);
+    }
+
+    private static object? GetValueFromRequestBody(JsonElement requestBody, string propertyPath, ILogger logger)
+    {
+        logger.LogTrace("{Method} called", nameof(GetValueFromRequestBody));
+
+        logger.LogDebug("Getting value for {PropertyPath}", propertyPath);
+
+        try
+        {
+            // Split the property path by dots to handle nested properties
+            var propertyNames = propertyPath.Split('.');
+            return GetNestedValueFromJsonElement(requestBody, propertyNames, logger);
+        }
+        catch (Exception ex)
+        {
+            // If we can't get the property, return null
+            logger.LogDebug(ex, "Failed to get value for {PropertyPath}. Returning null", propertyPath);
+        }
+
+        return null;
+    }
+
+    private static object? GetNestedValueFromJsonElement(JsonElement element, string[] propertyNames, ILogger logger)
+    {
+        logger.LogTrace("{Method} called", nameof(GetNestedValueFromJsonElement));
+
+        var current = element;
+
+        // Navigate through the nested properties
+        foreach (var propertyName in propertyNames)
+        {
+            if (current.ValueKind != JsonValueKind.Object)
+            {
+                logger.LogDebug("Current JSON element is not an object. Cannot navigate to property {PropertyName}", propertyName);
+                return null; // Can't navigate further if current element is not an object
+            }
+
+            if (!current.TryGetProperty(propertyName, out current))
+            {
+                logger.LogDebug("Property {PropertyName} not found in JSON. Returning null", propertyName);
+                return null; // Property not found
+            }
+        }
+
+        return ConvertJsonElementToObject(current, logger);
+    }
+
+    private static object? ConvertJsonElementToObject(JsonElement element, ILogger logger)
+    {
+        logger.LogTrace("{Method} called", nameof(ConvertJsonElementToObject));
+
+        return element.ValueKind switch
+        {
+            JsonValueKind.String => element.GetString(),
+            JsonValueKind.Number => GetSafeNumber(element, logger),
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Null or JsonValueKind.Undefined => null,
+            // For complex objects/arrays, return the JsonElement itself
+            // which can be serialized later
+            JsonValueKind.Object or JsonValueKind.Array => element,
+            _ => element.ToString(),
+        };
+    }
+
+    // Attempts to safely extract a number from a JsonElement, falling back to double or string if necessary
+    private static object? GetSafeNumber(JsonElement element, ILogger logger)
+    {
+        logger.LogTrace("{Method} called", nameof(GetSafeNumber));
+
+        // Try to get as int
+        if (element.TryGetInt32(out var intValue))
+        {
+            return intValue;
+        }
+        if (element.TryGetInt64(out var longValue))
+        {
+            return longValue;
+        }
+        if (element.TryGetDecimal(out var decimalValue))
+        {
+            return decimalValue;
+        }
+        if (element.TryGetDouble(out var doubleValue))
+        {
+            return doubleValue;
+        }
+
+        // Fallback: return as string to avoid exceptions
+        return element.GetRawText();
     }
 }
