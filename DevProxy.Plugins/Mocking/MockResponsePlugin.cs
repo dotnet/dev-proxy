@@ -530,7 +530,7 @@ public class MockResponsePlugin(
 
         try
         {
-            var requestBody = JsonSerializer.Deserialize<dynamic>(request.BodyString, ProxyUtils.JsonSerializerOptions);
+            var requestBody = JsonSerializer.Deserialize<JsonElement>(request.BodyString, ProxyUtils.JsonSerializerOptions);
 
             response.Body = ReplacePlaceholdersInObject(response.Body, requestBody, logger);
         }
@@ -543,7 +543,7 @@ public class MockResponsePlugin(
         logger.LogTrace("Left {Method}", nameof(ReplacePlaceholders));
     }
 
-    private static object? ReplacePlaceholdersInObject(object? obj, dynamic requestBody, ILogger logger)
+    private static object? ReplacePlaceholdersInObject(object? obj, JsonElement requestBody, ILogger logger)
     {
         logger.LogTrace("{Method} called", nameof(ReplacePlaceholdersInObject));
 
@@ -570,7 +570,7 @@ public class MockResponsePlugin(
         return ReplacePlaceholdersInJsonElement(jsonElement, requestBody, logger);
     }
 
-    private static object? ReplacePlaceholdersInJsonElement(JsonElement element, dynamic requestBody, ILogger logger)
+    private static object? ReplacePlaceholdersInJsonElement(JsonElement element, JsonElement requestBody, ILogger logger)
     {
         logger.LogTrace("{Method} called", nameof(ReplacePlaceholdersInJsonElement));
 
@@ -594,7 +594,7 @@ public class MockResponsePlugin(
             case JsonValueKind.String:
                 return ReplacePlaceholderInString(element.GetString() ?? "", requestBody, logger);
             case JsonValueKind.Number:
-                return element.GetDecimal();
+                return GetSafeNumber(element, logger);
             case JsonValueKind.True:
                 return true;
             case JsonValueKind.False:
@@ -608,7 +608,7 @@ public class MockResponsePlugin(
     }
 
 #pragma warning disable CA1859 // Return type must be object because we can return any type from the request
-    private static object? ReplacePlaceholderInString(string value, dynamic requestBody, ILogger logger)
+    private static object? ReplacePlaceholderInString(string value, JsonElement requestBody, ILogger logger)
 #pragma warning restore CA1859
     {
         logger.LogTrace("{Method} called", nameof(ReplacePlaceholderInString));
@@ -630,7 +630,7 @@ public class MockResponsePlugin(
         return GetValueFromRequestBody(requestBody, propertyPath, logger);
     }
 
-    private static object? GetValueFromRequestBody(dynamic requestBody, string propertyPath, ILogger logger)
+    private static object? GetValueFromRequestBody(JsonElement requestBody, string propertyPath, ILogger logger)
     {
         logger.LogTrace("{Method} called", nameof(GetValueFromRequestBody));
 
@@ -657,6 +657,7 @@ public class MockResponsePlugin(
         catch
         {
             // If we can't get the property, return null
+            logger.LogDebug("Failed to get value for {PropertyPath}. Returning null", propertyPath);
         }
 
         return null;
@@ -694,7 +695,7 @@ public class MockResponsePlugin(
         return element.ValueKind switch
         {
             JsonValueKind.String => element.GetString(),
-            JsonValueKind.Number => element.GetDecimal(),
+            JsonValueKind.Number => GetSafeNumber(element, logger),
             JsonValueKind.True => true,
             JsonValueKind.False => false,
             JsonValueKind.Null or JsonValueKind.Undefined => null,
@@ -703,5 +704,32 @@ public class MockResponsePlugin(
             JsonValueKind.Object or JsonValueKind.Array => element,
             _ => element.ToString(),
         };
+    }
+
+    // Attempts to safely extract a number from a JsonElement, falling back to double or string if necessary
+    private static object? GetSafeNumber(JsonElement element, ILogger logger)
+    {
+        logger.LogTrace("{Method} called", nameof(GetSafeNumber));
+
+        // Try to get as int
+        if (element.TryGetInt32(out var intValue))
+        {
+            return intValue;
+        }
+        if (element.TryGetInt64(out var longValue))
+        {
+            return longValue;
+        }
+        if (element.TryGetDecimal(out var decimalValue))
+        {
+            return decimalValue;
+        }
+        if (element.TryGetDouble(out var doubleValue))
+        {
+            return doubleValue;
+        }
+
+        // Fallback: return as string to avoid exceptions
+        return element.GetRawText();
     }
 }
