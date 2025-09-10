@@ -250,7 +250,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
         }
 
         // Save the new OpenAPI spec.
-        var _ = response.EnsureSuccessStatusCode();
+        _ = response.EnsureSuccessStatusCode();
         await using var contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
         await using var fileStream = new FileStream(yamlFile.FullName,
             new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write, Share = FileShare.None });
