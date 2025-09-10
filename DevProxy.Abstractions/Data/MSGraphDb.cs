@@ -253,8 +253,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
         var _ = response.EnsureSuccessStatusCode();
         await using var contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
         await using var fileStream = new FileStream(yamlFile.FullName,
-            new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write, Share = FileShare.None }
-        );
+            new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write, Share = FileShare.None });
         await contentStream.CopyToAsync(fileStream, cancellationToken);
 
         if (response.Headers.ETag != null)
