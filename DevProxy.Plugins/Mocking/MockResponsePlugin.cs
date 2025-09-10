@@ -607,7 +607,8 @@ public class MockResponsePlugin(
         }
     }
 
-#pragma warning disable CA1859 // Return type must be object because we can return any type from the request
+#pragma warning disable CA1859
+    // CA1859: This method must return object? because it may return different concrete types (string, int, bool, etc.) based on the JSON content.
     private static object? ReplacePlaceholderInString(string value, JsonElement requestBody, ILogger logger)
 #pragma warning restore CA1859
     {
@@ -640,24 +641,12 @@ public class MockResponsePlugin(
         {
             // Split the property path by dots to handle nested properties
             var propertyNames = propertyPath.Split('.');
-
-            // Handle JsonElement
-            if (requestBody is JsonElement element)
-            {
-                return GetNestedValueFromJsonElement(element, propertyNames, logger);
-            }
-            else
-            {
-                // Handle other dynamic types by converting to JsonElement
-                var json = JsonSerializer.Serialize(requestBody);
-                var jsonElement = JsonSerializer.Deserialize<JsonElement>(json);
-                return GetNestedValueFromJsonElement(jsonElement, propertyNames, logger);
-            }
+            return GetNestedValueFromJsonElement(requestBody, propertyNames, logger);
         }
-        catch
+        catch (Exception ex)
         {
             // If we can't get the property, return null
-            logger.LogDebug("Failed to get value for {PropertyPath}. Returning null", propertyPath);
+            logger.LogDebug(ex, "Failed to get value for {PropertyPath}. Returning null", propertyPath);
         }
 
         return null;
