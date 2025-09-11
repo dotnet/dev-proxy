@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy MinimalPermissionsPlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "The JSON schema reference for validation."
+    },
+    "apiSpecsFolderPath": {
+      "type": "string",
+      "description": "Relative or absolute path to the folder with API specs. Used to determine minimal permissions required for API calls."
+    }
+  },
+  "required": [
+    "apiSpecsFolderPath"
+  ],
+  "additionalProperties": false
+}
