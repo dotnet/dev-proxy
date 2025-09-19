@@ -93,7 +93,7 @@ public sealed class MinimalPermissionsPlugin(
 
         foreach (var (apiSpec, requests) in requestsByApiSpec)
         {
-            var minimalPermissions = apiSpec.CheckMinimalPermissions(requests, Logger);
+            var minimalPermissions = apiSpec.CheckMinimalPermissions(requests, Logger, Configuration.SchemeName);
 
             var result = new MinimalPermissionsPluginReportApiResult
             {
