@@ -17,6 +17,7 @@ namespace DevProxy.Plugins.Reporting;
 public sealed class MinimalPermissionsPluginConfiguration
 {
     public string? ApiSpecsFolderPath { get; set; }
+    public string? SchemeName { get; set; }
 }
 
 public sealed class MinimalPermissionsPlugin(
