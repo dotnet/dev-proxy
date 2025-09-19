@@ -133,7 +133,15 @@ public sealed class MinimalPermissionsPlugin(
                 );
             }
 
-            Logger.LogInformation("Minimal permissions: {MinimalScopes}", string.Join(", ", result.MinimalPermissions));
+            if (string.IsNullOrWhiteSpace(Configuration.SchemeName))
+            {
+                Logger.LogInformation("Minimal permissions: {MinimalScopes}", string.Join(", ", result.MinimalPermissions));
+            }
+            else
+            {
+                Logger.LogInformation("Minimal permissions of '{SchemeName}' scheme: {MinimalScopes}",
+                    Configuration.SchemeName, string.Join(", ", result.MinimalPermissions));
+            }
         }
 
         var report = new MinimalPermissionsPluginReport()
