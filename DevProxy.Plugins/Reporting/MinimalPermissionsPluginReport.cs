@@ -15,6 +15,7 @@ public sealed class MinimalPermissionsPluginReportApiResult
     public required IEnumerable<string> MinimalPermissions { get; init; }
     public required IEnumerable<string> Requests { get; init; }
     public required IEnumerable<string> TokenPermissions { get; init; }
+    public string? SchemeName { get; init; }
 }
 
 public sealed class MinimalPermissionsPluginReport : IMarkdownReport, IPlainTextReport
@@ -26,7 +27,7 @@ public sealed class MinimalPermissionsPluginReport : IMarkdownReport, IPlainText
     public string? ToMarkdown()
     {
         var sb = new StringBuilder();
-        _ = sb.AppendLine($"# Minimal permissions report");
+        _ = sb.AppendLine("# Minimal permissions report");
 
         foreach (var apiResult in Results)
         {
@@ -36,9 +37,18 @@ public sealed class MinimalPermissionsPluginReport : IMarkdownReport, IPlainText
                 .AppendLine("### Requests")
                 .AppendLine()
                 .AppendJoin(Environment.NewLine, apiResult.Requests.Select(r => $"- {r}"))
-                .AppendLine()
+                .AppendLine();
 
-                .AppendLine()
+            if (!string.IsNullOrWhiteSpace(apiResult.SchemeName))
+            {
+                _ = sb.AppendLine()
+                    .AppendLine("### Scheme definition name")
+                    .AppendLine()
+                    .AppendLine(CultureInfo.InvariantCulture, $"- {apiResult.SchemeName}")
+                    .AppendLine();
+            }
+
+            _ = sb.AppendLine()
                 .AppendLine("### Minimal permissions")
                 .AppendLine()
                 .AppendJoin(Environment.NewLine, apiResult.MinimalPermissions.Select(p => $"- {p}"))
@@ -65,7 +75,7 @@ public sealed class MinimalPermissionsPluginReport : IMarkdownReport, IPlainText
     {
         var sb = new StringBuilder();
 
-        _ = sb.AppendLine($"Minimal permissions report");
+        _ = sb.AppendLine("Minimal permissions report");
 
         foreach (var apiResult in Results)
         {
@@ -75,8 +85,18 @@ public sealed class MinimalPermissionsPluginReport : IMarkdownReport, IPlainText
                 .AppendLine("Requests:")
                 .AppendLine()
                 .AppendJoin(Environment.NewLine, apiResult.Requests.Select(r => $"- {r}"))
-                .AppendLine()
-                .AppendLine()
+                .AppendLine();
+
+            if (!string.IsNullOrWhiteSpace(apiResult.SchemeName))
+            {
+                _ = sb.AppendLine()
+                    .AppendLine("Scheme definition name:")
+                    .AppendLine()
+                    .AppendLine(CultureInfo.InvariantCulture, $"- {apiResult.SchemeName}")
+                    .AppendLine();
+            }
+
+            _ = sb.AppendLine()
                 .AppendLine("Minimal permissions:")
                 .AppendLine()
                 .AppendJoin(Environment.NewLine, apiResult.MinimalPermissions.Select(p => $"- {p}"));

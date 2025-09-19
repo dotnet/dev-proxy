@@ -103,7 +103,8 @@ public sealed class MinimalPermissionsPlugin(
                     .Select(o => $"{o.Method} {o.OriginalUrl}")
                     .Distinct()],
                 TokenPermissions = [.. minimalPermissions.TokenPermissions.Distinct()],
-                MinimalPermissions = minimalPermissions.MinimalScopes
+                MinimalPermissions = minimalPermissions.MinimalScopes,
+                SchemeName = Configuration.SchemeName
             };
             results.Add(result);
 
@@ -148,7 +149,7 @@ public sealed class MinimalPermissionsPlugin(
         {
             Results = [.. results],
             UnmatchedRequests = [.. unmatchedRequests],
-            Errors = [.. errors]
+            Errors = [.. errors],
         };
 
         StoreReport(report, e);
