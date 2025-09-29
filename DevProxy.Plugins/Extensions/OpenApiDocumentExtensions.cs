@@ -192,7 +192,7 @@ static class OpenApiDocumentExtensions
             }
             else
             {
-                logger.LogDebug("No OAuth2 scheme '{SchemeName}' found in OpenAPI document", schemeName);
+                logger.LogDebug("No OAuth2 '{SchemeName}' scheme found in OpenAPI document", schemeName);
             }
             return [];
         }
