@@ -162,7 +162,10 @@ jobs:
         run: cp ./${{ steps.installer.outputs.filename }} ./${{ env.release }}
       - name: Build Installer
         if: contains(matrix.architecture, 'win-')
-        run: ISCC.exe ${{ steps.installer.outputs.filename }} /F"dev-proxy-installer-${{ matrix.architecture }}-${{ github.ref_name }}" 
+        run: |
+          winget install --id JRSoftware.InnoSetup -e -s winget
+          $env:path += ";$env:LOCALAPPDATA/Programs/Inno Setup 6"
+          ISCC.exe ${{ steps.installer.outputs.filename }} /F"dev-proxy-installer-${{ matrix.architecture }}-${{ github.ref_name }}" 
         working-directory: ./${{ env.release }}
       - name: Sign installer
         if: contains(matrix.architecture, 'win-')
