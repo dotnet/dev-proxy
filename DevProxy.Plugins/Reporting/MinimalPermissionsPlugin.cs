@@ -149,7 +149,7 @@ public sealed class MinimalPermissionsPlugin(
         {
             Results = [.. results],
             UnmatchedRequests = [.. unmatchedRequests],
-            Errors = [.. errors],
+            Errors = [.. errors]
         };
 
         StoreReport(report, e);
