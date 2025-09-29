@@ -188,11 +188,11 @@ static class OpenApiDocumentExtensions
         {
             if (string.IsNullOrWhiteSpace(schemeName))
             {
-                logger.LogDebug("No OAuth2 scheme '{SchemeName}' found in OpenAPI document", schemeName);
+                logger.LogDebug("No OAuth2 schemes found in OpenAPI document");
             }
             else
             {
-                logger.LogDebug("No OAuth2 schemes found in OpenAPI document");
+                logger.LogDebug("No OAuth2 scheme '{SchemeName}' found in OpenAPI document", schemeName);
             }
             return [];
         }
