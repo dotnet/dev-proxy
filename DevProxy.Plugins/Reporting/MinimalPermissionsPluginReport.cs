@@ -39,17 +39,10 @@ public sealed class MinimalPermissionsPluginReport : IMarkdownReport, IPlainText
                 .AppendJoin(Environment.NewLine, apiResult.Requests.Select(r => $"- {r}"))
                 .AppendLine();
 
-            if (!string.IsNullOrWhiteSpace(apiResult.SchemeName))
-            {
-                _ = sb.AppendLine()
-                    .AppendLine("### Scheme definition name")
-                    .AppendLine()
-                    .AppendLine(CultureInfo.InvariantCulture, $"- {apiResult.SchemeName}")
-                    .AppendLine();
-            }
-
+            var permissionsHeader = "### Minimal permissions" + (string.IsNullOrWhiteSpace(apiResult.SchemeName)
+                ? "" : $" for {apiResult.SchemeName} scheme");
             _ = sb.AppendLine()
-                .AppendLine("### Minimal permissions")
+                .AppendLine(permissionsHeader)
                 .AppendLine()
                 .AppendJoin(Environment.NewLine, apiResult.MinimalPermissions.Select(p => $"- {p}"))
                 .AppendLine();
@@ -87,17 +80,10 @@ public sealed class MinimalPermissionsPluginReport : IMarkdownReport, IPlainText
                 .AppendJoin(Environment.NewLine, apiResult.Requests.Select(r => $"- {r}"))
                 .AppendLine();
 
-            if (!string.IsNullOrWhiteSpace(apiResult.SchemeName))
-            {
-                _ = sb.AppendLine()
-                    .AppendLine("Scheme definition name:")
-                    .AppendLine()
-                    .AppendLine(CultureInfo.InvariantCulture, $"- {apiResult.SchemeName}")
-                    .AppendLine();
-            }
-
+            var permissionsHeader = "Minimal permissions" + (string.IsNullOrWhiteSpace(apiResult.SchemeName)
+                ? "" : $" for {apiResult.SchemeName} scheme") + ":";
             _ = sb.AppendLine()
-                .AppendLine("Minimal permissions:")
+                .AppendLine(permissionsHeader)
                 .AppendLine()
                 .AppendJoin(Environment.NewLine, apiResult.MinimalPermissions.Select(p => $"- {p}"));
         }
