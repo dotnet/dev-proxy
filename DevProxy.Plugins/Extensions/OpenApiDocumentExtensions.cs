@@ -225,12 +225,8 @@ static class OpenApiDocumentExtensions
     public static OpenApiSecurityScheme[] GetOAuth2Schemes(this OpenApiDocument openApiDocument, string? schemeName)
     {
         var schemes = openApiDocument.Components.SecuritySchemes
-            .Where(s => s.Value.Type == SecuritySchemeType.OAuth2);
-
-        if (!string.IsNullOrWhiteSpace(schemeName))
-        {
-            schemes = schemes.Where(s => string.Equals(schemeName, s.Key, StringComparison.Ordinal));
-        }
+            .Where(s => s.Value.Type == SecuritySchemeType.OAuth2
+                && (string.IsNullOrWhiteSpace(schemeName) || string.Equals(schemeName, s.Key, StringComparison.Ordinal)));
 
         return [.. schemes.Select(s => s.Value)];
     }
