@@ -113,13 +113,18 @@ sealed class DevProxyConfigOptions : RootCommand
                 }
             }
         };
+        var discoverOption = new Option<bool>(DevProxyCommand.DiscoverOptionName, "--discover")
+        {
+            Arity = ArgumentArity.Zero
+        };
 
         var options = new List<Option>
         {
             ipAddressOption,
             configFileOption,
             urlsToWatchOption,
-            logLevelOption
+            logLevelOption,
+            discoverOption
         };
         this.AddOptions(options.OrderByName());
     }
