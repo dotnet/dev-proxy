@@ -15,12 +15,8 @@ namespace Microsoft.OpenApi.Models;
 
 static class OpenApiDocumentExtensions
 {
-    public static ApiPermissionsInfo CheckMinimalPermissions(this OpenApiDocument openApiDocument, IEnumerable<RequestLog> requests, ILogger logger)
-    {
-        return CheckMinimalPermissions(openApiDocument, requests, logger, null);
-    }
-
-    public static ApiPermissionsInfo CheckMinimalPermissions(this OpenApiDocument openApiDocument, IEnumerable<RequestLog> requests, ILogger logger, string? schemeName)
+    public static ApiPermissionsInfo CheckMinimalPermissions(this OpenApiDocument openApiDocument, IEnumerable<RequestLog> requests,
+        ILogger logger, string? schemeName = default)
     {
         logger.LogInformation("Checking minimal permissions for API {ApiName}...", openApiDocument.Servers.First().Url);
 
