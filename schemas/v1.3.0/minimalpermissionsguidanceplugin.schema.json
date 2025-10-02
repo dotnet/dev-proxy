@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy MinimalPermissionsGuidancePlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "The JSON schema reference for validation."
+    },
+    "apiSpecsFolderPath": {
+      "type": "string",
+      "description": "Relative or absolute path to the folder with API specs. Used to compare JWT token permissions against minimal required scopes."
+    },
+    "permissionsToExclude": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The scopes to ignore and not include in the report. Default: ['profile', 'openid', 'offline_access', 'email'].",
+      "default": ["profile", "openid", "offline_access", "email"]
+    }
+  },
+  "required": [
+    "apiSpecsFolderPath"
+  ],
+  "additionalProperties": false
+}
