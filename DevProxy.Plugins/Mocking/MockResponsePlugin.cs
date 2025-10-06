@@ -522,7 +522,7 @@ public class MockResponsePlugin(
         logger.LogTrace("{Method} called", nameof(ReplacePlaceholders));
 
         if (response is null ||
-            response.Body is null || request.BodyString is null)
+            response.Body is null || !request.HasBody)
         {
             logger.LogTrace("Body is empty. Skipping replacing placeholders");
             return;
