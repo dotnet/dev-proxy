@@ -15,7 +15,8 @@ namespace Microsoft.OpenApi.Models;
 
 static class OpenApiDocumentExtensions
 {
-    public static ApiPermissionsInfo CheckMinimalPermissions(this OpenApiDocument openApiDocument, IEnumerable<RequestLog> requests, ILogger logger)
+    public static ApiPermissionsInfo CheckMinimalPermissions(this OpenApiDocument openApiDocument, IEnumerable<RequestLog> requests,
+        ILogger logger, string? schemeName = default)
     {
         logger.LogInformation("Checking minimal permissions for API {ApiName}...", openApiDocument.Servers.First().Url);
 
@@ -78,7 +79,7 @@ static class OpenApiDocumentExtensions
                 continue;
             }
 
-            var scopes = operation.GetEffectiveScopes(openApiDocument, logger);
+            var scopes = operation.GetEffectiveScopes(openApiDocument, logger, schemeName);
             if (scopes.Length != 0)
             {
                 operationsAndScopes[$"{method} {pathItem.Value.Key}"] = scopes;
@@ -176,12 +177,19 @@ static class OpenApiDocumentExtensions
         return null;
     }
 
-    public static string[] GetEffectiveScopes(this OpenApiOperation operation, OpenApiDocument openApiDocument, ILogger logger)
+    public static string[] GetEffectiveScopes(this OpenApiOperation operation, OpenApiDocument openApiDocument, ILogger logger, string? schemeName)
     {
-        var oauth2Scheme = openApiDocument.GetOAuth2Schemes().FirstOrDefault();
+        var oauth2Scheme = openApiDocument.GetOAuth2Schemes(schemeName).FirstOrDefault();
         if (oauth2Scheme is null)
         {
-            logger.LogDebug("No OAuth2 schemes found in OpenAPI document");
+            if (string.IsNullOrWhiteSpace(schemeName))
+            {
+                logger.LogDebug("No OAuth2 schemes found in OpenAPI document");
+            }
+            else
+            {
+                logger.LogDebug("No OAuth2 '{SchemeName}' scheme found in OpenAPI document", schemeName);
+            }
             return [];
         }
 
@@ -210,11 +218,13 @@ static class OpenApiDocumentExtensions
         return [];
     }
 
-    public static OpenApiSecurityScheme[] GetOAuth2Schemes(this OpenApiDocument openApiDocument)
+    public static OpenApiSecurityScheme[] GetOAuth2Schemes(this OpenApiDocument openApiDocument, string? schemeName)
     {
-        return [.. openApiDocument.Components.SecuritySchemes
-            .Where(s => s.Value.Type == SecuritySchemeType.OAuth2)
-            .Select(s => s.Value)];
+        var schemes = openApiDocument.Components.SecuritySchemes
+            .Where(s => s.Value.Type == SecuritySchemeType.OAuth2
+                && (string.IsNullOrWhiteSpace(schemeName) || string.Equals(schemeName, s.Key, StringComparison.Ordinal)));
+
+        return [.. schemes.Select(s => s.Value)];
     }
 
     private static bool UrlMatchesServerUrl(string absoluteUrl, string serverUrl)

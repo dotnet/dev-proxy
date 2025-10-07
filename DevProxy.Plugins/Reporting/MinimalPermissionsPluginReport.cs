@@ -15,6 +15,7 @@ public sealed class MinimalPermissionsPluginReportApiResult
     public required IEnumerable<string> MinimalPermissions { get; init; }
     public required IEnumerable<string> Requests { get; init; }
     public required IEnumerable<string> TokenPermissions { get; init; }
+    public string? SchemeName { get; init; }
 }
 
 public sealed class MinimalPermissionsPluginReport : IMarkdownReport, IPlainTextReport
@@ -26,7 +27,7 @@ public sealed class MinimalPermissionsPluginReport : IMarkdownReport, IPlainText
     public string? ToMarkdown()
     {
         var sb = new StringBuilder();
-        _ = sb.AppendLine($"# Minimal permissions report");
+        _ = sb.AppendLine("# Minimal permissions report");
 
         foreach (var apiResult in Results)
         {
@@ -36,10 +37,12 @@ public sealed class MinimalPermissionsPluginReport : IMarkdownReport, IPlainText
                 .AppendLine("### Requests")
                 .AppendLine()
                 .AppendJoin(Environment.NewLine, apiResult.Requests.Select(r => $"- {r}"))
-                .AppendLine()
+                .AppendLine();
 
-                .AppendLine()
-                .AppendLine("### Minimal permissions")
+            var permissionsHeader = "### Minimal permissions" + (string.IsNullOrWhiteSpace(apiResult.SchemeName)
+                ? "" : $" for {apiResult.SchemeName} scheme");
+            _ = sb.AppendLine()
+                .AppendLine(permissionsHeader)
                 .AppendLine()
                 .AppendJoin(Environment.NewLine, apiResult.MinimalPermissions.Select(p => $"- {p}"))
                 .AppendLine();
@@ -65,7 +68,7 @@ public sealed class MinimalPermissionsPluginReport : IMarkdownReport, IPlainText
     {
         var sb = new StringBuilder();
 
-        _ = sb.AppendLine($"Minimal permissions report");
+        _ = sb.AppendLine("Minimal permissions report");
 
         foreach (var apiResult in Results)
         {
@@ -75,9 +78,12 @@ public sealed class MinimalPermissionsPluginReport : IMarkdownReport, IPlainText
                 .AppendLine("Requests:")
                 .AppendLine()
                 .AppendJoin(Environment.NewLine, apiResult.Requests.Select(r => $"- {r}"))
-                .AppendLine()
-                .AppendLine()
-                .AppendLine("Minimal permissions:")
+                .AppendLine();
+
+            var permissionsHeader = "Minimal permissions" + (string.IsNullOrWhiteSpace(apiResult.SchemeName)
+                ? "" : $" for {apiResult.SchemeName} scheme") + ":";
+            _ = sb.AppendLine()
+                .AppendLine(permissionsHeader)
                 .AppendLine()
                 .AppendJoin(Environment.NewLine, apiResult.MinimalPermissions.Select(p => $"- {p}"));
         }

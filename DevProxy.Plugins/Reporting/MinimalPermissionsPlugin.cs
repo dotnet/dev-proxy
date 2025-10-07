@@ -17,6 +17,7 @@ namespace DevProxy.Plugins.Reporting;
 public sealed class MinimalPermissionsPluginConfiguration
 {
     public string? ApiSpecsFolderPath { get; set; }
+    public string? SchemeName { get; set; }
 }
 
 public sealed class MinimalPermissionsPlugin(
@@ -92,7 +93,7 @@ public sealed class MinimalPermissionsPlugin(
 
         foreach (var (apiSpec, requests) in requestsByApiSpec)
         {
-            var minimalPermissions = apiSpec.CheckMinimalPermissions(requests, Logger);
+            var minimalPermissions = apiSpec.CheckMinimalPermissions(requests, Logger, Configuration.SchemeName);
 
             var result = new MinimalPermissionsPluginReportApiResult
             {
@@ -102,7 +103,8 @@ public sealed class MinimalPermissionsPlugin(
                     .Select(o => $"{o.Method} {o.OriginalUrl}")
                     .Distinct()],
                 TokenPermissions = [.. minimalPermissions.TokenPermissions.Distinct()],
-                MinimalPermissions = minimalPermissions.MinimalScopes
+                MinimalPermissions = minimalPermissions.MinimalScopes,
+                SchemeName = Configuration.SchemeName
             };
             results.Add(result);
 
@@ -132,7 +134,15 @@ public sealed class MinimalPermissionsPlugin(
                 );
             }
 
-            Logger.LogInformation("Minimal permissions: {MinimalScopes}", string.Join(", ", result.MinimalPermissions));
+            if (string.IsNullOrWhiteSpace(Configuration.SchemeName))
+            {
+                Logger.LogInformation("Minimal permissions: {MinimalScopes}", string.Join(", ", result.MinimalPermissions));
+            }
+            else
+            {
+                Logger.LogInformation("Minimal permissions of '{SchemeName}' scheme: {MinimalScopes}",
+                    Configuration.SchemeName, string.Join(", ", result.MinimalPermissions));
+            }
         }
 
         var report = new MinimalPermissionsPluginReport()
