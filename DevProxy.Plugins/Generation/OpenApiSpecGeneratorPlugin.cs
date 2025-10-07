@@ -742,7 +742,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
             SpecFormat.Yaml => "yaml",
             _ => "json"
         };
-        var fileName = $"{uri.Host}-{DateTime.Now:yyyyMMddHHmmss}.{ext}";
+        var fileName = $"{uri.Host}-{uri.Port}-{DateTime.Now:yyyyMMddHHmmss}.{ext}";
         return fileName;
     }
 
