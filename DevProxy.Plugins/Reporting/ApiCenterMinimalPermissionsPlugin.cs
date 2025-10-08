@@ -22,6 +22,7 @@ public sealed class ApiCenterMinimalPermissionsPluginConfiguration
     public string ServiceName { get; set; } = "";
     public string SubscriptionId { get; set; } = "";
     public string WorkspaceName { get; set; } = "default";
+    public string? SchemeName { get; set; }
 }
 
 public sealed class ApiCenterMinimalPermissionsPlugin(
