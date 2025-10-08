@@ -209,7 +209,7 @@ public sealed class ApiCenterMinimalPermissionsPlugin(
     {
         Logger.LogInformation("Checking minimal permissions for API {ApiName}...", apiDefinition.Definition!.Servers.First().Url);
 
-        return apiDefinition.Definition.CheckMinimalPermissions(requests, Logger);
+        return apiDefinition.Definition.CheckMinimalPermissions(requests, Logger, Configuration.SchemeName);
     }
 
     private (Dictionary<ApiDefinition, List<RequestLog>> RequestsByApiDefinition, IEnumerable<RequestLog> UnmatchedRequests) GetRequestsByApiDefinition(IEnumerable<RequestLog> interceptedRequests, Dictionary<string, ApiDefinition> apiDefinitionsByUrl)
