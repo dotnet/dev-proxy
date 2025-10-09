@@ -19,6 +19,7 @@ public sealed class ApiCenterMinimalPermissionsPluginReportApiResult
     public required IEnumerable<string> Requests { get; init; }
     public required IEnumerable<string> TokenPermissions { get; init; }
     public required bool UsesMinimalPermissions { get; init; }
+    public string? SchemeName { get; init; }
 }
 
 public sealed class ApiCenterMinimalPermissionsPluginReport : IMarkdownReport, IPlainTextReport
@@ -52,11 +53,14 @@ public sealed class ApiCenterMinimalPermissionsPluginReport : IMarkdownReport, I
         {
             foreach (var apiResult in Results)
             {
+                var permissionsHeader = "#### Permissions" + (string.IsNullOrWhiteSpace(apiResult.SchemeName)
+                    ? "" : $" for {apiResult.SchemeName} scheme");
+
                 _ = sb.AppendFormat(CultureInfo.InvariantCulture, "### {0}{1}", apiResult.ApiName, Environment.NewLine)
                     .AppendLine()
                     .AppendFormat(CultureInfo.InvariantCulture, apiResult.UsesMinimalPermissions ? "✅ Called using minimal permissions{0}" : "🛑 Called using excessive permissions{0}", Environment.NewLine)
                     .AppendLine()
-                    .AppendLine("#### Permissions")
+                    .AppendLine(permissionsHeader)
                     .AppendLine()
                     .AppendFormat(CultureInfo.InvariantCulture, "- Minimal permissions: {0}{1}", string.Join(", ", apiResult.MinimalPermissions.Order().Select(p => $"`{p}`")), Environment.NewLine)
                     .AppendFormat(CultureInfo.InvariantCulture, "- Permissions on the token: {0}{1}", string.Join(", ", apiResult.TokenPermissions.Order().Select(p => $"`{p}`")), Environment.NewLine)
@@ -115,11 +119,14 @@ public sealed class ApiCenterMinimalPermissionsPluginReport : IMarkdownReport, I
         {
             foreach (var apiResult in Results)
             {
+                var permissionsHeader = "Permissions" + (string.IsNullOrWhiteSpace(apiResult.SchemeName)
+                    ? "" : $" for {apiResult.SchemeName} scheme");
+
                 _ = sb.AppendFormat(CultureInfo.InvariantCulture, "{0}{1}", apiResult.ApiName, Environment.NewLine)
                     .AppendLine()
                     .AppendLine(apiResult.UsesMinimalPermissions ? "v Called using minimal permissions" : "x Called using excessive permissions")
                     .AppendLine()
-                    .AppendLine("Permissions")
+                    .AppendLine(permissionsHeader)
                     .AppendLine()
                     .AppendFormat(CultureInfo.InvariantCulture, "- Minimal permissions: {0}{1}", string.Join(", ", apiResult.MinimalPermissions.Order()), Environment.NewLine)
                     .AppendFormat(CultureInfo.InvariantCulture, "- Permissions on the token: {0}{1}", string.Join(", ", apiResult.TokenPermissions.Order()), Environment.NewLine)
