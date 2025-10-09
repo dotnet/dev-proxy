@@ -144,7 +144,8 @@ public sealed class ApiCenterMinimalPermissionsPlugin(
                 TokenPermissions = [.. minimalPermissions.TokenPermissions.Distinct()],
                 MinimalPermissions = minimalPermissions.MinimalScopes,
                 ExcessivePermissions = [.. minimalPermissions.TokenPermissions.Except(minimalPermissions.MinimalScopes)],
-                UsesMinimalPermissions = !minimalPermissions.TokenPermissions.Except(minimalPermissions.MinimalScopes).Any()
+                UsesMinimalPermissions = !minimalPermissions.TokenPermissions.Except(minimalPermissions.MinimalScopes).Any(),
+                SchemeName = Configuration.SchemeName
             };
             results.Add(result);
 
