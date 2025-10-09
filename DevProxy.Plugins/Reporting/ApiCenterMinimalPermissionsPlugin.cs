@@ -157,20 +157,45 @@ public sealed class ApiCenterMinimalPermissionsPlugin(
 
             if (result.UsesMinimalPermissions)
             {
-                Logger.LogInformation(
-                    "API {ApiName} is called with minimal permissions: {MinimalPermissions}",
-                    result.ApiName,
-                    string.Join(", ", result.MinimalPermissions)
-                );
+                if (string.IsNullOrWhiteSpace(Configuration.SchemeName))
+                {
+                    Logger.LogInformation(
+                        "API {ApiName} is called with minimal permissions: {MinimalPermissions}",
+                        result.ApiName,
+                        string.Join(", ", result.MinimalPermissions)
+                    );
+                }
+                else
+                {
+                    Logger.LogInformation(
+                        "API {ApiName} is called with minimal permissions of '{SchemeName}' scheme: {MinimalPermissions}",
+                        result.ApiName,
+                        Configuration.SchemeName,
+                        string.Join(", ", result.MinimalPermissions)
+                    );
+                }
             }
             else
             {
-                Logger.LogWarning(
-                    "Calling API {ApiName} with excessive permissions: {ExcessivePermissions}. Minimal permissions are: {MinimalPermissions}",
-                    result.ApiName,
-                    string.Join(", ", result.ExcessivePermissions),
-                    string.Join(", ", result.MinimalPermissions)
-                );
+                if (string.IsNullOrWhiteSpace(Configuration.SchemeName))
+                {
+                    Logger.LogWarning(
+                        "Calling API {ApiName} with excessive permissions: {ExcessivePermissions}. Minimal permissions are: {MinimalPermissions}",
+                        result.ApiName,
+                        string.Join(", ", result.ExcessivePermissions),
+                        string.Join(", ", result.MinimalPermissions)
+                    );
+                }
+                else
+                {
+                    Logger.LogWarning(
+                        "Calling API {ApiName} with excessive permissions of '{SchemeName}' scheme: {ExcessivePermissions}. Minimal permissions are: {MinimalPermissions}",
+                        result.ApiName,
+                        Configuration.SchemeName,
+                        string.Join(", ", result.ExcessivePermissions),
+                        string.Join(", ", result.MinimalPermissions)
+                    );
+                }
             }
 
             if (unmatchedApiRequests.Any())
