@@ -33,7 +33,17 @@ static class OpenApiDocumentExtensions
             logger.LogDebug("Checking request {Request}...", methodAndUrl);
             var (method, url) = (methodAndUrlChunks[0].ToUpperInvariant(), methodAndUrlChunks[1]);
 
-            var scopesFromTheToken = MinimalPermissionsUtils.GetScopesFromToken(request.Context?.Session.HttpClient.Request.Headers.First(h => h.Name.Equals("authorization", StringComparison.OrdinalIgnoreCase)).Value, logger);
+            var authorizationHeaderValue = request.Context?.Session.HttpClient.Request.Headers.FirstOrDefault(h => h.Name.Equals("authorization", StringComparison.OrdinalIgnoreCase))?.Value;
+            if (authorizationHeaderValue is null)
+            {
+                errors.Add(new()
+                {
+                    Request = methodAndUrl,
+                    Error = "No Authorization header found"
+                });
+            }
+
+            var scopesFromTheToken = MinimalPermissionsUtils.GetScopesFromToken(authorizationHeaderValue, logger);
             if (scopesFromTheToken.Length != 0)
             {
                 tokenPermissions.AddRange(scopesFromTheToken);
