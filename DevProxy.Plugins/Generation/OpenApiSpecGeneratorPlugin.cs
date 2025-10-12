@@ -288,13 +288,13 @@ public sealed class OpenApiSpecGeneratorPlugin(
         foreach (var header in headers)
         {
             var lowerCaseHeaderName = header.Name.ToLowerInvariant();
-            if (Http.StandardHeaders.Contains(lowerCaseHeaderName))
+            if (Models.Http.StandardHeaders.Contains(lowerCaseHeaderName))
             {
                 Logger.LogDebug("    Skipping standard header {HeaderName}", header.Name);
                 continue;
             }
 
-            if (Http.AuthHeaders.Contains(lowerCaseHeaderName))
+            if (Models.Http.AuthHeaders.Contains(lowerCaseHeaderName))
             {
                 Logger.LogDebug("    Skipping auth header {HeaderName}", header.Name);
                 continue;
@@ -388,13 +388,13 @@ public sealed class OpenApiSpecGeneratorPlugin(
             foreach (var header in response.Headers)
             {
                 var lowerCaseHeaderName = header.Name.ToLowerInvariant();
-                if (Http.StandardHeaders.Contains(lowerCaseHeaderName))
+                if (Models.Http.StandardHeaders.Contains(lowerCaseHeaderName))
                 {
                     Logger.LogDebug("    Skipping standard header {HeaderName}", header.Name);
                     continue;
                 }
 
-                if (Http.AuthHeaders.Contains(lowerCaseHeaderName))
+                if (Models.Http.AuthHeaders.Contains(lowerCaseHeaderName))
                 {
                     Logger.LogDebug("    Skipping auth header {HeaderName}", header.Name);
                     continue;
