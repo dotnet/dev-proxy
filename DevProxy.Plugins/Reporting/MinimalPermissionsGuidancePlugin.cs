@@ -17,6 +17,7 @@ public sealed class MinimalPermissionsGuidancePluginConfiguration
 {
     public string? ApiSpecsFolderPath { get; set; }
     public IEnumerable<string>? PermissionsToExclude { get; set; }
+    public string? SchemeName { get; set; }
 }
 
 public sealed class MinimalPermissionsGuidancePlugin(
