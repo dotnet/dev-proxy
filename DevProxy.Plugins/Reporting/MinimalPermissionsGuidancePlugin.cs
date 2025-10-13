@@ -84,7 +84,7 @@ public sealed class MinimalPermissionsGuidancePlugin(
 
         foreach (var (apiSpec, requests) in requestsByApiSpec)
         {
-            var minimalPermissions = apiSpec.CheckMinimalPermissions(requests, Logger);
+            var minimalPermissions = apiSpec.CheckMinimalPermissions(requests, Logger, Configuration.SchemeName);
 
             IEnumerable<string> excessivePermissions = [.. minimalPermissions.TokenPermissions
                 .Except(Configuration.PermissionsToExclude ?? [])
