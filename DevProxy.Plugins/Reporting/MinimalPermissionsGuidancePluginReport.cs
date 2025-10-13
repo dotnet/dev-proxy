@@ -17,6 +17,7 @@ public sealed class MinimalPermissionsGuidancePluginReportApiResult
     public required IEnumerable<string> Requests { get; init; }
     public required IEnumerable<string> TokenPermissions { get; init; }
     public required bool UsesMinimalPermissions { get; init; }
+    public string? SchemeName { get; init; }
 }
 
 public sealed class MinimalPermissionsGuidancePluginReport : IMarkdownReport, IPlainTextReport
@@ -39,6 +40,9 @@ public sealed class MinimalPermissionsGuidancePluginReport : IMarkdownReport, IP
 
         foreach (var result in Results)
         {
+            var permissionsHeader = "### Minimal permissions" + (string.IsNullOrWhiteSpace(result.SchemeName)
+                ? "" : $" for {result.SchemeName} scheme");
+
             _ = sb.AppendLine(CultureInfo.InvariantCulture, $"## API: {result.ApiName}")
                 .AppendLine()
                 .AppendLine("### Requests")
@@ -46,7 +50,7 @@ public sealed class MinimalPermissionsGuidancePluginReport : IMarkdownReport, IP
                 .AppendJoin(Environment.NewLine, result.Requests.Select(r => $"- {r}"))
                 .AppendLine()
                 .AppendLine()
-                .AppendLine("### Minimal permissions")
+                .AppendLine(permissionsHeader)
                 .AppendLine()
                 .AppendJoin(Environment.NewLine, result.MinimalPermissions.Select(p => $"- `{p}`"))
                 .AppendLine()
@@ -120,6 +124,8 @@ public sealed class MinimalPermissionsGuidancePluginReport : IMarkdownReport, IP
         foreach (var result in Results)
         {
             var apiTitle = $"API: {result.ApiName}";
+            var permissionsHeader = "Minimal permissions" + (string.IsNullOrWhiteSpace(result.SchemeName)
+                ? "" : $" for {result.SchemeName} scheme") + ":";
             _ = sb.AppendLine()
                 .AppendLine(apiTitle)
                 .AppendLine(new string('-', apiTitle.Length))
@@ -129,7 +135,7 @@ public sealed class MinimalPermissionsGuidancePluginReport : IMarkdownReport, IP
                 .AppendJoin(Environment.NewLine, result.Requests.Select(r => $"- {r}")).AppendLine()
                 .AppendLine();
 
-            _ = sb.AppendLine("Minimal permissions:")
+            _ = sb.AppendLine(permissionsHeader)
                 .AppendJoin(", ", result.MinimalPermissions).AppendLine()
                 .AppendLine();
 

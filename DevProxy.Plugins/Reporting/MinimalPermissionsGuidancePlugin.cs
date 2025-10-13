@@ -101,7 +101,8 @@ public sealed class MinimalPermissionsGuidancePlugin(
                 TokenPermissions = [.. minimalPermissions.TokenPermissions.Distinct()],
                 MinimalPermissions = minimalPermissions.MinimalScopes,
                 ExcessivePermissions = excessivePermissions,
-                UsesMinimalPermissions = !excessivePermissions.Any()
+                UsesMinimalPermissions = !excessivePermissions.Any(),
+                SchemeName = Configuration.SchemeName
             };
             results.Add(result);
 
