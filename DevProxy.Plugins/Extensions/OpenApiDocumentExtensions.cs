@@ -41,6 +41,7 @@ static class OpenApiDocumentExtensions
                     Request = methodAndUrl,
                     Error = "No Authorization header found"
                 });
+                continue;
             }
 
             var scopesFromTheToken = MinimalPermissionsUtils.GetScopesFromToken(authorizationHeaderValue, logger);
