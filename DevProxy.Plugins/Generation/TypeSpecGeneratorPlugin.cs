@@ -175,7 +175,7 @@ public sealed class TypeSpecGeneratorPlugin(
         Logger.LogTrace("Entered {Name}", nameof(ProcessAuth));
 
         var authHeaders = httpRequest.Headers
-            .Where(h => Http.AuthHeaders.Contains(h.Name.ToLowerInvariant()))
+            .Where(h => Models.Http.AuthHeaders.Contains(h.Name.ToLowerInvariant()))
             .Select(h => (h.Name, h.Value));
 
         foreach (var (name, value) in authHeaders)
@@ -199,7 +199,7 @@ public sealed class TypeSpecGeneratorPlugin(
 
         var query = HttpUtility.ParseQueryString(httpRequest.RequestUri.Query);
         var authQueryParam = query.AllKeys
-            .FirstOrDefault(k => k is not null && Http.AuthHeaders.Contains(k.ToLowerInvariant()));
+            .FirstOrDefault(k => k is not null && Models.Http.AuthHeaders.Contains(k.ToLowerInvariant()));
         if (authQueryParam is not null)
         {
             Logger.LogDebug("Found auth query parameter: {AuthQueryParam}", authQueryParam);
@@ -357,8 +357,8 @@ public sealed class TypeSpecGeneratorPlugin(
 
         foreach (var header in httpRequest.Headers)
         {
-            if (Http.StandardHeaders.Contains(header.Name.ToLowerInvariant()) ||
-                Http.AuthHeaders.Contains(header.Name.ToLowerInvariant()))
+            if (Models.Http.StandardHeaders.Contains(header.Name.ToLowerInvariant()) ||
+                Models.Http.AuthHeaders.Contains(header.Name.ToLowerInvariant()))
             {
                 continue;
             }
@@ -400,8 +400,8 @@ public sealed class TypeSpecGeneratorPlugin(
             {
                 StatusCode = httpResponse.StatusCode,
                 Headers = httpResponse.Headers
-                    .Where(h => !Http.StandardHeaders.Contains(h.Name.ToLowerInvariant()) &&
-                                !Http.AuthHeaders.Contains(h.Name.ToLowerInvariant()))
+                    .Where(h => !Models.Http.StandardHeaders.Contains(h.Name.ToLowerInvariant()) &&
+                                !Models.Http.AuthHeaders.Contains(h.Name.ToLowerInvariant()))
                     .ToDictionary(h => h.Name.ToCamelCase(), h => h.Value.GetType().Name)
             };
 
@@ -688,7 +688,7 @@ public sealed class TypeSpecGeneratorPlugin(
             var query = HttpUtility.ParseQueryString(url.Query);
             foreach (string key in query.Keys)
             {
-                if (Http.AuthHeaders.Contains(key.ToLowerInvariant()))
+                if (Models.Http.AuthHeaders.Contains(key.ToLowerInvariant()))
                 {
                     Logger.LogDebug("Skipping auth header: {Key}", key);
                     continue;
