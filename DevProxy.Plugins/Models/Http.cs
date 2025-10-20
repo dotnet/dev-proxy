@@ -2,6 +2,8 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+namespace DevProxy.Plugins.Models;
+
 internal static class Http
 {
     // from: https://github.com/jonluca/har-to-openapi/blob/0d44409162c0a127cdaccd60b0a270ecd361b829/src/utils/headers.ts
@@ -236,5 +238,23 @@ internal static class Http
         "access-key",
         "apikey",
         "code"
+    ];
+
+    internal static readonly string[] SensitiveHeaders =
+    [
+        "authorization",
+        "cookie",
+        "from",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "set-cookie",
+        "www-authenticate",
+        "x-api-key",
+        "x-auth-token",
+        "x-csrf-token",
+        "x-forwarded-for",
+        "x-real-ip",
+        "x-session-token",
+        "x-xsrf-token"
     ];
 }
