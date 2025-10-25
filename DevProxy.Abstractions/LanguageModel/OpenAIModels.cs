@@ -2,6 +2,9 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Abstractions.Utils;
+using Microsoft.Extensions.Logging;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace DevProxy.Abstractions.LanguageModel;
@@ -20,6 +23,95 @@ public class OpenAIRequest
     public double? Temperature { get; set; }
     [JsonPropertyName("top_p")]
     public double? TopP { get; set; }
+
+    public static bool TryGetOpenAIRequest(string content, ILogger logger, out OpenAIRequest? request)
+    {
+        logger.LogTrace("{Method} called", nameof(TryGetOpenAIRequest));
+
+        request = null;
+
+        if (string.IsNullOrEmpty(content))
+        {
+            logger.LogDebug("Request content is empty or null");
+            return false;
+        }
+
+        try
+        {
+            logger.LogDebug("Checking if the request is an OpenAI request...");
+
+            var rawRequest = JsonSerializer.Deserialize<JsonElement>(content, ProxyUtils.JsonSerializerOptions);
+
+            // Check for completion request (has "prompt", but not specific to image)
+            if (rawRequest.TryGetProperty("prompt", out _) &&
+                !rawRequest.TryGetProperty("size", out _) &&
+                !rawRequest.TryGetProperty("n", out _))
+            {
+                logger.LogDebug("Request is a completion request");
+                request = JsonSerializer.Deserialize<OpenAICompletionRequest>(content, ProxyUtils.JsonSerializerOptions);
+                return true;
+            }
+
+            // Chat completion request
+            if (rawRequest.TryGetProperty("messages", out _))
+            {
+                logger.LogDebug("Request is a chat completion request");
+                request = JsonSerializer.Deserialize<OpenAIChatCompletionRequest>(content, ProxyUtils.JsonSerializerOptions);
+                return true;
+            }
+
+            // Embedding request
+            if (rawRequest.TryGetProperty("input", out _) &&
+                rawRequest.TryGetProperty("model", out _) &&
+                !rawRequest.TryGetProperty("voice", out _))
+            {
+                logger.LogDebug("Request is an embedding request");
+                request = JsonSerializer.Deserialize<OpenAIEmbeddingRequest>(content, ProxyUtils.JsonSerializerOptions);
+                return true;
+            }
+
+            // Image generation request
+            if (rawRequest.TryGetProperty("prompt", out _) &&
+                (rawRequest.TryGetProperty("size", out _) || rawRequest.TryGetProperty("n", out _)))
+            {
+                logger.LogDebug("Request is an image generation request");
+                request = JsonSerializer.Deserialize<OpenAIImageRequest>(content, ProxyUtils.JsonSerializerOptions);
+                return true;
+            }
+
+            // Audio transcription request
+            if (rawRequest.TryGetProperty("file", out _))
+            {
+                logger.LogDebug("Request is an audio transcription request");
+                request = JsonSerializer.Deserialize<OpenAIAudioRequest>(content, ProxyUtils.JsonSerializerOptions);
+                return true;
+            }
+
+            // Audio speech synthesis request
+            if (rawRequest.TryGetProperty("input", out _) && rawRequest.TryGetProperty("voice", out _))
+            {
+                logger.LogDebug("Request is an audio speech synthesis request");
+                request = JsonSerializer.Deserialize<OpenAIAudioSpeechRequest>(content, ProxyUtils.JsonSerializerOptions);
+                return true;
+            }
+
+            // Fine-tuning request
+            if (rawRequest.TryGetProperty("training_file", out _))
+            {
+                logger.LogDebug("Request is a fine-tuning request");
+                request = JsonSerializer.Deserialize<OpenAIFineTuneRequest>(content, ProxyUtils.JsonSerializerOptions);
+                return true;
+            }
+
+            logger.LogDebug("Request is not an OpenAI request.");
+            return false;
+        }
+        catch (JsonException ex)
+        {
+            logger.LogDebug(ex, "Failed to deserialize OpenAI request.");
+            return false;
+        }
+    }
 }
 
 public class OpenAIResponse : ILanguageModelCompletionResponse
@@ -82,8 +174,16 @@ public class OpenAIResponseUsage
     public long CompletionTokens { get; set; }
     [JsonPropertyName("prompt_tokens")]
     public long PromptTokens { get; set; }
+    [JsonPropertyName("prompt_tokens_details")]
+    public PromptTokenDetails? PromptTokensDetails { get; set; }
     [JsonPropertyName("total_tokens")]
     public long TotalTokens { get; set; }
+}
+
+public class PromptTokenDetails
+{
+    [JsonPropertyName("cached_tokens")]
+    public long CachedTokens { get; set; }
 }
 
 public class OpenAIResponsePromptFilterResult
