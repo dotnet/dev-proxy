@@ -7,6 +7,7 @@ using DevProxy.Abstractions.OpenTelemetry;
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
+using DevProxy.Plugins.Utils;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -19,7 +20,6 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Text.Json;
-using Titanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Inspection;
 
@@ -108,7 +108,7 @@ public sealed class OpenAITelemetryPlugin(
             return Task.CompletedTask;
         }
 
-        if (!TryGetOpenAIRequest(request.BodyString, out var openAiRequest) || openAiRequest is null)
+        if (!OpenAIRequest.TryGetOpenAIRequest(request.BodyString, Logger, out var openAiRequest) || openAiRequest is null)
         {
             Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new(e.Session));
             return Task.CompletedTask;
@@ -323,9 +323,9 @@ public sealed class OpenAITelemetryPlugin(
         }
 
         var bodyString = response.BodyString;
-        if (IsStreamingResponse(response))
+        if (HttpUtils.IsStreamingResponse(response, Logger))
         {
-            bodyString = GetBodyFromStreamingResponse(response);
+            bodyString = HttpUtils.GetBodyFromStreamingResponse(response, Logger);
         }
 
         AddResponseTypeSpecificTags(activity, openAiRequest, bodyString);
@@ -895,95 +895,6 @@ public sealed class OpenAITelemetryPlugin(
         Logger.LogTrace("RecordUsageMetrics() finished");
     }
 
-    private bool TryGetOpenAIRequest(string content, out OpenAIRequest? request)
-    {
-        Logger.LogTrace("TryGetOpenAIRequest() called");
-
-        request = null;
-
-        if (string.IsNullOrEmpty(content))
-        {
-            Logger.LogDebug("Request content is empty or null");
-            return false;
-        }
-
-        try
-        {
-            Logger.LogDebug("Checking if the request is an OpenAI request...");
-
-            var rawRequest = JsonSerializer.Deserialize<JsonElement>(content, ProxyUtils.JsonSerializerOptions);
-
-            // Check for completion request (has "prompt", but not specific to image)
-            if (rawRequest.TryGetProperty("prompt", out _) &&
-                !rawRequest.TryGetProperty("size", out _) &&
-                !rawRequest.TryGetProperty("n", out _))
-            {
-                Logger.LogDebug("Request is a completion request");
-                request = JsonSerializer.Deserialize<OpenAICompletionRequest>(content, ProxyUtils.JsonSerializerOptions);
-                return true;
-            }
-
-            // Chat completion request
-            if (rawRequest.TryGetProperty("messages", out _))
-            {
-                Logger.LogDebug("Request is a chat completion request");
-                request = JsonSerializer.Deserialize<OpenAIChatCompletionRequest>(content, ProxyUtils.JsonSerializerOptions);
-                return true;
-            }
-
-            // Embedding request
-            if (rawRequest.TryGetProperty("input", out _) &&
-                rawRequest.TryGetProperty("model", out _) &&
-                !rawRequest.TryGetProperty("voice", out _))
-            {
-                Logger.LogDebug("Request is an embedding request");
-                request = JsonSerializer.Deserialize<OpenAIEmbeddingRequest>(content, ProxyUtils.JsonSerializerOptions);
-                return true;
-            }
-
-            // Image generation request
-            if (rawRequest.TryGetProperty("prompt", out _) &&
-                (rawRequest.TryGetProperty("size", out _) || rawRequest.TryGetProperty("n", out _)))
-            {
-                Logger.LogDebug("Request is an image generation request");
-                request = JsonSerializer.Deserialize<OpenAIImageRequest>(content, ProxyUtils.JsonSerializerOptions);
-                return true;
-            }
-
-            // Audio transcription request
-            if (rawRequest.TryGetProperty("file", out _))
-            {
-                Logger.LogDebug("Request is an audio transcription request");
-                request = JsonSerializer.Deserialize<OpenAIAudioRequest>(content, ProxyUtils.JsonSerializerOptions);
-                return true;
-            }
-
-            // Audio speech synthesis request
-            if (rawRequest.TryGetProperty("input", out _) && rawRequest.TryGetProperty("voice", out _))
-            {
-                Logger.LogDebug("Request is an audio speech synthesis request");
-                request = JsonSerializer.Deserialize<OpenAIAudioSpeechRequest>(content, ProxyUtils.JsonSerializerOptions);
-                return true;
-            }
-
-            // Fine-tuning request
-            if (rawRequest.TryGetProperty("training_file", out _))
-            {
-                Logger.LogDebug("Request is a fine-tuning request");
-                request = JsonSerializer.Deserialize<OpenAIFineTuneRequest>(content, ProxyUtils.JsonSerializerOptions);
-                return true;
-            }
-
-            Logger.LogDebug("Request is not an OpenAI request.");
-            return false;
-        }
-        catch (JsonException ex)
-        {
-            Logger.LogDebug(ex, "Failed to deserialize OpenAI request.");
-            return false;
-        }
-    }
-
     private static string GetOperationName(OpenAIRequest request)
     {
         if (request == null)
@@ -1002,63 +913,6 @@ public sealed class OpenAITelemetryPlugin(
             OpenAIFineTuneRequest => "fine_tuning.jobs",
             _ => "unknown"
         };
-    }
-
-    private bool IsStreamingResponse(Response response)
-    {
-        Logger.LogTrace("{Method} called", nameof(IsStreamingResponse));
-        var contentType = response.Headers.FirstOrDefault(h => h.Name.Equals("content-type", StringComparison.OrdinalIgnoreCase))?.Value;
-        if (string.IsNullOrEmpty(contentType))
-        {
-            Logger.LogDebug("No content-type header found");
-            return false;
-        }
-
-        var isStreamingResponse = contentType.Contains("text/event-stream", StringComparison.OrdinalIgnoreCase);
-        Logger.LogDebug("IsStreamingResponse: {IsStreamingResponse}", isStreamingResponse);
-
-        Logger.LogTrace("{Method} finished", nameof(IsStreamingResponse));
-        return isStreamingResponse;
-    }
-
-    private string GetBodyFromStreamingResponse(Response response)
-    {
-        Logger.LogTrace("{Method} called", nameof(GetBodyFromStreamingResponse));
-
-        // default to the whole body
-        var bodyString = response.BodyString;
-
-        var chunks = bodyString.Split("\n\n", StringSplitOptions.RemoveEmptyEntries);
-        if (chunks.Length == 0)
-        {
-            Logger.LogDebug("No chunks found in the response body");
-            return bodyString;
-        }
-
-        // check if the last chunk is `data: [DONE]`
-        var lastChunk = chunks.Last().Trim();
-        if (lastChunk.Equals("data: [DONE]", StringComparison.OrdinalIgnoreCase))
-        {
-            // get next to last chunk
-            var chunk = chunks.Length > 1 ? chunks[^2].Trim() : string.Empty;
-            if (chunk.StartsWith("data: ", StringComparison.OrdinalIgnoreCase))
-            {
-                // remove the "data: " prefix
-                bodyString = chunk["data: ".Length..].Trim();
-                Logger.LogDebug("Last chunk starts with 'data: ', using the last chunk as the body: {BodyString}", bodyString);
-            }
-            else
-            {
-                Logger.LogDebug("Last chunk does not start with 'data: ', using the whole body");
-            }
-        }
-        else
-        {
-            Logger.LogDebug("Last chunk is not `data: [DONE]`, using the whole body");
-        }
-
-        Logger.LogTrace("{Method} finished", nameof(GetBodyFromStreamingResponse));
-        return bodyString;
     }
 
     public void Dispose()
