@@ -10,6 +10,7 @@ using DevProxy.Plugins.Utils;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
 using System.Text.Json;
+using Titanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Inspection;
 
@@ -98,7 +99,13 @@ public sealed class OpenAIUsageDebuggingPlugin(
 
         var usage = new UsageRecord
         {
-            Time = DateTime.Parse(e.Session.HttpClient.Response.Headers.FirstOrDefault(h => h.Name.Equals("date", StringComparison.OrdinalIgnoreCase))?.Value ?? DateTime.Now.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture),
+            Time = DateTime.TryParse(
+                e.Session.HttpClient.Response.Headers.FirstOrDefault(h => h.Name.Equals("date", StringComparison.OrdinalIgnoreCase))?.Value,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var parsedDate)
+                ? parsedDate
+                : DateTime.Now,
             Status = e.Session.HttpClient.Response.StatusCode
         };
 
@@ -136,8 +143,8 @@ public sealed class OpenAIUsageDebuggingPlugin(
         usage.CompletionTokens = oaiResponse.Usage?.CompletionTokens;
         usage.CachedTokens = oaiResponse.Usage?.PromptTokensDetails?.CachedTokens;
         usage.TotalTokens = oaiResponse.Usage?.TotalTokens;
-        usage.RemainingTokens = response.Headers.FirstOrDefault(h => h.Name.Equals("x-ratelimit-remaining-tokens", StringComparison.OrdinalIgnoreCase))?.Value is string remainingTokensStr && long.TryParse(remainingTokensStr, out var remainingTokens) ? remainingTokens : null;
-        usage.RemainingRequests = response.Headers.FirstOrDefault(h => h.Name.Equals("x-ratelimit-remaining-requests", StringComparison.OrdinalIgnoreCase))?.Value is string remainingRequestsStr && long.TryParse(remainingRequestsStr, out var remainingRequests) ? remainingRequests : null;
+        usage.RemainingTokens = TryParseHeaderAsLong(response, "x-ratelimit-remaining-tokens", out var remainingTokens) ? remainingTokens : null;
+        usage.RemainingRequests = TryParseHeaderAsLong(response, "x-ratelimit-remaining-requests", out var remainingRequests) ? remainingRequests : null;
 
         Logger.LogTrace("Left {Name}", nameof(ProcessSuccessResponse));
     }
@@ -151,5 +158,19 @@ public sealed class OpenAIUsageDebuggingPlugin(
         usage.Policy = response.Headers.FirstOrDefault(h => h.Name.Equals("policy-id", StringComparison.OrdinalIgnoreCase))?.Value;
 
         Logger.LogTrace("Left {Name}", nameof(ProcessErrorResponse));
+    }
+
+    private static bool TryParseHeaderAsLong(Response response, string headerName, out long? value)
+    {
+        value = null;
+        var header = response.Headers.FirstOrDefault(h => h.Name.Equals(headerName, StringComparison.OrdinalIgnoreCase))?.Value;
+
+        if (header is not null && long.TryParse(header, out var parsedValue))
+        {
+            value = parsedValue;
+            return true;
+        }
+
+        return false;
     }
 }
