@@ -34,6 +34,7 @@ public class OpenAITelemetryPluginReport : IMarkdownReport, IPlainTextReport, IJ
         var totalTokens = 0L;
         var totalPromptTokens = 0L;
         var totalCompletionTokens = 0L;
+        var totalCachedTokens = 0L;
         var totalCost = 0.0;
         var totalRequests = 0;
 
@@ -41,7 +42,7 @@ public class OpenAITelemetryPluginReport : IMarkdownReport, IPlainTextReport, IJ
         _ = sb
             .AppendLine(CultureInfo.InvariantCulture, $"# LLM usage report for {Application} in {Environment}")
             .AppendLine()
-            .Append("Model|Requests|Prompt Tokens|Completion Tokens|Total Tokens");
+            .Append("Model|Requests|Prompt Tokens|Completion Tokens|Cached Tokens|Total Tokens");
 
         if (IncludeCosts)
         {
@@ -50,7 +51,7 @@ public class OpenAITelemetryPluginReport : IMarkdownReport, IPlainTextReport, IJ
 
         _ = sb
             .AppendLine()
-            .Append(":----|-------:|------------:|----------------:|-----------:");
+            .Append(":----|-------:|------------:|----------------:|-----------:|-----------:");
 
         if (IncludeCosts)
         {
@@ -63,10 +64,12 @@ public class OpenAITelemetryPluginReport : IMarkdownReport, IPlainTextReport, IJ
         {
             var promptTokens = modelUsage.Value.Sum(u => u.PromptTokens);
             var completionTokens = modelUsage.Value.Sum(u => u.CompletionTokens);
+            var cachedTokens = modelUsage.Value.Sum(u => u.CachedTokens);
             var tokens = promptTokens + completionTokens;
 
             totalPromptTokens += promptTokens;
             totalCompletionTokens += completionTokens;
+            totalCachedTokens += cachedTokens;
             totalTokens += tokens;
             totalRequests += modelUsage.Value.Count;
 
@@ -75,6 +78,7 @@ public class OpenAITelemetryPluginReport : IMarkdownReport, IPlainTextReport, IJ
                 .Append('|').Append(totalRequests)
                 .Append('|').Append(promptTokens)
                 .Append('|').Append(completionTokens)
+                .Append('|').Append(cachedTokens)
                 .Append('|').Append(tokens);
 
             if (IncludeCosts)
@@ -92,6 +96,7 @@ public class OpenAITelemetryPluginReport : IMarkdownReport, IPlainTextReport, IJ
             .Append('|').Append(CultureInfo.CurrentCulture, $"**{totalRequests}**")
             .Append('|').Append(CultureInfo.CurrentCulture, $"**{totalPromptTokens}**")
             .Append('|').Append(CultureInfo.CurrentCulture, $"**{totalCompletionTokens}**")
+            .Append('|').Append(CultureInfo.CurrentCulture, $"**{totalCachedTokens}**")
             .Append('|').Append(CultureInfo.CurrentCulture, $"**{totalTokens}**");
 
         if (IncludeCosts)
@@ -109,6 +114,7 @@ public class OpenAITelemetryPluginReport : IMarkdownReport, IPlainTextReport, IJ
         var totalTokens = 0L;
         var totalPromptTokens = 0L;
         var totalCompletionTokens = 0L;
+        var totalCachedTokens = 0L;
         var totalCost = 0.0;
 
         var sb = new StringBuilder();
@@ -122,10 +128,12 @@ public class OpenAITelemetryPluginReport : IMarkdownReport, IPlainTextReport, IJ
         {
             var promptTokens = modelUsage.Value.Sum(u => u.PromptTokens);
             var completionTokens = modelUsage.Value.Sum(u => u.CompletionTokens);
+            var cachedTokens = modelUsage.Value.Sum(u => u.CachedTokens);
             var tokens = promptTokens + completionTokens;
 
             totalPromptTokens += promptTokens;
             totalCompletionTokens += completionTokens;
+            totalCachedTokens += cachedTokens;
             totalTokens += tokens;
 
             _ = sb.AppendLine(CultureInfo.InvariantCulture, $"MODEL: {modelUsage.Key}")
@@ -133,6 +141,7 @@ public class OpenAITelemetryPluginReport : IMarkdownReport, IPlainTextReport, IJ
                 .AppendLine(CultureInfo.InvariantCulture, $"Requests: {modelUsage.Value.Count}")
                 .AppendLine(CultureInfo.InvariantCulture, $"Prompt Tokens: {promptTokens}")
                 .AppendLine(CultureInfo.InvariantCulture, $"Completion Tokens: {completionTokens}")
+                .AppendLine(CultureInfo.InvariantCulture, $"Cached Tokens: {cachedTokens}")
                 .AppendLine(CultureInfo.InvariantCulture, $"Total Tokens: {tokens}");
 
             if (IncludeCosts)
@@ -150,6 +159,7 @@ public class OpenAITelemetryPluginReport : IMarkdownReport, IPlainTextReport, IJ
             .AppendLine()
             .AppendLine(CultureInfo.InvariantCulture, $"Prompt Tokens: {totalPromptTokens}")
             .AppendLine(CultureInfo.InvariantCulture, $"Completion Tokens: {totalCompletionTokens}")
+            .AppendLine(CultureInfo.InvariantCulture, $"Cached Tokens: {totalCachedTokens}")
             .AppendLine(CultureInfo.InvariantCulture, $"Total Tokens: {totalTokens}");
 
         if (IncludeCosts)
