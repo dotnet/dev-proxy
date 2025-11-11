@@ -13,6 +13,7 @@ public class OpenAITelemetryPluginReportModelUsageInformation
     public double Cost { get; set; }
     public required string Model { get; init; }
     public required long PromptTokens { get; init; }
+    public long CachedTokens { get; init; }
 }
 
 public class OpenAITelemetryPluginReport : IMarkdownReport, IPlainTextReport, IJsonReport
