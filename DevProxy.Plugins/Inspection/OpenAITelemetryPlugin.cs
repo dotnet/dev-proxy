@@ -218,11 +218,20 @@ public sealed class OpenAITelemetryPlugin(
 
         try
         {
-            void configureOtlpExporter(OtlpExporterOptions options)
+            var baseExporterUri = new Uri(Configuration.ExporterEndpoint);
+
+            void configureTracesOtlpExporter(OtlpExporterOptions options)
             {
                 // We use protobuf to allow intercepting Dev Proxy's own LLM traffic
                 options.Protocol = OtlpExportProtocol.HttpProtobuf;
-                options.Endpoint = new Uri(Configuration.ExporterEndpoint + "/v1/traces");
+                options.Endpoint = new Uri(baseExporterUri, "/v1/traces");
+            }
+
+            void configureMetricsOtlpExporter(OtlpExporterOptions options)
+            {
+                // We use protobuf to allow intercepting Dev Proxy's own LLM traffic
+                options.Protocol = OtlpExportProtocol.HttpProtobuf;
+                options.Endpoint = new Uri(baseExporterUri, "/v1/metrics");
             }
 
             var resourceBuilder = ResourceBuilder
@@ -232,7 +241,7 @@ public sealed class OpenAITelemetryPlugin(
             _tracerProvider = Sdk.CreateTracerProviderBuilder()
                 .SetResourceBuilder(resourceBuilder)
                 .AddSource(ActivitySourceName)
-                .AddOtlpExporter(configureOtlpExporter)
+                .AddOtlpExporter(configureTracesOtlpExporter)
                 .Build();
 
             _meterProvider = Sdk.CreateMeterProviderBuilder()
@@ -247,7 +256,7 @@ public sealed class OpenAITelemetryPlugin(
                     Boundaries = [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10, 50, 100]
                 })
                 .AddView(SemanticConvention.GEN_AI_USAGE_TOTAL_COST, new MetricStreamConfiguration())
-                .AddOtlpExporter(configureOtlpExporter)
+                .AddOtlpExporter(configureMetricsOtlpExporter)
                 .Build();
 
             _tokenUsageMetric = _meter.CreateHistogram<long>(
@@ -327,6 +336,46 @@ public sealed class OpenAITelemetryPlugin(
         {
             bodyString = HttpUtils.GetBodyFromStreamingResponse(response, Logger);
         }
+
+        bodyString = /*lang=json,strict*/ """
+            {
+              "id": "chatcmpl-B9MHDbslfkBeAs8l4bebGdFOJ6PeG",
+              "object": "chat.completion",
+              "created": 1741570283,
+              "model": "gpt-4o-2024-08-06",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "content": "The image shows a wooden boardwalk path running through a lush green field or meadow. The sky is bright blue with some scattered clouds, giving the scene a serene and peaceful atmosphere. Trees and shrubs are visible in the background.",
+                    "refusal": null,
+                    "annotations": []
+                  },
+                  "logprobs": null,
+                  "finish_reason": "stop"
+                }
+              ],
+              "usage": {
+                "prompt_tokens": 1117,
+                "completion_tokens": 46,
+                "total_tokens": 1163,
+                "prompt_tokens_details": {
+                  "cached_tokens": 3,
+                  "audio_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "reasoning_tokens": 0,
+                  "audio_tokens": 0,
+                  "accepted_prediction_tokens": 0,
+                  "rejected_prediction_tokens": 0
+                }
+              },
+              "service_tier": "default",
+              "system_fingerprint": "fp_fc9f1d7035"
+            }
+            
+            """;
 
         AddResponseTypeSpecificTags(activity, openAiRequest, bodyString);
 
