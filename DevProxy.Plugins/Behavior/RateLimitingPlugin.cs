@@ -246,7 +246,7 @@ public sealed class RateLimitingPlugin(
             if (ProxyUtils.IsGraphRequest(request))
             {
                 var requestId = Guid.NewGuid().ToString();
-                var requestDate = DateTime.Now.ToString(CultureInfo.CurrentCulture);
+                var requestDate = DateTime.Now.ToString("r", CultureInfo.InvariantCulture);
                 headers.AddRange(ProxyUtils.BuildGraphResponseHeaders(request, requestId, requestDate));
 
                 body = JsonSerializer.Serialize(new GraphErrorResponseBody(
