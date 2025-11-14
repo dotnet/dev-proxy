@@ -289,7 +289,7 @@ public sealed class GraphRandomErrorPlugin(
     {
         var session = e.Session;
         var requestId = Guid.NewGuid().ToString();
-        var requestDate = DateTime.Now.ToString("o", CultureInfo.InvariantCulture);
+        var requestDate = DateTime.Now.ToString("r", CultureInfo.InvariantCulture);
         var request = session.HttpClient.Request;
         var headers = ProxyUtils.BuildGraphResponseHeaders(request, requestId, requestDate);
         if (errorStatus == HttpStatusCode.TooManyRequests)
@@ -330,7 +330,7 @@ public sealed class GraphRandomErrorPlugin(
 
         var session = ev.Session;
         var requestId = Guid.NewGuid().ToString();
-        var requestDate = DateTime.Now.ToString("o", CultureInfo.InvariantCulture);
+        var requestDate = DateTime.Now.ToString("r", CultureInfo.InvariantCulture);
         var request = session.HttpClient.Request;
         var headers = ProxyUtils.BuildGraphResponseHeaders(request, requestId, requestDate);
 

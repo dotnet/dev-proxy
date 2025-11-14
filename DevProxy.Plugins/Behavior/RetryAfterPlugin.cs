@@ -108,7 +108,7 @@ public sealed class RetryAfterPlugin(
         if (ProxyUtils.IsGraphRequest(request))
         {
             var requestId = Guid.NewGuid().ToString();
-            var requestDate = DateTime.Now.ToString("o", CultureInfo.InvariantCulture);
+            var requestDate = DateTime.Now.ToString("r", CultureInfo.InvariantCulture);
             headers.AddRange(ProxyUtils.BuildGraphResponseHeaders(request, requestId, requestDate));
 
             body = JsonSerializer.Serialize(new GraphErrorResponseBody(

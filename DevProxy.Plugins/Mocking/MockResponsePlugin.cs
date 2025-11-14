@@ -348,7 +348,7 @@ public class MockResponsePlugin(
     {
         string? body = null;
         var requestId = Guid.NewGuid().ToString();
-        var requestDate = DateTime.Now.ToString("o", CultureInfo.InvariantCulture);
+        var requestDate = DateTime.Now.ToString("r", CultureInfo.InvariantCulture);
         var headers = ProxyUtils.BuildGraphResponseHeaders(e.Session.HttpClient.Request, requestId, requestDate);
         var statusCode = HttpStatusCode.OK;
         if (matchingResponse.Response?.StatusCode is not null)
