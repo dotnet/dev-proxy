@@ -108,8 +108,10 @@ public sealed class RetryAfterPlugin(
         if (ProxyUtils.IsGraphRequest(request))
         {
             var requestId = Guid.NewGuid().ToString();
-            var requestDate = DateTime.Now.ToString("r", CultureInfo.InvariantCulture);
-            headers.AddRange(ProxyUtils.BuildGraphResponseHeaders(request, requestId, requestDate));
+            var now = DateTime.Now;
+            var requestDateHeader = now.ToString("r", CultureInfo.InvariantCulture);
+            var requestDateInnerError = now.ToString("o", CultureInfo.InvariantCulture);
+            headers.AddRange(ProxyUtils.BuildGraphResponseHeaders(request, requestId, requestDateHeader));
 
             body = JsonSerializer.Serialize(new GraphErrorResponseBody(
                 new()
@@ -119,7 +121,7 @@ public sealed class RetryAfterPlugin(
                     InnerError = new()
                     {
                         RequestId = requestId,
-                        Date = requestDate
+                        Date = requestDateInnerError
                     }
                 }),
                 ProxyUtils.JsonSerializerOptions
