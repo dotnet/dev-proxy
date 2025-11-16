@@ -42,6 +42,15 @@ public class OpenAIRequest
 
             var rawRequest = JsonSerializer.Deserialize<JsonElement>(content, ProxyUtils.JsonSerializerOptions);
 
+            // Responses API request (check first as it's the recommended API)
+            if (rawRequest.TryGetProperty("input", out _) &&
+                rawRequest.TryGetProperty("modalities", out _))
+            {
+                logger.LogDebug("Request is a Responses API request");
+                request = JsonSerializer.Deserialize<OpenAIResponsesRequest>(content, ProxyUtils.JsonSerializerOptions);
+                return true;
+            }
+
             // Check for completion request (has "prompt", but not specific to image)
             if (rawRequest.TryGetProperty("prompt", out _) &&
                 !rawRequest.TryGetProperty("size", out _) &&
@@ -63,7 +72,8 @@ public class OpenAIRequest
             // Embedding request
             if (rawRequest.TryGetProperty("input", out _) &&
                 rawRequest.TryGetProperty("model", out _) &&
-                !rawRequest.TryGetProperty("voice", out _))
+                !rawRequest.TryGetProperty("voice", out _) &&
+                !rawRequest.TryGetProperty("modalities", out _))
             {
                 logger.LogDebug("Request is an embedding request");
                 request = JsonSerializer.Deserialize<OpenAIEmbeddingRequest>(content, ProxyUtils.JsonSerializerOptions);
@@ -409,3 +419,69 @@ public class OpenAIImageData
     [JsonPropertyName("revised_prompt")]
     public string? RevisedPrompt { get; set; }
 }
+
+#region Responses API
+
+public class OpenAIResponsesRequest : OpenAIRequest
+{
+    public object? Input { get; set; }
+    public IEnumerable<string>? Modalities { get; set; }
+    public string? Instructions { get; set; }
+    public bool? Store { get; set; }
+    [JsonPropertyName("previous_response_id")]
+    public string? PreviousResponseId { get; set; }
+    public object? Tools { get; set; }
+    [JsonPropertyName("max_output_tokens")]
+    public long? MaxOutputTokens { get; set; }
+}
+
+public class OpenAIResponsesResponse : OpenAIResponse
+{
+    public IEnumerable<OpenAIResponsesOutputItem>? Output { get; set; }
+    [JsonPropertyName("created_at")]
+    public long CreatedAt { get; set; }
+    public string? Status { get; set; }
+
+    public override string? Response
+    {
+        get
+        {
+            if (Output is null || !Output.Any())
+            {
+                return null;
+            }
+
+            // Find the last message-type output item with text content
+            var lastMessage = Output
+                .Where(item => item.Type == "message")
+                .LastOrDefault();
+
+            if (lastMessage?.Content is null)
+            {
+                return null;
+            }
+
+            // Extract text from content array
+            var textContent = lastMessage.Content
+                .Where(c => c.Type == "output_text")
+                .LastOrDefault();
+
+            return textContent?.Text;
+        }
+    }
+}
+
+public class OpenAIResponsesOutputItem
+{
+    public string? Type { get; set; }
+    public string? Role { get; set; }
+    public IEnumerable<OpenAIResponsesContentPart>? Content { get; set; }
+}
+
+public class OpenAIResponsesContentPart
+{
+    public string? Type { get; set; }
+    public string? Text { get; set; }
+}
+
+#endregion

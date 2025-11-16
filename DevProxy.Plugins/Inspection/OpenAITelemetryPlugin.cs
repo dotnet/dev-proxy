@@ -341,6 +341,9 @@ public sealed class OpenAITelemetryPlugin(
         {
             switch (openAiRequest)
             {
+                case OpenAIResponsesRequest:
+                    AddResponsesApiResponseTags(activity, openAiRequest, responseBody);
+                    break;
                 case OpenAIChatCompletionRequest:
                     AddChatCompletionResponseTags(activity, openAiRequest, responseBody);
                     break;
@@ -532,6 +535,9 @@ public sealed class OpenAITelemetryPlugin(
     {
         switch (openAiRequest)
         {
+            case OpenAIResponsesRequest responsesRequest:
+                AddResponsesApiRequestTags(activity, responsesRequest);
+                break;
             case OpenAIChatCompletionRequest chatRequest:
                 AddChatCompletionRequestTags(activity, chatRequest);
                 break;
@@ -905,6 +911,7 @@ public sealed class OpenAITelemetryPlugin(
 
         return request switch
         {
+            OpenAIResponsesRequest => "responses",
             OpenAIChatCompletionRequest => "chat.completions",
             OpenAICompletionRequest => "completions",
             OpenAIEmbeddingRequest => "embeddings",
@@ -914,6 +921,73 @@ public sealed class OpenAITelemetryPlugin(
             OpenAIFineTuneRequest => "fine_tuning.jobs",
             _ => "unknown"
         };
+    }
+
+    private void AddResponsesApiRequestTags(Activity activity, OpenAIResponsesRequest responsesRequest)
+    {
+        Logger.LogTrace("AddResponsesApiRequestTags() called");
+
+        // OpenLIT
+        _ = activity.SetTag(SemanticConvention.GEN_AI_OPERATION, "responses")
+        // OpenTelemetry
+            .SetTag(SemanticConvention.GEN_AI_OPERATION_NAME, "responses");
+
+        if (Configuration.IncludePrompt && responsesRequest.Input != null)
+        {
+            var inputString = responsesRequest.Input is string str ? str : JsonSerializer.Serialize(responsesRequest.Input, ProxyUtils.JsonSerializerOptions);
+            _ = activity.SetTag(SemanticConvention.GEN_AI_CONTENT_PROMPT, inputString);
+        }
+
+        if (responsesRequest.Instructions != null)
+        {
+            _ = activity.SetTag("ai.request.instructions", responsesRequest.Instructions);
+        }
+
+        if (responsesRequest.Modalities != null)
+        {
+            _ = activity.SetTag("ai.request.modalities", string.Join(",", responsesRequest.Modalities));
+        }
+
+        Logger.LogTrace("AddResponsesApiRequestTags() finished");
+    }
+
+    private void AddResponsesApiResponseTags(Activity activity, OpenAIRequest openAIRequest, string responseBody)
+    {
+        Logger.LogTrace("AddResponsesApiResponseTags() called");
+
+        var responsesResponse = JsonSerializer.Deserialize<OpenAIResponsesResponse>(responseBody, ProxyUtils.JsonSerializerOptions);
+        if (responsesResponse is null)
+        {
+            return;
+        }
+
+        RecordUsageMetrics(activity, openAIRequest, responsesResponse);
+
+        _ = activity.SetTag(SemanticConvention.GEN_AI_RESPONSE_ID, responsesResponse.Id);
+
+        if (responsesResponse.Status != null)
+        {
+            _ = activity.SetTag("ai.response.status", responsesResponse.Status);
+        }
+
+        // Extract completion text from output items
+        if (Configuration.IncludeCompletion && responsesResponse.Output != null)
+        {
+            var textContent = responsesResponse.Output
+                .Where(item => item.Type == "message" && item.Content != null)
+                .SelectMany(item => item.Content!)
+                .Where(c => c.Type == "output_text")
+                .Select(c => c.Text)
+                .Where(t => !string.IsNullOrEmpty(t))
+                .LastOrDefault();
+
+            if (!string.IsNullOrEmpty(textContent))
+            {
+                _ = activity.SetTag(SemanticConvention.GEN_AI_CONTENT_COMPLETION, textContent);
+            }
+        }
+
+        Logger.LogTrace("AddResponsesApiResponseTags() finished");
     }
 
     public void Dispose()
