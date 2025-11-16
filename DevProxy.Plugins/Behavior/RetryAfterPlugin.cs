@@ -110,7 +110,7 @@ public sealed class RetryAfterPlugin(
             var requestId = Guid.NewGuid().ToString();
             var now = DateTime.Now;
             var requestDateHeader = now.ToString("r", CultureInfo.InvariantCulture);
-            var requestDateInnerError = now.ToString("o", CultureInfo.InvariantCulture);
+            var requestDateInnerError = now.ToString("s", CultureInfo.InvariantCulture);
             headers.AddRange(ProxyUtils.BuildGraphResponseHeaders(request, requestId, requestDateHeader));
 
             body = JsonSerializer.Serialize(new GraphErrorResponseBody(

@@ -291,7 +291,7 @@ public sealed class GraphRandomErrorPlugin(
         var requestId = Guid.NewGuid().ToString();
         var now = DateTime.Now;
         var requestDateHeader = now.ToString("r", CultureInfo.InvariantCulture);
-        var requestDateInnerError = now.ToString("o", CultureInfo.InvariantCulture);
+        var requestDateInnerError = now.ToString("s", CultureInfo.InvariantCulture);
         var request = session.HttpClient.Request;
         var headers = ProxyUtils.BuildGraphResponseHeaders(request, requestId, requestDateHeader);
         if (errorStatus == HttpStatusCode.TooManyRequests)
