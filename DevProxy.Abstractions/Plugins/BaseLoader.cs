@@ -38,10 +38,7 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
         var path = Path.GetDirectoryName(FilePath) ?? throw new InvalidOperationException($"{FilePath} is an invalid path");
         if (!File.Exists(FilePath))
         {
-            if (Logger.IsEnabled(LogLevel.Warning))
-            {
-                Logger.LogWarning("File {File} not found. No data will be provided", FilePath);
-            }
+            Logger.LogWarning("File {File} not found. No data will be provided", FilePath);
             return;
         }
 
@@ -84,10 +81,7 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
 
         if (!root.TryGetProperty("$schema", out var schemaUrlElement))
         {
-            if (Logger.IsEnabled(LogLevel.Debug))
-            {
-                Logger.LogDebug("Schema reference not found in file {File}. Skipping schema validation", FilePath);
-            }
+            Logger.LogDebug("Schema reference not found in file {File}. Skipping schema validation", FilePath);
             return true;
         }
 
@@ -97,10 +91,7 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
 
         if (!IsValid)
         {
-            if (Logger.IsEnabled(LogLevel.Error))
-            {
-                Logger.LogError("Schema validation failed for {File} with the following errors: {Errors}", FilePath, string.Join(", ", ValidationErrors));
-            }
+            Logger.LogError("Schema validation failed for {File} with the following errors: {Errors}", FilePath, string.Join(", ", ValidationErrors));
         }
 
         return IsValid;
@@ -110,10 +101,7 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
     {
         if (!File.Exists(FilePath))
         {
-            if (Logger.IsEnabled(LogLevel.Warning))
-            {
-                Logger.LogWarning("File {File} not found. No data will be loaded", FilePath);
-            }
+            Logger.LogWarning("File {File} not found. No data will be loaded", FilePath);
             return;
         }
 
@@ -130,10 +118,7 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
         }
         catch (Exception ex)
         {
-            if (Logger.IsEnabled(LogLevel.Error))
-            {
-                Logger.LogError(ex, "An error has occurred while reading {File}:", FilePath);
-            }
+            Logger.LogError(ex, "An error has occurred while reading {File}:", FilePath);
         }
     }
 

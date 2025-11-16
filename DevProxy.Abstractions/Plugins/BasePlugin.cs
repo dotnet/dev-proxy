@@ -110,10 +110,7 @@ public abstract class BasePlugin<TConfiguration>(
         var (IsValid, ValidationErrors) = await ValidatePluginConfigAsync(cancellationToken);
         if (!IsValid)
         {
-            if (Logger.IsEnabled(LogLevel.Error))
-            {
-                Logger.LogError("Plugin configuration validation failed with the following errors: {Errors}", string.Join(", ", ValidationErrors));
-            }
+            Logger.LogError("Plugin configuration validation failed with the following errors: {Errors}", string.Join(", ", ValidationErrors));
         }
     }
 
@@ -166,10 +163,7 @@ public abstract class BasePlugin<TConfiguration>(
 
             if (!root.TryGetProperty(configSectionName, out var configSection))
             {
-                if (Logger.IsEnabled(LogLevel.Error))
-                {
-                    Logger.LogError("Configuration section {SectionName} not found in configuration file", configSectionName);
-                }
+                Logger.LogError("Configuration section {SectionName} not found in configuration file", configSectionName);
                 return (false, [string.Format(CultureInfo.InvariantCulture, "Configuration section {0} not found in configuration file", configSectionName)]);
             }
 

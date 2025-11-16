@@ -212,43 +212,26 @@ public static class ProxyUtils
 
     public static async Task<(bool IsValid, IEnumerable<string> ValidationErrors)> ValidateJsonAsync(string? json, string? schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(logger);
-        
         try
         {
-            if (logger.IsEnabled(LogLevel.Debug))
-            {
-                logger.LogDebug("Validating JSON against schema {SchemaUrl}", schemaUrl);
-            }
+            logger.LogDebug("Validating JSON against schema {SchemaUrl}", schemaUrl);
 
             if (string.IsNullOrEmpty(json))
             {
-                if (logger.IsEnabled(LogLevel.Debug))
-                {
-                    logger.LogDebug("JSON is empty, skipping validation");
-                }
+                logger.LogDebug("JSON is empty, skipping validation");
                 return (true, []);
             }
             if (string.IsNullOrEmpty(schemaUrl))
             {
-                if (logger.IsEnabled(LogLevel.Debug))
-                {
-                    logger.LogDebug("Schema URL is empty, skipping validation");
-                }
+                logger.LogDebug("Schema URL is empty, skipping validation");
                 return (true, []);
             }
             ArgumentNullException.ThrowIfNull(httpClient);
 
-            if (logger.IsEnabled(LogLevel.Debug))
-            {
-                logger.LogDebug("Downloading schema from {SchemaUrl}", schemaUrl);
-            }
+            logger.LogDebug("Downloading schema from {SchemaUrl}", schemaUrl);
             var schemaContents = await httpClient.GetStringAsync(schemaUrl, cancellationToken);
 
-            if (logger.IsEnabled(LogLevel.Debug))
-            {
-                logger.LogDebug("Parsing schema");
-            }
+            logger.LogDebug("Parsing schema");
             var schema = JSchema.Parse(schemaContents);
             logger.LogDebug("Parsing JSON");
             var token = JToken.Parse(json);
@@ -284,8 +267,6 @@ public static class ProxyUtils
 
     public static void ValidateSchemaVersion(string schemaUrl, ILogger logger)
     {
-        ArgumentNullException.ThrowIfNull(logger);
-        
         if (string.IsNullOrWhiteSpace(schemaUrl))
         {
             logger.LogDebug("Schema is empty, skipping schema version validation.");
@@ -304,26 +285,17 @@ public static class ProxyUtils
                 if (CompareSemVer(currentVersion, schemaVersion) != 0)
                 {
                     var currentSchemaUrl = uri.ToString().Replace($"/v{schemaVersion}/", $"/v{currentVersion}/", StringComparison.OrdinalIgnoreCase);
-                    if (logger.IsEnabled(LogLevel.Warning))
-                    {
-                        logger.LogWarning("The version of schema does not match the installed Dev Proxy version, the expected schema is {Schema}", currentSchemaUrl);
-                    }
+                    logger.LogWarning("The version of schema does not match the installed Dev Proxy version, the expected schema is {Schema}", currentSchemaUrl);
                 }
             }
             else
             {
-                if (logger.IsEnabled(LogLevel.Debug))
-                {
-                    logger.LogDebug("Invalid schema {SchemaUrl}, skipping schema version validation.", schemaUrl);
-                }
+                logger.LogDebug("Invalid schema {SchemaUrl}, skipping schema version validation.", schemaUrl);
             }
         }
         catch (Exception ex)
         {
-            if (logger.IsEnabled(LogLevel.Warning))
-            {
-                logger.LogWarning("Invalid schema {SchemaUrl}, skipping schema version validation. Error: {Error}", schemaUrl, ex.Message);
-            }
+            logger.LogWarning("Invalid schema {SchemaUrl}, skipping schema version validation. Error: {Error}", schemaUrl, ex.Message);
         }
     }
 

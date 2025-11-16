@@ -44,10 +44,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
         var appFolder = ProxyUtils.AppFolder;
         if (string.IsNullOrEmpty(appFolder))
         {
-            if (_logger.IsEnabled(LogLevel.Error))
-            {
-                _logger.LogError("App folder {AppFolder} not found", appFolder);
-            }
+            _logger.LogError("App folder {AppFolder} not found", appFolder);
             return 1;
         }
 
@@ -57,10 +54,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
             var modifiedToday = IsModifiedToday(dbFileInfo);
             if (modifiedToday && skipIfUpdatedToday)
             {
-                if (_logger.IsEnabled(LogLevel.Information))
-                {
-                    _logger.LogInformation("Microsoft Graph database has already been updated today");
-                }
+                _logger.LogInformation("Microsoft Graph database has already been updated today");
                 return 1;
             }
 
@@ -68,52 +62,34 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
 
             if (hasErrors)
             {
-                if (_logger.IsEnabled(LogLevel.Warning))
-                {
-                    _logger.LogWarning("Unable to update Microsoft Graph database");
-                }
+                _logger.LogWarning("Unable to update Microsoft Graph database");
                 return 1;
             }
 
             if (!isApiModified)
             {
                 UpdateLastWriteTime(dbFileInfo);
-                if (_logger.IsEnabled(LogLevel.Debug))
-                {
-                    _logger.LogDebug("Updated the last-write-time attribute of Microsoft Graph database {File}", dbFileInfo);
-                }
-                if (_logger.IsEnabled(LogLevel.Information))
-                {
-                    _logger.LogInformation("Microsoft Graph database is already up-to-date");
-                }
+                _logger.LogDebug("Updated the last-write-time attribute of Microsoft Graph database {File}", dbFileInfo);
+                _logger.LogInformation("Microsoft Graph database is already up-to-date");
                 return 1;
             }
 
             await LoadOpenAPIFilesAsync(appFolder, cancellationToken);
             if (_openApiDocuments.Count < 1)
             {
-                if (_logger.IsEnabled(LogLevel.Debug))
-                {
-                    _logger.LogDebug("No OpenAPI files found or couldn't load them");
-                }
+                _logger.LogDebug("No OpenAPI files found or couldn't load them");
                 return 1;
             }
 
             await CreateDbAsync(cancellationToken);
             await FillDataAsync(cancellationToken);
 
-            if (_logger.IsEnabled(LogLevel.Information))
-            {
-                _logger.LogInformation("Microsoft Graph database is successfully updated");
-            }
+            _logger.LogInformation("Microsoft Graph database is successfully updated");
             return 0;
         }
         catch (Exception ex)
         {
-            if (_logger.IsEnabled(LogLevel.Error))
-            {
-                _logger.LogError(ex, "Error generating Microsoft Graph database");
-            }
+            _logger.LogError(ex, "Error generating Microsoft Graph database");
             return 1;
         }
     }
@@ -124,32 +100,20 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
 
     private async Task CreateDbAsync(CancellationToken cancellationToken)
     {
-        if (_logger.IsEnabled(LogLevel.Information))
-        {
-            _logger.LogInformation("Creating database...");
-        }
+        _logger.LogInformation("Creating database...");
 
-        if (_logger.IsEnabled(LogLevel.Debug))
-        {
-            _logger.LogDebug("Dropping endpoints table...");
-        }
+        _logger.LogDebug("Dropping endpoints table...");
         var dropTable = Connection.CreateCommand();
         dropTable.CommandText = "DROP TABLE IF EXISTS endpoints";
         _ = await dropTable.ExecuteNonQueryAsync(cancellationToken);
 
-        if (_logger.IsEnabled(LogLevel.Debug))
-        {
-            _logger.LogDebug("Creating endpoints table...");
-        }
+        _logger.LogDebug("Creating endpoints table...");
         var createTable = Connection.CreateCommand();
         // when you change the schema, increase the db version number in ProxyUtils
         createTable.CommandText = "CREATE TABLE IF NOT EXISTS endpoints (path TEXT, graphVersion TEXT, hasSelect BOOLEAN)";
         _ = await createTable.ExecuteNonQueryAsync(cancellationToken);
 
-        if (_logger.IsEnabled(LogLevel.Debug))
-        {
-            _logger.LogDebug("Creating index on endpoints and version...");
-        }
+        _logger.LogDebug("Creating index on endpoints and version...");
         // Add an index on the path and graphVersion columns
         var createIndex = Connection.CreateCommand();
         createIndex.CommandText = "CREATE INDEX IF NOT EXISTS idx_endpoints_path_version ON endpoints (path, graphVersion)";
@@ -158,10 +122,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
 
     private async Task FillDataAsync(CancellationToken cancellationToken)
     {
-        if (_logger.IsEnabled(LogLevel.Information))
-        {
-            _logger.LogInformation("Filling database...");
-        }
+        _logger.LogInformation("Filling database...");
 
         SetDbJournaling(false);
 
@@ -176,10 +137,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
             var graphVersion = openApiDocument.Key;
             var document = openApiDocument.Value;
 
-            if (_logger.IsEnabled(LogLevel.Debug))
-            {
-                _logger.LogDebug("Filling database for {GraphVersion}...", graphVersion);
-            }
+            _logger.LogDebug("Filling database for {GraphVersion}...", graphVersion);
 
             var insertEndpoint = Connection.CreateCommand();
             insertEndpoint.CommandText = "INSERT INTO endpoints (path, graphVersion, hasSelect) VALUES (@path, @graphVersion, @hasSelect)";
@@ -192,29 +150,20 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                if (_logger.IsEnabled(LogLevel.Trace))
-                {
-                    _logger.LogTrace("Endpoint {GraphVersion}{Key}...", graphVersion, path.Key);
-                }
+                _logger.LogTrace("Endpoint {GraphVersion}{Key}...", graphVersion, path.Key);
 
                 // Get the GET operation for this path
                 var getOperation = path.Value.Operations.FirstOrDefault(o => o.Key == OperationType.Get).Value;
                 if (getOperation == null)
                 {
-                    if (_logger.IsEnabled(LogLevel.Trace))
-                    {
-                        _logger.LogTrace("No GET operation found for {GraphVersion}{Key}", graphVersion, path.Key);
-                    }
+                    _logger.LogTrace("No GET operation found for {GraphVersion}{Key}", graphVersion, path.Key);
                     continue;
                 }
 
                 // Check if the GET operation has a $select parameter
                 var hasSelect = getOperation.Parameters.Any(p => p.Name == "$select");
 
-                if (_logger.IsEnabled(LogLevel.Trace))
-                {
-                    _logger.LogTrace("Inserting endpoint {GraphVersion}{Key} with hasSelect={HasSelect}...", graphVersion, path.Key, hasSelect);
-                }
+                _logger.LogTrace("Inserting endpoint {GraphVersion}{Key} with hasSelect={HasSelect}...", graphVersion, path.Key, hasSelect);
                 pathParam.Value = path.Key;
                 graphVersionParam.Value = graphVersion;
                 hasSelectParam.Value = hasSelect;
@@ -227,18 +176,12 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
 
         SetDbJournaling(true);
 
-        if (_logger.IsEnabled(LogLevel.Information))
-        {
-            _logger.LogInformation("Inserted {EndpointCount} endpoints in the database", i);
-        }
+        _logger.LogInformation("Inserted {EndpointCount} endpoints in the database", i);
     }
 
     private async Task<(bool isApiUpdated, bool hasErrors)> UpdateOpenAPIGraphFilesIfNecessaryAsync(string folder, CancellationToken cancellationToken)
     {
-        if (_logger.IsEnabled(LogLevel.Information))
-        {
-            _logger.LogInformation("Checking for updated OpenAPI files...");
-        }
+        _logger.LogInformation("Checking for updated OpenAPI files...");
 
         var isApiUpdated = false;
         var hasErrors = false;
@@ -248,24 +191,15 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
             try
             {
                 var yamlFile = new FileInfo(Path.Combine(folder, GetGraphOpenApiYamlFileName(version)));
-                if (_logger.IsEnabled(LogLevel.Debug))
-                {
-                    _logger.LogDebug("Checking for updated OpenAPI file {File}...", yamlFile);
-                }
+                _logger.LogDebug("Checking for updated OpenAPI file {File}...", yamlFile);
                 if (IsModifiedToday(yamlFile))
                 {
-                    if (_logger.IsEnabled(LogLevel.Information))
-                    {
-                        _logger.LogInformation("File {File} has already been updated today", yamlFile);
-                    }
+                    _logger.LogInformation("File {File} has already been updated today", yamlFile);
                     continue;
                 }
 
                 var url = GetOpenApiSpecUrl(version);
-                if (_logger.IsEnabled(LogLevel.Information))
-                {
-                    _logger.LogInformation("Downloading OpenAPI file from {Url}...", url);
-                }
+                _logger.LogInformation("Downloading OpenAPI file from {Url}...", url);
 
                 var etagFile = new FileInfo(Path.Combine(folder, GetGraphOpenApiEtagFileName(version)));
                 isApiUpdated |= await DownloadOpenAPIFileAsync(url, yamlFile, etagFile, cancellationToken);
@@ -273,10 +207,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
             catch (Exception ex)
             {
                 hasErrors = true;
-                if (_logger.IsEnabled(LogLevel.Error))
-                {
-                    _logger.LogError(ex, "Error updating OpenAPI files");
-                }
+                _logger.LogError(ex, "Error updating OpenAPI files");
             }
         }
         return (isApiUpdated, hasErrors);
@@ -301,10 +232,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
         if (response.StatusCode == HttpStatusCode.NotModified)
         {
             UpdateLastWriteTime(yamlFile);
-            if (_logger.IsEnabled(LogLevel.Debug))
-            {
-                _logger.LogDebug("File {File} already up-to-date. Updated the last-write-time attribute", yamlFile);
-            }
+            _logger.LogDebug("File {File} already up-to-date. Updated the last-write-time attribute", yamlFile);
             return false;
         }
 
@@ -324,35 +252,23 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
             etagFile.Delete();
         }
 
-        if (_logger.IsEnabled(LogLevel.Debug))
-        {
-            _logger.LogDebug("Downloaded OpenAPI file from {Url} to {File}", url, yamlFile);
-        }
+        _logger.LogDebug("Downloaded OpenAPI file from {Url} to {File}", url, yamlFile);
         return true;
     }
 
     private async Task LoadOpenAPIFilesAsync(string folder, CancellationToken cancellationToken)
     {
-        if (_logger.IsEnabled(LogLevel.Information))
-        {
-            _logger.LogInformation("Loading OpenAPI files...");
-        }
+        _logger.LogInformation("Loading OpenAPI files...");
 
         foreach (var version in graphVersions)
         {
             var filePath = Path.Combine(folder, GetGraphOpenApiYamlFileName(version));
             var file = new FileInfo(filePath);
-            if (_logger.IsEnabled(LogLevel.Debug))
-            {
-                _logger.LogDebug("Loading OpenAPI file for {FilePath}...", filePath);
-            }
+            _logger.LogDebug("Loading OpenAPI file for {FilePath}...", filePath);
 
             if (!file.Exists)
             {
-                if (_logger.IsEnabled(LogLevel.Debug))
-                {
-                    _logger.LogDebug("File {FilePath} does not exist", filePath);
-                }
+                _logger.LogDebug("File {FilePath} does not exist", filePath);
                 continue;
             }
 
@@ -362,17 +278,11 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
                 var openApiDocument = await new OpenApiStreamReader().ReadAsync(fileStream, cancellationToken);
                 _openApiDocuments[version] = openApiDocument.OpenApiDocument;
 
-                if (_logger.IsEnabled(LogLevel.Debug))
-                {
-                    _logger.LogDebug("Added OpenAPI file {FilePath} for {Version}", filePath, version);
-                }
+                _logger.LogDebug("Added OpenAPI file {FilePath} for {Version}", filePath, version);
             }
             catch (Exception ex)
             {
-                if (_logger.IsEnabled(LogLevel.Error))
-                {
-                    _logger.LogError(ex, "Error loading OpenAPI file {FilePath}", filePath);
-                }
+                _logger.LogError(ex, "Error loading OpenAPI file {FilePath}", filePath);
             }
         }
     }

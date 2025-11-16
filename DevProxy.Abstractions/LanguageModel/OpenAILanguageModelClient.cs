@@ -28,10 +28,7 @@ public sealed class OpenAILanguageModelClient(
         }
         if (response.ErrorMessage is not null)
         {
-            if (_logger.IsEnabled(LogLevel.Error))
-            {
-                _logger.LogError("Error: {Error}", response.ErrorMessage);
-            }
+            _logger.LogError("Error: {Error}", response.ErrorMessage);
             return null;
         }
         var openAIResponse = (OpenAIChatCompletionResponse)response;
@@ -65,10 +62,7 @@ public sealed class OpenAILanguageModelClient(
 
         if (Configuration.CacheResponses && _cacheChatCompletion.TryGetCacheValue(messages, out var cachedResponse))
         {
-            if (_logger.IsEnabled(LogLevel.Debug))
-            {
-                _logger.LogDebug("Returning cached response for message: {LastMessage}", messages.Last().Content);
-            }
+            _logger.LogDebug("Returning cached response for message: {LastMessage}", messages.Last().Content);
             return cachedResponse;
         }
 
@@ -79,10 +73,7 @@ public sealed class OpenAILanguageModelClient(
         }
         if (response.Error is not null)
         {
-            if (_logger.IsEnabled(LogLevel.Error))
-            {
-                _logger.LogError("Error: {Error}. Code: {Code}", response.Error.Message, response.Error.Code);
-            }
+            _logger.LogError("Error: {Error}. Code: {Code}", response.Error.Message, response.Error.Code);
             return null;
         }
         else
@@ -116,26 +107,17 @@ public sealed class OpenAILanguageModelClient(
 
         if (string.IsNullOrEmpty(Configuration.Url))
         {
-            if (_logger.IsEnabled(LogLevel.Error))
-            {
-                _logger.LogError("URL is not set. Language model will be disabled");
-            }
+            _logger.LogError("URL is not set. Language model will be disabled");
             return false;
         }
 
         if (string.IsNullOrEmpty(Configuration.Model))
         {
-            if (_logger.IsEnabled(LogLevel.Error))
-            {
-                _logger.LogError("Model is not set. Language model will be disabled");
-            }
+            _logger.LogError("Model is not set. Language model will be disabled");
             return false;
         }
 
-        if (_logger.IsEnabled(LogLevel.Debug))
-        {
-            _logger.LogDebug("Checking LM availability at {Url}...", Configuration.Url);
-        }
+        _logger.LogDebug("Checking LM availability at {Url}...", Configuration.Url);
 
         try
         {
@@ -146,10 +128,7 @@ public sealed class OpenAILanguageModelClient(
             }], null, cancellationToken);
             if (testCompletion?.ErrorMessage is not null)
             {
-                if (_logger.IsEnabled(LogLevel.Error))
-                {
-                    _logger.LogError("Error: {Error}", testCompletion.ErrorMessage);
-                }
+                _logger.LogError("Error: {Error}", testCompletion.ErrorMessage);
                 return false;
             }
 
@@ -157,10 +136,7 @@ public sealed class OpenAILanguageModelClient(
         }
         catch (Exception ex)
         {
-            if (_logger.IsEnabled(LogLevel.Error))
-            {
-                _logger.LogError(ex, "Couldn't reach language model at {Url}", Configuration.Url);
-            }
+            _logger.LogError(ex, "Couldn't reach language model at {Url}", Configuration.Url);
             return false;
         }
     }
@@ -172,10 +148,7 @@ public sealed class OpenAILanguageModelClient(
         try
         {
             var url = $"{Configuration.Url?.TrimEnd('/')}/chat/completions";
-            if (_logger.IsEnabled(LogLevel.Debug))
-            {
-                _logger.LogDebug("Requesting chat completion. Message: {LastMessage}", messages.Last().Content);
-            }
+            _logger.LogDebug("Requesting chat completion. Message: {LastMessage}", messages.Last().Content);
 
             var payload = new OpenAIChatCompletionRequest
             {
@@ -186,18 +159,12 @@ public sealed class OpenAILanguageModelClient(
             };
 
             var response = await _httpClient.PostAsJsonAsync(url, payload, ProxyUtils.JsonSerializerOptions, cancellationToken);
-            if (_logger.IsEnabled(LogLevel.Debug))
-            {
-                _logger.LogDebug("Response: {Response}", response.StatusCode);
-            }
+            _logger.LogDebug("Response: {Response}", response.StatusCode);
 
             if (!response.IsSuccessStatusCode)
             {
                 var errorResponse = await response.Content.ReadAsStringAsync(cancellationToken);
-                if (_logger.IsEnabled(LogLevel.Debug))
-                {
-                    _logger.LogDebug("LM error: {ErrorResponse}", errorResponse);
-                }
+                _logger.LogDebug("LM error: {ErrorResponse}", errorResponse);
                 return null;
             }
 
@@ -212,10 +179,7 @@ public sealed class OpenAILanguageModelClient(
         }
         catch (Exception ex)
         {
-            if (_logger.IsEnabled(LogLevel.Error))
-            {
-                _logger.LogError(ex, "Failed to generate chat completion");
-            }
+            _logger.LogError(ex, "Failed to generate chat completion");
             return null;
         }
     }
