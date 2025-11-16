@@ -10,6 +10,7 @@
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AnalysisMode>AllEnabledByDefault</AnalysisMode>
+    <NoWarn>CA1873</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
