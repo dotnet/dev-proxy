@@ -218,11 +218,20 @@ public sealed class OpenAITelemetryPlugin(
 
         try
         {
-            void configureOtlpExporter(OtlpExporterOptions options)
+            var baseExporterUri = new Uri(Configuration.ExporterEndpoint);
+
+            void configureTracesOtlpExporter(OtlpExporterOptions options)
             {
                 // We use protobuf to allow intercepting Dev Proxy's own LLM traffic
                 options.Protocol = OtlpExportProtocol.HttpProtobuf;
-                options.Endpoint = new Uri(Configuration.ExporterEndpoint + "/v1/traces");
+                options.Endpoint = new Uri(baseExporterUri, "/v1/traces");
+            }
+
+            void configureMetricsOtlpExporter(OtlpExporterOptions options)
+            {
+                // We use protobuf to allow intercepting Dev Proxy's own LLM traffic
+                options.Protocol = OtlpExportProtocol.HttpProtobuf;
+                options.Endpoint = new Uri(baseExporterUri, "/v1/metrics");
             }
 
             var resourceBuilder = ResourceBuilder
@@ -232,7 +241,7 @@ public sealed class OpenAITelemetryPlugin(
             _tracerProvider = Sdk.CreateTracerProviderBuilder()
                 .SetResourceBuilder(resourceBuilder)
                 .AddSource(ActivitySourceName)
-                .AddOtlpExporter(configureOtlpExporter)
+                .AddOtlpExporter(configureTracesOtlpExporter)
                 .Build();
 
             _meterProvider = Sdk.CreateMeterProviderBuilder()
@@ -247,7 +256,7 @@ public sealed class OpenAITelemetryPlugin(
                     Boundaries = [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10, 50, 100]
                 })
                 .AddView(SemanticConvention.GEN_AI_USAGE_TOTAL_COST, new MetricStreamConfiguration())
-                .AddOtlpExporter(configureOtlpExporter)
+                .AddOtlpExporter(configureMetricsOtlpExporter)
                 .Build();
 
             _tokenUsageMetric = _meter.CreateHistogram<long>(
