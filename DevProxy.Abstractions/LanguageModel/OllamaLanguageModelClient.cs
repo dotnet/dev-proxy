@@ -24,7 +24,10 @@ public sealed class OllamaLanguageModelClient(
 
         if (Configuration.CacheResponses && _cacheCompletion.TryGetValue(prompt, out var cachedResponse))
         {
-            Logger.LogDebug("Returning cached response for prompt: {Prompt}", prompt);
+            if (Logger.IsEnabled(LogLevel.Debug))
+            {
+                Logger.LogDebug("Returning cached response for prompt: {Prompt}", prompt);
+            }
             return cachedResponse;
         }
 
@@ -36,7 +39,10 @@ public sealed class OllamaLanguageModelClient(
 
         if (response.Error is not null)
         {
-            Logger.LogError("{Error}", response.Error);
+            if (Logger.IsEnabled(LogLevel.Error))
+            {
+                Logger.LogError("{Error}", response.Error);
+            }
             return null;
         }
 
@@ -54,7 +60,10 @@ public sealed class OllamaLanguageModelClient(
 
         if (Configuration.CacheResponses && _cacheChatCompletion.TryGetCacheValue(messages, out var cachedResponse))
         {
-            Logger.LogDebug("Returning cached response for message: {LastMessage}", messages.Last().Content);
+            if (Logger.IsEnabled(LogLevel.Debug))
+            {
+                Logger.LogDebug("Returning cached response for message: {LastMessage}", messages.Last().Content);
+            }
             return cachedResponse;
         }
 
@@ -65,7 +74,10 @@ public sealed class OllamaLanguageModelClient(
         }
         if (response.Error is not null)
         {
-            Logger.LogError("{Error}", response.Error);
+            if (Logger.IsEnabled(LogLevel.Error))
+            {
+                Logger.LogError("{Error}", response.Error);
+            }
             return null;
         }
         else
@@ -97,24 +109,36 @@ public sealed class OllamaLanguageModelClient(
 
         if (string.IsNullOrEmpty(Configuration.Url))
         {
-            Logger.LogError("URL is not set. Language model will be disabled");
+            if (Logger.IsEnabled(LogLevel.Error))
+            {
+                Logger.LogError("URL is not set. Language model will be disabled");
+            }
             return false;
         }
 
         if (string.IsNullOrEmpty(Configuration.Model))
         {
-            Logger.LogError("Model is not set. Language model will be disabled");
+            if (Logger.IsEnabled(LogLevel.Error))
+            {
+                Logger.LogError("Model is not set. Language model will be disabled");
+            }
             return false;
         }
 
-        Logger.LogDebug("Checking LM availability at {Url}...", Configuration.Url);
+        if (Logger.IsEnabled(LogLevel.Debug))
+        {
+            Logger.LogDebug("Checking LM availability at {Url}...", Configuration.Url);
+        }
 
         try
         {
             var testCompletion = await GenerateCompletionInternalAsync("Are you there? Reply with a yes or no.", null, cancellationToken);
             if (testCompletion?.Error is not null)
             {
-                Logger.LogError("Error: {Error}", testCompletion.Error);
+                if (Logger.IsEnabled(LogLevel.Error))
+                {
+                    Logger.LogError("Error: {Error}", testCompletion.Error);
+                }
                 return false;
             }
 
@@ -122,7 +146,10 @@ public sealed class OllamaLanguageModelClient(
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Couldn't reach language model at {Url}", Configuration.Url);
+            if (Logger.IsEnabled(LogLevel.Error))
+            {
+                Logger.LogError(ex, "Couldn't reach language model at {Url}", Configuration.Url);
+            }
             return false;
         }
     }
@@ -134,7 +161,10 @@ public sealed class OllamaLanguageModelClient(
         try
         {
             var url = $"{Configuration.Url?.TrimEnd('/')}/api/generate";
-            Logger.LogDebug("Requesting completion. Prompt: {Prompt}", prompt);
+            if (Logger.IsEnabled(LogLevel.Debug))
+            {
+                Logger.LogDebug("Requesting completion. Prompt: {Prompt}", prompt);
+            }
 
             var response = await _httpClient.PostAsJsonAsync(url,
                 new
@@ -146,30 +176,45 @@ public sealed class OllamaLanguageModelClient(
                 },
                 cancellationToken
             );
-            Logger.LogDebug("Response status: {Response}", response.StatusCode);
+            if (Logger.IsEnabled(LogLevel.Debug))
+            {
+                Logger.LogDebug("Response status: {Response}", response.StatusCode);
+            }
 
             if (!response.IsSuccessStatusCode)
             {
                 var errorResponse = await response.Content.ReadAsStringAsync(cancellationToken);
-                Logger.LogDebug("LM error: {ErrorResponse}", errorResponse);
+                if (Logger.IsEnabled(LogLevel.Debug))
+                {
+                    Logger.LogDebug("LM error: {ErrorResponse}", errorResponse);
+                }
                 return null;
             }
 
             var res = await response.Content.ReadFromJsonAsync<OllamaLanguageModelCompletionResponse>(cancellationToken);
             if (res is null)
             {
-                Logger.LogDebug("Response: null");
+                if (Logger.IsEnabled(LogLevel.Debug))
+                {
+                    Logger.LogDebug("Response: null");
+                }
                 return res;
             }
 
-            Logger.LogDebug("Response: {Response}", res.Response);
+            if (Logger.IsEnabled(LogLevel.Debug))
+            {
+                Logger.LogDebug("Response: {Response}", res.Response);
+            }
 
             res.RequestUrl = url;
             return res;
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Failed to generate completion");
+            if (Logger.IsEnabled(LogLevel.Error))
+            {
+                Logger.LogError(ex, "Failed to generate completion");
+            }
             return null;
         }
     }
@@ -181,7 +226,10 @@ public sealed class OllamaLanguageModelClient(
         try
         {
             var url = $"{Configuration.Url?.TrimEnd('/')}/api/chat";
-            Logger.LogDebug("Requesting chat completion. Message: {LastMessage}", messages.Last().Content);
+            if (Logger.IsEnabled(LogLevel.Debug))
+            {
+                Logger.LogDebug("Requesting chat completion. Message: {LastMessage}", messages.Last().Content);
+            }
 
             var response = await _httpClient.PostAsJsonAsync(url,
                 new
@@ -192,12 +240,18 @@ public sealed class OllamaLanguageModelClient(
                     options
                 }
             );
-            Logger.LogDebug("Response: {Response}", response.StatusCode);
+            if (Logger.IsEnabled(LogLevel.Debug))
+            {
+                Logger.LogDebug("Response: {Response}", response.StatusCode);
+            }
 
             if (!response.IsSuccessStatusCode)
             {
                 var errorResponse = await response.Content.ReadAsStringAsync();
-                Logger.LogDebug("LM error: {ErrorResponse}", errorResponse);
+                if (Logger.IsEnabled(LogLevel.Debug))
+                {
+                    Logger.LogDebug("LM error: {ErrorResponse}", errorResponse);
+                }
                 return null;
             }
 

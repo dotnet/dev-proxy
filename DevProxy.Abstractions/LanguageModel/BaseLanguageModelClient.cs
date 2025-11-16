@@ -24,7 +24,10 @@ public abstract class BaseLanguageModelClient(LanguageModelConfiguration configu
 
         if (!promptFileName.EndsWith(".prompty", StringComparison.OrdinalIgnoreCase))
         {
-            Logger.LogDebug("Prompt file name '{PromptFileName}' does not end with '.prompty'. Appending the extension.", promptFileName);
+            if (Logger.IsEnabled(LogLevel.Debug))
+            {
+                Logger.LogDebug("Prompt file name '{PromptFileName}' does not end with '.prompty'. Appending the extension.", promptFileName);
+            }
             promptFileName += ".prompty";
         }
 
@@ -93,7 +96,10 @@ public abstract class BaseLanguageModelClient(LanguageModelConfiguration configu
 
     private (IEnumerable<ILanguageModelChatCompletionMessage>?, CompletionOptions?) LoadPrompt(string promptFileName, Dictionary<string, object> parameters)
     {
-        Logger.LogDebug("Prompt file {PromptFileName} not in the cache. Loading...", promptFileName);
+        if (Logger.IsEnabled(LogLevel.Debug))
+        {
+            Logger.LogDebug("Prompt file {PromptFileName} not in the cache. Loading...", promptFileName);
+        }
 
         var filePath = Path.Combine(ProxyUtils.AppFolder!, "prompts", promptFileName);
         if (!File.Exists(filePath))
@@ -101,14 +107,20 @@ public abstract class BaseLanguageModelClient(LanguageModelConfiguration configu
             throw new FileNotFoundException($"Prompt file '{filePath}' not found.");
         }
 
-        Logger.LogDebug("Loading prompt file: {FilePath}", filePath);
+        if (Logger.IsEnabled(LogLevel.Debug))
+        {
+            Logger.LogDebug("Loading prompt file: {FilePath}", filePath);
+        }
         var promptContents = File.ReadAllText(filePath);
 
         var prompty = Prompt.FromMarkdown(promptContents);
         if (prompty.Prepare(parameters) is not IEnumerable<ChatMessage> promptyMessages ||
             !promptyMessages.Any())
         {
-            Logger.LogError("No messages found in the prompt file: {FilePath}", filePath);
+            if (Logger.IsEnabled(LogLevel.Error))
+            {
+                Logger.LogError("No messages found in the prompt file: {FilePath}", filePath);
+            }
             return (null, null);
         }
 

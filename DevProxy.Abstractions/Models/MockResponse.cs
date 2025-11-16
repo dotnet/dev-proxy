@@ -21,7 +21,12 @@ public class MockResponse : ICloneable
 
     public static MockResponse FromHttpResponse(string httpResponse, ILogger logger)
     {
-        logger.LogTrace("{Method} called", nameof(FromHttpResponse));
+        ArgumentNullException.ThrowIfNull(logger);
+        
+        if (logger.IsEnabled(LogLevel.Trace))
+        {
+            logger.LogTrace("{Method} called", nameof(FromHttpResponse));
+        }
 
         if (string.IsNullOrWhiteSpace(httpResponse))
         {
@@ -40,7 +45,10 @@ public class MockResponse : ICloneable
         for (var i = 0; i < lines.Length; i++)
         {
             var line = lines[i];
-            logger.LogTrace("Processing line {LineNumber}: {LineContent}", i + 1, line);
+            if (logger.IsEnabled(LogLevel.Trace))
+            {
+                logger.LogTrace("Processing line {LineNumber}: {LineContent}", i + 1, line);
+            }
 
             if (i == 0)
             {
@@ -111,7 +119,10 @@ public class MockResponse : ICloneable
             }
         };
 
-        logger.LogTrace("Left {Method}", nameof(FromHttpResponse));
+        if (logger.IsEnabled(LogLevel.Trace))
+        {
+            logger.LogTrace("Left {Method}", nameof(FromHttpResponse));
+        }
 
         return mockResponse;
     }

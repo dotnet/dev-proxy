@@ -26,7 +26,12 @@ public class OpenAIRequest
 
     public static bool TryGetOpenAIRequest(string content, ILogger logger, out OpenAIRequest? request)
     {
-        logger.LogTrace("{Method} called", nameof(TryGetOpenAIRequest));
+        ArgumentNullException.ThrowIfNull(logger);
+        
+        if (logger.IsEnabled(LogLevel.Trace))
+        {
+            logger.LogTrace("{Method} called", nameof(TryGetOpenAIRequest));
+        }
 
         request = null;
 
