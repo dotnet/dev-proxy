@@ -102,7 +102,7 @@ public sealed class HarGeneratorPlugin(
 
         var entry = new HarEntry
         {
-            StartedDateTime = currentTime.ToString("s"),
+            StartedDateTime = currentTime.ToString("o"),
             Time = 0, // We don't have actual timing data in RequestLog
             Request = new HarRequest
             {
