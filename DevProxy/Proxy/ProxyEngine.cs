@@ -30,13 +30,16 @@ sealed class ProxyEngine(
     IProxyConfiguration proxyConfiguration,
     ISet<UrlToWatch> urlsToWatch,
     IProxyStateController proxyController,
-    ILogger<ProxyEngine> logger) : BackgroundService, IDisposable
+    ILogger<ProxyEngine> logger,
+    ILoggerFactory loggerFactory) : BackgroundService, IDisposable
 {
     private readonly IEnumerable<IPlugin> _plugins = plugins;
     private readonly ILogger _logger = logger;
     private readonly IProxyConfiguration _config = proxyConfiguration;
 
-    internal static ProxyServer ProxyServer { get; private set; }
+    internal static ProxyServer ProxyServer { get; private set; } = null!;
+    private static bool _isProxyServerInitialized;
+    private static readonly object _initLock = new();
     private ExplicitProxyEndPoint? _explicitEndPoint;
     // lists of URLs to watch, used for intercepting requests
     private readonly ISet<UrlToWatch> _urlsToWatch = urlsToWatch;
@@ -56,22 +59,48 @@ sealed class ProxyEngine(
 
     static ProxyEngine()
     {
-        ProxyServer = new();
-        ProxyServer.CertificateManager.PfxFilePath = Environment.GetEnvironmentVariable("DEV_PROXY_CERT_PATH") ?? string.Empty;
-        ProxyServer.CertificateManager.RootCertificateName = "Dev Proxy CA";
-        ProxyServer.CertificateManager.CertificateStorage = new CertificateDiskCache();
-        // we need to change this to a value lower than 397
-        // to avoid the ERR_CERT_VALIDITY_TOO_LONG error in Edge
-        ProxyServer.CertificateManager.CertificateValidDays = 365;
+        // ProxyServer initialization moved to EnsureProxyServerInitialized
+        // to enable passing ILoggerFactory for Unobtanium logging
+    }
 
-        using var joinableTaskContext = new JoinableTaskContext();
-        var joinableTaskFactory = new JoinableTaskFactory(joinableTaskContext);
-        _ = joinableTaskFactory.Run(async () => await ProxyServer.CertificateManager.LoadOrCreateRootCertificateAsync());
+    // Ensure ProxyServer is initialized with the given ILoggerFactory
+    // This method can be called from multiple places (ProxyEngine, CertCommand, etc.)
+    internal static void EnsureProxyServerInitialized(ILoggerFactory? loggerFactory = null)
+    {
+        if (_isProxyServerInitialized)
+        {
+            return;
+        }
+
+        lock (_initLock)
+        {
+            if (_isProxyServerInitialized)
+            {
+                return;
+            }
+
+            ProxyServer = new(loggerFactory: loggerFactory);
+            ProxyServer.CertificateManager.PfxFilePath = Environment.GetEnvironmentVariable("DEV_PROXY_CERT_PATH") ?? string.Empty;
+            ProxyServer.CertificateManager.RootCertificateName = "Dev Proxy CA";
+            ProxyServer.CertificateManager.CertificateStorage = new CertificateDiskCache();
+            // we need to change this to a value lower than 397
+            // to avoid the ERR_CERT_VALIDITY_TOO_LONG error in Edge
+            ProxyServer.CertificateManager.CertificateValidDays = 365;
+
+            using var joinableTaskContext = new JoinableTaskContext();
+            var joinableTaskFactory = new JoinableTaskFactory(joinableTaskContext);
+            _ = joinableTaskFactory.Run(async () => await ProxyServer.CertificateManager.LoadOrCreateRootCertificateAsync());
+
+            _isProxyServerInitialized = true;
+        }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _cancellationToken = stoppingToken;
+
+        // Initialize ProxyServer with LoggerFactory for Unobtanium logging
+        EnsureProxyServerInitialized(loggerFactory);
 
         Debug.Assert(ProxyServer is not null, "Proxy server is not initialized");
 
