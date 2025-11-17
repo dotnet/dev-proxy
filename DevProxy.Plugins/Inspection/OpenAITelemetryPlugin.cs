@@ -69,7 +69,7 @@ public sealed class OpenAITelemetryPlugin(
     private TracerProvider? _tracerProvider;
 
     private readonly ConcurrentDictionary<string, List<OpenAITelemetryPluginReportModelUsageInformation>> _modelUsage = [];
-    private bool _isRecording = false;
+    private bool _isRecording;
 
     public override string Name => nameof(OpenAITelemetryPlugin);
 
