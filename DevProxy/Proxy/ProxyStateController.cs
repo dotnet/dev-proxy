@@ -23,7 +23,7 @@ sealed class ProxyStateController(
     private readonly ILogger _logger = logger;
     private ExceptionHandler ExceptionHandler => ex => _logger.LogError(ex, "An error occurred in a plugin");
 
-    public void StartRecording()
+    public async Task StartRecordingAsync(CancellationToken cancellationToken)
     {
         if (ProxyState.IsRecording)
         {
@@ -32,6 +32,19 @@ sealed class ProxyStateController(
 
         ProxyState.IsRecording = true;
         PrintRecordingIndicator(ProxyState.IsRecording);
+
+        var eventArgs = EventArgs.Empty;
+        foreach (var plugin in _plugins.Where(p => p.Enabled))
+        {
+            try
+            {
+                await plugin.AfterRecordingStartAsync(eventArgs, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                ExceptionHandler(ex);
+            }
+        }
     }
 
     public async Task StopRecordingAsync(CancellationToken cancellationToken)

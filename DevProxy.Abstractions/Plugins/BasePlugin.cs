@@ -55,6 +55,11 @@ public abstract class BasePlugin(
         return Task.CompletedTask;
     }
 
+    public virtual Task AfterRecordingStartAsync(EventArgs e, CancellationToken cancellationToken)
+    {
+        return Task.CompletedTask;
+    }
+
     public virtual Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
     {
         return Task.CompletedTask;

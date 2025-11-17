@@ -42,7 +42,7 @@ public sealed class ProxyController(IProxyStateController proxyStateController, 
         {
             if (proxyInfo.Recording.Value)
             {
-                _proxyStateController.StartRecording();
+                await _proxyStateController.StartRecordingAsync(cancellationToken);
             }
             else
             {

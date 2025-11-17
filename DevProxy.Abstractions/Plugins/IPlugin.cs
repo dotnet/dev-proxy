@@ -22,6 +22,7 @@ public interface IPlugin
     Task BeforeResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken);
     Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken);
     Task AfterRequestLogAsync(RequestLogArgs e, CancellationToken cancellationToken);
+    Task AfterRecordingStartAsync(EventArgs e, CancellationToken cancellationToken);
     Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken);
     Task MockRequestAsync(EventArgs e, CancellationToken cancellationToken);
 }
