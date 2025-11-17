@@ -67,7 +67,9 @@ public sealed class OpenAITelemetryPlugin(
     private LanguageModelPricesLoader? _loader;
     private MeterProvider? _meterProvider;
     private TracerProvider? _tracerProvider;
+
     private readonly ConcurrentDictionary<string, List<OpenAITelemetryPluginReportModelUsageInformation>> _modelUsage = [];
+    private bool _isRecording = false;
 
     public override string Name => nameof(OpenAITelemetryPlugin);
 
@@ -192,6 +194,16 @@ public sealed class OpenAITelemetryPlugin(
         return Task.CompletedTask;
     }
 
+    public override Task AfterRecordingStartAsync(EventArgs e, CancellationToken cancellationToken)
+    {
+        Logger.LogTrace("{Method} called", nameof(AfterRecordingStartAsync));
+
+        _isRecording = true;
+
+        Logger.LogTrace("Left {Name}", nameof(AfterRecordingStartAsync));
+        return Task.CompletedTask;
+    }
+
     public override Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterRecordingStopAsync));
@@ -206,6 +218,7 @@ public sealed class OpenAITelemetryPlugin(
         };
 
         StoreReport(report, e);
+        _isRecording = false;
         _modelUsage.Clear();
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
