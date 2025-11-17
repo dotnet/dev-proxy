@@ -869,8 +869,12 @@ public sealed class OpenAITelemetryPlugin(
             CompletionTokens = usage.CompletionTokens,
             CachedTokens = usage.PromptTokensDetails?.CachedTokens ?? 0L
         };
-        var usagePerModel = _modelUsage.GetOrAdd(response.Model, model => []);
-        usagePerModel.Add(reportModelUsageInformation);
+
+        if (_isRecording)
+        {
+            var usagePerModel = _modelUsage.GetOrAdd(response.Model, model => []);
+            usagePerModel.Add(reportModelUsageInformation);
+        }
 
         if (!Configuration.IncludeCosts || Configuration.Prices is null)
         {
