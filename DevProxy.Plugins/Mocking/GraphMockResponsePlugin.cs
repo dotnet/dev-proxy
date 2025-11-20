@@ -62,7 +62,7 @@ public class GraphMockResponsePlugin(
         {
             GraphBatchResponsePayloadResponse? response = null;
             var requestId = Guid.NewGuid().ToString();
-            var requestDate = DateTime.Now.ToString(CultureInfo.CurrentCulture);
+            var requestDate = DateTime.Now.ToString("r", CultureInfo.InvariantCulture);
             var headers = ProxyUtils
                 .BuildGraphResponseHeaders(e.Session.HttpClient.Request, requestId, requestDate);
 
@@ -155,7 +155,7 @@ public class GraphMockResponsePlugin(
         }
 
         var batchRequestId = Guid.NewGuid().ToString();
-        var batchRequestDate = DateTime.Now.ToString(CultureInfo.CurrentCulture);
+        var batchRequestDate = DateTime.Now.ToString("r", CultureInfo.InvariantCulture);
         var batchHeaders = ProxyUtils.BuildGraphResponseHeaders(e.Session.HttpClient.Request, batchRequestId, batchRequestDate);
         var batchResponse = new GraphBatchResponsePayload
         {
