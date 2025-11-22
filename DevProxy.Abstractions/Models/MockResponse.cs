@@ -21,6 +21,8 @@ public class MockResponse : ICloneable
 
     public static MockResponse FromHttpResponse(string httpResponse, ILogger logger)
     {
+        ArgumentNullException.ThrowIfNull(logger);
+
         logger.LogTrace("{Method} called", nameof(FromHttpResponse));
 
         if (string.IsNullOrWhiteSpace(httpResponse))
@@ -40,7 +42,10 @@ public class MockResponse : ICloneable
         for (var i = 0; i < lines.Length; i++)
         {
             var line = lines[i];
-            logger.LogTrace("Processing line {LineNumber}: {LineContent}", i + 1, line);
+            if (logger.IsEnabled(LogLevel.Trace))
+            {
+                logger.LogTrace("Processing line {LineNumber}: {LineContent}", i + 1, line);
+            }
 
             if (i == 0)
             {

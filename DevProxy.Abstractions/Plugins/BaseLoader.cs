@@ -91,7 +91,10 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
 
         if (!IsValid)
         {
-            Logger.LogError("Schema validation failed for {File} with the following errors: {Errors}", FilePath, string.Join(", ", ValidationErrors));
+            if (Logger.IsEnabled(LogLevel.Error))
+            {
+                Logger.LogError("Schema validation failed for {File} with the following errors: {Errors}", FilePath, string.Join(", ", ValidationErrors));
+            }
         }
 
         return IsValid;

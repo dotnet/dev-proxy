@@ -35,21 +35,21 @@ sealed class DevProxyCommand : RootCommand
     private static readonly string[] helpOptions = ["--help", "-h", "/h", "-?", "/?"];
 
     private static bool _hasGlobalOptionsResolved;
-    private static bool _hasGlobalOptions;
+
     public static bool HasGlobalOptions
     {
         get
         {
             if (_hasGlobalOptionsResolved)
             {
-                return _hasGlobalOptions;
+                return field;
             }
 
             var args = Environment.GetCommandLineArgs();
-            _hasGlobalOptions = args.Any(arg => globalOptions.Contains(arg)) ||
+            field = args.Any(arg => globalOptions.Contains(arg)) ||
                                 args.Any(arg => helpOptions.Contains(arg));
             _hasGlobalOptionsResolved = true;
-            return _hasGlobalOptions;
+            return field;
         }
     }
 

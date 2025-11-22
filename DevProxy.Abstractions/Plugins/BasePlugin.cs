@@ -110,7 +110,10 @@ public abstract class BasePlugin<TConfiguration>(
         var (IsValid, ValidationErrors) = await ValidatePluginConfigAsync(cancellationToken);
         if (!IsValid)
         {
-            Logger.LogError("Plugin configuration validation failed with the following errors: {Errors}", string.Join(", ", ValidationErrors));
+            if (Logger.IsEnabled(LogLevel.Error))
+            {
+                Logger.LogError("Plugin configuration validation failed with the following errors: {Errors}", string.Join(", ", ValidationErrors));
+            }
         }
     }
 

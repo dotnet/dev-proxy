@@ -111,13 +111,16 @@ public sealed class MinimalCsomPermissionsPlugin(
 
             var (requestActions, requestErrors) = CsomParser.GetActions(requestBody, Configuration.TypesDefinitions!);
 
-            Logger.LogDebug("Actions: {Actions}", string.Join(", ", requestActions));
-            Logger.LogDebug("Errors: {Errors}", string.Join(", ", requestErrors));
+            if (Logger.IsEnabled(LogLevel.Debug))
+            {
+                Logger.LogDebug("Actions: {Actions}", string.Join(", ", requestActions));
+                Logger.LogDebug("Errors: {Errors}", string.Join(", ", requestErrors));
+            }
 
             actions.AddRange(requestActions);
             errors.AddRange(requestErrors);
 
-            if (requestErrors.Any())
+            if (requestErrors.Any() && Logger.IsEnabled(LogLevel.Error))
             {
                 Logger.LogError(
                     "The following errors occurred while parsing CSOM:{NewLine}{Errors}",
@@ -133,26 +136,35 @@ public sealed class MinimalCsomPermissionsPlugin(
             return;
         }
 
-        Logger.LogInformation(
-            "Detected {Count} CSOM actions:{NewLine}{Actions}",
-            actions.Count,
-            Environment.NewLine,
-            string.Join(Environment.NewLine, actions.Select(a => $"- {a}"))
-        );
+        if (Logger.IsEnabled(LogLevel.Information))
+        {
+            Logger.LogInformation(
+                "Detected {Count} CSOM actions:{NewLine}{Actions}",
+                actions.Count,
+                Environment.NewLine,
+                string.Join(Environment.NewLine, actions.Select(a => $"- {a}"))
+            );
+        }
 
         var (minimalScopes, scopesErrors) = CsomParser.GetMinimalScopes(actions, AccessType.Delegated, Configuration.TypesDefinitions!);
 
         if (scopesErrors.Any())
         {
             errors.AddRange(scopesErrors);
-            Logger.LogError(
-                "The following errors occurred while getting minimal scopes:{NewLine}{Errors}",
-                Environment.NewLine,
-                string.Join(Environment.NewLine, scopesErrors.Select(e => $"- {e}"))
-            );
+            if (Logger.IsEnabled(LogLevel.Error))
+            {
+                Logger.LogError(
+                    "The following errors occurred while getting minimal scopes:{NewLine}{Errors}",
+                    Environment.NewLine,
+                    string.Join(Environment.NewLine, scopesErrors.Select(e => $"- {e}"))
+                );
+            }
         }
 
-        Logger.LogInformation("Minimal permissions: {MinimalScopes}", string.Join(", ", minimalScopes));
+        if (Logger.IsEnabled(LogLevel.Information))
+        {
+            Logger.LogInformation("Minimal permissions: {MinimalScopes}", string.Join(", ", minimalScopes));
+        }
 
         var report = new MinimalCsomPermissionsPluginReport()
         {

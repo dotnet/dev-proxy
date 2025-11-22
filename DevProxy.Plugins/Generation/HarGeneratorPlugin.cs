@@ -113,7 +113,7 @@ public sealed class HarGeneratorPlugin(
                 QueryString = [.. HttpUtility.ParseQueryString(request.RequestUri?.Query ?? "")
                     .AllKeys
                     .Where(key => key is not null)
-                    .Select(key => new HarQueryParam { Name = key!, Value = HttpUtility.ParseQueryString(request.RequestUri?.Query ?? "")[key] ?? "" })],
+                    .Select(key => new HarQueryParam { Name = key, Value = HttpUtility.ParseQueryString(request.RequestUri?.Query ?? "")[key] ?? "" })],
                 Cookies = [.. request.Headers
                     .Where(h => string.Equals(h.Name, "Cookie", StringComparison.OrdinalIgnoreCase))
                     .Select(h => h.Value)

@@ -30,7 +30,10 @@ internal sealed class GenericErrorResponsesLoader(
             if (configResponses is not null)
             {
                 _configuration.Errors = configResponses;
-                Logger.LogInformation("{ConfigResponseCount} error responses loaded from {ErrorFile}", configResponses.Count(), _configuration.ErrorsFile);
+                if (Logger.IsEnabled(LogLevel.Information))
+                {
+                    Logger.LogInformation("{ConfigResponseCount} error responses loaded from {ErrorFile}", configResponses.Count(), _configuration.ErrorsFile);
+                }
             }
         }
         catch (Exception ex)

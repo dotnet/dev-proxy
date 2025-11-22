@@ -211,7 +211,10 @@ public sealed class ApiCenterOnboardingPlugin(
             newApisMessageChunks.AddRange(apiPerHost.Select(a => $"  {a.method} {a.url}"));
         }
 
-        Logger.LogInformation("{NewApis}", string.Join(Environment.NewLine, newApisMessageChunks));
+        if (Logger.IsEnabled(LogLevel.Information))
+        {
+            Logger.LogInformation("{NewApis}", string.Join(Environment.NewLine, newApisMessageChunks));
+        }
 
         if (!Configuration.CreateApicEntryForNewApis)
         {
@@ -328,7 +331,10 @@ public sealed class ApiCenterOnboardingPlugin(
         }
         else
         {
-            Logger.LogError("Failed to create API version for {Api}", apiId[apiId.LastIndexOf('/')..]);
+            if (Logger.IsEnabled(LogLevel.Error))
+            {
+                Logger.LogError("Failed to create API version for {Api}", apiId[apiId.LastIndexOf('/')..]);
+            }
         }
 
         return newApiVersion;

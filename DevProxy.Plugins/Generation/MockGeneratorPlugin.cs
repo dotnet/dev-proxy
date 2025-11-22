@@ -93,7 +93,10 @@ public sealed class MockGeneratorPlugin(
         Logger.LogDebug("Writing mocks to {FileName}...", fileName);
         await File.WriteAllTextAsync(fileName, mocksFileJson, cancellationToken);
 
-        Logger.LogInformation("Created mock file {FileName} with {MocksCount} mocks", fileName, mocks.Count);
+        if (Logger.IsEnabled(LogLevel.Information))
+        {
+            Logger.LogInformation("Created mock file {FileName} with {MocksCount} mocks", fileName, mocks.Count);
+        }
 
         StoreReport(fileName, e);
 

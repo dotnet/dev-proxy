@@ -30,7 +30,10 @@ internal sealed class RewritesLoader(
             if (configRewrites is not null)
             {
                 _configuration.Rewrites = configRewrites;
-                Logger.LogInformation("Rewrites for {ConfigResponseCount} url patterns loaded from {RewritesFile}", configRewrites.Count(), _configuration.RewritesFile);
+                if (Logger.IsEnabled(LogLevel.Information))
+                {
+                    Logger.LogInformation("Rewrites for {ConfigResponseCount} url patterns loaded from {RewritesFile}", configRewrites.Count(), _configuration.RewritesFile);
+                }
             }
         }
         catch (Exception ex)

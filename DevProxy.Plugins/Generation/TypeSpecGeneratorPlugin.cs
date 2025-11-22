@@ -226,12 +226,18 @@ public sealed class TypeSpecGeneratorPlugin(
                 .SelectMany(c => c.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
                 .Distinct()
                 .ToList();
-            Logger.LogDebug("Scopes: {Scopes}", string.Join(", ", scopes));
+            if (Logger.IsEnabled(LogLevel.Debug))
+            {
+                Logger.LogDebug("Scopes: {Scopes}", string.Join(", ", scopes));
+            }
             var roles = jwtToken.Claims
                 .Where(c => c.Type == "roles")
                 .SelectMany(c => c.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
                 .Distinct();
-            Logger.LogDebug("Roles: {Roles}", string.Join(", ", roles));
+            if (Logger.IsEnabled(LogLevel.Debug))
+            {
+                Logger.LogDebug("Roles: {Roles}", string.Join(", ", roles));
+            }
             scopes.AddRange(roles);
 
             OAuth2Auth? auth = null;

@@ -62,7 +62,10 @@ public sealed class OpenAILanguageModelClient(
 
         if (Configuration.CacheResponses && _cacheChatCompletion.TryGetCacheValue(messages, out var cachedResponse))
         {
-            _logger.LogDebug("Returning cached response for message: {LastMessage}", messages.Last().Content);
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.LogDebug("Returning cached response for message: {LastMessage}", messages.Last().Content);
+            }
             return cachedResponse;
         }
 
@@ -148,7 +151,10 @@ public sealed class OpenAILanguageModelClient(
         try
         {
             var url = $"{Configuration.Url?.TrimEnd('/')}/chat/completions";
-            _logger.LogDebug("Requesting chat completion. Message: {LastMessage}", messages.Last().Content);
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.LogDebug("Requesting chat completion. Message: {LastMessage}", messages.Last().Content);
+            }
 
             var payload = new OpenAIChatCompletionRequest
             {

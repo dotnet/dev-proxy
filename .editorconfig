@@ -236,6 +236,8 @@ dotnet_diagnostic.CA1303.severity = none
 dotnet_diagnostic.CA1308.severity = none
 # Avoid uninstantiated internal classes
 dotnet_diagnostic.CA1812.severity = none
+# Avoid potentially expensive logging
+dotnet_diagnostic.CA1873.severity = none
 # Use the LoggerMessage delegates
 dotnet_diagnostic.CA1848.severity = none
 # Possible multiple enumerations of IEnumerable collection

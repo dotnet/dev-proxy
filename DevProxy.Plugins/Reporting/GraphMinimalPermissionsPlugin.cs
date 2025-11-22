@@ -109,7 +109,10 @@ public sealed class GraphMinimalPermissionsPlugin(
             return;
         }
 
-        Logger.LogInformation("Retrieving minimal permissions for:\r\n{Endpoints}\r\n", string.Join(Environment.NewLine, endpoints.Select(e => $"- {e.Method} {e.Url}")));
+        if (Logger.IsEnabled(LogLevel.Information))
+        {
+            Logger.LogInformation("Retrieving minimal permissions for:\r\n{Endpoints}\r\n", string.Join(Environment.NewLine, endpoints.Select(e => $"- {e.Method} {e.Url}")));
+        }
 
         Logger.LogWarning("This plugin is in preview and may not return the correct results.\r\nPlease review the permissions and test your app before using them in production.\r\nIf you have any feedback, please open an issue at https://aka.ms/devproxy/issue.\r\n");
 
@@ -155,11 +158,17 @@ public sealed class GraphMinimalPermissionsPlugin(
 
             if (minimalScopes.Any())
             {
-                Logger.LogInformation("Minimal permissions:\r\n{Permissions}", string.Join(", ", minimalScopes));
+                if (Logger.IsEnabled(LogLevel.Information))
+                {
+                    Logger.LogInformation("Minimal permissions:\r\n{Permissions}", string.Join(", ", minimalScopes));
+                }
             }
             if (errors.Any())
             {
-                Logger.LogError("Couldn't determine minimal permissions for the following URLs:\r\n{Errors}", string.Join(Environment.NewLine, errors));
+                if (Logger.IsEnabled(LogLevel.Error))
+                {
+                    Logger.LogError("Couldn't determine minimal permissions for the following URLs:\r\n{Errors}", string.Join(Environment.NewLine, errors));
+                }
             }
 
             return new()

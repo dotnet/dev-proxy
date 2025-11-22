@@ -52,7 +52,10 @@ internal sealed class CrudApiDefinitionLoader(
                         };
                     }
                 }
-                Logger.LogInformation("{ConfigResponseCount} actions for CRUD API loaded from {ApiFile}", configResponses.Count(), _configuration.ApiFile);
+                if (Logger.IsEnabled(LogLevel.Information))
+                {
+                    Logger.LogInformation("{ConfigResponseCount} actions for CRUD API loaded from {ApiFile}", configResponses.Count(), _configuration.ApiFile);
+                }
             }
         }
         catch (Exception ex)

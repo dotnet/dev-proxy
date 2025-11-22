@@ -308,12 +308,15 @@ public sealed class GenericRandomErrorPlugin(
         }
 
         var suggestedWildcards = ProxyUtils.GetWildcardPatterns(unmatchedErrorUrls.AsReadOnly());
-        Logger.LogWarning(
-            "The following URLs in {ErrorsFile} don't match any URL to watch: {UnmatchedMocks}. Add the following URLs to URLs to watch: {UrlsToWatch}",
-            Configuration.ErrorsFile,
-            string.Join(", ", unmatchedErrorUrls),
-            string.Join(", ", suggestedWildcards)
-        );
+        if (Logger.IsEnabled(LogLevel.Warning))
+        {
+            Logger.LogWarning(
+                "The following URLs in {ErrorsFile} don't match any URL to watch: {UnmatchedMocks}. Add the following URLs to URLs to watch: {UrlsToWatch}",
+                Configuration.ErrorsFile,
+                string.Join(", ", unmatchedErrorUrls),
+                string.Join(", ", suggestedWildcards)
+            );
+        }
     }
 
     private static bool HasMatchingBody(GenericErrorResponse errorResponse, Request request)

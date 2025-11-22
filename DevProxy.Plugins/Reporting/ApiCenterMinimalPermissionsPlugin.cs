@@ -159,63 +159,81 @@ public sealed class ApiCenterMinimalPermissionsPlugin(
             {
                 if (string.IsNullOrWhiteSpace(Configuration.SchemeName))
                 {
-                    Logger.LogInformation(
-                        "API {ApiName} is called with minimal permissions: {MinimalPermissions}",
-                        result.ApiName,
-                        string.Join(", ", result.MinimalPermissions)
-                    );
+                    if (Logger.IsEnabled(LogLevel.Information))
+                    {
+                        Logger.LogInformation(
+                            "API {ApiName} is called with minimal permissions: {MinimalPermissions}",
+                            result.ApiName,
+                            string.Join(", ", result.MinimalPermissions)
+                        );
+                    }
                 }
                 else
                 {
-                    Logger.LogInformation(
-                        "API {ApiName} is called with minimal permissions of '{SchemeName}' scheme: {MinimalPermissions}",
-                        result.ApiName,
-                        Configuration.SchemeName,
-                        string.Join(", ", result.MinimalPermissions)
-                    );
+                    if (Logger.IsEnabled(LogLevel.Information))
+                    {
+                        Logger.LogInformation(
+                            "API {ApiName} is called with minimal permissions of '{SchemeName}' scheme: {MinimalPermissions}",
+                            result.ApiName,
+                            Configuration.SchemeName,
+                            string.Join(", ", result.MinimalPermissions)
+                        );
+                    }
                 }
             }
             else
             {
                 if (string.IsNullOrWhiteSpace(Configuration.SchemeName))
                 {
-                    Logger.LogWarning(
-                        "Calling API {ApiName} with excessive permissions: {ExcessivePermissions}. Minimal permissions are: {MinimalPermissions}",
-                        result.ApiName,
-                        string.Join(", ", result.ExcessivePermissions),
-                        string.Join(", ", result.MinimalPermissions)
-                    );
+                    if (Logger.IsEnabled(LogLevel.Warning))
+                    {
+                        Logger.LogWarning(
+                            "Calling API {ApiName} with excessive permissions: {ExcessivePermissions}. Minimal permissions are: {MinimalPermissions}",
+                            result.ApiName,
+                            string.Join(", ", result.ExcessivePermissions),
+                            string.Join(", ", result.MinimalPermissions)
+                        );
+                    }
                 }
                 else
                 {
-                    Logger.LogWarning(
-                        "Calling API {ApiName} with excessive permissions of '{SchemeName}' scheme: {ExcessivePermissions}. Minimal permissions are: {MinimalPermissions}",
-                        result.ApiName,
-                        Configuration.SchemeName,
-                        string.Join(", ", result.ExcessivePermissions),
-                        string.Join(", ", result.MinimalPermissions)
-                    );
+                    if (Logger.IsEnabled(LogLevel.Warning))
+                    {
+                        Logger.LogWarning(
+                            "Calling API {ApiName} with excessive permissions of '{SchemeName}' scheme: {ExcessivePermissions}. Minimal permissions are: {MinimalPermissions}",
+                            result.ApiName,
+                            Configuration.SchemeName,
+                            string.Join(", ", result.ExcessivePermissions),
+                            string.Join(", ", result.MinimalPermissions)
+                        );
+                    }
                 }
             }
 
             if (unmatchedApiRequests.Any())
             {
-                Logger.LogWarning(
-                    "Unmatched requests for API {ApiName}:{NewLine}- {UnmatchedRequests}",
-                    result.ApiName,
-                    Environment.NewLine,
-                    string.Join($"{Environment.NewLine}- ", unmatchedApiRequests)
-                );
+                if (Logger.IsEnabled(LogLevel.Warning))
+                {
+                    Logger.LogWarning(
+                        "Unmatched requests for API {ApiName}:{NewLine}- {UnmatchedRequests}",
+                        result.ApiName,
+                        Environment.NewLine,
+                        string.Join($"{Environment.NewLine}- ", unmatchedApiRequests)
+                    );
+                }
             }
 
             if (minimalPermissions.Errors.Any())
             {
-                Logger.LogWarning(
-                    "Errors for API {ApiName}:{NewLine}- {Errors}",
-                    result.ApiName,
-                    Environment.NewLine,
-                    string.Join($"{Environment.NewLine}- ", minimalPermissions.Errors.Select(e => $"{e.Request}: {e.Error}"))
-                );
+                if (Logger.IsEnabled(LogLevel.Warning))
+                {
+                    Logger.LogWarning(
+                        "Errors for API {ApiName}:{NewLine}- {Errors}",
+                        result.ApiName,
+                        Environment.NewLine,
+                        string.Join($"{Environment.NewLine}- ", minimalPermissions.Errors.Select(e => $"{e.Request}: {e.Error}"))
+                    );
+                }
             }
         }
 
@@ -233,9 +251,12 @@ public sealed class ApiCenterMinimalPermissionsPlugin(
 
     private ApiPermissionsInfo CheckMinimalPermissions(IEnumerable<RequestLog> requests, ApiDefinition apiDefinition)
     {
-        Logger.LogInformation("Checking minimal permissions for API {ApiName}...", apiDefinition.Definition!.Servers.First().Url);
+        if (Logger.IsEnabled(LogLevel.Information))
+        {
+            Logger.LogInformation("Checking minimal permissions for API {ApiName}...", apiDefinition.Definition!.Servers.First().Url);
+        }
 
-        return apiDefinition.Definition.CheckMinimalPermissions(requests, Logger, Configuration.SchemeName);
+        return apiDefinition.Definition!.CheckMinimalPermissions(requests, Logger, Configuration.SchemeName);
     }
 
     private (Dictionary<ApiDefinition, List<RequestLog>> RequestsByApiDefinition, IEnumerable<RequestLog> UnmatchedRequests) GetRequestsByApiDefinition(IEnumerable<RequestLog> interceptedRequests, Dictionary<string, ApiDefinition> apiDefinitionsByUrl)

@@ -158,7 +158,10 @@ sealed class ConfigCommand : Command
                 _logger.LogInformation("To start Dev Proxy with the config, run:");
                 foreach (var configFile in configInfo.ConfigFiles)
                 {
-                    _logger.LogInformation("  devproxy --config-file \"{ConfigFile}\"", configFile.Replace(appFolder, "~appFolder", StringComparison.OrdinalIgnoreCase));
+                    if (_logger.IsEnabled(LogLevel.Information))
+                    {
+                        _logger.LogInformation("  devproxy --config-file \"{ConfigFile}\"", configFile.Replace(appFolder, "~appFolder", StringComparison.OrdinalIgnoreCase));
+                    }
                 }
             }
             else
@@ -166,7 +169,10 @@ sealed class ConfigCommand : Command
                 _logger.LogInformation("To start Dev Proxy with the mock file, enable the MockResponsePlugin or GraphMockResponsePlugin and run:");
                 foreach (var mockFile in configInfo.MockFiles)
                 {
-                    _logger.LogInformation("  devproxy --mock-file \"{MockFile}\"", mockFile.Replace(appFolder, "~appFolder", StringComparison.OrdinalIgnoreCase));
+                    if (_logger.IsEnabled(LogLevel.Information))
+                    {
+                        _logger.LogInformation("  devproxy --mock-file \"{MockFile}\"", mockFile.Replace(appFolder, "~appFolder", StringComparison.OrdinalIgnoreCase));
+                    }
                 }
             }
         }
@@ -227,7 +233,10 @@ sealed class ConfigCommand : Command
 
         if (configInfo.ConfigFiles.Any())
         {
-            _logger.LogDebug("Found {ConfigFilesCount} proxy config files. Clearing mocks...", configInfo.ConfigFiles.Count);
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.LogDebug("Found {ConfigFilesCount} proxy config files. Clearing mocks...", configInfo.ConfigFiles.Count);
+            }
             configInfo.MockFiles.Clear();
         }
 
