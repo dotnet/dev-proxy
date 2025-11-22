@@ -9,7 +9,7 @@ public interface IProxyStateController
 #pragma warning restore CA1515
 {
     IProxyState ProxyState { get; }
-    void StartRecording();
+    Task StartRecordingAsync(CancellationToken cancellationToken);
     Task StopRecordingAsync(CancellationToken cancellationToken);
     Task MockRequestAsync(CancellationToken cancellationToken);
     void StopProxy();
