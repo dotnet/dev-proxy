@@ -16,7 +16,6 @@ using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Text.Json;
@@ -67,7 +66,6 @@ public sealed class OpenAITelemetryPlugin(
     private LanguageModelPricesLoader? _loader;
     private MeterProvider? _meterProvider;
     private TracerProvider? _tracerProvider;
-    private readonly ConcurrentDictionary<string, List<OpenAITelemetryPluginReportModelUsageInformation>> _modelUsage = [];
 
     public override string Name => nameof(OpenAITelemetryPlugin);
 
@@ -204,11 +202,9 @@ public sealed class OpenAITelemetryPlugin(
             Environment = Configuration.Environment,
             Currency = Configuration.Currency,
             IncludeCosts = Configuration.IncludeCosts,
-            ModelUsage = _modelUsage.ToDictionary()
         };
 
         StoreReport(report, e);
-        _modelUsage.Clear();
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
         return Task.CompletedTask;
@@ -858,8 +854,6 @@ public sealed class OpenAITelemetryPlugin(
             CompletionTokens = usage.CompletionTokens,
             CachedTokens = usage.PromptTokensDetails?.CachedTokens ?? 0L
         };
-        var usagePerModel = _modelUsage.GetOrAdd(response.Model, model => []);
-        usagePerModel.Add(reportModelUsageInformation);
 
         if (!Configuration.IncludeCosts || Configuration.Prices is null)
         {
