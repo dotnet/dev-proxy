@@ -196,6 +196,8 @@ public sealed class OpenAITelemetryPlugin(
     {
         Logger.LogTrace("{Method} called", nameof(AfterRecordingStopAsync));
 
+        ArgumentNullException.ThrowIfNull(e);
+
         var report = new OpenAITelemetryPluginReport
         {
             Application = Configuration.Application,
