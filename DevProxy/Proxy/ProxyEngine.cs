@@ -147,7 +147,7 @@ sealed class ProxyEngine(
 
         if (_config.Record)
         {
-            await StartRecordingAsync(stoppingToken);
+            StartRecording();
         }
 
         if (_config.TimeoutSeconds.HasValue)
@@ -210,7 +210,7 @@ sealed class ProxyEngine(
 #pragma warning restore IDE0010
         {
             case ConsoleKey.R:
-                await StartRecordingAsync(cancellationToken);
+                StartRecording();
                 break;
             case ConsoleKey.S:
                 await StopRecordingAsync(cancellationToken);
@@ -225,14 +225,14 @@ sealed class ProxyEngine(
         }
     }
 
-    private async Task StartRecordingAsync(CancellationToken cancellationToken)
+    private void StartRecording()
     {
         if (_proxyController.ProxyState.IsRecording)
         {
             return;
         }
 
-        await _proxyController.StartRecordingAsync(cancellationToken);
+        _proxyController.StartRecording();
     }
 
     private async Task StopRecordingAsync(CancellationToken cancellationToken)
