@@ -11,6 +11,7 @@ using DevProxy.Plugins.Utils;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using OpenTelemetry;
 using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
@@ -202,6 +203,7 @@ public sealed class OpenAITelemetryPlugin(
             Environment = Configuration.Environment,
             Currency = Configuration.Currency,
             IncludeCosts = Configuration.IncludeCosts,
+            ModelUsage = GetOpenAIModelUsage(e.RequestLogs)
         };
 
         StoreReport(report, e);
@@ -899,6 +901,100 @@ public sealed class OpenAITelemetryPlugin(
         }
 
         Logger.LogTrace("RecordUsageMetrics() finished");
+    }
+
+    private Dictionary<string, List<OpenAITelemetryPluginReportModelUsageInformation>> GetOpenAIModelUsage(IEnumerable<RequestLog> requestLogs)
+    {
+        var modelUsage = new Dictionary<string, List<OpenAITelemetryPluginReportModelUsageInformation>>();
+        var openAIRequestLogs = requestLogs.Where(r =>
+            r is not null &&
+            r.Context is not null &&
+            r.Context.Session is not null &&
+            r.MessageType == MessageType.InterceptedResponse &&
+            string.Equals("POST", r.Context.Session.HttpClient.Request.Method, StringComparison.OrdinalIgnoreCase) &&
+            r.Context.Session.HttpClient.Response.StatusCode >= 200 &&
+            r.Context.Session.HttpClient.Response.StatusCode < 300 &&
+            r.Context.Session.HttpClient.Response.HasBody &&
+            !string.IsNullOrEmpty(r.Context.Session.HttpClient.Response.BodyString) &&
+            ProxyUtils.MatchesUrlToWatch(UrlsToWatch, r.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri) &&
+            OpenAIRequest.TryGetOpenAIRequest(r.Context.Session.HttpClient.Request.BodyString, NullLogger.Instance, out var openAiRequest) &&
+            openAiRequest is not null
+        );
+
+        foreach (var requestLog in openAIRequestLogs)
+        {
+            try
+            {
+                var response = JsonSerializer.Deserialize<OpenAIResponse>(requestLog.Context!.Session.HttpClient.Response.BodyString, ProxyUtils.JsonSerializerOptions);
+                if (response is null)
+                {
+                    continue;
+                }
+
+                var reportModelUsageInfo = GetReportModelUsageInfo(response);
+                if (modelUsage.TryGetValue(response.Model, out var usagePerModel))
+                {
+                    usagePerModel.AddRange(reportModelUsageInfo);
+                }
+                else
+                {
+                    modelUsage.Add(response.Model, reportModelUsageInfo);
+                }
+            }
+            catch (JsonException ex)
+            {
+                Logger.LogError(ex, "Failed to deserialize OpenAI response");
+            }
+        }
+
+        return modelUsage;
+    }
+
+    private List<OpenAITelemetryPluginReportModelUsageInformation> GetReportModelUsageInfo(OpenAIResponse response)
+    {
+        Logger.LogTrace("GetReportModelUsageInfo() called");
+        var usagePerModel = new List<OpenAITelemetryPluginReportModelUsageInformation>();
+        var usage = response.Usage;
+        if (usage is null)
+        {
+            return usagePerModel;
+        }
+
+        var reportModelUsageInformation = new OpenAITelemetryPluginReportModelUsageInformation
+        {
+            Model = response.Model,
+            PromptTokens = usage.PromptTokens,
+            CompletionTokens = usage.CompletionTokens,
+            CachedTokens = usage.PromptTokensDetails?.CachedTokens ?? 0L
+        };
+        usagePerModel.Add(reportModelUsageInformation);
+
+        if (!Configuration.IncludeCosts || Configuration.Prices is null)
+        {
+            Logger.LogDebug("Cost tracking is disabled or prices data is not available");
+            return usagePerModel;
+        }
+
+        if (string.IsNullOrEmpty(response.Model))
+        {
+            Logger.LogDebug("Response model is empty or null");
+            return usagePerModel;
+        }
+
+        var (inputCost, outputCost) = Configuration.Prices.CalculateCost(response.Model, usage.PromptTokens, usage.CompletionTokens);
+
+        if (inputCost > 0)
+        {
+            var totalCost = inputCost + outputCost;
+            reportModelUsageInformation.Cost = totalCost;
+        }
+        else
+        {
+            Logger.LogDebug("Input cost is zero, skipping cost metrics recording");
+        }
+
+        Logger.LogTrace("GetReportModelUsageInfo() finished");
+        return usagePerModel;
     }
 
     private static string GetOperationName(OpenAIRequest request)
