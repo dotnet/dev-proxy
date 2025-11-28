@@ -231,7 +231,10 @@ public sealed class HttpFileGeneratorPlugin(
                 var headers = request.Headers.Where(h => h.Name.Contains(headerName, StringComparison.OrdinalIgnoreCase));
                 if (headers is not null)
                 {
-                    Logger.LogDebug("    Found {NumHeaders} matching headers...", headers.Count());
+                    if (Logger.IsEnabled(LogLevel.Debug))
+                    {
+                        Logger.LogDebug("    Found {NumHeaders} matching headers...", headers.Count());
+                    }
 
                     foreach (var header in headers)
                     {
@@ -256,7 +259,10 @@ public sealed class HttpFileGeneratorPlugin(
                     var queryParams = query.AllKeys.Where(k => k is not null && k.Contains(queryParameterName, StringComparison.OrdinalIgnoreCase));
                     if (queryParams is not null)
                     {
-                        Logger.LogDebug("    Found {NumQueryParams} matching query parameters...", queryParams.Count());
+                        if (Logger.IsEnabled(LogLevel.Debug))
+                        {
+                            Logger.LogDebug("    Found {NumQueryParams} matching query parameters...", queryParams.Count());
+                        }
 
                         foreach (var queryParam in queryParams)
                         {

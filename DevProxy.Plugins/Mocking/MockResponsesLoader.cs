@@ -30,7 +30,10 @@ internal sealed class MockResponsesLoader(
             if (configResponses is not null)
             {
                 _configuration.Mocks = configResponses;
-                Logger.LogInformation("Mock responses for {ConfigResponseCount} url patterns loaded from {MockFile}", configResponses.Count(), _configuration.MocksFile);
+                if (Logger.IsEnabled(LogLevel.Information))
+                {
+                    Logger.LogInformation("Mock responses for {ConfigResponseCount} url patterns loaded from {MockFile}", configResponses.Count(), _configuration.MocksFile);
+                }
             }
         }
         catch (Exception ex)

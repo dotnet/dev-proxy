@@ -32,7 +32,10 @@ public class JsonReporter(
         }
         else
         {
-            Logger.LogDebug("No transformer found for {ReportType}", reportData.GetType().Name);
+            if (Logger.IsEnabled(LogLevel.Debug))
+            {
+                Logger.LogDebug("No transformer found for {ReportType}", reportData.GetType().Name);
+            }
         }
 
         if (reportData is string strVal)

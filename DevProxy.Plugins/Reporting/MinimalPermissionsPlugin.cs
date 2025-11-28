@@ -116,32 +116,44 @@ public sealed class MinimalPermissionsPlugin(
 
             if (unmatchedApiRequests.Any())
             {
-                Logger.LogWarning(
-                    "Unmatched requests for API {ApiName}:{NewLine}- {UnmatchedRequests}",
-                    result.ApiName,
-                    Environment.NewLine,
-                    string.Join($"{Environment.NewLine}- ", unmatchedApiRequests)
-                );
+                if (Logger.IsEnabled(LogLevel.Warning))
+                {
+                    Logger.LogWarning(
+                        "Unmatched requests for API {ApiName}:{NewLine}- {UnmatchedRequests}",
+                        result.ApiName,
+                        Environment.NewLine,
+                        string.Join($"{Environment.NewLine}- ", unmatchedApiRequests)
+                    );
+                }
             }
 
             if (minimalPermissions.Errors.Any())
             {
-                Logger.LogWarning(
-                    "Errors for API {ApiName}:{NewLine}- {Errors}",
-                    result.ApiName,
-                    Environment.NewLine,
-                    string.Join($"{Environment.NewLine}- ", minimalPermissions.Errors.Select(e => $"{e.Request}: {e.Error}"))
-                );
+                if (Logger.IsEnabled(LogLevel.Warning))
+                {
+                    Logger.LogWarning(
+                        "Errors for API {ApiName}:{NewLine}- {Errors}",
+                        result.ApiName,
+                        Environment.NewLine,
+                        string.Join($"{Environment.NewLine}- ", minimalPermissions.Errors.Select(e => $"{e.Request}: {e.Error}"))
+                    );
+                }
             }
 
             if (string.IsNullOrWhiteSpace(Configuration.SchemeName))
             {
-                Logger.LogInformation("Minimal permissions: {MinimalScopes}", string.Join(", ", result.MinimalPermissions));
+                if (Logger.IsEnabled(LogLevel.Information))
+                {
+                    Logger.LogInformation("Minimal permissions: {MinimalScopes}", string.Join(", ", result.MinimalPermissions));
+                }
             }
             else
             {
-                Logger.LogInformation("Minimal permissions of '{SchemeName}' scheme: {MinimalScopes}",
-                    Configuration.SchemeName, string.Join(", ", result.MinimalPermissions));
+                if (Logger.IsEnabled(LogLevel.Information))
+                {
+                    Logger.LogInformation("Minimal permissions of '{SchemeName}' scheme: {MinimalScopes}",
+                        Configuration.SchemeName, string.Join(", ", result.MinimalPermissions));
+                }
             }
         }
 

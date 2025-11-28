@@ -33,7 +33,10 @@ static class MinimalPermissionsUtils
                 .Select(c => c.Value)
                 .ToArray() ?? [];
 
-            logger.LogDebug("Scopes found in the token: {Scopes}", string.Join(", ", scopes));
+            if (logger.IsEnabled(LogLevel.Debug))
+            {
+                logger.LogDebug("Scopes found in the token: {Scopes}", string.Join(", ", scopes));
+            }
             return scopes;
         }
         catch (Exception ex)

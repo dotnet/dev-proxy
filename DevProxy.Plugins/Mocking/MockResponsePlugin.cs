@@ -273,12 +273,15 @@ public class MockResponsePlugin(
         }
 
         var suggestedWildcards = ProxyUtils.GetWildcardPatterns(unmatchedMockUrls.AsReadOnly());
-        Logger.LogWarning(
-            "The following URLs in {MocksFile} don't match any URL to watch: {UnmatchedMocks}. Add the following URLs to URLs to watch: {UrlsToWatch}",
-            Configuration.MocksFile,
-            string.Join(", ", unmatchedMockUrls),
-            string.Join(", ", suggestedWildcards)
-        );
+        if (Logger.IsEnabled(LogLevel.Warning))
+        {
+            Logger.LogWarning(
+                "The following URLs in {MocksFile} don't match any URL to watch: {UnmatchedMocks}. Add the following URLs to URLs to watch: {UrlsToWatch}",
+                Configuration.MocksFile,
+                string.Join(", ", unmatchedMockUrls),
+                string.Join(", ", suggestedWildcards)
+            );
+        }
     }
 
     private MockResponse? GetMatchingMockResponse(Request request)
@@ -348,7 +351,7 @@ public class MockResponsePlugin(
     {
         string? body = null;
         var requestId = Guid.NewGuid().ToString();
-        var requestDate = DateTime.Now.ToString(CultureInfo.CurrentCulture);
+        var requestDate = DateTime.Now.ToString("r", CultureInfo.InvariantCulture);
         var headers = ProxyUtils.BuildGraphResponseHeaders(e.Session.HttpClient.Request, requestId, requestDate);
         var statusCode = HttpStatusCode.OK;
         if (matchingResponse.Response?.StatusCode is not null)
@@ -461,8 +464,14 @@ public class MockResponsePlugin(
             return;
         }
 
-        Logger.LogInformation("Found {FileCount} matching HTTP response files", matchingFiles.Count());
-        Logger.LogDebug("Matching files: {Files}", string.Join(", ", matchingFiles));
+        if (Logger.IsEnabled(LogLevel.Information))
+        {
+            Logger.LogInformation("Found {FileCount} matching HTTP response files", matchingFiles.Count());
+        }
+        if (Logger.IsEnabled(LogLevel.Debug))
+        {
+            Logger.LogDebug("Matching files: {Files}", string.Join(", ", matchingFiles));
+        }
 
         var mockResponses = new List<MockResponse>();
         foreach (var file in matchingFiles)
