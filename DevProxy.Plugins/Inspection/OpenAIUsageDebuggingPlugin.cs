@@ -49,20 +49,6 @@ public sealed class OpenAIUsageDebuggingPlugin(
 
     private readonly string outputFileName = $"devproxy_llmusage_{DateTime.Now:yyyyMMddHHmmss}.csv";
 
-    public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
-    {
-        Logger.LogTrace("{Method} called", nameof(InitializeAsync));
-
-        ArgumentNullException.ThrowIfNull(e);
-
-        if (!File.Exists(outputFileName))
-        {
-            await File.AppendAllLinesAsync(outputFileName, [UsageRecord.GetHeader()], cancellationToken);
-        }
-
-        Logger.LogTrace("{Method} finished", nameof(InitializeAsync));
-    }
-
     public override async Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterResponseAsync));
@@ -119,6 +105,12 @@ public sealed class OpenAIUsageDebuggingPlugin(
             case int code when code >= 400:
                 ProcessErrorResponse(usage, e);
                 break;
+        }
+
+        if (!File.Exists(outputFileName))
+        {
+            Logger.LogDebug("Creating output file {FileName} with header", outputFileName);
+            await File.AppendAllLinesAsync(outputFileName, [UsageRecord.GetHeader()], cancellationToken);
         }
 
         await File.AppendAllLinesAsync(outputFileName, [usage.ToString()], cancellationToken);
