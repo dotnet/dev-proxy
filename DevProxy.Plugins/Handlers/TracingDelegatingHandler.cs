@@ -18,7 +18,10 @@ internal sealed class TracingDelegatingHandler(ILogger logger) : DelegatingHandl
         _logger.LogTrace("Request: {Method} {Uri}", request.Method, request.RequestUri);
         foreach (var (header, value) in request.Headers)
         {
-            _logger.LogTrace("{Header}: {Value}", header, string.Join(", ", value));
+            if (_logger.IsEnabled(LogLevel.Trace))
+            {
+                _logger.LogTrace("{Header}: {Value}", header, string.Join(", ", value));
+            }
         }
         if (request.Content is not null)
         {
@@ -31,7 +34,10 @@ internal sealed class TracingDelegatingHandler(ILogger logger) : DelegatingHandl
         _logger.LogTrace("Response");
         foreach (var (header, value) in response.Headers)
         {
-            _logger.LogTrace("{Header}: {Value}", header, string.Join(", ", value));
+            if (_logger.IsEnabled(LogLevel.Trace))
+            {
+                _logger.LogTrace("{Header}: {Value}", header, string.Join(", ", value));
+            }
         }
         if (response.Content is not null)
         {

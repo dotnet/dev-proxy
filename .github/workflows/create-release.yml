@@ -34,7 +34,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@2016bd2012dba4e32de620c46fe006a3ac9f0602 # v5.0.1
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: 10.0.x
       - name: Rename executable for beta
         if: contains(github.ref_name, '-beta')
         run: |
@@ -59,7 +59,7 @@ jobs:
         if: matrix.architecture == 'win-x64'
         run: dotnet build ./DevProxy.Abstractions/DevProxy.Abstractions.csproj -p:InformationalVersion=$("${{ github.ref_name }}".Substring(1)) -c Release --no-self-contained
       - name: Add plugins to output
-        run: cp ./DevProxy/bin/Release/net9.0/${{ matrix.architecture }}/plugins ./${{ env.release }} -r
+        run: cp ./DevProxy/bin/Release/net10.0/${{ matrix.architecture }}/plugins ./${{ env.release }} -r
       - name: Remove unnecessary files
         run: |
           pushd
@@ -112,7 +112,7 @@ jobs:
         shell: pwsh
         run: >
           ./sign code azure-key-vault
-          ./DevProxy.Abstractions/bin/Release/net9.0/DevProxy.Abstractions.dll
+          ./DevProxy.Abstractions/bin/Release/net10.0/DevProxy.Abstractions.dll
           --publisher-name "${{ env.APP_PUBLISHER }}"
           --description "${{ env.APP_DESCRIPTION }}"
           --description-url "${{ env.APP_DESCRIPTION_URL }}"
@@ -127,7 +127,7 @@ jobs:
         uses: thedoctor0/zip-release@b57d897cb5d60cb78b51a507f63fa184cfe35554 # master
         with:
           filename: '../../../../DevProxy.Abstractions-${{ github.ref_name }}.zip'
-          directory: './DevProxy.Abstractions/bin/Release/net9.0'
+          directory: './DevProxy.Abstractions/bin/Release/net10.0'
           exclusions: '*.json'
       - name: Upload abstractions
         if: matrix.architecture == 'win-x64'

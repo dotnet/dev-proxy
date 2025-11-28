@@ -458,10 +458,13 @@ sealed class ProxyEngine(
 
         foreach (var header in _config.FilterByHeaders)
         {
-            _logger.LogDebug("Checking header {Header} with value {Value}...",
-                header.Name,
-                string.IsNullOrEmpty(header.Value) ? "(any)" : header.Value
-            );
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.LogDebug("Checking header {Header} with value {Value}...",
+                    header.Name,
+                    string.IsNullOrEmpty(header.Value) ? "(any)" : header.Value
+                );
+            }
 
             if (requestHeaders.HeaderExists(header.Name))
             {

@@ -89,13 +89,19 @@ sealed class GraphUtils(
 
             if (newMinimalScopes.Contains(response[0].Value))
             {
-                _logger.LogDebug("Replacing scope {Old} with {New}", response[0].Value, response[1].Value);
+                if (_logger.IsEnabled(LogLevel.Debug))
+                {
+                    _logger.LogDebug("Replacing scope {Old} with {New}", response[0].Value, response[1].Value);
+                }
                 _ = newMinimalScopes.Remove(response[0].Value);
                 _ = newMinimalScopes.Add(response[1].Value);
             }
         }
 
-        _logger.LogDebug("Updated minimal scopes. Original: {Original}, New: {New}", string.Join(", ", minimalScopes), string.Join(", ", newMinimalScopes));
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            _logger.LogDebug("Updated minimal scopes. Original: {Original}, New: {New}", string.Join(", ", minimalScopes), string.Join(", ", newMinimalScopes));
+        }
 
         return newMinimalScopes;
     }

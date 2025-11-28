@@ -129,11 +129,14 @@ public static class ModelExtensions
             }
         }
 
-        logger.LogDebug(
-            "Loaded API definitions from API Center for APIs:{NewLine}- {Apis}",
-            Environment.NewLine,
-            string.Join($"{Environment.NewLine}- ", apiDefinitions.Keys)
-        );
+        if (logger.IsEnabled(LogLevel.Debug))
+        {
+            logger.LogDebug(
+                "Loaded API definitions from API Center for APIs:{NewLine}- {Apis}",
+                Environment.NewLine,
+                string.Join($"{Environment.NewLine}- ", apiDefinitions.Keys)
+            );
+        }
 
         return apiDefinitions;
     }
@@ -165,7 +168,10 @@ public static class ModelExtensions
 
         if (api.Versions.Length == 1)
         {
-            logger.LogDebug("API {Api} has only one version {Version}. Returning", api.Name, api.Versions[0].Name);
+            if (logger.IsEnabled(LogLevel.Debug))
+            {
+                logger.LogDebug("API {Api} has only one version {Version}. Returning", api.Name, api.Versions[0].Name);
+            }
             return api.Versions[0];
         }
 
@@ -198,7 +204,10 @@ public static class ModelExtensions
             );
             if (header is not null)
             {
-                logger.LogDebug("Version {Version} found in header {Header}", $"{apiVersion.Name}/{apiVersion.Properties?.Title}", header.Name);
+                if (logger.IsEnabled(LogLevel.Debug))
+                {
+                    logger.LogDebug("Version {Version} found in header {Header}", $"{apiVersion.Name}/{apiVersion.Properties?.Title}", header.Name);
+                }
                 return apiVersion;
             }
         }
