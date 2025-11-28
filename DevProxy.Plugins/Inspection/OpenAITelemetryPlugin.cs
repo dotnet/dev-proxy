@@ -849,14 +849,6 @@ public sealed class OpenAITelemetryPlugin(
             .SetTag(SemanticConvention.GEN_AI_USAGE_OUTPUT_TOKENS, usage.CompletionTokens)
             .SetTag(SemanticConvention.GEN_AI_USAGE_TOTAL_TOKENS, usage.TotalTokens);
 
-        var reportModelUsageInformation = new OpenAITelemetryPluginReportModelUsageInformation
-        {
-            Model = response.Model,
-            PromptTokens = usage.PromptTokens,
-            CompletionTokens = usage.CompletionTokens,
-            CachedTokens = usage.PromptTokensDetails?.CachedTokens ?? 0L
-        };
-
         if (!Configuration.IncludeCosts || Configuration.Prices is null)
         {
             Logger.LogDebug("Cost tracking is disabled or prices data is not available");
@@ -893,7 +885,6 @@ public sealed class OpenAITelemetryPlugin(
                 new(SemanticConvention.GEN_AI_REQUEST_MODEL, request.Model),
                 new(SemanticConvention.GEN_AI_RESPONSE_MODEL, response.Model)
             ]);
-            reportModelUsageInformation.Cost = totalCost;
         }
         else
         {
