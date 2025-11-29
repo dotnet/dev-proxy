@@ -38,6 +38,6 @@ static class ConfigurationManagerExtensions
             }
         }
 
-        throw new InvalidOperationException("No configuration file found. Please create a devproxyrc.json file in the current directory.");
+        return configuration;
     }
 }
