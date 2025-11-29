@@ -18,7 +18,10 @@ static class OpenApiDocumentExtensions
     public static ApiPermissionsInfo CheckMinimalPermissions(this OpenApiDocument openApiDocument, IEnumerable<RequestLog> requests,
         ILogger logger, string? schemeName = default)
     {
-        logger.LogInformation("Checking minimal permissions for API {ApiName}...", openApiDocument.Servers.First().Url);
+        if (logger.IsEnabled(LogLevel.Information))
+        {
+            logger.LogInformation("Checking minimal permissions for API {ApiName}...", openApiDocument.Servers.First().Url);
+        }
 
         var tokenPermissions = new List<string>();
         var operationsFromRequests = new List<ApiOperation>();

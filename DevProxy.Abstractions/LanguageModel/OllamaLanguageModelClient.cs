@@ -54,7 +54,10 @@ public sealed class OllamaLanguageModelClient(
 
         if (Configuration.CacheResponses && _cacheChatCompletion.TryGetCacheValue(messages, out var cachedResponse))
         {
-            Logger.LogDebug("Returning cached response for message: {LastMessage}", messages.Last().Content);
+            if (Logger.IsEnabled(LogLevel.Debug))
+            {
+                Logger.LogDebug("Returning cached response for message: {LastMessage}", messages.Last().Content);
+            }
             return cachedResponse;
         }
 
@@ -181,7 +184,10 @@ public sealed class OllamaLanguageModelClient(
         try
         {
             var url = $"{Configuration.Url?.TrimEnd('/')}/api/chat";
-            Logger.LogDebug("Requesting chat completion. Message: {LastMessage}", messages.Last().Content);
+            if (Logger.IsEnabled(LogLevel.Debug))
+            {
+                Logger.LogDebug("Requesting chat completion. Message: {LastMessage}", messages.Last().Content);
+            }
 
             var response = await _httpClient.PostAsJsonAsync(url,
                 new

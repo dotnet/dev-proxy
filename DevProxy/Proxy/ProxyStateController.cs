@@ -69,7 +69,7 @@ sealed class ProxyStateController(
 
     public async Task MockRequestAsync(CancellationToken cancellationToken)
     {
-        var eventArgs = new EventArgs();
+        var eventArgs = EventArgs.Empty;
 
         foreach (var plugin in _plugins.Where(p => p.Enabled))
         {

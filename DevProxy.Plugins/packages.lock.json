@@ -1,7 +1,7 @@
 {
   "version": 1,
   "dependencies": {
-    "net9.0": {
+    "net10.0": {
       "Azure.Identity": {
         "type": "Direct",
         "requested": "[1.13.2, )",
@@ -10,9 +10,7 @@
         "dependencies": {
           "Azure.Core": "1.44.1",
           "Microsoft.Identity.Client": "4.67.2",
-          "Microsoft.Identity.Client.Extensions.Msal": "4.67.2",
-          "System.Memory": "4.5.5",
-          "System.Threading.Tasks.Extensions": "4.5.4"
+          "Microsoft.Identity.Client.Extensions.Msal": "4.67.2"
         }
       },
       "Microsoft.EntityFrameworkCore.Sqlite": {
@@ -27,8 +25,7 @@
           "Microsoft.Extensions.DependencyModel": "9.0.4",
           "Microsoft.Extensions.Logging": "9.0.4",
           "SQLitePCLRaw.bundle_e_sqlite3": "2.1.10",
-          "SQLitePCLRaw.core": "2.1.10",
-          "System.Text.Json": "9.0.4"
+          "SQLitePCLRaw.core": "2.1.10"
         }
       },
       "Microsoft.Extensions.Configuration": {
@@ -112,8 +109,7 @@
         "contentHash": "HiICGm0e44+i4aVHpLn+aphmSC2eQnDvlTttw1rE0hntOZKoLGRy37sydqqbRP1ZokMf3Mt0GEgSWxDwnucKGg==",
         "dependencies": {
           "BouncyCastle.Cryptography": "2.4.0",
-          "Microsoft.Extensions.Logging.Abstractions": "8.0.1",
-          "System.Runtime.CompilerServices.Unsafe": "6.0.0"
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.1"
         }
       },
       "Azure.Core": {
@@ -123,12 +119,7 @@
         "dependencies": {
           "Microsoft.Bcl.AsyncInterfaces": "6.0.0",
           "System.ClientModel": "1.1.0",
-          "System.Diagnostics.DiagnosticSource": "6.0.1",
-          "System.Memory.Data": "6.0.0",
-          "System.Numerics.Vectors": "4.5.0",
-          "System.Text.Encodings.Web": "6.0.0",
-          "System.Text.Json": "6.0.10",
-          "System.Threading.Tasks.Extensions": "4.5.4"
+          "System.Memory.Data": "6.0.0"
         }
       },
       "BouncyCastle.Cryptography": {
@@ -197,8 +188,7 @@
           "Microsoft.Extensions.Configuration.Abstractions": "9.0.4",
           "Microsoft.Extensions.DependencyModel": "9.0.4",
           "Microsoft.Extensions.Logging": "9.0.4",
-          "SQLitePCLRaw.core": "2.1.10",
-          "System.Text.Json": "9.0.4"
+          "SQLitePCLRaw.core": "2.1.10"
         }
       },
       "Microsoft.Extensions.Caching.Abstractions": {
@@ -369,8 +359,7 @@
         "resolved": "4.67.2",
         "contentHash": "37t0TfekfG6XM8kue/xNaA66Qjtti5Qe1xA41CK+bEd8VD76/oXJc+meFJHGzygIC485dCpKoamG/pDfb9Qd7Q==",
         "dependencies": {
-          "Microsoft.IdentityModel.Abstractions": "6.35.0",
-          "System.Diagnostics.DiagnosticSource": "6.0.1"
+          "Microsoft.IdentityModel.Abstractions": "6.35.0"
         }
       },
       "Microsoft.Identity.Client.Extensions.Msal": {
@@ -440,10 +429,7 @@
       "OpenTelemetry.Api": {
         "type": "Transitive",
         "resolved": "1.12.0",
-        "contentHash": "Xt0qldi+iE2szGrM3jAqzEMEJd48YBtqI6mge0+ArXTZg3aTpRmyhL6CKKl3bLioaFSSVbBpEbPin8u6Z46Yrw==",
-        "dependencies": {
-          "System.Diagnostics.DiagnosticSource": "9.0.0"
-        }
+        "contentHash": "Xt0qldi+iE2szGrM3jAqzEMEJd48YBtqI6mge0+ArXTZg3aTpRmyhL6CKKl3bLioaFSSVbBpEbPin8u6Z46Yrw=="
       },
       "OpenTelemetry.Api.ProviderBuilderExtensions": {
         "type": "Transitive",
@@ -476,10 +462,7 @@
       "SQLitePCLRaw.core": {
         "type": "Transitive",
         "resolved": "2.1.10",
-        "contentHash": "Ii8JCbC7oiVclaE/mbDEK000EFIJ+ShRPwAvvV89GOZhQ+ZLtlnSWl6ksCNMKu/VGXA4Nfi2B7LhN/QFN9oBcw==",
-        "dependencies": {
-          "System.Memory": "4.5.3"
-        }
+        "contentHash": "Ii8JCbC7oiVclaE/mbDEK000EFIJ+ShRPwAvvV89GOZhQ+ZLtlnSWl6ksCNMKu/VGXA4Nfi2B7LhN/QFN9oBcw=="
       },
       "SQLitePCLRaw.lib.e_sqlite3": {
         "type": "Transitive",
@@ -499,60 +482,18 @@
         "resolved": "1.1.0",
         "contentHash": "UocOlCkxLZrG2CKMAAImPcldJTxeesHnHGHwhJ0pNlZEvEXcWKuQvVOER2/NiOkJGRJk978SNdw3j6/7O9H1lg==",
         "dependencies": {
-          "System.Memory.Data": "1.0.2",
-          "System.Text.Json": "6.0.9"
+          "System.Memory.Data": "1.0.2"
         }
-      },
-      "System.Diagnostics.DiagnosticSource": {
-        "type": "Transitive",
-        "resolved": "9.0.0",
-        "contentHash": "ddppcFpnbohLWdYKr/ZeLZHmmI+DXFgZ3Snq+/E7SwcdW4UnvxmaugkwGywvGVWkHPGCSZjCP+MLzu23AL5SDw=="
-      },
-      "System.Memory": {
-        "type": "Transitive",
-        "resolved": "4.5.5",
-        "contentHash": "XIWiDvKPXaTveaB7HVganDlOCRoj03l+jrwNvcge/t8vhGYKvqV+dMv6G4SAX2NoNmN0wZfVPTAlFwZcZvVOUw=="
       },
       "System.Memory.Data": {
         "type": "Transitive",
         "resolved": "6.0.0",
-        "contentHash": "ntFHArH3I4Lpjf5m4DCXQHJuGwWPNVJPaAvM95Jy/u+2Yzt2ryiyIN04LAogkjP9DeRcEOiviAjQotfmPq/FrQ==",
-        "dependencies": {
-          "System.Text.Json": "6.0.0"
-        }
-      },
-      "System.Numerics.Vectors": {
-        "type": "Transitive",
-        "resolved": "4.5.0",
-        "contentHash": "QQTlPTl06J/iiDbJCiepZ4H//BVraReU4O4EoRw1U02H5TLUIT7xn3GnDp9AXPSlJUDyFs4uWjWafNX6WrAojQ=="
-      },
-      "System.Runtime.CompilerServices.Unsafe": {
-        "type": "Transitive",
-        "resolved": "6.0.0",
-        "contentHash": "/iUeP3tq1S0XdNNoMz5C9twLSrM/TH+qElHkXWaPvuNOt+99G75NrV0OS2EqHx5wMN7popYjpc8oTjC1y16DLg=="
+        "contentHash": "ntFHArH3I4Lpjf5m4DCXQHJuGwWPNVJPaAvM95Jy/u+2Yzt2ryiyIN04LAogkjP9DeRcEOiviAjQotfmPq/FrQ=="
       },
       "System.Security.Cryptography.ProtectedData": {
         "type": "Transitive",
         "resolved": "4.5.0",
         "contentHash": "wLBKzFnDCxP12VL9ANydSYhk59fC4cvOr9ypYQLPnAj48NQIhqnjdD2yhP8yEKyBJEjERWS9DisKL7rX5eU25Q=="
-      },
-      "System.Text.Encodings.Web": {
-        "type": "Transitive",
-        "resolved": "6.0.0",
-        "contentHash": "Vg8eB5Tawm1IFqj4TVK1czJX89rhFxJo9ELqc/Eiq0eXy13RK00eubyU6TJE6y+GQXjyV5gSfiewDUZjQgSE0w==",
-        "dependencies": {
-          "System.Runtime.CompilerServices.Unsafe": "6.0.0"
-        }
-      },
-      "System.Text.Json": {
-        "type": "Transitive",
-        "resolved": "9.0.4",
-        "contentHash": "pYtmpcO6R3Ef1XilZEHgXP2xBPVORbYEzRP7dl0IAAbN8Dm+kfwio8aCKle97rAWXOExr292MuxWYurIuwN62g=="
-      },
-      "System.Threading.Tasks.Extensions": {
-        "type": "Transitive",
-        "resolved": "4.5.4",
-        "contentHash": "zteT+G8xuGu6mS+mzDzYXbzS7rd3K6Fjb9RiZlYlJPam2/hU7JCBZBVEcywNuR+oZ1ncTvc/cq0faRr3P01OVg=="
       },
       "YamlDotNet": {
         "type": "Transitive",

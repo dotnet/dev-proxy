@@ -175,7 +175,8 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
 
         Logger.LogWarning("This plugin is in preview and may not return the correct results.\r\nPlease review the permissions and test your app before using them in production.\r\nIf you have any feedback, please open an issue at https://aka.ms/devproxy/issue.\r\n");
 
-        if (Configuration.PermissionsToExclude?.Any() == true)
+        if (Configuration.PermissionsToExclude?.Any() == true &&
+            Logger.IsEnabled(LogLevel.Information))
         {
             Logger.LogInformation("Excluding the following permissions: {Permissions}", string.Join(", ", Configuration.PermissionsToExclude));
         }
@@ -185,7 +186,10 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
             var delegatedPermissionsInfo = new GraphMinimalPermissionsInfo();
             report.DelegatedPermissions = delegatedPermissionsInfo;
 
-            Logger.LogInformation("Evaluating delegated permissions for: {Endpoints}", string.Join(", ", delegatedEndpoints.Select(e => $"{e.Method} {e.Url}")));
+            if (Logger.IsEnabled(LogLevel.Information))
+            {
+                Logger.LogInformation("Evaluating delegated permissions for: {Endpoints}", string.Join(", ", delegatedEndpoints.Select(e => $"{e.Method} {e.Url}")));
+            }
 
             await EvaluateMinimalScopesAsync(delegatedEndpoints, scopesToEvaluate, GraphPermissionsType.Delegated, delegatedPermissionsInfo, cancellationToken);
         }
@@ -195,7 +199,10 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
             var applicationPermissionsInfo = new GraphMinimalPermissionsInfo();
             report.ApplicationPermissions = applicationPermissionsInfo;
 
-            Logger.LogInformation("Evaluating application permissions for: {Endpoints}", string.Join(", ", applicationEndpoints.Select(e => $"{e.Method} {e.Url}")));
+            if (Logger.IsEnabled(LogLevel.Information))
+            {
+                Logger.LogInformation("Evaluating application permissions for: {Endpoints}", string.Join(", ", applicationEndpoints.Select(e => $"{e.Method} {e.Url}")));
+            }
 
             await EvaluateMinimalScopesAsync(applicationEndpoints, rolesToEvaluate, GraphPermissionsType.Application, applicationPermissionsInfo, cancellationToken);
         }
@@ -264,12 +271,18 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
                 permissionsInfo.MinimalPermissions = minimalPermissions;
                 permissionsInfo.ExcessPermissions = excessPermissions;
 
-                Logger.LogInformation("Minimal permissions: {MinimalPermissions}", string.Join(", ", minimalPermissions));
-                Logger.LogInformation("Permissions on the token: {TokenPermissions}", string.Join(", ", permissionsFromAccessToken));
+                if (Logger.IsEnabled(LogLevel.Information))
+                {
+                    Logger.LogInformation("Minimal permissions: {MinimalPermissions}", string.Join(", ", minimalPermissions));
+                    Logger.LogInformation("Permissions on the token: {TokenPermissions}", string.Join(", ", permissionsFromAccessToken));
+                }
 
                 if (excessPermissions.Any())
                 {
-                    Logger.LogWarning("The following permissions are unnecessary: {Permissions}", string.Join(", ", excessPermissions));
+                    if (Logger.IsEnabled(LogLevel.Warning))
+                    {
+                        Logger.LogWarning("The following permissions are unnecessary: {Permissions}", string.Join(", ", excessPermissions));
+                    }
                 }
                 else
                 {
@@ -278,7 +291,10 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
             }
             if (errors.Any())
             {
-                Logger.LogError("Couldn't determine minimal permissions for the following URLs: {Errors}", string.Join(", ", errors));
+                if (Logger.IsEnabled(LogLevel.Error))
+                {
+                    Logger.LogError("Couldn't determine minimal permissions for the following URLs: {Errors}", string.Join(", ", errors));
+                }
             }
         }
         catch (Exception ex)
