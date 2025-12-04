@@ -12,8 +12,7 @@
     },
     "maxMs": {
       "type": "integer",
-      "minimum": 0,
-      "maximum": 10000
+      "minimum": 0
     }
   },
   "additionalProperties": false
