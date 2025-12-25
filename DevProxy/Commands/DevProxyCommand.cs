@@ -14,6 +14,7 @@ sealed class DevProxyCommand : RootCommand
     private readonly IProxyConfiguration _proxyConfiguration;
     private readonly ISet<UrlToWatch> _urlsToWatch;
     private readonly UpdateNotification _updateNotification;
+    private readonly IConfiguration _configuration;
     private WebApplication? _app;
 
     internal const string PortOptionName = "--port";
@@ -59,6 +60,7 @@ sealed class DevProxyCommand : RootCommand
         IProxyConfiguration proxyConfiguration,
         IServiceProvider serviceProvider,
         UpdateNotification updateNotification,
+        IConfiguration configuration,
         ILogger<DevProxyCommand> logger) : base("Start Dev Proxy")
     {
         _serviceProvider = serviceProvider;
@@ -66,6 +68,7 @@ sealed class DevProxyCommand : RootCommand
         _urlsToWatch = urlsToWatch;
         _proxyConfiguration = proxyConfiguration;
         _updateNotification = updateNotification;
+        _configuration = configuration;
         _logger = logger;
 
         ConfigureCommand();
@@ -83,6 +86,11 @@ sealed class DevProxyCommand : RootCommand
         if (_app is null)
         {
             throw new InvalidOperationException("WebApplication instance is not set. Please provide it when invoking the command.");
+        }
+        if ((_configuration as IConfigurationRoot)?.Providers.Any(p => p is FileConfigurationProvider) != true)
+        {
+            _logger.LogError("No configuration file found. Please create a devproxyrc.json file in the current directory.");
+            return 1;
         }
         if (!_plugins.Any())
         {

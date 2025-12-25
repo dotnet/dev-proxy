@@ -68,7 +68,8 @@ static class PluginServiceExtensions
 
         if (pluginReferences is null || !pluginReferences.Any(p => p.Enabled))
         {
-            throw new InvalidOperationException("No plugins configured or enabled. Please add a plugin to the configuration file.");
+            _ = services.AddSingleton<ISet<UrlToWatch>>(globallyWatchedUrls.ToHashSet());
+            return services;
         }
 
         var defaultUrlsToWatch = globallyWatchedUrls.ToHashSet();
