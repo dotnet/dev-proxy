@@ -17,6 +17,7 @@ sealed class DevProxyCommand : RootCommand
     private WebApplication? _app;
 
     internal const string PortOptionName = "--port";
+    internal const string ApiPortOptionName = "--api-port";
     internal const string IpAddressOptionName = "--ip-address";
     internal const string LogLevelOptionName = "--log-level";
     internal const string RecordOptionName = "--record";
@@ -196,6 +197,12 @@ sealed class DevProxyCommand : RootCommand
             HelpName = "port"
         };
 
+        var apiPortOption = new Option<int?>(ApiPortOptionName)
+        {
+            Description = "The port for the Dev Proxy API to listen on",
+            HelpName = "api-port"
+        };
+
         var recordOption = new Option<bool?>(RecordOptionName)
         {
             Description = "Use this option to record all request logs"
@@ -307,6 +314,7 @@ sealed class DevProxyCommand : RootCommand
 
         var options = new List<Option>
         {
+            apiPortOption,
             asSystemProxyOption,
             configFileOption,
             discoverOption,
@@ -349,6 +357,11 @@ sealed class DevProxyCommand : RootCommand
         if (port is not null)
         {
             _proxyConfiguration.Port = port.Value;
+        }
+        var apiPort = parseResult.GetValueOrDefault<int?>(ApiPortOptionName);
+        if (apiPort is not null)
+        {
+            _proxyConfiguration.ApiPort = apiPort.Value;
         }
         var ipAddress = parseResult.GetValueOrDefault<string?>(IpAddressOptionName);
         if (ipAddress is not null)
