@@ -18,9 +18,11 @@ static WebApplication BuildApplication(string[] args, DevProxyConfigOptions opti
     var ipAddress = options.IPAddress ??
         builder.Configuration.GetValue("ipAddress", defaultIpAddress) ??
         defaultIpAddress;
+    var defaultApiPort = 8897;
+    var apiPort = options.ApiPort ??
+        builder.Configuration.GetValue("apiPort", defaultApiPort);
     _ = builder.WebHost.ConfigureKestrel(options =>
     {
-        var apiPort = builder.Configuration.GetValue("apiPort", 8897);
         options.Listen(IPAddress.Parse(ipAddress), apiPort);
     });
 

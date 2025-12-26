@@ -20,7 +20,7 @@ public enum ReleaseType
 
 public interface IProxyConfiguration
 {
-    int ApiPort { get; }
+    int ApiPort { get; set; }
     bool AsSystemProxy { get; set; }
     string ConfigFile { get; }
 #pragma warning disable CA2227
