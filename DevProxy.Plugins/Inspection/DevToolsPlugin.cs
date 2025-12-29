@@ -53,6 +53,12 @@ public sealed class DevToolsPlugin(
         pluginConfigurationSection)
 {
     private readonly Dictionary<string, GetResponseBodyResultParams> _responseBody = [];
+    // Track stdio request data for response body retrieval
+    private readonly Dictionary<string, StdioRequestData> _stdioRequests = [];
+    // Track pending stdin request IDs (queue) for matching with stdout
+    private readonly Dictionary<int, Queue<string>> _pendingStdinRequestIds = [];
+    // Counter for generating unique request IDs
+    private long _stdioRequestCounter;
 
     private CancellationToken? _cancellationToken;
     private WebSocketServer? _webSocket;
@@ -241,6 +247,357 @@ public sealed class DevToolsPlugin(
         await _webSocket.SendAsync(message, cancellationToken);
 
         Logger.LogTrace("Left {Name}", nameof(AfterRequestLogAsync));
+    }
+
+    #region IStdioPlugin Implementation
+
+    public override async Task BeforeStdinAsync(StdioRequestArgs e, CancellationToken cancellationToken)
+    {
+        Logger.LogTrace("{Method} called", nameof(BeforeStdinAsync));
+
+        ArgumentNullException.ThrowIfNull(e);
+
+        if (_webSocket?.IsConnected != true)
+        {
+            return;
+        }
+
+        var requestId = GenerateStdioRequestId(e.Session);
+        var url = GetStdioUrl(e.Session);
+        var body = e.BodyString;
+
+        // Queue the request ID so the corresponding stdout can use it
+        if (e.Session.ProcessId.HasValue)
+        {
+            EnqueueStdinRequestId(e.Session.ProcessId.Value, requestId);
+        }
+
+        // Store the stdin data for potential response body retrieval
+        _stdioRequests[requestId] = new StdioRequestData
+        {
+            RequestBody = body,
+            Timestamp = DateTimeOffset.UtcNow
+        };
+
+        var requestWillBeSentMessage = new RequestWillBeSentMessage
+        {
+            Params = new()
+            {
+                RequestId = requestId,
+                LoaderId = "1",
+                DocumentUrl = url,
+                Request = new()
+                {
+                    Url = url,
+                    Method = "STDIN",
+                    Headers = new Dictionary<string, string>
+                    {
+                        ["Content-Type"] = "application/octet-stream",
+                        ["X-Stdio-Command"] = e.Session.Command,
+                        ["X-Stdio-Args"] = string.Join(" ", e.Session.Args),
+                        ["X-Stdio-PID"] = e.Session.ProcessId?.ToString(CultureInfo.InvariantCulture) ?? "unknown"
+                    },
+                    PostData = body
+                },
+                Timestamp = (double)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000,
+                WallTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                Initiator = new()
+                {
+                    Type = "other"
+                }
+            }
+        };
+        await _webSocket.SendAsync(requestWillBeSentMessage, cancellationToken);
+
+        // Send extra info to avoid "Provisional headers are shown" warning
+        var requestWillBeSentExtraInfoMessage = new RequestWillBeSentExtraInfoMessage
+        {
+            Params = new()
+            {
+                RequestId = requestId,
+                AssociatedCookies = [],
+                Headers = new Dictionary<string, string>
+                {
+                    ["Content-Type"] = "application/octet-stream"
+                }
+            }
+        };
+        await _webSocket.SendAsync(requestWillBeSentExtraInfoMessage, cancellationToken);
+    }
+
+    public override async Task AfterStdoutAsync(StdioResponseArgs e, CancellationToken cancellationToken)
+    {
+        Logger.LogTrace("{Method} called", nameof(AfterStdoutAsync));
+
+        ArgumentNullException.ThrowIfNull(e);
+
+        if (_webSocket?.IsConnected != true)
+        {
+            return;
+        }
+
+        // Dequeue the matching stdin request ID
+        var requestId = e.Session.ProcessId.HasValue
+            ? DequeueStdinRequestId(e.Session.ProcessId.Value)
+            : null;
+        
+        if (requestId is null)
+        {
+            // No matching stdin, generate a new ID for standalone stdout
+            requestId = GenerateStdioRequestId(e.Session);
+        }
+
+        var url = GetStdioUrl(e.Session);
+        var body = e.BodyString;
+
+        // Update stored request with response data
+        if (_stdioRequests.TryGetValue(requestId, out var requestData))
+        {
+            requestData.ResponseBody = body;
+        }
+
+        // Store for response body retrieval
+        _responseBody[requestId] = new GetResponseBodyResultParams
+        {
+            Body = body,
+            Base64Encoded = false
+        };
+
+        var responseReceivedMessage = new ResponseReceivedMessage
+        {
+            Params = new()
+            {
+                RequestId = requestId,
+                LoaderId = "1",
+                Timestamp = (double)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000,
+                Type = "XHR",
+                Response = new()
+                {
+                    Url = url,
+                    Status = 200,
+                    StatusText = "OK",
+                    Headers = new Dictionary<string, string>
+                    {
+                        ["Content-Type"] = "application/octet-stream",
+                        ["X-Stdio-Direction"] = "STDOUT"
+                    },
+                    MimeType = "application/octet-stream"
+                },
+                HasExtraInfo = true
+            }
+        };
+
+        await _webSocket.SendAsync(responseReceivedMessage, cancellationToken);
+
+        var loadingFinishedMessage = new LoadingFinishedMessage
+        {
+            Params = new()
+            {
+                RequestId = requestId,
+                Timestamp = (double)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000,
+                EncodedDataLength = Encoding.UTF8.GetByteCount(body)
+            }
+        };
+        await _webSocket.SendAsync(loadingFinishedMessage, cancellationToken);
+    }
+
+    public override async Task AfterStderrAsync(StdioResponseArgs e, CancellationToken cancellationToken)
+    {
+        Logger.LogTrace("{Method} called", nameof(AfterStderrAsync));
+
+        ArgumentNullException.ThrowIfNull(e);
+
+        if (_webSocket?.IsConnected != true)
+        {
+            return;
+        }
+
+        // For stderr, we create a separate "request" with an error status
+        var requestId = GenerateStderrRequestId(e.Session);
+        var url = GetStdioUrl(e.Session);
+        var body = e.BodyString;
+
+        // Store for response body retrieval
+        _responseBody[requestId] = new GetResponseBodyResultParams
+        {
+            Body = body,
+            Base64Encoded = false
+        };
+
+        // Send request for stderr
+        var requestWillBeSentMessage = new RequestWillBeSentMessage
+        {
+            Params = new()
+            {
+                RequestId = requestId,
+                LoaderId = "1",
+                DocumentUrl = url,
+                Request = new()
+                {
+                    Url = url,
+                    Method = "STDERR",
+                    Headers = new Dictionary<string, string>
+                    {
+                        ["Content-Type"] = "text/plain",
+                        ["X-Stdio-Command"] = e.Session.Command,
+                        ["X-Stdio-Direction"] = "STDERR"
+                    },
+                    PostData = null
+                },
+                Timestamp = (double)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000,
+                WallTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                Initiator = new()
+                {
+                    Type = "other"
+                }
+            }
+        };
+        await _webSocket.SendAsync(requestWillBeSentMessage, cancellationToken);
+
+        // Send response with error status
+        var responseReceivedMessage = new ResponseReceivedMessage
+        {
+            Params = new()
+            {
+                RequestId = requestId,
+                LoaderId = "1",
+                Timestamp = (double)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000,
+                Type = "XHR",
+                Response = new()
+                {
+                    Url = url,
+                    Status = 500,
+                    StatusText = "STDERR",
+                    Headers = new Dictionary<string, string>
+                    {
+                        ["Content-Type"] = "text/plain",
+                        ["X-Stdio-Direction"] = "STDERR"
+                    },
+                    MimeType = "text/plain"
+                },
+                HasExtraInfo = true
+            }
+        };
+
+        await _webSocket.SendAsync(responseReceivedMessage, cancellationToken);
+
+        var loadingFinishedMessage = new LoadingFinishedMessage
+        {
+            Params = new()
+            {
+                RequestId = requestId,
+                Timestamp = (double)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000,
+                EncodedDataLength = Encoding.UTF8.GetByteCount(body)
+            }
+        };
+        await _webSocket.SendAsync(loadingFinishedMessage, cancellationToken);
+
+        // Also send a log entry for stderr
+        var entryMessage = new EntryAddedMessage
+        {
+            Params = new()
+            {
+                Entry = new()
+                {
+                    Source = "network",
+                    Text = $"[STDERR] {body}",
+                    Level = "error",
+                    Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    Url = url,
+                    NetworkRequestId = requestId
+                }
+            }
+        };
+        await _webSocket.SendAsync(entryMessage, cancellationToken);
+    }
+
+    public override async Task AfterStdioRequestLogAsync(StdioRequestLogArgs e, CancellationToken cancellationToken)
+    {
+        Logger.LogTrace("{Method} called", nameof(AfterStdioRequestLogAsync));
+
+        ArgumentNullException.ThrowIfNull(e);
+
+        if (_webSocket?.IsConnected != true ||
+            e.RequestLog.MessageType == MessageType.InterceptedRequest ||
+            e.RequestLog.MessageType == MessageType.InterceptedResponse)
+        {
+            return;
+        }
+
+        var url = $"stdio://{Uri.EscapeDataString(e.RequestLog.Command)}";
+        var message = new EntryAddedMessage
+        {
+            Params = new()
+            {
+                Entry = new()
+                {
+                    Source = "network",
+                    Text = e.RequestLog.Message ?? $"[{e.RequestLog.PluginName}]",
+                    Level = Entry.GetLevel(e.RequestLog.MessageType),
+                    Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    Url = url,
+                    NetworkRequestId = null
+                }
+            }
+        };
+        await _webSocket.SendAsync(message, cancellationToken);
+    }
+
+    public override Task AfterStdioRecordingStopAsync(StdioRecordingArgs e, CancellationToken cancellationToken)
+    {
+        // No special handling needed for recording stop
+        return Task.CompletedTask;
+    }
+
+    private static string GetStdioUrl(StdioSession session)
+    {
+        var commandWithArgs = session.Args.Count > 0
+            ? $"{session.Command} {string.Join(" ", session.Args)}"
+            : session.Command;
+        return $"stdio://{Uri.EscapeDataString(commandWithArgs)}";
+    }
+
+    private string GenerateStdioRequestId(StdioSession session)
+    {
+        // Generate a unique ID for each stdin message using an incrementing counter
+        var counter = Interlocked.Increment(ref _stdioRequestCounter);
+        var baseId = $"{session.Command}_{session.ProcessId}_{counter}";
+        return baseId.GetHashCode(StringComparison.Ordinal).ToString(CultureInfo.InvariantCulture);
+    }
+
+    private void EnqueueStdinRequestId(int processId, string requestId)
+    {
+        if (!_pendingStdinRequestIds.TryGetValue(processId, out var queue))
+        {
+            queue = new Queue<string>();
+            _pendingStdinRequestIds[processId] = queue;
+        }
+        queue.Enqueue(requestId);
+    }
+
+    private string? DequeueStdinRequestId(int processId)
+    {
+        if (_pendingStdinRequestIds.TryGetValue(processId, out var queue) && queue.Count > 0)
+        {
+            return queue.Dequeue();
+        }
+        return null;
+    }
+
+    private static string GenerateStderrRequestId(StdioSession session)
+    {
+        // Stderr gets its own unique ID since it shows as a separate request
+        var baseId = $"{session.Command}_{session.ProcessId}_stderr_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+        return baseId.GetHashCode(StringComparison.Ordinal).ToString(CultureInfo.InvariantCulture);
+    }
+
+    #endregion
+
+    private sealed class StdioRequestData
+    {
+        public string RequestBody { get; set; } = string.Empty;
+        public string? ResponseBody { get; set; }
+        public DateTimeOffset Timestamp { get; set; }
     }
 
     private string GetBrowserPath()
