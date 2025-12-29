@@ -343,7 +343,8 @@ sealed class DevProxyCommand : RootCommand
             ActivatorUtilities.CreateInstance<ConfigCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<OutdatedCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<JwtCommand>(_serviceProvider),
-            ActivatorUtilities.CreateInstance<CertCommand>(_serviceProvider)
+            ActivatorUtilities.CreateInstance<CertCommand>(_serviceProvider),
+            ActivatorUtilities.CreateInstance<StdioCommand>(_serviceProvider)
         };
         commands.AddRange(_plugins.SelectMany(p => p.GetCommands()));
         this.AddCommands(commands.OrderByName());
