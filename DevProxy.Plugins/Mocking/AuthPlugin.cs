@@ -168,12 +168,12 @@ public sealed class AuthPlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
         if (e.ResponseState.HasBeenSet)
         {
-            Logger.LogRequest("Response already set", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
 
@@ -184,7 +184,7 @@ public sealed class AuthPlugin(
         }
         else
         {
-            Logger.LogRequest("Request authorized", MessageType.Normal, new(e.Session));
+            Logger.LogRequest("Request authorized", MessageType.Normal, new LoggingContext(e.Session));
         }
 
         Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
@@ -229,14 +229,14 @@ public sealed class AuthPlugin(
         var apiKey = GetApiKey(session);
         if (apiKey is null)
         {
-            Logger.LogRequest("401 Unauthorized. API key not found.", MessageType.Failed, new(session));
+            Logger.LogRequest("401 Unauthorized. API key not found.", MessageType.Failed, new LoggingContext(session));
             return false;
         }
 
         var isKeyValid = Configuration.ApiKey.AllowedKeys.Contains(apiKey);
         if (!isKeyValid)
         {
-            Logger.LogRequest($"401 Unauthorized. API key {apiKey} is not allowed.", MessageType.Failed, new(session));
+            Logger.LogRequest($"401 Unauthorized. API key {apiKey} is not allowed.", MessageType.Failed, new LoggingContext(session));
         }
 
         return isKeyValid;
@@ -288,7 +288,7 @@ public sealed class AuthPlugin(
         }
         catch (Exception ex)
         {
-            Logger.LogRequest($"401 Unauthorized. The specified token is not valid: {ex.Message}", MessageType.Failed, new(session));
+            Logger.LogRequest($"401 Unauthorized. The specified token is not valid: {ex.Message}", MessageType.Failed, new LoggingContext(session));
             return false;
         }
     }
@@ -307,14 +307,14 @@ public sealed class AuthPlugin(
         var principalId = claimsPrincipal.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value;
         if (principalId is null)
         {
-            Logger.LogRequest("401 Unauthorized. The specified token doesn't have the oid claim.", MessageType.Failed, new(session));
+            Logger.LogRequest("401 Unauthorized. The specified token doesn't have the oid claim.", MessageType.Failed, new LoggingContext(session));
             return false;
         }
 
         if (!Configuration.OAuth2.AllowedPrincipals.Contains(principalId))
         {
             var principals = string.Join(", ", Configuration.OAuth2.AllowedPrincipals);
-            Logger.LogRequest($"401 Unauthorized. The specified token is not issued for an allowed principal. Allowed principals: {principals}, found: {principalId}", MessageType.Failed, new(session));
+            Logger.LogRequest($"401 Unauthorized. The specified token is not issued for an allowed principal. Allowed principals: {principals}, found: {principalId}", MessageType.Failed, new LoggingContext(session));
             return false;
         }
 
@@ -337,21 +337,21 @@ public sealed class AuthPlugin(
         var tokenVersion = claimsPrincipal.FindFirst("ver")?.Value;
         if (tokenVersion is null)
         {
-            Logger.LogRequest("401 Unauthorized. The specified token doesn't have the ver claim.", MessageType.Failed, new(session));
+            Logger.LogRequest("401 Unauthorized. The specified token doesn't have the ver claim.", MessageType.Failed, new LoggingContext(session));
             return false;
         }
 
         var appId = claimsPrincipal.FindFirst(tokenVersion == "1.0" ? "appid" : "azp")?.Value;
         if (appId is null)
         {
-            Logger.LogRequest($"401 Unauthorized. The specified token doesn't have the {(tokenVersion == "v1.0" ? "appid" : "azp")} claim.", MessageType.Failed, new(session));
+            Logger.LogRequest($"401 Unauthorized. The specified token doesn't have the {(tokenVersion == "v1.0" ? "appid" : "azp")} claim.", MessageType.Failed, new LoggingContext(session));
             return false;
         }
 
         if (!Configuration.OAuth2.AllowedApplications.Contains(appId))
         {
             var applications = string.Join(", ", Configuration.OAuth2.AllowedApplications);
-            Logger.LogRequest($"401 Unauthorized. The specified token is not issued by an allowed application. Allowed applications: {applications}, found: {appId}", MessageType.Failed, new(session));
+            Logger.LogRequest($"401 Unauthorized. The specified token is not issued by an allowed application. Allowed applications: {applications}, found: {appId}", MessageType.Failed, new LoggingContext(session));
             return false;
         }
 
@@ -374,14 +374,14 @@ public sealed class AuthPlugin(
         var tenantId = claimsPrincipal.FindFirst("http://schemas.microsoft.com/identity/claims/tenantid")?.Value;
         if (tenantId is null)
         {
-            Logger.LogRequest("401 Unauthorized. The specified token doesn't have the tid claim.", MessageType.Failed, new(session));
+            Logger.LogRequest("401 Unauthorized. The specified token doesn't have the tid claim.", MessageType.Failed, new LoggingContext(session));
             return false;
         }
 
         if (!Configuration.OAuth2.AllowedTenants.Contains(tenantId))
         {
             var tenants = string.Join(", ", Configuration.OAuth2.AllowedTenants);
-            Logger.LogRequest($"401 Unauthorized. The specified token is not issued by an allowed tenant. Allowed tenants: {tenants}, found: {tenantId}", MessageType.Failed, new(session));
+            Logger.LogRequest($"401 Unauthorized. The specified token is not issued by an allowed tenant. Allowed tenants: {tenants}, found: {tenantId}", MessageType.Failed, new LoggingContext(session));
             return false;
         }
 
@@ -408,7 +408,7 @@ public sealed class AuthPlugin(
         var rolesRequired = string.Join(", ", Configuration.OAuth2.Roles);
         if (!Configuration.OAuth2.Roles.Any(r => HasPermission(r, rolesFromTheToken)))
         {
-            Logger.LogRequest($"401 Unauthorized. The specified token does not have the necessary role(s). Required one of: {rolesRequired}, found: {rolesFromTheToken}", MessageType.Failed, new(session));
+            Logger.LogRequest($"401 Unauthorized. The specified token does not have the necessary role(s). Required one of: {rolesRequired}, found: {rolesFromTheToken}", MessageType.Failed, new LoggingContext(session));
             return false;
         }
 
@@ -453,13 +453,13 @@ public sealed class AuthPlugin(
 
         if (tokenParts is null)
         {
-            Logger.LogRequest("401 Unauthorized. Authorization header not found.", MessageType.Failed, new(session));
+            Logger.LogRequest("401 Unauthorized. Authorization header not found.", MessageType.Failed, new LoggingContext(session));
             return null;
         }
 
         if (tokenParts.Length != 2 || tokenParts[0] != "Bearer")
         {
-            Logger.LogRequest("401 Unauthorized. The specified token is not a valid Bearer token.", MessageType.Failed, new(session));
+            Logger.LogRequest("401 Unauthorized. The specified token is not a valid Bearer token.", MessageType.Failed, new LoggingContext(session));
             return null;
         }
 

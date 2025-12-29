@@ -443,7 +443,7 @@ sealed class ProxyEngine(
         // We only need to set the proxy header if the proxy has not set a response and the request is going to be sent to the target.
         if (!proxyRequestArgs.ResponseState.HasBeenSet)
         {
-            _logger?.LogRequest("Passed through", MessageType.PassedThrough, new(e));
+            _logger?.LogRequest("Passed through", MessageType.PassedThrough, new LoggingContext(e));
             AddProxyHeader(e.HttpClient.Request);
         }
     }

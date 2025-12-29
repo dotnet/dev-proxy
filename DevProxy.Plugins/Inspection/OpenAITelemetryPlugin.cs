@@ -103,13 +103,13 @@ public sealed class OpenAITelemetryPlugin(
             !request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase) ||
             !request.HasBody)
         {
-            Logger.LogRequest("Request is not a POST request with a body", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Request is not a POST request with a body", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
 
         if (!OpenAIRequest.TryGetOpenAIRequest(request.BodyString, Logger, out var openAiRequest) || openAiRequest is null)
         {
-            Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
 
@@ -184,7 +184,7 @@ public sealed class OpenAITelemetryPlugin(
             _ = e.SessionData.Remove("OpenAIActivity");
             _ = e.SessionData.Remove("OpenAIRequest");
 
-            Logger.LogRequest("OpenTelemetry information emitted", MessageType.Processed, new(e.Session));
+            Logger.LogRequest("OpenTelemetry information emitted", MessageType.Processed, new LoggingContext(e.Session));
         }
 
         Logger.LogTrace("Left {Name}", nameof(AfterResponseAsync));

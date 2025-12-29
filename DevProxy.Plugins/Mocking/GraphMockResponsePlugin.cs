@@ -39,7 +39,7 @@ public class GraphMockResponsePlugin(
 
         if (Configuration.NoMocks)
         {
-            Logger.LogRequest("Mocks are disabled", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Mocks are disabled", MessageType.Skipped, new LoggingContext(e.Session));
             return;
         }
 
@@ -90,7 +90,7 @@ public class GraphMockResponsePlugin(
                     }
                 };
 
-                Logger.LogRequest($"502 {request.Url}", MessageType.Mocked, new(e.Session));
+                Logger.LogRequest($"502 {request.Url}", MessageType.Mocked, new LoggingContext(e.Session));
             }
             else
             {
@@ -164,7 +164,7 @@ public class GraphMockResponsePlugin(
         var batchResponseString = JsonSerializer.Serialize(batchResponse, ProxyUtils.JsonSerializerOptions);
         ProcessMockResponse(ref batchResponseString, batchHeaders, e, null);
         e.Session.GenericResponse(batchResponseString ?? string.Empty, HttpStatusCode.OK, batchHeaders.Select(h => new HttpHeader(h.Name, h.Value)));
-        Logger.LogRequest($"200 {e.Session.HttpClient.Request.RequestUri}", MessageType.Mocked, new(e.Session));
+        Logger.LogRequest($"200 {e.Session.HttpClient.Request.RequestUri}", MessageType.Mocked, new LoggingContext(e.Session));
         e.ResponseState.HasBeenSet = true;
 
         Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));

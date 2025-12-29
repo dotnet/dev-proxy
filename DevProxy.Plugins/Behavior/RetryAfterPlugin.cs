@@ -34,17 +34,17 @@ public sealed class RetryAfterPlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
         if (e.ResponseState.HasBeenSet)
         {
-            Logger.LogRequest("Response already set", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
         if (string.Equals(e.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
         {
-            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
 
@@ -59,13 +59,13 @@ public sealed class RetryAfterPlugin(
         var request = e.Session.HttpClient.Request;
         if (!e.GlobalData.TryGetValue(ThrottledRequestsKey, out var value))
         {
-            Logger.LogRequest("Request not throttled", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Request not throttled", MessageType.Skipped, new LoggingContext(e.Session));
             return;
         }
 
         if (value is not List<ThrottlerInfo> throttledRequests)
         {
-            Logger.LogRequest("Request not throttled", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Request not throttled", MessageType.Skipped, new LoggingContext(e.Session));
             return;
         }
 
@@ -77,7 +77,7 @@ public sealed class RetryAfterPlugin(
 
         if (throttledRequests.Count == 0)
         {
-            Logger.LogRequest("Request not throttled", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Request not throttled", MessageType.Skipped, new LoggingContext(e.Session));
             return;
         }
 
@@ -87,7 +87,7 @@ public sealed class RetryAfterPlugin(
             if (throttleInfo.ThrottleForSeconds > 0)
             {
                 var message = $"Calling {request.Url} before waiting for the Retry-After period. Request will be throttled. Throttling on {throttler.ThrottlingKey}.";
-                Logger.LogRequest(message, MessageType.Failed, new(e.Session));
+                Logger.LogRequest(message, MessageType.Failed, new LoggingContext(e.Session));
 
                 throttler.ResetTime = DateTime.Now.AddSeconds(throttleInfo.ThrottleForSeconds);
                 UpdateProxyResponse(e, throttleInfo, string.Join(' ', message));
@@ -95,7 +95,7 @@ public sealed class RetryAfterPlugin(
             }
         }
 
-        Logger.LogRequest("Request not throttled", MessageType.Skipped, new(e.Session));
+        Logger.LogRequest("Request not throttled", MessageType.Skipped, new LoggingContext(e.Session));
     }
 
     private static void UpdateProxyResponse(ProxyRequestArgs e, ThrottlingInfo throttlingInfo, string message)

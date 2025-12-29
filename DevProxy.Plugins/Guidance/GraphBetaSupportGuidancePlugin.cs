@@ -24,21 +24,21 @@ public sealed class GraphBetaSupportGuidancePlugin(
         var request = e.Session.HttpClient.Request;
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
         if (string.Equals(e.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
         {
-            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
         if (!ProxyUtils.IsGraphBetaRequest(request))
         {
-            Logger.LogRequest("Not a Microsoft Graph beta request", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Not a Microsoft Graph beta request", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
 
-        Logger.LogRequest(BuildBetaSupportMessage(), MessageType.Warning, new(e.Session));
+        Logger.LogRequest(BuildBetaSupportMessage(), MessageType.Warning, new LoggingContext(e.Session));
         Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
         return Task.CompletedTask;
     }

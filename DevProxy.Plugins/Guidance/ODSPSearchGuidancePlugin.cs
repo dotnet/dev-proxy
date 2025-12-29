@@ -24,12 +24,12 @@ public sealed class ODSPSearchGuidancePlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
         if (string.Equals(e.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
         {
-            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
 
@@ -48,7 +48,7 @@ public sealed class ODSPSearchGuidancePlugin(
         if (!ProxyUtils.IsGraphRequest(request) ||
             request.Method != "GET")
         {
-            Logger.LogRequest("Not a Microsoft Graph GET request", MessageType.Skipped, new(session));
+            Logger.LogRequest("Not a Microsoft Graph GET request", MessageType.Skipped, new LoggingContext(session));
             return false;
         }
 
@@ -66,7 +66,7 @@ public sealed class ODSPSearchGuidancePlugin(
         }
         else
         {
-            Logger.LogRequest("Not a SharePoint search request", MessageType.Skipped, new(session));
+            Logger.LogRequest("Not a SharePoint search request", MessageType.Skipped, new LoggingContext(session));
             return false;
         }
     }
