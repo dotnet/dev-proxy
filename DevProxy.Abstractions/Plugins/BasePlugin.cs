@@ -16,7 +16,7 @@ namespace DevProxy.Abstractions.Plugins;
 
 public abstract class BasePlugin(
     ILogger logger,
-    ISet<UrlToWatch> urlsToWatch) : IPlugin, IDisposable
+    ISet<UrlToWatch> urlsToWatch) : IPlugin, IDisposable, IStdioPlugin
 {
     public bool Enabled { get; protected set; } = true;
     protected ILogger Logger { get; } = logger;
@@ -36,6 +36,7 @@ public abstract class BasePlugin(
     {
     }
 
+    // HTTP plugin methods
     public virtual Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
     {
         return Task.CompletedTask;
@@ -66,6 +67,32 @@ public abstract class BasePlugin(
         return Task.CompletedTask;
     }
 
+    // Stdio plugin methods
+    public virtual Task BeforeStdinAsync(StdioRequestArgs e, CancellationToken cancellationToken)
+    {
+        return Task.CompletedTask;
+    }
+
+    public virtual Task AfterStdoutAsync(StdioResponseArgs e, CancellationToken cancellationToken)
+    {
+        return Task.CompletedTask;
+    }
+
+    public virtual Task AfterStderrAsync(StdioResponseArgs e, CancellationToken cancellationToken)
+    {
+        return Task.CompletedTask;
+    }
+
+    public virtual Task AfterStdioRequestLogAsync(StdioRequestLogArgs e, CancellationToken cancellationToken)
+    {
+        return Task.CompletedTask;
+    }
+
+    public virtual Task AfterStdioRecordingStopAsync(StdioRecordingArgs e, CancellationToken cancellationToken)
+    {
+        return Task.CompletedTask;
+    }
+    
     protected virtual void Dispose(bool disposing)
     {
         // Override in derived classes to dispose managed resources

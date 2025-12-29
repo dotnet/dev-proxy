@@ -32,6 +32,7 @@ public sealed class LatencyPlugin(
 
     public override string Name => nameof(LatencyPlugin);
 
+    // HTTP: Add latency before request is forwarded
     public override async Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(BeforeRequestAsync));
@@ -49,5 +50,24 @@ public sealed class LatencyPlugin(
         await Task.Delay(delay, cancellationToken);
 
         Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
+    }
+
+    // Stdio: Add latency before stdin is forwarded to child
+    public override async Task BeforeStdinAsync(StdioRequestArgs e, CancellationToken cancellationToken)
+    {
+        Logger.LogTrace("{Method} called", nameof(BeforeStdinAsync));
+
+        ArgumentNullException.ThrowIfNull(e);
+
+        if (!e.ShouldExecute())
+        {
+            return;
+        }
+
+        var delay = _random.Next(Configuration.MinMs, Configuration.MaxMs);
+        Logger.LogInformation("Delaying stdin for {Delay}ms", delay);
+        await Task.Delay(delay, cancellationToken);
+
+        Logger.LogTrace("Left {Name}", nameof(BeforeStdinAsync));
     }
 }

@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Abstractions.Plugins;
 using DevProxy.Stdio;
 using System.CommandLine;
 
@@ -11,6 +12,10 @@ sealed class StdioCommand : Command
 {
     private readonly ILogger _logger;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly IEnumerable<IStdioPlugin> _plugins;
+
+    // Global data shared across stdio sessions
+    private static readonly Dictionary<string, object> _globalData = [];
 
     private readonly Argument<string[]> _commandArgument = new("command")
     {
@@ -18,11 +23,15 @@ sealed class StdioCommand : Command
         Arity = ArgumentArity.OneOrMore
     };
 
-    public StdioCommand(ILogger<StdioCommand> logger, ILoggerFactory loggerFactory) :
+    public StdioCommand(
+        ILogger<StdioCommand> logger,
+        ILoggerFactory loggerFactory,
+        IEnumerable<IStdioPlugin> plugins) :
         base("stdio", "Proxy stdin/stdout/stderr of local executables")
     {
         _logger = logger;
         _loggerFactory = loggerFactory;
+        _plugins = plugins;
 
         ConfigureCommand();
     }
@@ -51,32 +60,14 @@ sealed class StdioCommand : Command
         _logger.LogInformation("Logging to: {LogFile}", DevProxyCommand.StdioLogFilePath);
         _logger.LogInformation("Starting stdio proxy for command: {Command}", string.Join(" ", command));
 
+        var enabledPlugins = _plugins.Where(p => p.Enabled).ToList();
+        _logger.LogDebug("Loaded {Count} stdio plugins: {Plugins}",
+            enabledPlugins.Count,
+            string.Join(", ", enabledPlugins.Select(p => p.Name)));
+
         var sessionLogger = _loggerFactory.CreateLogger<ProxySession>();
 
-        using var session = new ProxySession(command, sessionLogger);
-
-        // Configure handlers for intercepting traffic
-        // These can be customized by plugins in the future
-        session.OnStdinReceived = (message) =>
-        {
-            // Log the message but don't consume it
-            _logger.LogDebug("stdin: {Message}", message.TrimEnd());
-            return false; // Pass through to child
-        };
-
-        session.OnStdoutReceived = (message) =>
-        {
-            // Log the message but don't consume it
-            _logger.LogDebug("stdout: {Message}", message.TrimEnd());
-            return false; // Pass through to parent
-        };
-
-        session.OnStderrReceived = (message) =>
-        {
-            // Log the message but don't consume it
-            _logger.LogDebug("stderr: {Message}", message.TrimEnd());
-            return false; // Pass through to parent
-        };
+        using var session = new ProxySession(command, enabledPlugins, _globalData, sessionLogger);
 
         try
         {

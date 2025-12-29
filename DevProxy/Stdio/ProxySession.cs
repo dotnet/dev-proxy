@@ -4,53 +4,50 @@
 
 using System.Diagnostics;
 using System.Text;
+using DevProxy.Abstractions.Plugins;
+using DevProxy.Abstractions.Proxy;
 
 namespace DevProxy.Stdio;
 
 /// <summary>
 /// Manages a child process and forwards stdin/stdout/stderr streams between
 /// the parent process and the child process, allowing for interception and
-/// modification of the data.
+/// modification of the data via plugins.
 /// </summary>
 internal sealed class ProxySession : IDisposable
 {
     private readonly string[] _args;
     private readonly CancellationTokenSource _cts = new();
     private readonly ILogger? _logger;
+    private readonly IEnumerable<IStdioPlugin> _plugins;
+    private readonly Dictionary<string, object> _sessionData = [];
+    private readonly Dictionary<string, object> _globalData;
+    private readonly List<StdioRequestLog> _requestLogs = [];
 
     private Process? _process;
     private Stream? _parentStdout;
     private Stream? _childStdin;
+    private StdioSession? _stdioSession;
 
     private readonly SemaphoreSlim _writeSemaphore = new(1, 1);
     private bool _disposed;
 
     /// <summary>
-    /// Handler for inspecting stdin traffic.
-    /// Return true to consume the message (don't forward to child), false to pass through.
-    /// </summary>
-    public Func<string, bool>? OnStdinReceived { get; set; }
-
-    /// <summary>
-    /// Handler for inspecting stdout traffic.
-    /// Return true to consume the message (don't forward to parent), false to pass through.
-    /// </summary>
-    public Func<string, bool>? OnStdoutReceived { get; set; }
-
-    /// <summary>
-    /// Handler for inspecting stderr traffic.
-    /// Return true to consume the message (don't forward to parent), false to pass through.
-    /// </summary>
-    public Func<string, bool>? OnStderrReceived { get; set; }
-
-    /// <summary>
     /// Creates a new ProxySession instance.
     /// </summary>
     /// <param name="args">The command and arguments to execute.</param>
+    /// <param name="plugins">The plugins to execute for stdin/stdout/stderr interception.</param>
+    /// <param name="globalData">Global data shared across sessions.</param>
     /// <param name="logger">Optional logger for diagnostic messages.</param>
-    public ProxySession(string[] args, ILogger? logger = null)
+    public ProxySession(
+        string[] args,
+        IEnumerable<IStdioPlugin> plugins,
+        Dictionary<string, object> globalData,
+        ILogger? logger = null)
     {
         _args = args;
+        _plugins = plugins;
+        _globalData = globalData;
         _logger = logger;
     }
 
@@ -120,6 +117,12 @@ internal sealed class ProxySession : IDisposable
     {
         _logger?.LogDebug("Starting proxy session for: {Command}", string.Join(" ", _args));
 
+        _stdioSession = new StdioSession
+        {
+            Command = _args[0],
+            Args = _args
+        };
+
         var psi = new ProcessStartInfo
         {
             FileName = _args[0],
@@ -149,6 +152,7 @@ internal sealed class ProxySession : IDisposable
 
         _parentStdout = Console.OpenStandardOutput();
         _childStdin = _process.StandardInput.BaseStream;
+        _stdioSession.ProcessId = _process.Id;
 
         _logger?.LogDebug("Process started with PID: {ProcessId}", _process.Id);
 
@@ -191,6 +195,9 @@ internal sealed class ProxySession : IDisposable
             _logger?.LogDebug(ex, "Error during stream forwarding cleanup");
         }
 
+        // Notify plugins that recording has stopped
+        await NotifyRecordingStopAsync();
+
         return _process.ExitCode;
     }
 
@@ -232,14 +239,24 @@ internal sealed class ProxySession : IDisposable
                     break;
                 }
 
-                var message = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                var data = buffer[..bytesRead];
                 Log("STDIN >>>", buffer, bytesRead);
 
-                // Fire handler - if it returns true, the message was consumed
-                var consumed = OnStdinReceived?.Invoke(message) ?? false;
+                // Execute plugins and check if message was consumed
+                var responseState = new ResponseState();
+                var requestArgs = new StdioRequestArgs
+                {
+                    Body = data,
+                    ResponseState = responseState,
+                    Session = _stdioSession!,
+                    SessionData = _sessionData,
+                    GlobalData = _globalData
+                };
+
+                await ExecuteBeforeStdinPluginsAsync(requestArgs);
 
                 // Only forward to child if not consumed
-                if (!consumed)
+                if (!responseState.HasBeenSet)
                 {
                     await _writeSemaphore.WaitAsync(_cts.Token);
                     try
@@ -252,6 +269,19 @@ internal sealed class ProxySession : IDisposable
                         _ = _writeSemaphore.Release();
                     }
                 }
+
+                // Create request log entry for this stdin message
+                var requestLog = new StdioRequestLog
+                {
+                    Command = _stdioSession!.Command,
+                    StdinBody = data,
+                    StdinTimestamp = DateTimeOffset.UtcNow,
+                    MessageType = responseState.HasBeenSet ? MessageType.Mocked : MessageType.PassedThrough
+                };
+                _requestLogs.Add(requestLog);
+
+                // Notify plugins of the request log
+                await NotifyStdioRequestLogAsync(requestLog);
             }
         }
         catch (OperationCanceledException)
@@ -289,14 +319,25 @@ internal sealed class ProxySession : IDisposable
                     break;
                 }
 
-                var message = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                var data = buffer[..bytesRead];
                 Log("<<< STDOUT", buffer, bytesRead);
 
-                // Fire handler - if it returns true, the message was consumed
-                var consumed = OnStdoutReceived?.Invoke(message) ?? false;
+                // Execute plugins and check if message was consumed
+                var responseState = new ResponseState();
+                var responseArgs = new StdioResponseArgs
+                {
+                    Body = data,
+                    Direction = StdioMessageDirection.Stdout,
+                    ResponseState = responseState,
+                    Session = _stdioSession!,
+                    SessionData = _sessionData,
+                    GlobalData = _globalData
+                };
+
+                await ExecuteAfterStdoutPluginsAsync(responseArgs);
 
                 // Only forward to parent if not consumed
-                if (!consumed)
+                if (!responseState.HasBeenSet)
                 {
                     await _writeSemaphore.WaitAsync(_cts.Token);
                     try
@@ -309,6 +350,9 @@ internal sealed class ProxySession : IDisposable
                         _ = _writeSemaphore.Release();
                     }
                 }
+
+                // Update the last request log with stdout response
+                UpdateLastRequestLogWithResponse(data, StdioMessageDirection.Stdout);
             }
         }
         catch (OperationCanceledException)
@@ -336,18 +380,32 @@ internal sealed class ProxySession : IDisposable
                     break;
                 }
 
-                var message = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                var data = buffer[..bytesRead];
                 Log("<<< STDERR", buffer, bytesRead);
 
-                // Fire handler - if it returns true, the message was consumed
-                var consumed = OnStderrReceived?.Invoke(message) ?? false;
+                // Execute plugins and check if message was consumed
+                var responseState = new ResponseState();
+                var responseArgs = new StdioResponseArgs
+                {
+                    Body = data,
+                    Direction = StdioMessageDirection.Stderr,
+                    ResponseState = responseState,
+                    Session = _stdioSession!,
+                    SessionData = _sessionData,
+                    GlobalData = _globalData
+                };
+
+                await ExecuteAfterStderrPluginsAsync(responseArgs);
 
                 // Only forward to parent if not consumed
-                if (!consumed)
+                if (!responseState.HasBeenSet)
                 {
                     await stderr.WriteAsync(buffer.AsMemory(0, bytesRead), _cts.Token);
                     await stderr.FlushAsync(_cts.Token);
                 }
+
+                // Update the last request log with stderr response
+                UpdateLastRequestLogWithResponse(data, StdioMessageDirection.Stderr);
             }
         }
         catch (OperationCanceledException)
@@ -357,6 +415,116 @@ internal sealed class ProxySession : IDisposable
         catch (IOException ex)
         {
             _logger?.LogDebug(ex, "Error forwarding stderr");
+        }
+    }
+
+    private async Task ExecuteBeforeStdinPluginsAsync(StdioRequestArgs args)
+    {
+        foreach (var plugin in _plugins.Where(p => p.Enabled))
+        {
+            _cts.Token.ThrowIfCancellationRequested();
+
+            try
+            {
+                await plugin.BeforeStdinAsync(args, _cts.Token);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error executing plugin {PluginName}.BeforeStdinAsync", plugin.Name);
+            }
+        }
+    }
+
+    private async Task ExecuteAfterStdoutPluginsAsync(StdioResponseArgs args)
+    {
+        foreach (var plugin in _plugins.Where(p => p.Enabled))
+        {
+            _cts.Token.ThrowIfCancellationRequested();
+
+            try
+            {
+                await plugin.AfterStdoutAsync(args, _cts.Token);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error executing plugin {PluginName}.AfterStdoutAsync", plugin.Name);
+            }
+        }
+    }
+
+    private async Task ExecuteAfterStderrPluginsAsync(StdioResponseArgs args)
+    {
+        foreach (var plugin in _plugins.Where(p => p.Enabled))
+        {
+            _cts.Token.ThrowIfCancellationRequested();
+
+            try
+            {
+                await plugin.AfterStderrAsync(args, _cts.Token);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error executing plugin {PluginName}.AfterStderrAsync", plugin.Name);
+            }
+        }
+    }
+
+    private async Task NotifyStdioRequestLogAsync(StdioRequestLog requestLog)
+    {
+        var args = new StdioRequestLogArgs(requestLog);
+
+        foreach (var plugin in _plugins.Where(p => p.Enabled))
+        {
+            try
+            {
+                await plugin.AfterStdioRequestLogAsync(args, _cts.Token);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error executing plugin {PluginName}.AfterStdioRequestLogAsync", plugin.Name);
+            }
+        }
+    }
+
+    private async Task NotifyRecordingStopAsync()
+    {
+        var args = new StdioRecordingArgs(_requestLogs)
+        {
+            Session = _stdioSession!,
+            SessionData = _sessionData,
+            GlobalData = _globalData
+        };
+
+        foreach (var plugin in _plugins.Where(p => p.Enabled))
+        {
+            try
+            {
+                await plugin.AfterStdioRecordingStopAsync(args, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error executing plugin {PluginName}.AfterStdioRecordingStopAsync", plugin.Name);
+            }
+        }
+    }
+
+    private void UpdateLastRequestLogWithResponse(byte[] data, StdioMessageDirection direction)
+    {
+        if (_requestLogs.Count == 0)
+        {
+            return;
+        }
+
+        var lastLog = _requestLogs[^1];
+        lastLog.ResponseTimestamp = DateTimeOffset.UtcNow;
+
+        if (direction == StdioMessageDirection.Stdout)
+        {
+            lastLog.StdoutBody = data;
+        }
+        else if (direction == StdioMessageDirection.Stderr)
+        {
+            lastLog.StderrBody = data;
         }
     }
 
