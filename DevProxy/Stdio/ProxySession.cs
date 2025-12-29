@@ -3,7 +3,6 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Diagnostics;
-using System.Globalization;
 using System.Text;
 
 namespace DevProxy.Stdio;
@@ -16,8 +15,6 @@ namespace DevProxy.Stdio;
 internal sealed class ProxySession : IDisposable
 {
     private readonly string[] _args;
-    private readonly string? _logFile;
-    private readonly StreamWriter? _logWriter;
     private readonly CancellationTokenSource _cts = new();
     private readonly ILogger? _logger;
 
@@ -26,7 +23,6 @@ internal sealed class ProxySession : IDisposable
     private Stream? _childStdin;
 
     private readonly SemaphoreSlim _writeSemaphore = new(1, 1);
-    private readonly Lock _logLock = new();
     private bool _disposed;
 
     /// <summary>
@@ -51,18 +47,11 @@ internal sealed class ProxySession : IDisposable
     /// Creates a new ProxySession instance.
     /// </summary>
     /// <param name="args">The command and arguments to execute.</param>
-    /// <param name="logFile">Optional path to a log file for recording traffic.</param>
     /// <param name="logger">Optional logger for diagnostic messages.</param>
-    public ProxySession(string[] args, string? logFile = null, ILogger? logger = null)
+    public ProxySession(string[] args, ILogger? logger = null)
     {
         _args = args;
-        _logFile = logFile;
         _logger = logger;
-
-        if (!string.IsNullOrEmpty(_logFile))
-        {
-            _logWriter = new StreamWriter(_logFile, append: true, Encoding.UTF8) { AutoFlush = true };
-        }
     }
 
     /// <summary>
@@ -361,19 +350,13 @@ internal sealed class ProxySession : IDisposable
 
     private void Log(string direction, byte[] data, int count)
     {
-        if (_logWriter == null)
+        if (_logger == null)
         {
             return;
         }
 
-        var timestamp = DateTime.Now.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture);
         var text = Encoding.UTF8.GetString(data, 0, count);
-        using (_logLock.EnterScope())
-        {
-            _logWriter.WriteLine($"[{timestamp}] {direction} ({count} bytes):");
-            _logWriter.WriteLine(text);
-            _logWriter.WriteLine();
-        }
+        _logger.LogInformation("{Direction} ({Count} bytes): {Text}", direction, count, text);
     }
 
     public void Dispose()
@@ -384,7 +367,6 @@ internal sealed class ProxySession : IDisposable
         }
 
         _disposed = true;
-        _logWriter?.Dispose();
         _parentStdout?.Dispose();
         _process?.Dispose();
         _cts.Dispose();

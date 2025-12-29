@@ -4,7 +4,6 @@
 
 using DevProxy.Stdio;
 using System.CommandLine;
-using System.CommandLine.Parsing;
 
 namespace DevProxy.Commands;
 
@@ -12,11 +11,6 @@ sealed class StdioCommand : Command
 {
     private readonly ILogger _logger;
     private readonly ILoggerFactory _loggerFactory;
-
-    private readonly Option<string?> _logFileOption = new("--log-file", "-l")
-    {
-        Description = "Path to log file for recording all traffic"
-    };
 
     private readonly Argument<string[]> _commandArgument = new("command")
     {
@@ -35,7 +29,6 @@ sealed class StdioCommand : Command
 
     private void ConfigureCommand()
     {
-        this.AddOptions(new List<Option> { _logFileOption }.OrderByName());
         Add(_commandArgument);
 
         SetAction(RunAsync);
@@ -46,7 +39,6 @@ sealed class StdioCommand : Command
         _logger.LogTrace("StdioCommand.RunAsync() called");
 
         var command = parseResult.GetValue(_commandArgument);
-        var logFile = parseResult.GetValue(_logFileOption);
 
         if (command == null || command.Length == 0)
         {
@@ -56,16 +48,12 @@ sealed class StdioCommand : Command
             return 1;
         }
 
-        _logger.LogDebug("Starting stdio proxy for command: {Command}", string.Join(" ", command));
-
-        if (!string.IsNullOrEmpty(logFile))
-        {
-            _logger.LogDebug("Logging traffic to: {LogFile}", logFile);
-        }
+        _logger.LogInformation("Logging to: {LogFile}", DevProxyCommand.StdioLogFilePath);
+        _logger.LogInformation("Starting stdio proxy for command: {Command}", string.Join(" ", command));
 
         var sessionLogger = _loggerFactory.CreateLogger<ProxySession>();
 
-        using var session = new ProxySession(command, logFile, sessionLogger);
+        using var session = new ProxySession(command, sessionLogger);
 
         // Configure handlers for intercepting traffic
         // These can be customized by plugins in the future

@@ -3,6 +3,7 @@ using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using System.CommandLine;
 using System.CommandLine.Parsing;
+using System.Globalization;
 
 namespace DevProxy.Commands;
 
@@ -33,9 +34,11 @@ sealed class DevProxyCommand : RootCommand
     internal const string EnvOptionName = "--env";
 
     private static readonly string[] globalOptions = ["--version"];
-    private static readonly string[] helpOptions = ["--help", "-h", "/h", "-?", "/?"];
+    private static readonly string[] helpOptions = ["--help", "-h", "/h", "-?", "/?"]; 
 
     private static bool _hasGlobalOptionsResolved;
+    private static bool _isStdioCommandResolved;
+    private static bool _stdioLogFilePathResolved;
 
     public static bool HasGlobalOptions
     {
@@ -50,6 +53,39 @@ sealed class DevProxyCommand : RootCommand
             field = args.Any(arg => globalOptions.Contains(arg)) ||
                                 args.Any(arg => helpOptions.Contains(arg));
             _hasGlobalOptionsResolved = true;
+            return field;
+        }
+    }
+
+    public static bool IsStdioCommand
+    {
+        get
+        {
+            if (_isStdioCommandResolved)
+            {
+                return field;
+            }
+
+            var args = Environment.GetCommandLineArgs();
+            field = args.Contains("stdio");
+            _isStdioCommandResolved = true;
+            return field;
+        }
+    }
+
+    public static string StdioLogFilePath
+    {
+        get
+        {
+            if (_stdioLogFilePathResolved)
+            {
+                return field ?? string.Empty;
+            }
+
+            field = Path.Combine(
+                Directory.GetCurrentDirectory(),
+                $"devproxy-stdio-{DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)}.log");
+            _stdioLogFilePathResolved = true;
             return field;
         }
     }
