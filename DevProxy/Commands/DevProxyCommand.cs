@@ -111,7 +111,12 @@ sealed class DevProxyCommand : RootCommand
     public async Task<int> InvokeAsync(string[] args, WebApplication app)
     {
         _app = app;
-        var parseResult = Parse(args);
+        // Disable response file expansion (@file) to avoid issues with npm package names like @devproxy/mcp
+        var configuration = new CommandLineConfiguration(this)
+        {
+            ResponseFileTokenReplacer = null
+        };
+        var parseResult = Parse(args, configuration);
         return await parseResult.InvokeAsync(app.Lifetime.ApplicationStopping);
     }
 

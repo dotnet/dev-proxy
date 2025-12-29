@@ -152,6 +152,18 @@ internal sealed class ProxySession : IDisposable
 
         _logger?.LogDebug("Process started with PID: {ProcessId}", _process.Id);
 
+        // Check if process exited immediately (common for command not found, etc.)
+        if (_process.HasExited)
+        {
+            var stderrContent = await _process.StandardError.ReadToEndAsync();
+            if (!string.IsNullOrEmpty(stderrContent))
+            {
+                _logger?.LogError("Process exited immediately with stderr: {Stderr}", stderrContent);
+            }
+            _logger?.LogError("Process exited immediately with code: {ExitCode}", _process.ExitCode);
+            return _process.ExitCode;
+        }
+
         // Start forwarding tasks
         var stdinTask = ForwardStdinAsync();
         var stdoutTask = ForwardStdoutAsync();
