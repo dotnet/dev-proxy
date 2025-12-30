@@ -354,7 +354,7 @@ public sealed class DevToolsPlugin(
         // Try to find matching request using JSON-RPC id
         string? requestId = null;
         var jsonRpcId = TryGetJsonRpcId(body);
-        
+
         if (jsonRpcId is not null)
         {
             var key = GetJsonRpcKey(processId, jsonRpcId);
@@ -377,7 +377,7 @@ public sealed class DevToolsPlugin(
                 _stdoutBuffers[processId] = buffer;
             }
             buffer.Append(body);
-            
+
             // Try parsing the accumulated buffer
             jsonRpcId = TryGetJsonRpcId(buffer.Content);
             if (jsonRpcId is null)
@@ -386,11 +386,11 @@ public sealed class DevToolsPlugin(
                 Logger.LogTrace("Buffering partial stdout response ({Length} bytes total)", buffer.Content.Length);
                 return;
             }
-            
+
             // We now have a complete message!
             body = buffer.Content;
             buffer.Clear();
-            
+
             var key = GetJsonRpcKey(processId, jsonRpcId);
             if (_jsonRpcToCdpRequestId.TryGetValue(key, out var cdpRequestId))
             {
@@ -409,16 +409,10 @@ public sealed class DevToolsPlugin(
         }
 
         // Fallback: try queue-based matching (for non-JSON-RPC protocols)
-        if (requestId is null)
-        {
-            requestId = DequeueStdinRequestId(processId);
-        }
-        
+        requestId ??= DequeueStdinRequestId(processId);
+
         // Last resort: generate a new ID for standalone stdout
-        if (requestId is null)
-        {
-            requestId = GenerateStdioRequestId(e.Session);
-        }
+        requestId ??= GenerateStdioRequestId(e.Session);
 
         // Update stored request with response data
         if (_stdioRequests.TryGetValue(requestId, out var requestData))
@@ -588,13 +582,14 @@ public sealed class DevToolsPlugin(
 
         ArgumentNullException.ThrowIfNull(e);
 
-        if (e.RequestLog.MessageType == MessageType.InterceptedRequest ||
-            e.RequestLog.MessageType == MessageType.InterceptedResponse)
+        if (e.RequestLog.MessageType is MessageType.InterceptedRequest or
+            MessageType.InterceptedResponse)
         {
             return;
         }
 
-        var url = $"stdio://{Uri.EscapeDataString(e.RequestLog.Command)}";
+        // Encode slashes so DevTools shows full command in Name column instead of just last path segment
+        var url = $"stdio://{e.RequestLog.Command.Replace("/", "%2F", StringComparison.Ordinal)}";
         var message = new EntryAddedMessage
         {
             Params = new()
@@ -663,7 +658,8 @@ public sealed class DevToolsPlugin(
         var commandWithArgs = session.Args.Count > 0
             ? $"{session.Command} {string.Join(" ", session.Args)}"
             : session.Command;
-        return $"stdio://{Uri.EscapeDataString(commandWithArgs)}";
+        // Encode slashes so DevTools shows full command in Name column instead of just last path segment
+        return $"stdio://{commandWithArgs.Replace("/", "%2F", StringComparison.Ordinal)}";
     }
 
     private string GenerateStdioRequestId(StdioSession session)
@@ -823,6 +819,7 @@ public sealed class DevToolsPlugin(
         var port = GetFreePort();
         _webSocket = new(port, Logger);
         _webSocket.MessageReceived += SocketMessageReceived;
+        _webSocket.ClientConnected += OnWebSocketClientConnected;
         _ = _webSocket.StartAsync();
 
         var inspectionUrl = $"http://localhost:9222/devtools/inspector.html?ws=localhost:{port}";
@@ -844,6 +841,25 @@ public sealed class DevToolsPlugin(
             }
         };
         _ = process.Start();
+    }
+
+    private void OnWebSocketClientConnected()
+    {
+        Logger.LogTrace("WebSocket client connected, replaying {Count} buffered messages", _pendingCdpMessages.Count);
+
+        // Replay all buffered CDP messages now that browser is connected
+        _hasReplayedBufferedMessages = true;
+        while (_pendingCdpMessages.TryDequeue(out var bufferedAction))
+        {
+            try
+            {
+                bufferedAction(_cancellationToken ?? CancellationToken.None).GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogDebug(ex, "Error replaying buffered CDP message");
+            }
+        }
     }
 
     private void SocketMessageReceived(string msg)
