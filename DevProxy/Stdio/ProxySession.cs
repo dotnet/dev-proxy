@@ -112,7 +112,7 @@ internal sealed class ProxySession(
         _stdioSession = new StdioSession
         {
             Command = _args[0],
-            Args = _args.Skip(1).ToList()
+            Args = [.. _args.Skip(1)]
         };
 
         var psi = new ProcessStartInfo

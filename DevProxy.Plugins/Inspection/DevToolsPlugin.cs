@@ -708,12 +708,14 @@ public sealed class DevToolsPlugin(
             if (doc.RootElement.TryGetProperty("id", out var idElement))
             {
                 // JSON-RPC id can be string, number, or null
+#pragma warning disable IDE0072 // Add missing cases
                 return idElement.ValueKind switch
                 {
                     JsonValueKind.String => idElement.GetString(),
                     JsonValueKind.Number => idElement.GetRawText(),
                     _ => null
                 };
+#pragma warning restore IDE0072 // Add missing cases
             }
         }
         catch (JsonException)

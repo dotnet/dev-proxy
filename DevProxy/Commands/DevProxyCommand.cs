@@ -34,7 +34,7 @@ sealed class DevProxyCommand : RootCommand
     internal const string EnvOptionName = "--env";
 
     private static readonly string[] globalOptions = ["--version"];
-    private static readonly string[] helpOptions = ["--help", "-h", "/h", "-?", "/?"]; 
+    private static readonly string[] helpOptions = ["--help", "-h", "/h", "-?", "/?"];
 
     private static bool _hasGlobalOptionsResolved;
     private static bool _isStdioCommandResolved;

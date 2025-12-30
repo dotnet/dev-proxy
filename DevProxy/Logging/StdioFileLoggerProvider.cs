@@ -20,7 +20,7 @@ internal sealed class StdioFileLoggerProvider : ILoggerProvider
         var directory = Path.GetDirectoryName(logFilePath);
         if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
         {
-            Directory.CreateDirectory(directory);
+            _ = Directory.CreateDirectory(directory);
         }
 
         _writer = new StreamWriter(logFilePath, append: false, Encoding.UTF8) { AutoFlush = true };
@@ -39,6 +39,7 @@ internal sealed class StdioFileLoggerProvider : ILoggerProvider
         }
 
         var timestamp = DateTime.Now.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture);
+#pragma warning disable IDE0072 // Add missing cases
         var level = logLevel switch
         {
             LogLevel.Trace => "trce",
@@ -49,6 +50,7 @@ internal sealed class StdioFileLoggerProvider : ILoggerProvider
             LogLevel.Critical => "crit",
             _ => "none"
         };
+#pragma warning restore IDE0072 // Add missing cases
 
         using (_lock.EnterScope())
         {
