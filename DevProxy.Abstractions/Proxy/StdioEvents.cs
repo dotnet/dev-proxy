@@ -89,6 +89,18 @@ public class StdioRequestArgs : StdioEventArgsBase
     public required ResponseState ResponseState { get; init; }
 
     /// <summary>
+    /// Mock stdout response to send to the parent process.
+    /// Set this when ResponseState.HasBeenSet is true to provide a mock response.
+    /// </summary>
+    public string? StdoutResponse { get; set; }
+
+    /// <summary>
+    /// Mock stderr response to send to the parent process.
+    /// Set this when ResponseState.HasBeenSet is true to provide an error response.
+    /// </summary>
+    public string? StderrResponse { get; set; }
+
+    /// <summary>
     /// Checks if the plugin should execute based on ResponseState.
     /// </summary>
     public bool ShouldExecute() => !ResponseState.HasBeenSet;

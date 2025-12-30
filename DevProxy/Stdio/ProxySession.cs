@@ -264,6 +264,11 @@ internal sealed class ProxySession(
                         _ = _writeSemaphore.Release();
                     }
                 }
+                else
+                {
+                    // Send mock response if set by a plugin
+                    await SendMockResponseAsync(requestArgs);
+                }
 
                 // Create request log entry for this stdin message
                 var requestLog = new StdioRequestLog
@@ -581,6 +586,34 @@ internal sealed class ProxySession(
         else if (direction == StdioMessageDirection.Stderr)
         {
             lastLog.StderrBody = data;
+        }
+    }
+
+    /// <summary>
+    /// Sends mock responses that were set by plugins on the request args.
+    /// </summary>
+    private async Task SendMockResponseAsync(StdioRequestArgs requestArgs)
+    {
+        // Send mock stdout if set by a plugin
+        if (!string.IsNullOrEmpty(requestArgs.StdoutResponse))
+        {
+            await WriteToParentStdoutAsync(requestArgs.StdoutResponse);
+
+            // Update request log with mock response
+            var stdoutBytes = Encoding.UTF8.GetBytes(requestArgs.StdoutResponse);
+            UpdateLastRequestLogWithResponse(stdoutBytes, StdioMessageDirection.Stdout);
+        }
+
+        // Send mock stderr if set by a plugin
+        if (!string.IsNullOrEmpty(requestArgs.StderrResponse))
+        {
+            var stderrBytes = Encoding.UTF8.GetBytes(requestArgs.StderrResponse);
+            using var stderrStream = Console.OpenStandardError();
+            await stderrStream.WriteAsync(stderrBytes);
+            await stderrStream.FlushAsync();
+
+            // Update request log
+            UpdateLastRequestLogWithResponse(stderrBytes, StdioMessageDirection.Stderr);
         }
     }
 

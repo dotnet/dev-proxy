@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using DevProxy.Abstractions.Plugins;
+using DevProxy.Abstractions.Proxy;
 using DevProxy.Stdio;
 using System.CommandLine;
 
@@ -59,6 +60,13 @@ sealed class StdioCommand : Command
 
         _logger.LogInformation("Logging to: {LogFile}", DevProxyCommand.StdioLogFilePath);
         _logger.LogInformation("Starting stdio proxy for command: {Command}", string.Join(" ", command));
+
+        // Notify plugins that options have been loaded (triggers mocks file loading, etc.)
+        var optionsLoadedArgs = new OptionsLoadedArgs(parseResult);
+        foreach (var plugin in _plugins.Where(p => p.Enabled).OfType<IPlugin>())
+        {
+            plugin.OptionsLoaded(optionsLoadedArgs);
+        }
 
         var enabledPlugins = _plugins.Where(p => p.Enabled).ToList();
         _logger.LogDebug("Loaded {Count} stdio plugins: {Plugins}",

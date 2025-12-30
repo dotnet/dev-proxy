@@ -40,19 +40,11 @@ public static class ILoggerExtensions
 /// <summary>
 /// Represents a log entry for stdio operations.
 /// </summary>
-public class StdioLogEntry
+public class StdioLogEntry(string message, MessageType messageType, StdioLoggingContext? context)
 {
-    public string Message { get; set; }
-    public MessageType MessageType { get; set; }
-    public string? Command { get; init; }
-    public string? Direction { get; init; }
+    public string Message { get; set; } = message ?? throw new ArgumentNullException(nameof(message));
+    public MessageType MessageType { get; set; } = messageType;
+    public string? Command { get; init; } = context?.Session.Command;
+    public string? Direction { get; init; } = context?.Direction.ToString();
     public string? PluginName { get; set; }
-
-    public StdioLogEntry(string message, MessageType messageType, StdioLoggingContext? context)
-    {
-        Message = message ?? throw new ArgumentNullException(nameof(message));
-        MessageType = messageType;
-        Command = context?.Session.Command;
-        Direction = context?.Direction.ToString();
-    }
 }
