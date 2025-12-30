@@ -55,10 +55,18 @@ public sealed class DevToolsPlugin(
     private readonly Dictionary<string, GetResponseBodyResultParams> _responseBody = [];
     // Track stdio request data for response body retrieval
     private readonly Dictionary<string, StdioRequestData> _stdioRequests = [];
-    // Track pending stdin request IDs (queue) for matching with stdout
+    // Track JSON-RPC request IDs to CDP request IDs: key = "{processId}_{jsonRpcId}"
+    private readonly Dictionary<string, string> _jsonRpcToCdpRequestId = [];
+    // Track pending stdin request IDs (queue) for matching with stdout (fallback for non-JSON-RPC)
     private readonly Dictionary<int, Queue<string>> _pendingStdinRequestIds = [];
+    // Buffer for partial stdout responses: key = processId
+    private readonly Dictionary<int, StdioResponseBuffer> _stdoutBuffers = [];
+    // Buffer CDP messages until WebSocket connects
+    private readonly Queue<Func<CancellationToken, Task>> _pendingCdpMessages = [];
     // Counter for generating unique request IDs
     private long _stdioRequestCounter;
+    // Flag to track if we've replayed buffered messages
+    private bool _hasReplayedBufferedMessages;
 
     private CancellationToken? _cancellationToken;
     private WebSocketServer? _webSocket;
@@ -257,18 +265,23 @@ public sealed class DevToolsPlugin(
 
         ArgumentNullException.ThrowIfNull(e);
 
-        if (_webSocket?.IsConnected != true)
-        {
-            return;
-        }
-
         var requestId = GenerateStdioRequestId(e.Session);
         var url = GetStdioUrl(e.Session);
         var body = e.BodyString;
 
-        // Queue the request ID so the corresponding stdout can use it
-        if (e.Session.ProcessId.HasValue)
+        // Try to parse JSON-RPC id for better request/response matching
+        var jsonRpcId = TryGetJsonRpcId(body);
+        var isJsonRpcRequest = jsonRpcId is not null;
+
+        if (isJsonRpcRequest && e.Session.ProcessId.HasValue)
         {
+            // Store mapping from JSON-RPC id to CDP request ID
+            var key = GetJsonRpcKey(e.Session.ProcessId.Value, jsonRpcId);
+            _jsonRpcToCdpRequestId[key] = requestId;
+        }
+        else if (e.Session.ProcessId.HasValue)
+        {
+            // Fallback: queue the request ID for non-JSON-RPC or notifications
             EnqueueStdinRequestId(e.Session.ProcessId.Value, requestId);
         }
 
@@ -307,9 +320,7 @@ public sealed class DevToolsPlugin(
                 }
             }
         };
-        await _webSocket.SendAsync(requestWillBeSentMessage, cancellationToken);
 
-        // Send extra info to avoid "Provisional headers are shown" warning
         var requestWillBeSentExtraInfoMessage = new RequestWillBeSentExtraInfoMessage
         {
             Params = new()
@@ -322,7 +333,12 @@ public sealed class DevToolsPlugin(
                 }
             }
         };
-        await _webSocket.SendAsync(requestWillBeSentExtraInfoMessage, cancellationToken);
+
+        await SendOrBufferAsync(async ct =>
+        {
+            await _webSocket!.SendAsync(requestWillBeSentMessage, ct);
+            await _webSocket.SendAsync(requestWillBeSentExtraInfoMessage, ct);
+        }, cancellationToken);
     }
 
     public override async Task AfterStdoutAsync(StdioResponseArgs e, CancellationToken cancellationToken)
@@ -331,24 +347,78 @@ public sealed class DevToolsPlugin(
 
         ArgumentNullException.ThrowIfNull(e);
 
-        if (_webSocket?.IsConnected != true)
-        {
-            return;
-        }
-
-        // Dequeue the matching stdin request ID
-        var requestId = e.Session.ProcessId.HasValue
-            ? DequeueStdinRequestId(e.Session.ProcessId.Value)
-            : null;
-        
-        if (requestId is null)
-        {
-            // No matching stdin, generate a new ID for standalone stdout
-            requestId = GenerateStdioRequestId(e.Session);
-        }
-
         var url = GetStdioUrl(e.Session);
         var body = e.BodyString;
+        var processId = e.Session.ProcessId ?? 0;
+
+        // Try to find matching request using JSON-RPC id
+        string? requestId = null;
+        var jsonRpcId = TryGetJsonRpcId(body);
+        
+        if (jsonRpcId is not null)
+        {
+            var key = GetJsonRpcKey(processId, jsonRpcId);
+            if (_jsonRpcToCdpRequestId.TryGetValue(key, out var cdpRequestId))
+            {
+                requestId = cdpRequestId;
+                // Remove the mapping since we've matched it
+                _ = _jsonRpcToCdpRequestId.Remove(key);
+            }
+        }
+
+        // If we couldn't parse JSON-RPC id, this might be a partial response
+        // Buffer it until we get a complete message with an id
+        if (jsonRpcId is null)
+        {
+            // Buffer this partial response
+            if (!_stdoutBuffers.TryGetValue(processId, out var buffer))
+            {
+                buffer = new StdioResponseBuffer();
+                _stdoutBuffers[processId] = buffer;
+            }
+            buffer.Append(body);
+            
+            // Try parsing the accumulated buffer
+            jsonRpcId = TryGetJsonRpcId(buffer.Content);
+            if (jsonRpcId is null)
+            {
+                // Still can't parse, wait for more data
+                Logger.LogTrace("Buffering partial stdout response ({Length} bytes total)", buffer.Content.Length);
+                return;
+            }
+            
+            // We now have a complete message!
+            body = buffer.Content;
+            buffer.Clear();
+            
+            var key = GetJsonRpcKey(processId, jsonRpcId);
+            if (_jsonRpcToCdpRequestId.TryGetValue(key, out var cdpRequestId))
+            {
+                requestId = cdpRequestId;
+                _ = _jsonRpcToCdpRequestId.Remove(key);
+            }
+        }
+        else
+        {
+            // We got a valid JSON-RPC message, but check if there's buffered data to prepend
+            if (_stdoutBuffers.TryGetValue(processId, out var buffer) && buffer.Content.Length > 0)
+            {
+                body = buffer.Content + body;
+                buffer.Clear();
+            }
+        }
+
+        // Fallback: try queue-based matching (for non-JSON-RPC protocols)
+        if (requestId is null)
+        {
+            requestId = DequeueStdinRequestId(processId);
+        }
+        
+        // Last resort: generate a new ID for standalone stdout
+        if (requestId is null)
+        {
+            requestId = GenerateStdioRequestId(e.Session);
+        }
 
         // Update stored request with response data
         if (_stdioRequests.TryGetValue(requestId, out var requestData))
@@ -387,8 +457,6 @@ public sealed class DevToolsPlugin(
             }
         };
 
-        await _webSocket.SendAsync(responseReceivedMessage, cancellationToken);
-
         var loadingFinishedMessage = new LoadingFinishedMessage
         {
             Params = new()
@@ -398,7 +466,12 @@ public sealed class DevToolsPlugin(
                 EncodedDataLength = Encoding.UTF8.GetByteCount(body)
             }
         };
-        await _webSocket.SendAsync(loadingFinishedMessage, cancellationToken);
+
+        await SendOrBufferAsync(async ct =>
+        {
+            await _webSocket!.SendAsync(responseReceivedMessage, ct);
+            await _webSocket.SendAsync(loadingFinishedMessage, ct);
+        }, cancellationToken);
     }
 
     public override async Task AfterStderrAsync(StdioResponseArgs e, CancellationToken cancellationToken)
@@ -406,11 +479,6 @@ public sealed class DevToolsPlugin(
         Logger.LogTrace("{Method} called", nameof(AfterStderrAsync));
 
         ArgumentNullException.ThrowIfNull(e);
-
-        if (_webSocket?.IsConnected != true)
-        {
-            return;
-        }
 
         // For stderr, we create a separate "request" with an error status
         var requestId = GenerateStderrRequestId(e.Session);
@@ -452,7 +520,6 @@ public sealed class DevToolsPlugin(
                 }
             }
         };
-        await _webSocket.SendAsync(requestWillBeSentMessage, cancellationToken);
 
         // Send response with error status
         var responseReceivedMessage = new ResponseReceivedMessage
@@ -479,8 +546,6 @@ public sealed class DevToolsPlugin(
             }
         };
 
-        await _webSocket.SendAsync(responseReceivedMessage, cancellationToken);
-
         var loadingFinishedMessage = new LoadingFinishedMessage
         {
             Params = new()
@@ -490,7 +555,6 @@ public sealed class DevToolsPlugin(
                 EncodedDataLength = Encoding.UTF8.GetByteCount(body)
             }
         };
-        await _webSocket.SendAsync(loadingFinishedMessage, cancellationToken);
 
         // Also send a log entry for stderr
         var entryMessage = new EntryAddedMessage
@@ -508,7 +572,14 @@ public sealed class DevToolsPlugin(
                 }
             }
         };
-        await _webSocket.SendAsync(entryMessage, cancellationToken);
+
+        await SendOrBufferAsync(async ct =>
+        {
+            await _webSocket!.SendAsync(requestWillBeSentMessage, ct);
+            await _webSocket.SendAsync(responseReceivedMessage, ct);
+            await _webSocket.SendAsync(loadingFinishedMessage, ct);
+            await _webSocket.SendAsync(entryMessage, ct);
+        }, cancellationToken);
     }
 
     public override async Task AfterStdioRequestLogAsync(StdioRequestLogArgs e, CancellationToken cancellationToken)
@@ -517,8 +588,7 @@ public sealed class DevToolsPlugin(
 
         ArgumentNullException.ThrowIfNull(e);
 
-        if (_webSocket?.IsConnected != true ||
-            e.RequestLog.MessageType == MessageType.InterceptedRequest ||
+        if (e.RequestLog.MessageType == MessageType.InterceptedRequest ||
             e.RequestLog.MessageType == MessageType.InterceptedResponse)
         {
             return;
@@ -540,13 +610,52 @@ public sealed class DevToolsPlugin(
                 }
             }
         };
-        await _webSocket.SendAsync(message, cancellationToken);
+        await SendOrBufferAsync(ct => _webSocket!.SendAsync(message, ct), cancellationToken);
     }
 
     public override Task AfterStdioRecordingStopAsync(StdioRecordingArgs e, CancellationToken cancellationToken)
     {
         // No special handling needed for recording stop
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Sends CDP message immediately if WebSocket is connected, otherwise buffers it for later replay.
+    /// </summary>
+    private async Task SendOrBufferAsync(Func<CancellationToken, Task> sendAction, CancellationToken cancellationToken)
+    {
+        if (_webSocket is null)
+        {
+            return;
+        }
+
+        // First, check if we need to replay buffered messages
+        if (_webSocket.IsConnected && !_hasReplayedBufferedMessages)
+        {
+            _hasReplayedBufferedMessages = true;
+            while (_pendingCdpMessages.TryDequeue(out var bufferedAction))
+            {
+                try
+                {
+                    await bufferedAction(cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogDebug(ex, "Error replaying buffered CDP message");
+                }
+            }
+        }
+
+        if (_webSocket.IsConnected)
+        {
+            await sendAction(cancellationToken);
+        }
+        else
+        {
+            // Buffer for later
+            _pendingCdpMessages.Enqueue(sendAction);
+            Logger.LogTrace("Buffered CDP message (WebSocket not connected yet)");
+        }
     }
 
     private static string GetStdioUrl(StdioSession session)
@@ -591,6 +700,38 @@ public sealed class DevToolsPlugin(
         return baseId.GetHashCode(StringComparison.Ordinal).ToString(CultureInfo.InvariantCulture);
     }
 
+    /// <summary>
+    /// Tries to extract the JSON-RPC "id" field from a message body.
+    /// Returns null if the body is not valid JSON or doesn't have an "id" field.
+    /// </summary>
+    private static string? TryGetJsonRpcId(string body)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("id", out var idElement))
+            {
+                // JSON-RPC id can be string, number, or null
+                return idElement.ValueKind switch
+                {
+                    JsonValueKind.String => idElement.GetString(),
+                    JsonValueKind.Number => idElement.GetRawText(),
+                    _ => null
+                };
+            }
+        }
+        catch (JsonException)
+        {
+            // Not valid JSON, ignore
+        }
+        return null;
+    }
+
+    private static string GetJsonRpcKey(int processId, string? jsonRpcId)
+    {
+        return $"{processId}_{jsonRpcId}";
+    }
+
     #endregion
 
     private sealed class StdioRequestData
@@ -598,6 +739,17 @@ public sealed class DevToolsPlugin(
         public string RequestBody { get; set; } = string.Empty;
         public string? ResponseBody { get; set; }
         public DateTimeOffset Timestamp { get; set; }
+    }
+
+    private sealed class StdioResponseBuffer
+    {
+        private readonly StringBuilder _buffer = new();
+
+        public string Content => _buffer.ToString();
+
+        public void Append(string data) => _buffer.Append(data);
+
+        public void Clear() => _buffer.Clear();
     }
 
     private string GetBrowserPath()

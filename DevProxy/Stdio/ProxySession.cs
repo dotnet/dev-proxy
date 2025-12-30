@@ -14,14 +14,25 @@ namespace DevProxy.Stdio;
 /// the parent process and the child process, allowing for interception and
 /// modification of the data via plugins.
 /// </summary>
-internal sealed class ProxySession : IDisposable
+/// <remarks>
+/// Creates a new ProxySession instance.
+/// </remarks>
+/// <param name="args">The command and arguments to execute.</param>
+/// <param name="plugins">The plugins to execute for stdin/stdout/stderr interception.</param>
+/// <param name="globalData">Global data shared across sessions.</param>
+/// <param name="logger">Optional logger for diagnostic messages.</param>
+internal sealed class ProxySession(
+    string[] args,
+    IEnumerable<IStdioPlugin> plugins,
+    Dictionary<string, object> globalData,
+    ILogger? logger = null) : IDisposable
 {
-    private readonly string[] _args;
+    private readonly string[] _args = args;
     private readonly CancellationTokenSource _cts = new();
-    private readonly ILogger? _logger;
-    private readonly IEnumerable<IStdioPlugin> _plugins;
+    private readonly ILogger? _logger = logger;
+    private readonly IEnumerable<IStdioPlugin> _plugins = plugins;
     private readonly Dictionary<string, object> _sessionData = [];
-    private readonly Dictionary<string, object> _globalData;
+    private readonly Dictionary<string, object> _globalData = globalData;
     private readonly List<StdioRequestLog> _requestLogs = [];
 
     private Process? _process;
@@ -31,25 +42,6 @@ internal sealed class ProxySession : IDisposable
 
     private readonly SemaphoreSlim _writeSemaphore = new(1, 1);
     private bool _disposed;
-
-    /// <summary>
-    /// Creates a new ProxySession instance.
-    /// </summary>
-    /// <param name="args">The command and arguments to execute.</param>
-    /// <param name="plugins">The plugins to execute for stdin/stdout/stderr interception.</param>
-    /// <param name="globalData">Global data shared across sessions.</param>
-    /// <param name="logger">Optional logger for diagnostic messages.</param>
-    public ProxySession(
-        string[] args,
-        IEnumerable<IStdioPlugin> plugins,
-        Dictionary<string, object> globalData,
-        ILogger? logger = null)
-    {
-        _args = args;
-        _plugins = plugins;
-        _globalData = globalData;
-        _logger = logger;
-    }
 
     /// <summary>
     /// Write data directly to the child process's stdin.
@@ -242,6 +234,9 @@ internal sealed class ProxySession : IDisposable
                 var data = buffer[..bytesRead];
                 Log("STDIN >>>", buffer, bytesRead);
 
+                // Log intercepted stdin (similar to HTTP InterceptedRequest)
+                await LogInterceptedStdioAsync(data, StdioMessageDirection.Stdin);
+
                 // Execute plugins and check if message was consumed
                 var responseState = new ResponseState();
                 var requestArgs = new StdioRequestArgs
@@ -322,6 +317,9 @@ internal sealed class ProxySession : IDisposable
                 var data = buffer[..bytesRead];
                 Log("<<< STDOUT", buffer, bytesRead);
 
+                // Log intercepted stdout (similar to HTTP InterceptedResponse)
+                await LogInterceptedStdioAsync(data, StdioMessageDirection.Stdout);
+
                 // Execute plugins and check if message was consumed
                 var responseState = new ResponseState();
                 var responseArgs = new StdioResponseArgs
@@ -382,6 +380,9 @@ internal sealed class ProxySession : IDisposable
 
                 var data = buffer[..bytesRead];
                 Log("<<< STDERR", buffer, bytesRead);
+
+                // Log intercepted stderr (similar to HTTP InterceptedResponse)
+                await LogInterceptedStdioAsync(data, StdioMessageDirection.Stderr);
 
                 // Execute plugins and check if message was consumed
                 var responseState = new ResponseState();
@@ -465,6 +466,61 @@ internal sealed class ProxySession : IDisposable
             catch (Exception ex)
             {
                 _logger?.LogError(ex, "Error executing plugin {PluginName}.AfterStderrAsync", plugin.Name);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Logs intercepted stdio messages to plugins, similar to how ProxyEngine
+    /// logs InterceptedRequest/InterceptedResponse for HTTP.
+    /// </summary>
+    private async Task LogInterceptedStdioAsync(byte[] data, StdioMessageDirection direction)
+    {
+        var messageType = direction == StdioMessageDirection.Stdin
+            ? MessageType.InterceptedRequest
+            : MessageType.InterceptedResponse;
+
+        var requestLog = new StdioRequestLog
+        {
+            Command = _stdioSession!.Command,
+            MessageType = messageType,
+            Message = direction switch
+            {
+                StdioMessageDirection.Stdin => $"STDIN {_stdioSession.Command}",
+                StdioMessageDirection.Stdout => $"STDOUT {_stdioSession.Command}",
+                StdioMessageDirection.Stderr => $"STDERR {_stdioSession.Command}",
+                _ => $"{direction} {_stdioSession.Command}"
+            }
+        };
+
+        // Set the appropriate body based on direction
+        if (direction == StdioMessageDirection.Stdin)
+        {
+            requestLog.StdinBody = data;
+            requestLog.StdinTimestamp = DateTimeOffset.UtcNow;
+        }
+        else if (direction == StdioMessageDirection.Stdout)
+        {
+            requestLog.StdoutBody = data;
+            requestLog.ResponseTimestamp = DateTimeOffset.UtcNow;
+        }
+        else if (direction == StdioMessageDirection.Stderr)
+        {
+            requestLog.StderrBody = data;
+            requestLog.ResponseTimestamp = DateTimeOffset.UtcNow;
+        }
+
+        var args = new StdioRequestLogArgs(requestLog);
+
+        foreach (var plugin in _plugins.Where(p => p.Enabled))
+        {
+            try
+            {
+                await plugin.AfterStdioRequestLogAsync(args, _cts.Token);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error executing plugin {PluginName}.AfterStdioRequestLogAsync (intercepted)", plugin.Name);
             }
         }
     }
