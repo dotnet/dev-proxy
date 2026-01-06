@@ -6,9 +6,12 @@ using DevProxy;
 using DevProxy.Commands;
 using System.Net;
 
-static WebApplication BuildApplication(string[] args, DevProxyConfigOptions options)
+static WebApplication BuildApplication(DevProxyConfigOptions options)
 {
-    var builder = WebApplication.CreateBuilder(args);
+    // Don't pass command-line args to WebApplication.CreateBuilder because:
+    // 1. Dev Proxy uses System.CommandLine for CLI parsing, not ASP.NET Core's CommandLineConfigurationProvider
+    // 2. ConfigureDevProxyConfig clears all configuration sources anyway and only uses JSON config files
+    var builder = WebApplication.CreateBuilder();
 
     _ = builder.Configuration.ConfigureDevProxyConfig(options);
     _ = builder.Logging.ConfigureDevProxyLogging(builder.Configuration, options);
@@ -38,7 +41,7 @@ _ = Announcement.ShowAsync();
 
 var options = new DevProxyConfigOptions();
 options.ParseOptions(args);
-var app = BuildApplication(args, options);
+var app = BuildApplication(options);
 
 var devProxyCommand = app.Services.GetRequiredService<DevProxyCommand>();
 var loggerFactory = app.Services.GetRequiredService<ILoggerFactory>();
