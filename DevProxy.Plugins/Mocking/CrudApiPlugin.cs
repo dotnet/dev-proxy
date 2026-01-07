@@ -90,7 +90,8 @@ public sealed class CrudApiPlugin(
         proxyConfiguration,
         pluginConfigurationSection)
 {
-    private CrudApiDefinitionLoader? _loader;
+    private CrudApiDefinitionLoader? _definitionLoader;
+    private CrudApiDataLoader? _dataLoader;
     private JArray? _data;
     private OpenIdConnectConfiguration? _openIdConnectConfiguration;
 
@@ -104,8 +105,8 @@ public sealed class CrudApiPlugin(
 
         Configuration.ApiFile = ProxyUtils.GetFullPath(Configuration.ApiFile, ProxyConfiguration.ConfigFile);
 
-        _loader = ActivatorUtilities.CreateInstance<CrudApiDefinitionLoader>(e.ServiceProvider, Configuration);
-        await _loader.InitFileWatcherAsync(cancellationToken);
+        _definitionLoader = ActivatorUtilities.CreateInstance<CrudApiDefinitionLoader>(e.ServiceProvider, Configuration);
+        await _definitionLoader.InitFileWatcherAsync(cancellationToken);
 
         if (Configuration.Auth == CrudApiAuthType.Entra &&
             Configuration.EntraAuthConfig is null)
@@ -126,7 +127,13 @@ public sealed class CrudApiPlugin(
             return;
         }
 
-        LoadData();
+        _dataLoader = ActivatorUtilities.CreateInstance<CrudApiDataLoader>(
+            e.ServiceProvider,
+            Configuration,
+            (Action<JArray?>)(data => _data = data)
+        );
+        await _dataLoader.InitFileWatcherAsync(cancellationToken);
+
         await SetupOpenIdConnectConfigurationAsync();
     }
 
@@ -197,27 +204,6 @@ public sealed class CrudApiPlugin(
         catch (Exception ex)
         {
             Logger.LogError(ex, "An error has occurred while loading OpenIdConnectConfiguration");
-        }
-    }
-
-    private void LoadData()
-    {
-        try
-        {
-            var dataFilePath = Path.GetFullPath(ProxyUtils.ReplacePathTokens(Configuration.DataFile), Path.GetDirectoryName(Configuration.ApiFile) ?? string.Empty);
-            if (!File.Exists(dataFilePath))
-            {
-                Logger.LogError("Data file '{DataFilePath}' does not exist. The {APIUrl} API will be disabled.", dataFilePath, Configuration.BaseUrl);
-                Configuration.Actions = [];
-                return;
-            }
-
-            var dataString = File.ReadAllText(dataFilePath);
-            _data = JArray.Parse(dataString);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "An error has occurred while reading {ConfigFile}", Configuration.DataFile);
         }
     }
 

@@ -79,7 +79,9 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
         using var document = JsonDocument.Parse(fileContents, ProxyUtils.JsonDocumentOptions);
         var root = document.RootElement;
 
-        if (!root.TryGetProperty("$schema", out var schemaUrlElement))
+        // Schema validation only applies to JSON objects, not arrays
+        if (root.ValueKind != JsonValueKind.Object ||
+            !root.TryGetProperty("$schema", out var schemaUrlElement))
         {
             Logger.LogDebug("Schema reference not found in file {File}. Skipping schema validation", FilePath);
             return true;
