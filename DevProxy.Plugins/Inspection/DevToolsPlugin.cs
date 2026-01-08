@@ -8,6 +8,7 @@ using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Inspection.CDP;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
@@ -52,21 +53,23 @@ public sealed class DevToolsPlugin(
         proxyConfiguration,
         pluginConfigurationSection)
 {
-    private readonly Dictionary<string, GetResponseBodyResultParams> _responseBody = [];
+    private readonly ConcurrentDictionary<string, GetResponseBodyResultParams> _responseBody = [];
     // Track stdio request data for response body retrieval
-    private readonly Dictionary<string, StdioRequestData> _stdioRequests = [];
+    private readonly ConcurrentDictionary<string, StdioRequestData> _stdioRequests = [];
     // Track JSON-RPC request IDs to CDP request IDs: key = "{processId}_{jsonRpcId}"
-    private readonly Dictionary<string, string> _jsonRpcToCdpRequestId = [];
+    private readonly ConcurrentDictionary<string, string> _jsonRpcToCdpRequestId = [];
     // Track pending stdin request IDs (queue) for matching with stdout (fallback for non-JSON-RPC)
-    private readonly Dictionary<int, Queue<string>> _pendingStdinRequestIds = [];
+    private readonly ConcurrentDictionary<int, ConcurrentQueue<string>> _pendingStdinRequestIds = [];
     // Buffer for partial stdout responses: key = processId
-    private readonly Dictionary<int, StdioResponseBuffer> _stdoutBuffers = [];
+    private readonly ConcurrentDictionary<int, StdioResponseBuffer> _stdoutBuffers = [];
     // Buffer CDP messages until WebSocket connects
-    private readonly Queue<Func<CancellationToken, Task>> _pendingCdpMessages = [];
+    private readonly ConcurrentQueue<Func<CancellationToken, Task>> _pendingCdpMessages = [];
     // Counter for generating unique request IDs
     private long _stdioRequestCounter;
     // Flag to track if we've replayed buffered messages
-    private bool _hasReplayedBufferedMessages;
+    private volatile bool _hasReplayedBufferedMessages;
+    // Lock for replay synchronization
+    private readonly Lock _replayLock = new();
 
     private CancellationToken? _cancellationToken;
     private WebSocketServer? _webSocket;
@@ -179,7 +182,7 @@ public sealed class DevToolsPlugin(
                 body.Base64Encoded = true;
             }
         }
-        _responseBody.Add(e.Session.HttpClient.Request.GetHashCode().ToString(CultureInfo.InvariantCulture), body);
+        _responseBody[e.Session.HttpClient.Request.GetHashCode().ToString(CultureInfo.InvariantCulture)] = body;
 
         var requestId = GetRequestId(e.Session.HttpClient.Request);
 
@@ -358,11 +361,9 @@ public sealed class DevToolsPlugin(
         if (jsonRpcId is not null)
         {
             var key = GetJsonRpcKey(processId, jsonRpcId);
-            if (_jsonRpcToCdpRequestId.TryGetValue(key, out var cdpRequestId))
+            if (_jsonRpcToCdpRequestId.TryRemove(key, out var cdpRequestId))
             {
                 requestId = cdpRequestId;
-                // Remove the mapping since we've matched it
-                _ = _jsonRpcToCdpRequestId.Remove(key);
             }
         }
 
@@ -371,11 +372,15 @@ public sealed class DevToolsPlugin(
         if (jsonRpcId is null)
         {
             // Buffer this partial response
-            if (!_stdoutBuffers.TryGetValue(processId, out var buffer))
+            var buffer = _stdoutBuffers.GetOrAdd(processId, _ => new StdioResponseBuffer());
+
+            // Clear stale buffer if needed
+            if (buffer.IsStale)
             {
-                buffer = new StdioResponseBuffer();
-                _stdoutBuffers[processId] = buffer;
+                Logger.LogDebug("Clearing stale stdout buffer for process {ProcessId}", processId);
+                buffer.Clear();
             }
+
             buffer.Append(body);
 
             // Try parsing the accumulated buffer
@@ -392,10 +397,9 @@ public sealed class DevToolsPlugin(
             buffer.Clear();
 
             var key = GetJsonRpcKey(processId, jsonRpcId);
-            if (_jsonRpcToCdpRequestId.TryGetValue(key, out var cdpRequestId))
+            if (_jsonRpcToCdpRequestId.TryRemove(key, out var cdpRequestId))
             {
                 requestId = cdpRequestId;
-                _ = _jsonRpcToCdpRequestId.Remove(key);
             }
         }
         else
@@ -615,6 +619,35 @@ public sealed class DevToolsPlugin(
     }
 
     /// <summary>
+    /// Replays all buffered CDP messages. Thread-safe and idempotent.
+    /// </summary>
+    private async Task ReplayBufferedMessagesAsync(CancellationToken cancellationToken)
+    {
+        using (_replayLock.EnterScope())
+        {
+            if (_hasReplayedBufferedMessages)
+            {
+                return;
+            }
+
+            _hasReplayedBufferedMessages = true;
+        }
+
+        Logger.LogTrace("Replaying buffered CDP messages");
+        while (_pendingCdpMessages.TryDequeue(out var bufferedAction))
+        {
+            try
+            {
+                await bufferedAction(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogDebug(ex, "Error replaying buffered CDP message");
+            }
+        }
+    }
+
+    /// <summary>
     /// Sends CDP message immediately if WebSocket is connected, otherwise buffers it for later replay.
     /// </summary>
     private async Task SendOrBufferAsync(Func<CancellationToken, Task> sendAction, CancellationToken cancellationToken)
@@ -624,21 +657,10 @@ public sealed class DevToolsPlugin(
             return;
         }
 
-        // First, check if we need to replay buffered messages
+        // Check if we need to replay buffered messages
         if (_webSocket.IsConnected && !_hasReplayedBufferedMessages)
         {
-            _hasReplayedBufferedMessages = true;
-            while (_pendingCdpMessages.TryDequeue(out var bufferedAction))
-            {
-                try
-                {
-                    await bufferedAction(cancellationToken);
-                }
-                catch (Exception ex)
-                {
-                    Logger.LogDebug(ex, "Error replaying buffered CDP message");
-                }
-            }
+            await ReplayBufferedMessagesAsync(cancellationToken);
         }
 
         if (_webSocket.IsConnected)
@@ -672,19 +694,15 @@ public sealed class DevToolsPlugin(
 
     private void EnqueueStdinRequestId(int processId, string requestId)
     {
-        if (!_pendingStdinRequestIds.TryGetValue(processId, out var queue))
-        {
-            queue = new Queue<string>();
-            _pendingStdinRequestIds[processId] = queue;
-        }
+        var queue = _pendingStdinRequestIds.GetOrAdd(processId, _ => new ConcurrentQueue<string>());
         queue.Enqueue(requestId);
     }
 
     private string? DequeueStdinRequestId(int processId)
     {
-        if (_pendingStdinRequestIds.TryGetValue(processId, out var queue) && queue.Count > 0)
+        if (_pendingStdinRequestIds.TryGetValue(processId, out var queue) && queue.TryDequeue(out var requestId))
         {
-            return queue.Dequeue();
+            return requestId;
         }
         return null;
     }
@@ -741,13 +759,71 @@ public sealed class DevToolsPlugin(
 
     private sealed class StdioResponseBuffer
     {
+        private const int MaxBufferSizeBytes = 1024 * 1024; // 1MB max buffer size
+        private static readonly TimeSpan StaleBufferTimeout = TimeSpan.FromSeconds(30);
+
         private readonly StringBuilder _buffer = new();
+        private DateTimeOffset _lastAppendTime = DateTimeOffset.UtcNow;
+        private readonly Lock _lock = new();
 
-        public string Content => _buffer.ToString();
+        public string Content
+        {
+            get
+            {
+                using (_lock.EnterScope())
+                {
+                    return _buffer.ToString();
+                }
+            }
+        }
 
-        public void Append(string data) => _buffer.Append(data);
+        /// <summary>
+        /// Returns true if the buffer is stale (no data appended within the timeout period).
+        /// </summary>
+        public bool IsStale => DateTimeOffset.UtcNow - _lastAppendTime > StaleBufferTimeout;
 
-        public void Clear() => _buffer.Clear();
+        /// <summary>
+        /// Appends data to the buffer. Returns false if the buffer would exceed the maximum size.
+        /// </summary>
+        public bool TryAppend(string data)
+        {
+            using (_lock.EnterScope())
+            {
+                // Check if adding this data would exceed the maximum buffer size
+                if (_buffer.Length + data.Length > MaxBufferSizeBytes)
+                {
+                    return false;
+                }
+
+                _buffer.Append(data);
+                _lastAppendTime = DateTimeOffset.UtcNow;
+                return true;
+            }
+        }
+
+        public void Append(string data)
+        {
+            using (_lock.EnterScope())
+            {
+                // Enforce maximum buffer size - clear if exceeded
+                if (_buffer.Length + data.Length > MaxBufferSizeBytes)
+                {
+                    _buffer.Clear();
+                }
+
+                _buffer.Append(data);
+                _lastAppendTime = DateTimeOffset.UtcNow;
+            }
+        }
+
+        public void Clear()
+        {
+            using (_lock.EnterScope())
+            {
+                _buffer.Clear();
+                _lastAppendTime = DateTimeOffset.UtcNow;
+            }
+        }
     }
 
     private string GetBrowserPath()
@@ -847,21 +923,9 @@ public sealed class DevToolsPlugin(
 
     private void OnWebSocketClientConnected()
     {
-        Logger.LogTrace("WebSocket client connected, replaying {Count} buffered messages", _pendingCdpMessages.Count);
-
-        // Replay all buffered CDP messages now that browser is connected
-        _hasReplayedBufferedMessages = true;
-        while (_pendingCdpMessages.TryDequeue(out var bufferedAction))
-        {
-            try
-            {
-                bufferedAction(_cancellationToken ?? CancellationToken.None).GetAwaiter().GetResult();
-            }
-            catch (Exception ex)
-            {
-                Logger.LogDebug(ex, "Error replaying buffered CDP message");
-            }
-        }
+        Logger.LogTrace("WebSocket client connected");
+        // Use the shared replay method - run synchronously on the event callback
+        ReplayBufferedMessagesAsync(_cancellationToken ?? CancellationToken.None).GetAwaiter().GetResult();
     }
 
     private void SocketMessageReceived(string msg)

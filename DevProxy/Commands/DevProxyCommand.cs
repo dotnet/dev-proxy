@@ -116,12 +116,11 @@ sealed class DevProxyCommand : RootCommand
     public async Task<int> InvokeAsync(string[] args, WebApplication app)
     {
         _app = app;
-        // Disable response file expansion (@file) to avoid issues with npm package names like @devproxy/mcp
-        var configuration = new CommandLineConfiguration(this)
-        {
-            ResponseFileTokenReplacer = null
-        };
-        var parseResult = Parse(args, configuration);
+        // Use special parsing for stdio command to disable response file expansion (@file)
+        // This allows npm package names like @devproxy/mcp to be passed through literally
+        var parseResult = IsStdioCommand
+            ? StdioCommand.ParseStdioArgs(this, args)
+            : Parse(args);
         return await parseResult.InvokeAsync(app.Lifetime.ApplicationStopping);
     }
 

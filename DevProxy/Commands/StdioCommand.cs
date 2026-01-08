@@ -22,7 +22,10 @@ sealed class StdioCommand : Command
     private readonly Argument<string[]> _commandArgument = new("command")
     {
         Description = "The command and arguments to execute",
-        Arity = ArgumentArity.OneOrMore
+        Arity = ArgumentArity.OneOrMore,
+        // Disable response file expansion (@file) to avoid issues with npm package names like @devproxy/mcp
+        // This ensures arguments like "npx @devproxy/mcp" are passed through literally
+        HelpName = "command"
     };
 
     public StdioCommand(
@@ -53,6 +56,19 @@ sealed class StdioCommand : Command
         this.AddOptions(options.OrderByName());
 
         SetAction(RunAsync);
+    }
+
+    /// <summary>
+    /// Parses arguments for the stdio command with response file expansion disabled.
+    /// This allows npm package names like @devproxy/mcp to be passed through literally.
+    /// </summary>
+    internal static ParseResult ParseStdioArgs(Command rootCommand, string[] args)
+    {
+        var configuration = new CommandLineConfiguration(rootCommand)
+        {
+            ResponseFileTokenReplacer = null
+        };
+        return rootCommand.Parse(args, configuration);
     }
 
     private async Task<int> RunAsync(ParseResult parseResult, CancellationToken cancellationToken)
