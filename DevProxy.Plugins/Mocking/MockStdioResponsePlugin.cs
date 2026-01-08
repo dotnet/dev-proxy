@@ -64,6 +64,15 @@ public class MockStdioResponsePlugin(
 
     public override string Name => nameof(MockStdioResponsePlugin);
 
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _loader?.Dispose();
+        }
+        base.Dispose(disposing);
+    }
+
     public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(e);
