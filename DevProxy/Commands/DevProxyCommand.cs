@@ -25,6 +25,11 @@ sealed class DevProxyCommand : RootCommand
     internal const string WatchPidsOptionName = "--watch-pids";
     internal const string WatchProcessNamesOptionName = "--watch-process-names";
     internal const string ConfigFileOptionName = "--config-file";
+    internal static readonly Option<string?> ConfigFileOption = new(ConfigFileOptionName, "-c")
+    {
+        HelpName = "config-file",
+        Description = "The path to the configuration file"
+    };
     internal const string NoFirstRunOptionName = "--no-first-run";
     internal const string AsSystemProxyOptionName = "--as-system-proxy";
     internal const string InstallCertOptionName = "--install-cert";
@@ -178,12 +183,8 @@ sealed class DevProxyCommand : RootCommand
 
     private void ConfigureCommand()
     {
-        var configFileOption = new Option<string?>(ConfigFileOptionName, "-c")
-        {
-            HelpName = "config-file",
-            Description = "The path to the configuration file"
-        };
-        configFileOption.Validators.Add(input =>
+        ConfigFileOption.Validators.Clear();
+        ConfigFileOption.Validators.Add(input =>
         {
             var filePath = ProxyUtils.ReplacePathTokens(input.Tokens[0].Value);
             if (string.IsNullOrEmpty(filePath))
@@ -357,7 +358,7 @@ sealed class DevProxyCommand : RootCommand
         {
             apiPortOption,
             asSystemProxyOption,
-            configFileOption,
+            ConfigFileOption,
             discoverOption,
             envOption,
             installCertOption,

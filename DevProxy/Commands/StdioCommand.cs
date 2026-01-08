@@ -6,6 +6,7 @@ using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Stdio;
 using System.CommandLine;
+using System.CommandLine.Parsing;
 
 namespace DevProxy.Commands;
 
@@ -40,6 +41,16 @@ sealed class StdioCommand : Command
     private void ConfigureCommand()
     {
         Add(_commandArgument);
+
+        var options = new List<Option> { DevProxyCommand.ConfigFileOption };
+        // Add plugin options
+        options.AddRange(_plugins
+            .OfType<IPlugin>()
+            .SelectMany(p => p.GetOptions())
+            // remove duplicates by comparing the option names
+            .GroupBy(o => o.Name)
+            .Select(g => g.First()));
+        this.AddOptions(options.OrderByName());
 
         SetAction(RunAsync);
     }
