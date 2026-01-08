@@ -26,6 +26,19 @@ static class ILoggingBuilderExtensions
         var configuredLogLevel = options.LogLevel ??
             configuration.GetValue("logLevel", LogLevel.Information);
 
+        // For stdio command, log to file instead of console to avoid interfering with proxied streams
+        if (DevProxyCommand.IsStdioCommand)
+        {
+            _ = builder
+                .ClearProviders()
+                .SetMinimumLevel(configuredLogLevel);
+#pragma warning disable CA2000 // Dispose objects before losing scope - DI container manages lifetime
+            _ = builder.Services.AddSingleton<ILoggerProvider>(
+                new StdioFileLoggerProvider(DevProxyCommand.StdioLogFilePath));
+#pragma warning restore CA2000
+            return builder;
+        }
+
         _ = builder
             .AddFilter("Microsoft.Hosting.*", LogLevel.Error)
             .AddFilter("Microsoft.AspNetCore.*", LogLevel.Error)
@@ -40,7 +53,7 @@ static class ILoggingBuilderExtensions
                     options.FormatterName = ProxyConsoleFormatter.DefaultCategoryName;
                     options.LogToStandardErrorThreshold = LogLevel.Warning;
                 }
-             )
+            )
             .AddConsoleFormatter<ProxyConsoleFormatter, ProxyConsoleFormatterOptions>(options =>
                 {
                     options.IncludeScopes = true;

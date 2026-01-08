@@ -116,12 +116,12 @@ public sealed class GenericRandomErrorPlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
         if (e.ResponseState.HasBeenSet)
         {
-            Logger.LogRequest("Response already set", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
 
@@ -129,7 +129,7 @@ public sealed class GenericRandomErrorPlugin(
 
         if (failMode == GenericRandomErrorFailMode.PassThru && Configuration.Rate != 100)
         {
-            Logger.LogRequest("Pass through", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Pass through", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
         FailResponse(e);
@@ -153,7 +153,7 @@ public sealed class GenericRandomErrorPlugin(
         }
         else
         {
-            Logger.LogRequest("No matching error response found", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("No matching error response found", MessageType.Skipped, new LoggingContext(e.Session));
         }
     }
 
@@ -265,7 +265,7 @@ public sealed class GenericRandomErrorPlugin(
             session.GenericResponse(body, statusCode, headers.Select(h => new HttpHeader(h.Name, h.Value)));
         }
         e.ResponseState.HasBeenSet = true;
-        Logger.LogRequest($"{error.StatusCode} {statusCode}", MessageType.Chaos, new(e.Session));
+        Logger.LogRequest($"{error.StatusCode} {statusCode}", MessageType.Chaos, new LoggingContext(e.Session));
     }
 
     private void ValidateErrors()

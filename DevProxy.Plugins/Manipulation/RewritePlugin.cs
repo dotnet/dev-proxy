@@ -67,14 +67,14 @@ public sealed class RewritePlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
 
         if (Configuration.Rewrites is null ||
             !Configuration.Rewrites.Any())
         {
-            Logger.LogRequest("No rewrites configured", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("No rewrites configured", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
 
@@ -92,11 +92,11 @@ public sealed class RewritePlugin(
 
             if (request.Url.Equals(newUrl, StringComparison.OrdinalIgnoreCase))
             {
-                Logger.LogRequest($"{rewrite.In?.Url}", MessageType.Skipped, new(e.Session));
+                Logger.LogRequest($"{rewrite.In?.Url}", MessageType.Skipped, new LoggingContext(e.Session));
             }
             else
             {
-                Logger.LogRequest($"{rewrite.In?.Url} > {newUrl}", MessageType.Processed, new(e.Session));
+                Logger.LogRequest($"{rewrite.In?.Url} > {newUrl}", MessageType.Processed, new LoggingContext(e.Session));
                 request.Url = newUrl;
             }
         }

@@ -27,3 +27,9 @@ public class LoggingContext(SessionEventArgs session)
 {
     public SessionEventArgs Session { get; } = session;
 }
+
+public class StdioLoggingContext(StdioSession session, StdioMessageDirection direction)
+{
+    public StdioSession Session { get; } = session;
+    public StdioMessageDirection Direction { get; } = direction;
+}

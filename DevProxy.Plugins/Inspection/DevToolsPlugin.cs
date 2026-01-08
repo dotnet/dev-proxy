@@ -8,6 +8,7 @@ using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Inspection.CDP;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
@@ -52,7 +53,23 @@ public sealed class DevToolsPlugin(
         proxyConfiguration,
         pluginConfigurationSection)
 {
-    private readonly Dictionary<string, GetResponseBodyResultParams> _responseBody = [];
+    private readonly ConcurrentDictionary<string, GetResponseBodyResultParams> _responseBody = [];
+    // Track stdio request data for response body retrieval
+    private readonly ConcurrentDictionary<string, StdioRequestData> _stdioRequests = [];
+    // Track JSON-RPC request IDs to CDP request IDs: key = "{processId}_{jsonRpcId}"
+    private readonly ConcurrentDictionary<string, string> _jsonRpcToCdpRequestId = [];
+    // Track pending stdin request IDs (queue) for matching with stdout (fallback for non-JSON-RPC)
+    private readonly ConcurrentDictionary<int, ConcurrentQueue<string>> _pendingStdinRequestIds = [];
+    // Buffer for partial stdout responses: key = processId
+    private readonly ConcurrentDictionary<int, StdioResponseBuffer> _stdoutBuffers = [];
+    // Buffer CDP messages until WebSocket connects
+    private readonly ConcurrentQueue<Func<CancellationToken, Task>> _pendingCdpMessages = [];
+    // Counter for generating unique request IDs
+    private long _stdioRequestCounter;
+    // Flag to track if we've replayed buffered messages
+    private volatile bool _hasReplayedBufferedMessages;
+    // Lock for replay synchronization
+    private readonly Lock _replayLock = new();
 
     private CancellationToken? _cancellationToken;
     private WebSocketServer? _webSocket;
@@ -81,7 +98,7 @@ public sealed class DevToolsPlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
             return;
         }
 
@@ -143,7 +160,7 @@ public sealed class DevToolsPlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
             return;
         }
 
@@ -165,7 +182,7 @@ public sealed class DevToolsPlugin(
                 body.Base64Encoded = true;
             }
         }
-        _responseBody.Add(e.Session.HttpClient.Request.GetHashCode().ToString(CultureInfo.InvariantCulture), body);
+        _responseBody[e.Session.HttpClient.Request.GetHashCode().ToString(CultureInfo.InvariantCulture)] = body;
 
         var requestId = GetRequestId(e.Session.HttpClient.Request);
 
@@ -243,6 +260,572 @@ public sealed class DevToolsPlugin(
         Logger.LogTrace("Left {Name}", nameof(AfterRequestLogAsync));
     }
 
+    #region IStdioPlugin Implementation
+
+    public override async Task BeforeStdinAsync(StdioRequestArgs e, CancellationToken cancellationToken)
+    {
+        Logger.LogTrace("{Method} called", nameof(BeforeStdinAsync));
+
+        ArgumentNullException.ThrowIfNull(e);
+
+        var requestId = GenerateStdioRequestId(e.Session);
+        var url = GetStdioUrl(e.Session);
+        var body = e.BodyString;
+
+        // Try to parse JSON-RPC id for better request/response matching
+        var jsonRpcId = TryGetJsonRpcId(body);
+        var isJsonRpcRequest = jsonRpcId is not null;
+
+        if (isJsonRpcRequest && e.Session.ProcessId.HasValue)
+        {
+            // Store mapping from JSON-RPC id to CDP request ID
+            var key = GetJsonRpcKey(e.Session.ProcessId.Value, jsonRpcId);
+            _jsonRpcToCdpRequestId[key] = requestId;
+        }
+        else if (e.Session.ProcessId.HasValue)
+        {
+            // Fallback: queue the request ID for non-JSON-RPC or notifications
+            EnqueueStdinRequestId(e.Session.ProcessId.Value, requestId);
+        }
+
+        // Store the stdin data for potential response body retrieval
+        _stdioRequests[requestId] = new StdioRequestData
+        {
+            RequestBody = body,
+            Timestamp = DateTimeOffset.UtcNow
+        };
+
+        var requestWillBeSentMessage = new RequestWillBeSentMessage
+        {
+            Params = new()
+            {
+                RequestId = requestId,
+                LoaderId = "1",
+                DocumentUrl = url,
+                Request = new()
+                {
+                    Url = url,
+                    Method = "STDIN",
+                    Headers = new Dictionary<string, string>
+                    {
+                        ["Content-Type"] = "application/octet-stream",
+                        ["X-Stdio-Command"] = e.Session.Command,
+                        ["X-Stdio-Args"] = string.Join(" ", e.Session.Args),
+                        ["X-Stdio-PID"] = e.Session.ProcessId?.ToString(CultureInfo.InvariantCulture) ?? "unknown"
+                    },
+                    PostData = body
+                },
+                Timestamp = (double)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000,
+                WallTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                Initiator = new()
+                {
+                    Type = "other"
+                }
+            }
+        };
+
+        var requestWillBeSentExtraInfoMessage = new RequestWillBeSentExtraInfoMessage
+        {
+            Params = new()
+            {
+                RequestId = requestId,
+                AssociatedCookies = [],
+                Headers = new Dictionary<string, string>
+                {
+                    ["Content-Type"] = "application/octet-stream"
+                }
+            }
+        };
+
+        await SendOrBufferAsync(async ct =>
+        {
+            await _webSocket!.SendAsync(requestWillBeSentMessage, ct);
+            await _webSocket.SendAsync(requestWillBeSentExtraInfoMessage, ct);
+        }, cancellationToken);
+    }
+
+    public override async Task AfterStdoutAsync(StdioResponseArgs e, CancellationToken cancellationToken)
+    {
+        Logger.LogTrace("{Method} called", nameof(AfterStdoutAsync));
+
+        ArgumentNullException.ThrowIfNull(e);
+
+        var url = GetStdioUrl(e.Session);
+        var body = e.BodyString;
+        var processId = e.Session.ProcessId ?? 0;
+
+        // Try to find matching request using JSON-RPC id
+        string? requestId = null;
+        var jsonRpcId = TryGetJsonRpcId(body);
+
+        if (jsonRpcId is not null)
+        {
+            var key = GetJsonRpcKey(processId, jsonRpcId);
+            if (_jsonRpcToCdpRequestId.TryRemove(key, out var cdpRequestId))
+            {
+                requestId = cdpRequestId;
+            }
+        }
+
+        // If we couldn't parse JSON-RPC id, this might be a partial response
+        // Buffer it until we get a complete message with an id
+        if (jsonRpcId is null)
+        {
+            // Buffer this partial response
+            var buffer = _stdoutBuffers.GetOrAdd(processId, _ => new StdioResponseBuffer());
+
+            // Clear stale buffer if needed
+            if (buffer.IsStale)
+            {
+                Logger.LogDebug("Clearing stale stdout buffer for process {ProcessId}", processId);
+                buffer.Clear();
+            }
+
+            buffer.Append(body);
+
+            // Try parsing the accumulated buffer
+            jsonRpcId = TryGetJsonRpcId(buffer.Content);
+            if (jsonRpcId is null)
+            {
+                // Still can't parse, wait for more data
+                Logger.LogTrace("Buffering partial stdout response ({Length} bytes total)", buffer.Content.Length);
+                return;
+            }
+
+            // We now have a complete message!
+            body = buffer.Content;
+            buffer.Clear();
+
+            var key = GetJsonRpcKey(processId, jsonRpcId);
+            if (_jsonRpcToCdpRequestId.TryRemove(key, out var cdpRequestId))
+            {
+                requestId = cdpRequestId;
+            }
+        }
+        else
+        {
+            // We got a valid JSON-RPC message, but check if there's buffered data to prepend
+            if (_stdoutBuffers.TryGetValue(processId, out var buffer) && buffer.Content.Length > 0)
+            {
+                body = buffer.Content + body;
+                buffer.Clear();
+            }
+        }
+
+        // Fallback: try queue-based matching (for non-JSON-RPC protocols)
+        requestId ??= DequeueStdinRequestId(processId);
+
+        // Last resort: generate a new ID for standalone stdout
+        requestId ??= GenerateStdioRequestId(e.Session);
+
+        // Update stored request with response data
+        if (_stdioRequests.TryGetValue(requestId, out var requestData))
+        {
+            requestData.ResponseBody = body;
+        }
+
+        // Store for response body retrieval
+        _responseBody[requestId] = new GetResponseBodyResultParams
+        {
+            Body = body,
+            Base64Encoded = false
+        };
+
+        var responseReceivedMessage = new ResponseReceivedMessage
+        {
+            Params = new()
+            {
+                RequestId = requestId,
+                LoaderId = "1",
+                Timestamp = (double)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000,
+                Type = "XHR",
+                Response = new()
+                {
+                    Url = url,
+                    Status = 200,
+                    StatusText = "OK",
+                    Headers = new Dictionary<string, string>
+                    {
+                        ["Content-Type"] = "application/octet-stream",
+                        ["X-Stdio-Direction"] = "STDOUT"
+                    },
+                    MimeType = "application/octet-stream"
+                },
+                HasExtraInfo = true
+            }
+        };
+
+        var loadingFinishedMessage = new LoadingFinishedMessage
+        {
+            Params = new()
+            {
+                RequestId = requestId,
+                Timestamp = (double)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000,
+                EncodedDataLength = Encoding.UTF8.GetByteCount(body)
+            }
+        };
+
+        await SendOrBufferAsync(async ct =>
+        {
+            await _webSocket!.SendAsync(responseReceivedMessage, ct);
+            await _webSocket.SendAsync(loadingFinishedMessage, ct);
+        }, cancellationToken);
+    }
+
+    public override async Task AfterStderrAsync(StdioResponseArgs e, CancellationToken cancellationToken)
+    {
+        Logger.LogTrace("{Method} called", nameof(AfterStderrAsync));
+
+        ArgumentNullException.ThrowIfNull(e);
+
+        // For stderr, we create a separate "request" with an error status
+        var requestId = GenerateStderrRequestId(e.Session);
+        var url = GetStdioUrl(e.Session);
+        var body = e.BodyString;
+
+        // Store for response body retrieval
+        _responseBody[requestId] = new GetResponseBodyResultParams
+        {
+            Body = body,
+            Base64Encoded = false
+        };
+
+        // Send request for stderr
+        var requestWillBeSentMessage = new RequestWillBeSentMessage
+        {
+            Params = new()
+            {
+                RequestId = requestId,
+                LoaderId = "1",
+                DocumentUrl = url,
+                Request = new()
+                {
+                    Url = url,
+                    Method = "STDERR",
+                    Headers = new Dictionary<string, string>
+                    {
+                        ["Content-Type"] = "text/plain",
+                        ["X-Stdio-Command"] = e.Session.Command,
+                        ["X-Stdio-Direction"] = "STDERR"
+                    },
+                    PostData = null
+                },
+                Timestamp = (double)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000,
+                WallTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                Initiator = new()
+                {
+                    Type = "other"
+                }
+            }
+        };
+
+        // Send response with error status
+        var responseReceivedMessage = new ResponseReceivedMessage
+        {
+            Params = new()
+            {
+                RequestId = requestId,
+                LoaderId = "1",
+                Timestamp = (double)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000,
+                Type = "XHR",
+                Response = new()
+                {
+                    Url = url,
+                    Status = 500,
+                    StatusText = "STDERR",
+                    Headers = new Dictionary<string, string>
+                    {
+                        ["Content-Type"] = "text/plain",
+                        ["X-Stdio-Direction"] = "STDERR"
+                    },
+                    MimeType = "text/plain"
+                },
+                HasExtraInfo = true
+            }
+        };
+
+        var loadingFinishedMessage = new LoadingFinishedMessage
+        {
+            Params = new()
+            {
+                RequestId = requestId,
+                Timestamp = (double)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000,
+                EncodedDataLength = Encoding.UTF8.GetByteCount(body)
+            }
+        };
+
+        // Also send a log entry for stderr
+        var entryMessage = new EntryAddedMessage
+        {
+            Params = new()
+            {
+                Entry = new()
+                {
+                    Source = "network",
+                    Text = $"[STDERR] {body}",
+                    Level = "error",
+                    Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    Url = url,
+                    NetworkRequestId = requestId
+                }
+            }
+        };
+
+        await SendOrBufferAsync(async ct =>
+        {
+            await _webSocket!.SendAsync(requestWillBeSentMessage, ct);
+            await _webSocket.SendAsync(responseReceivedMessage, ct);
+            await _webSocket.SendAsync(loadingFinishedMessage, ct);
+            await _webSocket.SendAsync(entryMessage, ct);
+        }, cancellationToken);
+    }
+
+    public override async Task AfterStdioRequestLogAsync(StdioRequestLogArgs e, CancellationToken cancellationToken)
+    {
+        Logger.LogTrace("{Method} called", nameof(AfterStdioRequestLogAsync));
+
+        ArgumentNullException.ThrowIfNull(e);
+
+        if (e.RequestLog.MessageType is MessageType.InterceptedRequest or
+            MessageType.InterceptedResponse)
+        {
+            return;
+        }
+
+        // Encode slashes so DevTools shows full command in Name column instead of just last path segment
+        var url = $"stdio://{e.RequestLog.Command.Replace("/", "%2F", StringComparison.Ordinal)}";
+        var message = new EntryAddedMessage
+        {
+            Params = new()
+            {
+                Entry = new()
+                {
+                    Source = "network",
+                    Text = e.RequestLog.Message ?? $"[{e.RequestLog.PluginName}]",
+                    Level = Entry.GetLevel(e.RequestLog.MessageType),
+                    Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    Url = url,
+                    NetworkRequestId = null
+                }
+            }
+        };
+        await SendOrBufferAsync(ct => _webSocket!.SendAsync(message, ct), cancellationToken);
+    }
+
+    public override Task AfterStdioRecordingStopAsync(StdioRecordingArgs e, CancellationToken cancellationToken)
+    {
+        // No special handling needed for recording stop
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Replays all buffered CDP messages. Thread-safe and idempotent.
+    /// </summary>
+    private async Task ReplayBufferedMessagesAsync(CancellationToken cancellationToken)
+    {
+        using (_replayLock.EnterScope())
+        {
+            if (_hasReplayedBufferedMessages)
+            {
+                return;
+            }
+
+            _hasReplayedBufferedMessages = true;
+        }
+
+        Logger.LogTrace("Replaying buffered CDP messages");
+        while (_pendingCdpMessages.TryDequeue(out var bufferedAction))
+        {
+            try
+            {
+                await bufferedAction(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogDebug(ex, "Error replaying buffered CDP message");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Sends CDP message immediately if WebSocket is connected, otherwise buffers it for later replay.
+    /// </summary>
+    private async Task SendOrBufferAsync(Func<CancellationToken, Task> sendAction, CancellationToken cancellationToken)
+    {
+        if (_webSocket is null)
+        {
+            return;
+        }
+
+        // Check if we need to replay buffered messages
+        if (_webSocket.IsConnected && !_hasReplayedBufferedMessages)
+        {
+            await ReplayBufferedMessagesAsync(cancellationToken);
+        }
+
+        if (_webSocket.IsConnected)
+        {
+            await sendAction(cancellationToken);
+        }
+        else
+        {
+            // Buffer for later
+            _pendingCdpMessages.Enqueue(sendAction);
+            Logger.LogTrace("Buffered CDP message (WebSocket not connected yet)");
+        }
+    }
+
+    private static string GetStdioUrl(StdioSession session)
+    {
+        var commandWithArgs = session.Args.Count > 0
+            ? $"{session.Command} {string.Join(" ", session.Args)}"
+            : session.Command;
+        // Encode slashes so DevTools shows full command in Name column instead of just last path segment
+        return $"stdio://{commandWithArgs.Replace("/", "%2F", StringComparison.Ordinal)}";
+    }
+
+    private string GenerateStdioRequestId(StdioSession session)
+    {
+        // Generate a unique ID for each stdin message using an incrementing counter
+        var counter = Interlocked.Increment(ref _stdioRequestCounter);
+        var baseId = $"{session.Command}_{session.ProcessId}_{counter}";
+        return baseId.GetHashCode(StringComparison.Ordinal).ToString(CultureInfo.InvariantCulture);
+    }
+
+    private void EnqueueStdinRequestId(int processId, string requestId)
+    {
+        var queue = _pendingStdinRequestIds.GetOrAdd(processId, _ => new ConcurrentQueue<string>());
+        queue.Enqueue(requestId);
+    }
+
+    private string? DequeueStdinRequestId(int processId)
+    {
+        if (_pendingStdinRequestIds.TryGetValue(processId, out var queue) && queue.TryDequeue(out var requestId))
+        {
+            return requestId;
+        }
+        return null;
+    }
+
+    private static string GenerateStderrRequestId(StdioSession session)
+    {
+        // Stderr gets its own unique ID since it shows as a separate request
+        var baseId = $"{session.Command}_{session.ProcessId}_stderr_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+        return baseId.GetHashCode(StringComparison.Ordinal).ToString(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Tries to extract the JSON-RPC "id" field from a message body.
+    /// Returns null if the body is not valid JSON or doesn't have an "id" field.
+    /// </summary>
+    private static string? TryGetJsonRpcId(string body)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("id", out var idElement))
+            {
+                // JSON-RPC id can be string, number, or null
+#pragma warning disable IDE0072 // Add missing cases
+                return idElement.ValueKind switch
+                {
+                    JsonValueKind.String => idElement.GetString(),
+                    JsonValueKind.Number => idElement.GetRawText(),
+                    _ => null
+                };
+#pragma warning restore IDE0072 // Add missing cases
+            }
+        }
+        catch (JsonException)
+        {
+            // Not valid JSON, ignore
+        }
+        return null;
+    }
+
+    private static string GetJsonRpcKey(int processId, string? jsonRpcId)
+    {
+        return $"{processId}_{jsonRpcId}";
+    }
+
+    #endregion
+
+    private sealed class StdioRequestData
+    {
+        public string RequestBody { get; set; } = string.Empty;
+        public string? ResponseBody { get; set; }
+        public DateTimeOffset Timestamp { get; set; }
+    }
+
+    private sealed class StdioResponseBuffer
+    {
+        private const int MaxBufferSizeBytes = 1024 * 1024; // 1MB max buffer size
+        private static readonly TimeSpan StaleBufferTimeout = TimeSpan.FromSeconds(30);
+
+        private readonly StringBuilder _buffer = new();
+        private DateTimeOffset _lastAppendTime = DateTimeOffset.UtcNow;
+        private readonly Lock _lock = new();
+
+        public string Content
+        {
+            get
+            {
+                using (_lock.EnterScope())
+                {
+                    return _buffer.ToString();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Returns true if the buffer is stale (no data appended within the timeout period).
+        /// </summary>
+        public bool IsStale => DateTimeOffset.UtcNow - _lastAppendTime > StaleBufferTimeout;
+
+        /// <summary>
+        /// Appends data to the buffer. Returns false if the buffer would exceed the maximum size.
+        /// </summary>
+        public bool TryAppend(string data)
+        {
+            using (_lock.EnterScope())
+            {
+                // Check if adding this data would exceed the maximum buffer size
+                if (_buffer.Length + data.Length > MaxBufferSizeBytes)
+                {
+                    return false;
+                }
+
+                _buffer.Append(data);
+                _lastAppendTime = DateTimeOffset.UtcNow;
+                return true;
+            }
+        }
+
+        public void Append(string data)
+        {
+            using (_lock.EnterScope())
+            {
+                // Enforce maximum buffer size - clear if exceeded
+                if (_buffer.Length + data.Length > MaxBufferSizeBytes)
+                {
+                    _buffer.Clear();
+                }
+
+                _buffer.Append(data);
+                _lastAppendTime = DateTimeOffset.UtcNow;
+            }
+        }
+
+        public void Clear()
+        {
+            using (_lock.EnterScope())
+            {
+                _buffer.Clear();
+                _lastAppendTime = DateTimeOffset.UtcNow;
+            }
+        }
+    }
+
     private string GetBrowserPath()
     {
         if (!string.IsNullOrEmpty(Configuration.PreferredBrowserPath))
@@ -314,6 +897,7 @@ public sealed class DevToolsPlugin(
         var port = GetFreePort();
         _webSocket = new(port, Logger);
         _webSocket.MessageReceived += SocketMessageReceived;
+        _webSocket.ClientConnected += OnWebSocketClientConnected;
         _ = _webSocket.StartAsync();
 
         var inspectionUrl = $"http://localhost:9222/devtools/inspector.html?ws=localhost:{port}";
@@ -335,6 +919,13 @@ public sealed class DevToolsPlugin(
             }
         };
         _ = process.Start();
+    }
+
+    private void OnWebSocketClientConnected()
+    {
+        Logger.LogTrace("WebSocket client connected");
+        // Use the shared replay method - run synchronously on the event callback
+        ReplayBufferedMessagesAsync(_cancellationToken ?? CancellationToken.None).GetAwaiter().GetResult();
     }
 
     private void SocketMessageReceived(string msg)

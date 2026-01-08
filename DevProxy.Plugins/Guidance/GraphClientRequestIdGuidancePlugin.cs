@@ -26,27 +26,27 @@ public sealed class GraphClientRequestIdGuidancePlugin(
         var request = e.Session.HttpClient.Request;
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
         if (string.Equals(e.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
         {
-            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
 
         if (WarnNoClientRequestId(request))
         {
-            Logger.LogRequest(BuildAddClientRequestIdMessage(), MessageType.Warning, new(e.Session));
+            Logger.LogRequest(BuildAddClientRequestIdMessage(), MessageType.Warning, new LoggingContext(e.Session));
 
             if (!ProxyUtils.IsSdkRequest(request))
             {
-                Logger.LogRequest(MessageUtils.BuildUseSdkMessage(), MessageType.Tip, new(e.Session));
+                Logger.LogRequest(MessageUtils.BuildUseSdkMessage(), MessageType.Tip, new LoggingContext(e.Session));
             }
         }
         else
         {
-            Logger.LogRequest("client-request-id header present", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("client-request-id header present", MessageType.Skipped, new LoggingContext(e.Session));
         }
 
         Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));

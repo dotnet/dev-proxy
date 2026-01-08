@@ -115,7 +115,7 @@ sealed class DevProxyConfigOptions : RootCommand
             }
         };
         var apiPortOption = new Option<int?>(DevProxyCommand.ApiPortOptionName);
-        
+
         var discoverOption = new Option<bool>(DevProxyCommand.DiscoverOptionName, "--discover")
         {
             Arity = ArgumentArity.Zero
@@ -131,6 +131,34 @@ sealed class DevProxyConfigOptions : RootCommand
             discoverOption
         };
         this.AddOptions(options.OrderByName());
+
+        // Add stdio subcommand with config-file option so it can be parsed early
+        var stdioConfigFileOption = new Option<string?>(DevProxyCommand.ConfigFileOptionName, "-c")
+        {
+            CustomParser = result =>
+            {
+                if (!result.Tokens.Any())
+                {
+                    return null;
+                }
+
+                var value = result.Tokens[0].Value;
+                if (string.IsNullOrEmpty(value))
+                {
+                    return null;
+                }
+
+                value = ProxyUtils.ReplacePathTokens(value);
+                return value;
+            }
+        };
+        var stdioCommand = new Command("stdio", "Proxy stdin/stdout/stderr of local executables")
+        {
+            stdioConfigFileOption,
+            // Add a catch-all argument to consume remaining args (command to execute)
+            new Argument<string[]>("command") { Arity = ArgumentArity.ZeroOrMore }
+        };
+        Add(stdioCommand);
     }
 
     public void ParseOptions(string[] args)

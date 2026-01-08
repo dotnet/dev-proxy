@@ -135,6 +135,11 @@ static class PluginServiceExtensions
 
         _ = services.AddSingleton<ISet<UrlToWatch>>(globallyWatchedUrls.ToHashSet());
 
+        // Register IStdioPlugin instances - plugins that implement IStdioPlugin can participate
+        // in both HTTP proxy and stdio proxy scenarios
+        _ = services.AddSingleton<IEnumerable<IStdioPlugin>>(sp =>
+            sp.GetServices<IPlugin>().OfType<IStdioPlugin>().ToList());
+
         return services;
     }
 

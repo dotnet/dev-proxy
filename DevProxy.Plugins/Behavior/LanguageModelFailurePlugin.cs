@@ -69,13 +69,13 @@ public sealed class LanguageModelFailurePlugin(
             !request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase) ||
             !request.HasBody)
         {
-            Logger.LogRequest("Request is not a POST request with a body", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Request is not a POST request with a body", MessageType.Skipped, new LoggingContext(e.Session));
             return;
         }
 
         if (!TryGetOpenAIRequest(request.BodyString, out var openAiRequest))
         {
-            Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new LoggingContext(e.Session));
             return;
         }
 
@@ -90,7 +90,7 @@ public sealed class LanguageModelFailurePlugin(
         {
             completionRequest.Prompt += "\n\n" + faultPrompt;
             Logger.LogDebug("Modified completion request prompt: {Prompt}", completionRequest.Prompt);
-            Logger.LogRequest($"Simulating fault {faultName}", MessageType.Chaos, new(e.Session));
+            Logger.LogRequest($"Simulating fault {faultName}", MessageType.Chaos, new LoggingContext(e.Session));
             e.Session.SetRequestBodyString(JsonSerializer.Serialize(completionRequest, ProxyUtils.JsonSerializerOptions));
         }
         else if (openAiRequest is OpenAIChatCompletionRequest chatRequest)
@@ -113,7 +113,7 @@ public sealed class LanguageModelFailurePlugin(
             };
 
             Logger.LogDebug("Added fault prompt to messages: {Prompt}", faultPrompt);
-            Logger.LogRequest($"Simulating fault {faultName}", MessageType.Chaos, new(e.Session));
+            Logger.LogRequest($"Simulating fault {faultName}", MessageType.Chaos, new LoggingContext(e.Session));
             e.Session.SetRequestBodyString(JsonSerializer.Serialize(newRequest, ProxyUtils.JsonSerializerOptions));
         }
         else

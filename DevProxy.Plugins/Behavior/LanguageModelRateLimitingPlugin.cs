@@ -81,12 +81,12 @@ public sealed class LanguageModelRateLimitingPlugin(
         var state = e.ResponseState;
         if (state.HasBeenSet)
         {
-            Logger.LogRequest("Response already set", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
 
@@ -95,13 +95,13 @@ public sealed class LanguageModelRateLimitingPlugin(
             !request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase) ||
             !request.HasBody)
         {
-            Logger.LogRequest("Request is not a POST request with a body", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Request is not a POST request with a body", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
 
         if (!TryGetOpenAIRequest(request.BodyString, out var openAiRequest))
         {
-            Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
 
@@ -127,7 +127,7 @@ public sealed class LanguageModelRateLimitingPlugin(
         // check if we have tokens available
         if (_promptTokensRemaining <= 0 || _completionTokensRemaining <= 0)
         {
-            Logger.LogRequest($"Exceeded token limit when calling {request.Url}. Request will be throttled", MessageType.Failed, new(e.Session));
+            Logger.LogRequest($"Exceeded token limit when calling {request.Url}. Request will be throttled", MessageType.Failed, new LoggingContext(e.Session));
 
             if (Configuration.WhenLimitExceeded == TokenLimitResponseWhenExceeded.Throttle)
             {
@@ -189,7 +189,7 @@ public sealed class LanguageModelRateLimitingPlugin(
                 }
                 else
                 {
-                    Logger.LogRequest($"Custom behavior not set. {Configuration.CustomResponseFile} not found.", MessageType.Failed, new(e.Session));
+                    Logger.LogRequest($"Custom behavior not set. {Configuration.CustomResponseFile} not found.", MessageType.Failed, new LoggingContext(e.Session));
                     e.Session.GenericResponse("Custom response file not found.", HttpStatusCode.InternalServerError, []);
                     state.HasBeenSet = true;
                 }
@@ -211,7 +211,7 @@ public sealed class LanguageModelRateLimitingPlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
 
@@ -257,7 +257,7 @@ public sealed class LanguageModelRateLimitingPlugin(
                             _completionTokensRemaining = 0;
                         }
 
-                        Logger.LogRequest($"Consumed {promptTokens} prompt tokens and {completionTokens} completion tokens. Remaining - Prompt: {_promptTokensRemaining}, Completion: {_completionTokensRemaining}", MessageType.Processed, new(e.Session));
+                        Logger.LogRequest($"Consumed {promptTokens} prompt tokens and {completionTokens} completion tokens. Remaining - Prompt: {_promptTokensRemaining}, Completion: {_completionTokensRemaining}", MessageType.Processed, new LoggingContext(e.Session));
                     }
                 }
                 catch (JsonException ex)

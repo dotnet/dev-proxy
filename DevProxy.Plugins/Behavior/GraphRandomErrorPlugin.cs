@@ -177,19 +177,19 @@ public sealed class GraphRandomErrorPlugin(
         var state = e.ResponseState;
         if (state.HasBeenSet)
         {
-            Logger.LogRequest("Response already set", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
 
         var failMode = ShouldFail();
         if (failMode == GraphRandomErrorFailMode.PassThru && Configuration.Rate != 100)
         {
-            Logger.LogRequest("Pass through", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Pass through", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
         if (ProxyUtils.IsGraphBatchUrl(e.Session.HttpClient.Request.RequestUri))
@@ -321,7 +321,7 @@ public sealed class GraphRandomErrorPlugin(
             }),
             ProxyUtils.JsonSerializerOptions
         );
-        Logger.LogRequest($"{(int)errorStatus} {errorStatus}", MessageType.Chaos, new(e.Session));
+        Logger.LogRequest($"{(int)errorStatus} {errorStatus}", MessageType.Chaos, new LoggingContext(e.Session));
         session.GenericResponse(body ?? string.Empty, errorStatus, headers.Select(h => new HttpHeader(h.Name, h.Value)));
     }
 
@@ -337,7 +337,7 @@ public sealed class GraphRandomErrorPlugin(
         var headers = ProxyUtils.BuildGraphResponseHeaders(request, requestId, requestDate);
 
         var body = JsonSerializer.Serialize(response, ProxyUtils.JsonSerializerOptions);
-        Logger.LogRequest($"{(int)errorStatus} {errorStatus}", MessageType.Chaos, new(ev.Session));
+        Logger.LogRequest($"{(int)errorStatus} {errorStatus}", MessageType.Chaos, new LoggingContext(ev.Session));
         session.GenericResponse(body, errorStatus, headers.Select(h => new HttpHeader(h.Name, h.Value)));
     }
 

@@ -40,12 +40,12 @@ public sealed class CachingGuidancePlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
         if (string.Equals(e.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
         {
-            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
 
@@ -57,7 +57,7 @@ public sealed class CachingGuidancePlugin(
         {
             value = now;
             _interceptedRequests.Add(url, value);
-            Logger.LogRequest("First request", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("First request", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
 
@@ -69,7 +69,7 @@ public sealed class CachingGuidancePlugin(
         }
         else
         {
-            Logger.LogRequest("Request outside of cache window", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Request outside of cache window", MessageType.Skipped, new LoggingContext(e.Session));
         }
 
         _interceptedRequests[url] = now;

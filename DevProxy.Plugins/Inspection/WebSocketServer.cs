@@ -25,6 +25,7 @@ public sealed class WebSocketServer(int port, ILogger logger) : IDisposable
 
 #pragma warning disable CA1003
     public event Action<string>? MessageReceived;
+    public event Action? ClientConnected;
 #pragma warning restore CA1003
 
     public async Task StartAsync()
@@ -41,6 +42,7 @@ public sealed class WebSocketServer(int port, ILogger logger) : IDisposable
             {
                 var webSocketContext = await context.AcceptWebSocketAsync(null);
                 _webSocket = webSocketContext.WebSocket;
+                ClientConnected?.Invoke();
                 _ = HandleMessagesAsync(_webSocket);
             }
             else

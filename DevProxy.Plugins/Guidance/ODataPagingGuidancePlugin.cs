@@ -27,12 +27,12 @@ public sealed class ODataPagingGuidancePlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
         if (!string.Equals(e.Session.HttpClient.Request.Method, "GET", StringComparison.OrdinalIgnoreCase))
         {
-            Logger.LogRequest("Skipping non-GET request", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Skipping non-GET request", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
 
@@ -40,16 +40,16 @@ public sealed class ODataPagingGuidancePlugin(
         {
             if (!pagingUrls.Contains(e.Session.HttpClient.Request.Url))
             {
-                Logger.LogRequest(BuildIncorrectPagingUrlMessage(), MessageType.Warning, new(e.Session));
+                Logger.LogRequest(BuildIncorrectPagingUrlMessage(), MessageType.Warning, new LoggingContext(e.Session));
             }
             else
             {
-                Logger.LogRequest("Paging URL is correct", MessageType.Skipped, new(e.Session));
+                Logger.LogRequest("Paging URL is correct", MessageType.Skipped, new LoggingContext(e.Session));
             }
         }
         else
         {
-            Logger.LogRequest("Not an OData paging URL", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Not an OData paging URL", MessageType.Skipped, new LoggingContext(e.Session));
         }
 
         Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
@@ -64,17 +64,17 @@ public sealed class ODataPagingGuidancePlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
             return;
         }
         if (!string.Equals(e.Session.HttpClient.Request.Method, "GET", StringComparison.OrdinalIgnoreCase))
         {
-            Logger.LogRequest("Skipping non-GET request", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Skipping non-GET request", MessageType.Skipped, new LoggingContext(e.Session));
             return;
         }
         if (e.Session.HttpClient.Response.StatusCode >= 300)
         {
-            Logger.LogRequest("Skipping non-success response", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Skipping non-success response", MessageType.Skipped, new LoggingContext(e.Session));
             return;
         }
         if (e.Session.HttpClient.Response.ContentType is null ||
@@ -82,7 +82,7 @@ public sealed class ODataPagingGuidancePlugin(
             !e.Session.HttpClient.Response.ContentType.Contains("application/atom+xml", StringComparison.OrdinalIgnoreCase)) ||
             !e.Session.HttpClient.Response.HasBody)
         {
-            Logger.LogRequest("Skipping response with unsupported body type", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Skipping response with unsupported body type", MessageType.Skipped, new LoggingContext(e.Session));
             return;
         }
 
@@ -92,7 +92,7 @@ public sealed class ODataPagingGuidancePlugin(
         var bodyString = await e.Session.GetResponseBodyAsString(cancellationToken);
         if (string.IsNullOrEmpty(bodyString))
         {
-            Logger.LogRequest("Skipping empty response body", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("Skipping empty response body", MessageType.Skipped, new LoggingContext(e.Session));
             return;
         }
 
@@ -112,7 +112,7 @@ public sealed class ODataPagingGuidancePlugin(
         }
         else
         {
-            Logger.LogRequest("No next link found in the response", MessageType.Skipped, new(e.Session));
+            Logger.LogRequest("No next link found in the response", MessageType.Skipped, new LoggingContext(e.Session));
         }
 
         Logger.LogTrace("Left {Name}", nameof(BeforeResponseAsync));

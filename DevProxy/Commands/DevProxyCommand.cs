@@ -3,6 +3,7 @@ using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using System.CommandLine;
 using System.CommandLine.Parsing;
+using System.Globalization;
 
 namespace DevProxy.Commands;
 
@@ -24,6 +25,11 @@ sealed class DevProxyCommand : RootCommand
     internal const string WatchPidsOptionName = "--watch-pids";
     internal const string WatchProcessNamesOptionName = "--watch-process-names";
     internal const string ConfigFileOptionName = "--config-file";
+    internal static readonly Option<string?> ConfigFileOption = new(ConfigFileOptionName, "-c")
+    {
+        HelpName = "config-file",
+        Description = "The path to the configuration file"
+    };
     internal const string NoFirstRunOptionName = "--no-first-run";
     internal const string AsSystemProxyOptionName = "--as-system-proxy";
     internal const string InstallCertOptionName = "--install-cert";
@@ -36,6 +42,8 @@ sealed class DevProxyCommand : RootCommand
     private static readonly string[] helpOptions = ["--help", "-h", "/h", "-?", "/?"];
 
     private static bool _hasGlobalOptionsResolved;
+    private static bool _isStdioCommandResolved;
+    private static bool _stdioLogFilePathResolved;
 
     public static bool HasGlobalOptions
     {
@@ -50,6 +58,39 @@ sealed class DevProxyCommand : RootCommand
             field = args.Any(arg => globalOptions.Contains(arg)) ||
                                 args.Any(arg => helpOptions.Contains(arg));
             _hasGlobalOptionsResolved = true;
+            return field;
+        }
+    }
+
+    public static bool IsStdioCommand
+    {
+        get
+        {
+            if (_isStdioCommandResolved)
+            {
+                return field;
+            }
+
+            var args = Environment.GetCommandLineArgs();
+            field = args.Contains("stdio");
+            _isStdioCommandResolved = true;
+            return field;
+        }
+    }
+
+    public static string StdioLogFilePath
+    {
+        get
+        {
+            if (_stdioLogFilePathResolved)
+            {
+                return field ?? string.Empty;
+            }
+
+            field = Path.Combine(
+                Directory.GetCurrentDirectory(),
+                $"devproxy-stdio-{DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)}.log");
+            _stdioLogFilePathResolved = true;
             return field;
         }
     }
@@ -75,7 +116,11 @@ sealed class DevProxyCommand : RootCommand
     public async Task<int> InvokeAsync(string[] args, WebApplication app)
     {
         _app = app;
-        var parseResult = Parse(args);
+        // Use special parsing for stdio command to disable response file expansion (@file)
+        // This allows npm package names like @devproxy/mcp to be passed through literally
+        var parseResult = IsStdioCommand
+            ? StdioCommand.ParseStdioArgs(this, args)
+            : Parse(args);
         return await parseResult.InvokeAsync(app.Lifetime.ApplicationStopping);
     }
 
@@ -137,12 +182,8 @@ sealed class DevProxyCommand : RootCommand
 
     private void ConfigureCommand()
     {
-        var configFileOption = new Option<string?>(ConfigFileOptionName, "-c")
-        {
-            HelpName = "config-file",
-            Description = "The path to the configuration file"
-        };
-        configFileOption.Validators.Add(input =>
+        ConfigFileOption.Validators.Clear();
+        ConfigFileOption.Validators.Add(input =>
         {
             var filePath = ProxyUtils.ReplacePathTokens(input.Tokens[0].Value);
             if (string.IsNullOrEmpty(filePath))
@@ -316,7 +357,7 @@ sealed class DevProxyCommand : RootCommand
         {
             apiPortOption,
             asSystemProxyOption,
-            configFileOption,
+            ConfigFileOption,
             discoverOption,
             envOption,
             installCertOption,
@@ -343,7 +384,8 @@ sealed class DevProxyCommand : RootCommand
             ActivatorUtilities.CreateInstance<ConfigCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<OutdatedCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<JwtCommand>(_serviceProvider),
-            ActivatorUtilities.CreateInstance<CertCommand>(_serviceProvider)
+            ActivatorUtilities.CreateInstance<CertCommand>(_serviceProvider),
+            ActivatorUtilities.CreateInstance<StdioCommand>(_serviceProvider)
         };
         commands.AddRange(_plugins.SelectMany(p => p.GetCommands()));
         this.AddCommands(commands.OrderByName());
