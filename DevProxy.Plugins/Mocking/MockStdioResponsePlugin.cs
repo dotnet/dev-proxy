@@ -32,7 +32,7 @@ public sealed class MockStdioResponseConfiguration
     public bool NoMocks { get; set; }
 
     [JsonPropertyName("$schema")]
-    public string Schema { get; set; } = "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.0.0/mockstdioresponseplugin.mocksfile.schema.json";
+    public string Schema { get; set; } = "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/mockstdioresponseplugin.mocksfile.schema.json";
 }
 
 public class MockStdioResponsePlugin(
