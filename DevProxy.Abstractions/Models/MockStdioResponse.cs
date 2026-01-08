@@ -54,11 +54,11 @@ public class MockStdioResponseBody
     /// The stdout content to return. Can be a string or a JSON object.
     /// If the value starts with @, it's treated as a file path.
     /// </summary>
-    public dynamic? Stdout { get; set; }
+    public object? Stdout { get; set; }
 
     /// <summary>
     /// The stderr content to return. Can be a string or a JSON object.
     /// If the value starts with @, it's treated as a file path.
     /// </summary>
-    public dynamic? Stderr { get; set; }
+    public object? Stderr { get; set; }
 }
