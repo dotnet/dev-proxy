@@ -130,8 +130,9 @@ public class OpenAIRequest
     }
 
     /// <summary>
-    /// Tries to parse completion-like OpenAI requests (completion, chat completion, and responses).
-    /// Used by plugins that only need to handle text-based completion requests.
+    /// Tries to parse text generation OpenAI requests (completion, chat completion, and responses API).
+    /// Used by plugins that only need to handle text-based generation requests, as opposed to
+    /// embeddings, audio, images, or fine-tuning requests.
     /// </summary>
     public static bool TryGetCompletionLikeRequest(string content, ILogger logger, out OpenAIRequest? request)
     {
@@ -258,7 +259,10 @@ public class OpenAIResponseUsage
     [JsonPropertyName("total_tokens")]
     public long TotalTokens { get; set; }
 
-    // Responses API uses different property names
+    // Responses API uses different property names (input_tokens, output_tokens)
+    // These property aliases allow the same class to deserialize both formats.
+    // When JSON contains "input_tokens", it maps to PromptTokens.
+    // When JSON contains "output_tokens", it maps to CompletionTokens.
     [JsonPropertyName("input_tokens")]
     public long InputTokens
     {
