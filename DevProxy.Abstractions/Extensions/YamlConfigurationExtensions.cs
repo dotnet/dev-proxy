@@ -82,7 +82,11 @@ public sealed class YamlConfigurationProvider : FileConfigurationProvider
 
         foreach (var entry in mappingNode.Children)
         {
-            var key = ((YamlScalarNode)entry.Key).Value ?? string.Empty;
+            var key = GetScalarValue(entry.Key);
+            if (key is null)
+            {
+                continue;
+            }
 
             // Handle YAML merge key (<<)
             if (key == "<<")
@@ -116,7 +120,11 @@ public sealed class YamlConfigurationProvider : FileConfigurationProvider
         // Then process regular keys (they override merged values)
         foreach (var entry in mappingNode.Children)
         {
-            var key = ((YamlScalarNode)entry.Key).Value ?? string.Empty;
+            var key = GetScalarValue(entry.Key);
+            if (key is null)
+            {
+                continue;
+            }
 
             // Skip merge key
             if (key == "<<")
@@ -132,11 +140,20 @@ public sealed class YamlConfigurationProvider : FileConfigurationProvider
         }
     }
 
+    private static string? GetScalarValue(YamlNode node)
+    {
+        return node is YamlScalarNode scalarNode ? scalarNode.Value : null;
+    }
+
     private void CollectMergedValues(YamlMappingNode mappingNode, string prefix, Dictionary<string, string?> values)
     {
         foreach (var entry in mappingNode.Children)
         {
-            var key = ((YamlScalarNode)entry.Key).Value ?? string.Empty;
+            var key = GetScalarValue(entry.Key);
+            if (key is null)
+            {
+                continue;
+            }
 
             // Skip nested merge keys in merged content
             if (key == "<<")
