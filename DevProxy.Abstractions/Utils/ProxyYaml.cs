@@ -100,21 +100,21 @@ public static class ProxyYaml
     {
         var result = new Dictionary<string, object?>();
 
+        // First, process all merge keys to get merged values
+        var mergedValues = new Dictionary<string, object?>();
         foreach (var entry in mappingNode.Children)
         {
             var key = ((YamlScalarNode)entry.Key).Value ?? string.Empty;
 
-            // Handle YAML merge key (<<)
             if (key == "<<")
             {
-                // Merge the referenced mapping into the current one
                 if (entry.Value is YamlMappingNode mergeMapping)
                 {
                     var mergeDict = ConvertMappingNode(mergeMapping);
                     foreach (var kvp in mergeDict)
                     {
-                        // Only add if not already present (current values take precedence)
-                        result.TryAdd(kvp.Key, kvp.Value);
+                        // Later merges override earlier merges
+                        mergedValues[kvp.Key] = kvp.Value;
                     }
                 }
                 else if (entry.Value is YamlSequenceNode mergeSequence)
@@ -127,14 +127,32 @@ public static class ProxyYaml
                             var mergeDict = ConvertMappingNode(itemMapping);
                             foreach (var kvp in mergeDict)
                             {
-                                result.TryAdd(kvp.Key, kvp.Value);
+                                mergedValues[kvp.Key] = kvp.Value;
                             }
                         }
                     }
                 }
+            }
+        }
+
+        // Add merged values to result first
+        foreach (var kvp in mergedValues)
+        {
+            result[kvp.Key] = kvp.Value;
+        }
+
+        // Then, process explicit keys (they override merged values)
+        foreach (var entry in mappingNode.Children)
+        {
+            var key = ((YamlScalarNode)entry.Key).Value ?? string.Empty;
+
+            // Skip merge keys
+            if (key == "<<")
+            {
                 continue;
             }
 
+            // Explicit keys always override merged values
             result[key] = ConvertNode(entry.Value);
         }
 

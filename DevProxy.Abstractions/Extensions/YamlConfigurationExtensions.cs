@@ -110,7 +110,7 @@ public sealed class YamlConfigurationProvider : FileConfigurationProvider
             var fullKey = string.IsNullOrEmpty(prefix)
                 ? kvp.Key
                 : $"{prefix}{ConfigurationPath.KeyDelimiter}{kvp.Key}";
-            Data.TryAdd(fullKey, kvp.Value);
+            Data[fullKey] = kvp.Value;
         }
 
         // Then process regular keys (they override merged values)
@@ -167,7 +167,8 @@ public sealed class YamlConfigurationProvider : FileConfigurationProvider
                 }
                 break;
             case YamlScalarNode scalarNode:
-                values.TryAdd(prefix, scalarNode.Value);
+                // Later values override earlier values within merged content
+                values[prefix] = scalarNode.Value;
                 break;
         }
     }
