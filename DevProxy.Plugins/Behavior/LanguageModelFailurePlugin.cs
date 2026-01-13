@@ -116,6 +116,32 @@ public sealed class LanguageModelFailurePlugin(
             Logger.LogRequest($"Simulating fault {faultName}", MessageType.Chaos, new LoggingContext(e.Session));
             e.Session.SetRequestBodyString(JsonSerializer.Serialize(newRequest, ProxyUtils.JsonSerializerOptions));
         }
+        else if (openAiRequest is OpenAIResponsesRequest responsesRequest)
+        {
+            var inputItems = new List<OpenAIResponsesInputItem>(responsesRequest.Input ?? [])
+            {
+                new()
+                {
+                    Role = "user",
+                    Content = faultPrompt
+                }
+            };
+            var newRequest = new OpenAIResponsesRequest
+            {
+                Model = responsesRequest.Model,
+                Stream = responsesRequest.Stream,
+                Temperature = responsesRequest.Temperature,
+                TopP = responsesRequest.TopP,
+                Instructions = responsesRequest.Instructions,
+                PreviousResponseId = responsesRequest.PreviousResponseId,
+                MaxOutputTokens = responsesRequest.MaxOutputTokens,
+                Input = inputItems
+            };
+
+            Logger.LogDebug("Added fault prompt to Responses API input: {Prompt}", faultPrompt);
+            Logger.LogRequest($"Simulating fault {faultName}", MessageType.Chaos, new LoggingContext(e.Session));
+            e.Session.SetRequestBodyString(JsonSerializer.Serialize(newRequest, ProxyUtils.JsonSerializerOptions));
+        }
         else
         {
             Logger.LogDebug("Unknown OpenAI request type. Passing request as-is.");
@@ -153,6 +179,21 @@ public sealed class LanguageModelFailurePlugin(
                 Logger.LogDebug("Request is a chat completion request");
                 request = JsonSerializer.Deserialize<OpenAIChatCompletionRequest>(content, ProxyUtils.JsonSerializerOptions);
                 return true;
+            }
+
+            // Responses API request - has "input" array with objects containing role/content
+            if (rawRequest.TryGetProperty("input", out var inputProperty) &&
+                inputProperty.ValueKind == JsonValueKind.Array &&
+                inputProperty.GetArrayLength() > 0)
+            {
+                var firstItem = inputProperty.EnumerateArray().First();
+                if (firstItem.ValueKind == JsonValueKind.Object &&
+                    (firstItem.TryGetProperty("role", out _) || firstItem.TryGetProperty("type", out _)))
+                {
+                    Logger.LogDebug("Request is a Responses API request");
+                    request = JsonSerializer.Deserialize<OpenAIResponsesRequest>(content, ProxyUtils.JsonSerializerOptions);
+                    return true;
+                }
             }
 
             Logger.LogDebug("Request is not an OpenAI request.");

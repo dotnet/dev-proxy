@@ -300,6 +300,21 @@ public sealed class LanguageModelRateLimitingPlugin(
                 return true;
             }
 
+            // Responses API request - has "input" array with objects containing role/content
+            if (rawRequest.TryGetProperty("input", out var inputProperty) &&
+                inputProperty.ValueKind == JsonValueKind.Array &&
+                inputProperty.GetArrayLength() > 0)
+            {
+                var firstItem = inputProperty.EnumerateArray().First();
+                if (firstItem.ValueKind == JsonValueKind.Object &&
+                    (firstItem.TryGetProperty("role", out _) || firstItem.TryGetProperty("type", out _)))
+                {
+                    Logger.LogDebug("Request is a Responses API request");
+                    request = JsonSerializer.Deserialize<OpenAIResponsesRequest>(content, ProxyUtils.JsonSerializerOptions);
+                    return true;
+                }
+            }
+
             Logger.LogDebug("Request is not an OpenAI request.");
             return false;
         }

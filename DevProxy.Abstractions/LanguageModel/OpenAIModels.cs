@@ -60,6 +60,22 @@ public class OpenAIRequest
                 return true;
             }
 
+            // Responses API request - has "input" array with objects containing role/content
+            // Must be checked before embedding request because both have "input"
+            if (rawRequest.TryGetProperty("input", out var inputProperty) &&
+                inputProperty.ValueKind == JsonValueKind.Array &&
+                inputProperty.GetArrayLength() > 0)
+            {
+                var firstItem = inputProperty.EnumerateArray().First();
+                if (firstItem.ValueKind == JsonValueKind.Object &&
+                    (firstItem.TryGetProperty("role", out _) || firstItem.TryGetProperty("type", out _)))
+                {
+                    logger.LogDebug("Request is a Responses API request");
+                    request = JsonSerializer.Deserialize<OpenAIResponsesRequest>(content, ProxyUtils.JsonSerializerOptions);
+                    return true;
+                }
+            }
+
             // Embedding request
             if (rawRequest.TryGetProperty("input", out _) &&
                 rawRequest.TryGetProperty("model", out _) &&
@@ -178,6 +194,20 @@ public class OpenAIResponseUsage
     public PromptTokenDetails? PromptTokensDetails { get; set; }
     [JsonPropertyName("total_tokens")]
     public long TotalTokens { get; set; }
+
+    // Responses API uses different property names
+    [JsonPropertyName("input_tokens")]
+    public long InputTokens
+    {
+        get => PromptTokens;
+        set => PromptTokens = value;
+    }
+    [JsonPropertyName("output_tokens")]
+    public long OutputTokens
+    {
+        get => CompletionTokens;
+        set => CompletionTokens = value;
+    }
 }
 
 public class PromptTokenDetails
@@ -409,3 +439,81 @@ public class OpenAIImageData
     [JsonPropertyName("revised_prompt")]
     public string? RevisedPrompt { get; set; }
 }
+
+#region Responses API
+
+public class OpenAIResponsesRequest : OpenAIRequest
+{
+    public IEnumerable<OpenAIResponsesInputItem>? Input { get; set; }
+    public string? Instructions { get; set; }
+    [JsonPropertyName("previous_response_id")]
+    public string? PreviousResponseId { get; set; }
+    [JsonPropertyName("max_output_tokens")]
+    public long? MaxOutputTokens { get; set; }
+}
+
+public class OpenAIResponsesInputItem
+{
+    public string Role { get; set; } = string.Empty;
+    [JsonConverter(typeof(OpenAIContentPartJsonConverter))]
+    public object Content { get; set; } = string.Empty;
+    public string? Type { get; set; }
+}
+
+public class OpenAIResponsesResponse : OpenAIResponse
+{
+    [JsonPropertyName("created_at")]
+    public long CreatedAt { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public IEnumerable<OpenAIResponsesOutputItem>? Output { get; set; }
+    [JsonPropertyName("previous_response_id")]
+    public string? PreviousResponseId { get; set; }
+
+    public override string? Response => GetTextFromOutput();
+
+    private string? GetTextFromOutput()
+    {
+        if (Output is null)
+        {
+            return null;
+        }
+
+        var messageOutput = Output.FirstOrDefault(o =>
+            string.Equals(o.Type, "message", StringComparison.OrdinalIgnoreCase));
+        if (messageOutput?.Content is null)
+        {
+            return null;
+        }
+
+        var textContent = messageOutput.Content.FirstOrDefault(c =>
+            string.Equals(c.Type, "output_text", StringComparison.OrdinalIgnoreCase));
+        return textContent?.Text;
+    }
+}
+
+public class OpenAIResponsesOutputItem
+{
+    public string? Type { get; set; }
+    public string? Id { get; set; }
+    public string? Role { get; set; }
+    public IEnumerable<OpenAIResponsesOutputContent>? Content { get; set; }
+    public string? Status { get; set; }
+}
+
+public class OpenAIResponsesOutputContent
+{
+    public string? Type { get; set; }
+    public string? Text { get; set; }
+}
+
+public class OpenAIResponsesUsage
+{
+    [JsonPropertyName("input_tokens")]
+    public long InputTokens { get; set; }
+    [JsonPropertyName("output_tokens")]
+    public long OutputTokens { get; set; }
+    [JsonPropertyName("total_tokens")]
+    public long TotalTokens { get; set; }
+}
+
+#endregion
