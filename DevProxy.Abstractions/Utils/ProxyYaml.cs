@@ -192,23 +192,20 @@ public static class ProxyYaml
             return null;
         }
 
-        // Try to infer the type from the value
-        // Check for boolean values
-        if (value.Equals("true", StringComparison.OrdinalIgnoreCase))
+        // Check for null values (YAML 1.1 and 1.2 spec)
+        if (IsNullValue(value))
+        {
+            return null;
+        }
+
+        // Check for boolean values (YAML 1.1 spec - commonly used)
+        if (IsTrueValue(value))
         {
             return true;
         }
-        if (value.Equals("false", StringComparison.OrdinalIgnoreCase))
+        if (IsFalseValue(value))
         {
             return false;
-        }
-
-        // Check for null values
-        if (value.Equals("null", StringComparison.OrdinalIgnoreCase) ||
-            value.Equals("~", StringComparison.Ordinal) ||
-            value.Length == 0)
-        {
-            return null;
         }
 
         // Check for integer values
@@ -231,4 +228,22 @@ public static class ProxyYaml
         // Return as string
         return value;
     }
+
+    // YAML 1.1 boolean true values
+    private static bool IsTrueValue(string value) =>
+        value.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+        value.Equals("yes", StringComparison.OrdinalIgnoreCase) ||
+        value.Equals("on", StringComparison.OrdinalIgnoreCase);
+
+    // YAML 1.1 boolean false values
+    private static bool IsFalseValue(string value) =>
+        value.Equals("false", StringComparison.OrdinalIgnoreCase) ||
+        value.Equals("no", StringComparison.OrdinalIgnoreCase) ||
+        value.Equals("off", StringComparison.OrdinalIgnoreCase);
+
+    // YAML 1.1 and 1.2 null values
+    private static bool IsNullValue(string value) =>
+        value.Length == 0 ||
+        value.Equals("~", StringComparison.Ordinal) ||
+        value.Equals("null", StringComparison.OrdinalIgnoreCase);
 }
