@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System.Globalization;
 using System.Text.Json;
 using YamlDotNet.Core;
 using YamlDotNet.RepresentationModel;
@@ -104,7 +105,11 @@ public static class ProxyYaml
         var mergedValues = new Dictionary<string, object?>();
         foreach (var entry in mappingNode.Children)
         {
-            var key = ((YamlScalarNode)entry.Key).Value ?? string.Empty;
+            var key = GetScalarValue(entry.Key);
+            if (key is null)
+            {
+                continue;
+            }
 
             if (key == "<<")
             {
@@ -144,7 +149,11 @@ public static class ProxyYaml
         // Then, process explicit keys (they override merged values)
         foreach (var entry in mappingNode.Children)
         {
-            var key = ((YamlScalarNode)entry.Key).Value ?? string.Empty;
+            var key = GetScalarValue(entry.Key);
+            if (key is null)
+            {
+                continue;
+            }
 
             // Skip merge keys
             if (key == "<<")
@@ -157,6 +166,11 @@ public static class ProxyYaml
         }
 
         return result;
+    }
+
+    private static string? GetScalarValue(YamlNode node)
+    {
+        return node is YamlScalarNode scalarNode ? scalarNode.Value : null;
     }
 
     private static List<object?> ConvertSequenceNode(YamlSequenceNode sequenceNode)
@@ -209,7 +223,7 @@ public static class ProxyYaml
         }
 
         // Check for floating point values
-        if (double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var doubleValue))
+        if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var doubleValue))
         {
             return doubleValue;
         }
