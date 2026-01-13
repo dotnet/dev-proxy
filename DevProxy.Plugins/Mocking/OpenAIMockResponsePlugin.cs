@@ -18,6 +18,8 @@ public sealed class OpenAIMockResponsePlugin(
     ISet<UrlToWatch> urlsToWatch,
     ILanguageModelClient languageModelClient) : BasePlugin(logger, urlsToWatch)
 {
+    private const string ResponsesMessageIdPrefix = "msg_";
+
     public override string Name => nameof(OpenAIMockResponsePlugin);
 
     public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
@@ -58,7 +60,7 @@ public sealed class OpenAIMockResponsePlugin(
             return;
         }
 
-        if (!TryGetOpenAIRequest(request.BodyString, out var openAiRequest))
+        if (!OpenAIRequest.TryGetCompletionLikeRequest(request.BodyString, Logger, out var openAiRequest))
         {
             Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new LoggingContext(e.Session));
             return;
@@ -122,60 +124,6 @@ public sealed class OpenAIMockResponsePlugin(
         Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
     }
 
-    private bool TryGetOpenAIRequest(string content, out OpenAIRequest? request)
-    {
-        request = null;
-
-        if (string.IsNullOrEmpty(content))
-        {
-            return false;
-        }
-
-        try
-        {
-            Logger.LogDebug("Checking if the request is an OpenAI request...");
-
-            var rawRequest = JsonSerializer.Deserialize<JsonElement>(content, ProxyUtils.JsonSerializerOptions);
-
-            if (rawRequest.TryGetProperty("prompt", out _))
-            {
-                Logger.LogDebug("Request is a completion request");
-                request = JsonSerializer.Deserialize<OpenAICompletionRequest>(content, ProxyUtils.JsonSerializerOptions);
-                return true;
-            }
-
-            if (rawRequest.TryGetProperty("messages", out _))
-            {
-                Logger.LogDebug("Request is a chat completion request");
-                request = JsonSerializer.Deserialize<OpenAIChatCompletionRequest>(content, ProxyUtils.JsonSerializerOptions);
-                return true;
-            }
-
-            // Responses API request - has "input" array with objects containing role/content
-            if (rawRequest.TryGetProperty("input", out var inputProperty) &&
-                inputProperty.ValueKind == JsonValueKind.Array &&
-                inputProperty.GetArrayLength() > 0)
-            {
-                var firstItem = inputProperty.EnumerateArray().First();
-                if (firstItem.ValueKind == JsonValueKind.Object &&
-                    (firstItem.TryGetProperty("role", out _) || firstItem.TryGetProperty("type", out _)))
-                {
-                    Logger.LogDebug("Request is a Responses API request");
-                    request = JsonSerializer.Deserialize<OpenAIResponsesRequest>(content, ProxyUtils.JsonSerializerOptions);
-                    return true;
-                }
-            }
-
-            Logger.LogDebug("Request is not an OpenAI request.");
-            return false;
-        }
-        catch (JsonException ex)
-        {
-            Logger.LogDebug(ex, "Failed to deserialize OpenAI request.");
-            return false;
-        }
-    }
-
     private static IEnumerable<OpenAIChatCompletionMessage> ConvertResponsesInputToChatMessages(OpenAIResponsesRequest responsesRequest)
     {
         if (responsesRequest.Input is null)
@@ -206,7 +154,7 @@ public sealed class OpenAIMockResponsePlugin(
                 new OpenAIResponsesOutputItem
                 {
                     Type = "message",
-                    Id = $"msg_{Guid.NewGuid():N}",
+                    Id = $"{ResponsesMessageIdPrefix}{Guid.NewGuid():N}",
                     Role = "assistant",
                     Status = "completed",
                     Content =

@@ -128,6 +128,69 @@ public class OpenAIRequest
             return false;
         }
     }
+
+    /// <summary>
+    /// Tries to parse completion-like OpenAI requests (completion, chat completion, and responses).
+    /// Used by plugins that only need to handle text-based completion requests.
+    /// </summary>
+    public static bool TryGetCompletionLikeRequest(string content, ILogger logger, out OpenAIRequest? request)
+    {
+        logger.LogTrace("{Method} called", nameof(TryGetCompletionLikeRequest));
+
+        request = null;
+
+        if (string.IsNullOrEmpty(content))
+        {
+            logger.LogDebug("Request content is empty or null");
+            return false;
+        }
+
+        try
+        {
+            logger.LogDebug("Checking if the request is a completion-like OpenAI request...");
+
+            var rawRequest = JsonSerializer.Deserialize<JsonElement>(content, ProxyUtils.JsonSerializerOptions);
+
+            // Completion request
+            if (rawRequest.TryGetProperty("prompt", out _))
+            {
+                logger.LogDebug("Request is a completion request");
+                request = JsonSerializer.Deserialize<OpenAICompletionRequest>(content, ProxyUtils.JsonSerializerOptions);
+                return true;
+            }
+
+            // Chat completion request
+            if (rawRequest.TryGetProperty("messages", out _))
+            {
+                logger.LogDebug("Request is a chat completion request");
+                request = JsonSerializer.Deserialize<OpenAIChatCompletionRequest>(content, ProxyUtils.JsonSerializerOptions);
+                return true;
+            }
+
+            // Responses API request - has "input" array with objects containing role/content
+            if (rawRequest.TryGetProperty("input", out var inputProperty) &&
+                inputProperty.ValueKind == JsonValueKind.Array &&
+                inputProperty.GetArrayLength() > 0)
+            {
+                var firstItem = inputProperty.EnumerateArray().First();
+                if (firstItem.ValueKind == JsonValueKind.Object &&
+                    (firstItem.TryGetProperty("role", out _) || firstItem.TryGetProperty("type", out _)))
+                {
+                    logger.LogDebug("Request is a Responses API request");
+                    request = JsonSerializer.Deserialize<OpenAIResponsesRequest>(content, ProxyUtils.JsonSerializerOptions);
+                    return true;
+                }
+            }
+
+            logger.LogDebug("Request is not a completion-like OpenAI request.");
+            return false;
+        }
+        catch (JsonException ex)
+        {
+            logger.LogDebug(ex, "Failed to deserialize OpenAI request.");
+            return false;
+        }
+    }
 }
 
 public class OpenAIResponse : ILanguageModelCompletionResponse

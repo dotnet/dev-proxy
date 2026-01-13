@@ -73,7 +73,7 @@ public sealed class LanguageModelFailurePlugin(
             return;
         }
 
-        if (!TryGetOpenAIRequest(request.BodyString, out var openAiRequest))
+        if (!OpenAIRequest.TryGetCompletionLikeRequest(request.BodyString, Logger, out var openAiRequest))
         {
             Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new LoggingContext(e.Session));
             return;
@@ -150,60 +150,6 @@ public sealed class LanguageModelFailurePlugin(
         await Task.CompletedTask;
 
         Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
-    }
-
-    private bool TryGetOpenAIRequest(string content, out OpenAIRequest? request)
-    {
-        request = null;
-
-        if (string.IsNullOrEmpty(content))
-        {
-            return false;
-        }
-
-        try
-        {
-            Logger.LogDebug("Checking if the request is an OpenAI request...");
-
-            var rawRequest = JsonSerializer.Deserialize<JsonElement>(content, ProxyUtils.JsonSerializerOptions);
-
-            if (rawRequest.TryGetProperty("prompt", out _))
-            {
-                Logger.LogDebug("Request is a completion request");
-                request = JsonSerializer.Deserialize<OpenAICompletionRequest>(content, ProxyUtils.JsonSerializerOptions);
-                return true;
-            }
-
-            if (rawRequest.TryGetProperty("messages", out _))
-            {
-                Logger.LogDebug("Request is a chat completion request");
-                request = JsonSerializer.Deserialize<OpenAIChatCompletionRequest>(content, ProxyUtils.JsonSerializerOptions);
-                return true;
-            }
-
-            // Responses API request - has "input" array with objects containing role/content
-            if (rawRequest.TryGetProperty("input", out var inputProperty) &&
-                inputProperty.ValueKind == JsonValueKind.Array &&
-                inputProperty.GetArrayLength() > 0)
-            {
-                var firstItem = inputProperty.EnumerateArray().First();
-                if (firstItem.ValueKind == JsonValueKind.Object &&
-                    (firstItem.TryGetProperty("role", out _) || firstItem.TryGetProperty("type", out _)))
-                {
-                    Logger.LogDebug("Request is a Responses API request");
-                    request = JsonSerializer.Deserialize<OpenAIResponsesRequest>(content, ProxyUtils.JsonSerializerOptions);
-                    return true;
-                }
-            }
-
-            Logger.LogDebug("Request is not an OpenAI request.");
-            return false;
-        }
-        catch (JsonException ex)
-        {
-            Logger.LogDebug(ex, "Failed to deserialize OpenAI request.");
-            return false;
-        }
     }
 
     private (string? Name, string? Prompt) GetFault()
