@@ -39,9 +39,10 @@ static class ILoggingBuilderExtensions
             return builder;
         }
 
-        // For subcommands (except stdio), use simple console logging without rich formatting
-        // to avoid interfering with the command's output. Filter out plugin messages.
-        if (DevProxyCommand.IsSubCommand)
+        // Only the root command (proxy itself) uses rich logging.
+        // All subcommands use simple logging without rich formatting to avoid
+        // interfering with command output
+        if (!DevProxyCommand.IsRootCommand)
         {
             _ = builder
                 .ClearProviders()
@@ -50,11 +51,6 @@ static class ILoggingBuilderExtensions
                 .AddFilter("Microsoft.Extensions.*", LogLevel.None)
                 .AddFilter("System.*", LogLevel.None)
                 .AddFilter("DevProxy.Plugins.*", LogLevel.None)
-                .AddSimpleConsole(options =>
-                {
-                    options.SingleLine = true;
-                    options.IncludeScopes = false;
-                })
                 .SetMinimumLevel(configuredLogLevel);
             return builder;
         }
