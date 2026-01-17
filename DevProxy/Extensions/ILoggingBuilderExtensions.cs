@@ -39,6 +39,26 @@ static class ILoggingBuilderExtensions
             return builder;
         }
 
+        // For subcommands (except stdio), use simple console logging without rich formatting
+        // to avoid interfering with the command's output. Filter out plugin messages.
+        if (DevProxyCommand.IsSubCommand)
+        {
+            _ = builder
+                .ClearProviders()
+                .AddFilter("Microsoft.Hosting.*", LogLevel.None)
+                .AddFilter("Microsoft.AspNetCore.*", LogLevel.None)
+                .AddFilter("Microsoft.Extensions.*", LogLevel.None)
+                .AddFilter("System.*", LogLevel.None)
+                .AddFilter("DevProxy.Plugins.*", LogLevel.None)
+                .AddSimpleConsole(options =>
+                {
+                    options.SingleLine = true;
+                    options.IncludeScopes = false;
+                })
+                .SetMinimumLevel(configuredLogLevel);
+            return builder;
+        }
+
         _ = builder
             .AddFilter("Microsoft.Hosting.*", LogLevel.Error)
             .AddFilter("Microsoft.AspNetCore.*", LogLevel.Error)

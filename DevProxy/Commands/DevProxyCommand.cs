@@ -40,9 +40,12 @@ sealed class DevProxyCommand : RootCommand
 
     private static readonly string[] globalOptions = ["--version"];
     private static readonly string[] helpOptions = ["--help", "-h", "/h", "-?", "/?"];
+    // Built-in subcommands
+    private static readonly string[] subCommands = ["msgraphdb", "config", "outdated", "jwt", "cert", "stdio"];
 
     private static bool _hasGlobalOptionsResolved;
     private static bool _isStdioCommandResolved;
+    private static bool _isSubCommandResolved;
     private static bool _stdioLogFilePathResolved;
 
     public static bool HasGlobalOptions
@@ -74,6 +77,22 @@ sealed class DevProxyCommand : RootCommand
             var args = Environment.GetCommandLineArgs();
             field = args.Contains("stdio");
             _isStdioCommandResolved = true;
+            return field;
+        }
+    }
+
+    public static bool IsSubCommand
+    {
+        get
+        {
+            if (_isSubCommandResolved)
+            {
+                return field;
+            }
+
+            var args = Environment.GetCommandLineArgs();
+            field = args.Any(arg => subCommands.Contains(arg));
+            _isSubCommandResolved = true;
             return field;
         }
     }
