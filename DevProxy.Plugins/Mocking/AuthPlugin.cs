@@ -120,7 +120,7 @@ public sealed class AuthPlugin(
             Debug.Assert(Configuration.ApiKey is not null);
 
             if (Configuration.ApiKey.Parameters == null ||
-                Configuration.ApiKey.Parameters.Any())
+                !Configuration.ApiKey.Parameters.Any())
             {
                 Logger.LogError("ApiKey.Parameters is required when using ApiKey auth type");
                 return;
