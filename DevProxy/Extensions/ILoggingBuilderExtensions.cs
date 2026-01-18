@@ -39,45 +39,59 @@ static class ILoggingBuilderExtensions
             return builder;
         }
 
-        // Only the root command (proxy itself) uses rich logging.
-        // All subcommands use simple logging without rich formatting to avoid
-        // interfering with command output
-        if (!DevProxyCommand.IsRootCommand)
+        // For jwt command, suppress all logging to console to avoid interfering with token output
+        if (DevProxyCommand.IsJwtCommand)
         {
             _ = builder
                 .ClearProviders()
-                .AddFilter("Microsoft.Hosting.*", LogLevel.None)
-                .AddFilter("Microsoft.AspNetCore.*", LogLevel.None)
-                .AddFilter("Microsoft.Extensions.*", LogLevel.None)
-                .AddFilter("System.*", LogLevel.None)
-                .AddFilter("DevProxy.Plugins.*", LogLevel.None)
+                .SetMinimumLevel(LogLevel.None);
+            return builder;
+        }
+
+        // For root command (proxy itself), use rich logging
+        if (DevProxyCommand.IsRootCommand)
+        {
+            _ = builder
+                .AddFilter("Microsoft.Hosting.*", LogLevel.Error)
+                .AddFilter("Microsoft.AspNetCore.*", LogLevel.Error)
+                .AddFilter("Microsoft.Extensions.*", LogLevel.Error)
+                .AddFilter("System.*", LogLevel.Error)
+                // Only show plugin messages when no global options are set
+                .AddFilter("DevProxy.Plugins.*", level =>
+                    level >= configuredLogLevel &&
+                    !DevProxyCommand.HasGlobalOptions)
+                .AddConsole(options =>
+                    {
+                        options.FormatterName = ProxyConsoleFormatter.DefaultCategoryName;
+                        options.LogToStandardErrorThreshold = LogLevel.Warning;
+                    }
+                )
+                .AddConsoleFormatter<ProxyConsoleFormatter, ProxyConsoleFormatterOptions>(options =>
+                    {
+                        options.IncludeScopes = true;
+                        options.ShowSkipMessages = configuration.GetValue("showSkipMessages", true);
+                        options.ShowTimestamps = configuration.GetValue("showTimestamps", true);
+                    }
+                )
+                .AddRequestLogger()
                 .SetMinimumLevel(configuredLogLevel);
             return builder;
         }
 
+        // For other subcommands (cert, config, outdated, msgraphdb), use simple console logging
+        // with plugin messages filtered out
         _ = builder
-            .AddFilter("Microsoft.Hosting.*", LogLevel.Error)
-            .AddFilter("Microsoft.AspNetCore.*", LogLevel.Error)
-            .AddFilter("Microsoft.Extensions.*", LogLevel.Error)
-            .AddFilter("System.*", LogLevel.Error)
-            // Only show plugin messages when no global options are set
-            .AddFilter("DevProxy.Plugins.*", level =>
-                level >= configuredLogLevel &&
-                !DevProxyCommand.HasGlobalOptions)
-            .AddConsole(options =>
-                {
-                    options.FormatterName = ProxyConsoleFormatter.DefaultCategoryName;
-                    options.LogToStandardErrorThreshold = LogLevel.Warning;
-                }
-            )
-            .AddConsoleFormatter<ProxyConsoleFormatter, ProxyConsoleFormatterOptions>(options =>
-                {
-                    options.IncludeScopes = true;
-                    options.ShowSkipMessages = configuration.GetValue("showSkipMessages", true);
-                    options.ShowTimestamps = configuration.GetValue("showTimestamps", true);
-                }
-            )
-            .AddRequestLogger()
+            .ClearProviders()
+            .AddFilter("Microsoft.Hosting.*", LogLevel.None)
+            .AddFilter("Microsoft.AspNetCore.*", LogLevel.None)
+            .AddFilter("Microsoft.Extensions.*", LogLevel.None)
+            .AddFilter("System.*", LogLevel.None)
+            .AddFilter("DevProxy.Plugins.*", LogLevel.None)
+            .AddSimpleConsole(options =>
+            {
+                options.SingleLine = true;
+                options.IncludeScopes = false;
+            })
             .SetMinimumLevel(configuredLogLevel);
 
         return builder;

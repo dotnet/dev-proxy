@@ -43,6 +43,7 @@ sealed class DevProxyCommand : RootCommand
 
     private static bool _hasGlobalOptionsResolved;
     private static bool _isStdioCommandResolved;
+    private static bool _isJwtCommandResolved;
     private static bool _isRootCommandResolved;
     private static bool _stdioLogFilePathResolved;
 
@@ -75,6 +76,22 @@ sealed class DevProxyCommand : RootCommand
             var args = Environment.GetCommandLineArgs();
             field = args.Contains("stdio");
             _isStdioCommandResolved = true;
+            return field;
+        }
+    }
+
+    public static bool IsJwtCommand
+    {
+        get
+        {
+            if (_isJwtCommandResolved)
+            {
+                return field;
+            }
+
+            var args = Environment.GetCommandLineArgs();
+            field = args.Contains("jwt");
+            _isJwtCommandResolved = true;
             return field;
         }
     }
