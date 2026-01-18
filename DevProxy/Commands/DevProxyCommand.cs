@@ -90,7 +90,7 @@ sealed class DevProxyCommand : RootCommand
             }
 
             var args = Environment.GetCommandLineArgs();
-            field = args.Contains("jwt");
+            field = args.Length > 1 && string.Equals(args[1], "jwt", StringComparison.OrdinalIgnoreCase);
             _isJwtCommandResolved = true;
             return field;
         }
