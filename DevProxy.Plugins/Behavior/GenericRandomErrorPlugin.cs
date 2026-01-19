@@ -231,7 +231,7 @@ public sealed class GenericRandomErrorPlugin(
                 var retryAfterInSeconds = Configuration.RetryAfterInSeconds;
                 if (retryAfterHeader.Value.StartsWith("@dynamic=", StringComparison.OrdinalIgnoreCase))
                 {
-                    var valueStr = retryAfterHeader.Value.Substring("@dynamic=".Length);
+                    var valueStr = retryAfterHeader.Value["@dynamic=".Length..];
                     if (int.TryParse(valueStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedValue))
                     {
                         retryAfterInSeconds = parsedValue;
@@ -249,9 +249,8 @@ public sealed class GenericRandomErrorPlugin(
                     e.GlobalData.Add(RetryAfterPlugin.ThrottledRequestsKey, value);
                 }
                 var throttledRequests = value as List<ThrottlerInfo>;
-                // Capture retryAfterInSeconds in the lambda to support per-response values
-                var capturedRetryAfter = retryAfterInSeconds;
-                throttledRequests?.Add(new(BuildThrottleKey(request), (req, key) => ShouldThrottle(req, key, capturedRetryAfter), retryAfterDate));
+                var throttleKey = BuildThrottleKey(request);
+                throttledRequests?.Add(new(throttleKey, (req, key) => ShouldThrottle(req, key, retryAfterInSeconds), retryAfterDate));
                 // replace the header with the @dynamic value with the actual value
                 var h = headers.First(h => h.Name is "Retry-After" or "retry-after");
                 _ = headers.Remove(h);
