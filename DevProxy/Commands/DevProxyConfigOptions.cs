@@ -130,10 +130,8 @@ sealed class DevProxyConfigOptions : RootCommand
                 {
                     return logFor;
                 }
-                else
-                {
-                    return null;
-                }
+
+                return null;
             }
         };
 

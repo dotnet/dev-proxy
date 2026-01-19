@@ -362,6 +362,10 @@ sealed class DevProxyCommand : RootCommand
         };
         logForOption.Validators.Add(input =>
         {
+            if (input.Tokens.Count == 0)
+            {
+                return;
+            }
             if (!Enum.TryParse<LogFor>(input.Tokens[0].Value, true, out _))
             {
                 input.AddError($"{input.Tokens[0].Value} is not a valid log-for value. Allowed values are: {string.Join(", ", Enum.GetNames<LogFor>())}");
