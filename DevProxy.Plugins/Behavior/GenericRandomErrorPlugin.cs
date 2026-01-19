@@ -234,7 +234,14 @@ public sealed class GenericRandomErrorPlugin(
                     var valueStr = retryAfterHeader.Value["@dynamic=".Length..];
                     if (int.TryParse(valueStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedValue))
                     {
-                        retryAfterInSeconds = parsedValue;
+                        if (parsedValue < 0)
+                        {
+                            Logger.LogWarning("Negative @dynamic value '{Value}' for Retry-After header is not allowed. Using default value {Default}.", valueStr, Configuration.RetryAfterInSeconds);
+                        }
+                        else
+                        {
+                            retryAfterInSeconds = parsedValue;
+                        }
                     }
                     else
                     {
