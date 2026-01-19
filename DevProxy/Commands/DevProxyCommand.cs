@@ -37,6 +37,7 @@ sealed class DevProxyCommand : RootCommand
     internal const string TimeoutOptionName = "--timeout";
     internal const string DiscoverOptionName = "--discover";
     internal const string EnvOptionName = "--env";
+    internal const string LogForOptionName = "--log-for";
 
     private static readonly string[] globalOptions = ["--version"];
     private static readonly string[] helpOptions = ["--help", "-h", "/h", "-?", "/?"];
@@ -353,6 +354,20 @@ sealed class DevProxyCommand : RootCommand
             }
         });
 
+        var logForOption = new Option<LogFor?>(LogForOptionName)
+        {
+            Description = $"Target audience for log output. Allowed values: {string.Join(", ", Enum.GetNames<LogFor>())}",
+            HelpName = "log-for",
+            Recursive = true
+        };
+        logForOption.Validators.Add(input =>
+        {
+            if (!Enum.TryParse<LogFor>(input.Tokens[0].Value, true, out _))
+            {
+                input.AddError($"{input.Tokens[0].Value} is not a valid log-for value. Allowed values are: {string.Join(", ", Enum.GetNames<LogFor>())}");
+            }
+        });
+
         var options = new List<Option>
         {
             apiPortOption,
@@ -362,6 +377,7 @@ sealed class DevProxyCommand : RootCommand
             envOption,
             installCertOption,
             ipAddressOption,
+            logForOption,
             logLevelOption,
             noFirstRunOption,
             portOption,
