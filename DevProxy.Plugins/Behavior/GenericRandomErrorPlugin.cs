@@ -183,7 +183,8 @@ public sealed class GenericRandomErrorPlugin(
                 return false;
             }
 
-            if (errorResponse.Request.Method != request.Method)
+            if (errorResponse.Request.Method is not null &&
+                errorResponse.Request.Method != request.Method)
             {
                 return false;
             }
