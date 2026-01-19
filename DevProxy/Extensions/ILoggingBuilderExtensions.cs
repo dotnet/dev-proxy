@@ -78,20 +78,27 @@ static class ILoggingBuilderExtensions
             return builder;
         }
 
-        // For other subcommands (cert, config, outdated, msgraphdb), use simple console logging
-        // with plugin messages filtered out
+        // For other subcommands (cert, config, outdated, msgraphdb), use rich logging
+        // but with plugin messages filtered out
         _ = builder
-            .ClearProviders()
-            .AddSimpleConsole(options =>
-            {
-                options.SingleLine = true;
-                options.IncludeScopes = false;
-            })
-            .AddFilter("Microsoft.Hosting.*", LogLevel.None)
-            .AddFilter("Microsoft.AspNetCore.*", LogLevel.None)
-            .AddFilter("Microsoft.Extensions.*", LogLevel.None)
-            .AddFilter("System.*", LogLevel.None)
+            .AddFilter("Microsoft.Hosting.*", LogLevel.Error)
+            .AddFilter("Microsoft.AspNetCore.*", LogLevel.Error)
+            .AddFilter("Microsoft.Extensions.*", LogLevel.Error)
+            .AddFilter("System.*", LogLevel.Error)
             .AddFilter("DevProxy.Plugins.*", LogLevel.None)
+            .AddConsole(options =>
+                {
+                    options.FormatterName = ProxyConsoleFormatter.DefaultCategoryName;
+                    options.LogToStandardErrorThreshold = LogLevel.Warning;
+                }
+            )
+            .AddConsoleFormatter<ProxyConsoleFormatter, ProxyConsoleFormatterOptions>(options =>
+                {
+                    options.IncludeScopes = true;
+                    options.ShowSkipMessages = configuration.GetValue("showSkipMessages", true);
+                    options.ShowTimestamps = configuration.GetValue("showTimestamps", true);
+                }
+            )
             .SetMinimumLevel(configuredLogLevel);
 
         return builder;
