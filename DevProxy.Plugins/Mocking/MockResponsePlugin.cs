@@ -537,6 +537,19 @@ public class MockResponsePlugin(
             return;
         }
 
+        var contentType = request.ContentType;
+        // Only attempt to parse JSON if content-type is:
+        // - null or empty (for backward compatibility)
+        // - a JSON type (application/json, application/vnd.api+json, etc.)
+        var isJsonContent = string.IsNullOrEmpty(contentType) ||
+            contentType.Contains("json", StringComparison.OrdinalIgnoreCase);
+
+        if (!isJsonContent)
+        {
+            logger.LogDebug("Content-Type '{ContentType}' is not JSON. Skipping placeholder replacement", contentType);
+            return;
+        }
+
         try
         {
             var requestBody = JsonSerializer.Deserialize<JsonElement>(request.BodyString, ProxyUtils.JsonSerializerOptions);
