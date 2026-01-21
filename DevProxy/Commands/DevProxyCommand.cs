@@ -44,6 +44,8 @@ sealed class DevProxyCommand : RootCommand
 
     private static bool _hasGlobalOptionsResolved;
     private static bool _isStdioCommandResolved;
+    private static bool _isJwtCommandResolved;
+    private static bool _isRootCommandResolved;
     private static bool _stdioLogFilePathResolved;
 
     public static bool HasGlobalOptions
@@ -75,6 +77,47 @@ sealed class DevProxyCommand : RootCommand
             var args = Environment.GetCommandLineArgs();
             field = args.Contains("stdio");
             _isStdioCommandResolved = true;
+            return field;
+        }
+    }
+
+    public static bool IsJwtCommand
+    {
+        get
+        {
+            if (_isJwtCommandResolved)
+            {
+                return field;
+            }
+
+            var args = Environment.GetCommandLineArgs();
+            field = args.Length > 1 && string.Equals(args[1], "jwt", StringComparison.OrdinalIgnoreCase);
+            _isJwtCommandResolved = true;
+            return field;
+        }
+    }
+
+    /// <summary>
+    /// Determines if the root command (proxy itself) is being invoked.
+    /// Returns true when no subcommand is specified (only options or no args).
+    /// A subcommand is detected when the first non-program argument doesn't start with '-'.
+    /// </summary>
+    public static bool IsRootCommand
+    {
+        get
+        {
+            if (_isRootCommandResolved)
+            {
+                return field;
+            }
+
+            var args = Environment.GetCommandLineArgs();
+            // Skip the first argument which is the program name
+            // If there are no more arguments, it's the root command
+            // If the first argument starts with '-', it's an option (root command)
+            // Otherwise, it's a subcommand name
+            field = args.Length <= 1 || args[1].StartsWith('-');
+            _isRootCommandResolved = true;
             return field;
         }
     }

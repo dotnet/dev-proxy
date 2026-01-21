@@ -44,6 +44,15 @@ static class ILoggingBuilderExtensions
             return builder;
         }
 
+        // For jwt command, suppress all logging to console to avoid interfering with token output
+        if (DevProxyCommand.IsJwtCommand)
+        {
+            _ = builder
+                .ClearProviders()
+                .SetMinimumLevel(LogLevel.None);
+            return builder;
+        }
+
         var showSkipMessages = configuration.GetValue("showSkipMessages", true);
         var showTimestamps = configuration.GetValue("showTimestamps", true);
 
@@ -52,15 +61,51 @@ static class ILoggingBuilderExtensions
             ? MachineConsoleFormatter.FormatterName
             : ProxyConsoleFormatter.DefaultCategoryName;
 
+        // For root command (proxy itself), use rich logging
+        if (DevProxyCommand.IsRootCommand)
+        {
+            _ = builder
+                .AddFilter("Microsoft.Hosting.*", LogLevel.Error)
+                .AddFilter("Microsoft.AspNetCore.*", LogLevel.Error)
+                .AddFilter("Microsoft.Extensions.*", LogLevel.Error)
+                .AddFilter("System.*", LogLevel.Error)
+                // Only show plugin messages when no global options are set
+                .AddFilter("DevProxy.Plugins.*", level =>
+                    level >= configuredLogLevel &&
+                    !DevProxyCommand.HasGlobalOptions)
+                .AddConsole(consoleOptions =>
+                    {
+                        consoleOptions.FormatterName = formatterName;
+                        consoleOptions.LogToStandardErrorThreshold = LogLevel.Warning;
+                    }
+                )
+                .AddConsoleFormatter<ProxyConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
+                    {
+                        formatterOptions.IncludeScopes = true;
+                        formatterOptions.ShowSkipMessages = showSkipMessages;
+                        formatterOptions.ShowTimestamps = showTimestamps;
+                    }
+                )
+                .AddConsoleFormatter<MachineConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
+                    {
+                        formatterOptions.IncludeScopes = true;
+                        formatterOptions.ShowSkipMessages = showSkipMessages;
+                        formatterOptions.ShowTimestamps = showTimestamps;
+                    }
+                )
+                .AddRequestLogger()
+                .SetMinimumLevel(configuredLogLevel);
+            return builder;
+        }
+
+        // For other subcommands (cert, config, outdated, msgraphdb), use rich logging
+        // but with plugin messages filtered out
         _ = builder
             .AddFilter("Microsoft.Hosting.*", LogLevel.Error)
             .AddFilter("Microsoft.AspNetCore.*", LogLevel.Error)
             .AddFilter("Microsoft.Extensions.*", LogLevel.Error)
             .AddFilter("System.*", LogLevel.Error)
-            // Only show plugin messages when no global options are set
-            .AddFilter("DevProxy.Plugins.*", level =>
-                level >= configuredLogLevel &&
-                !DevProxyCommand.HasGlobalOptions)
+            .AddFilter("DevProxy.Plugins.*", LogLevel.None)
             .AddConsole(consoleOptions =>
                 {
                     consoleOptions.FormatterName = formatterName;
@@ -70,7 +115,6 @@ static class ILoggingBuilderExtensions
             .AddConsoleFormatter<ProxyConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
                 {
                     formatterOptions.IncludeScopes = true;
-                    formatterOptions.LogFor = configuredLogFor;
                     formatterOptions.ShowSkipMessages = showSkipMessages;
                     formatterOptions.ShowTimestamps = showTimestamps;
                 }
@@ -78,12 +122,10 @@ static class ILoggingBuilderExtensions
             .AddConsoleFormatter<MachineConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
                 {
                     formatterOptions.IncludeScopes = true;
-                    formatterOptions.LogFor = configuredLogFor;
                     formatterOptions.ShowSkipMessages = showSkipMessages;
                     formatterOptions.ShowTimestamps = showTimestamps;
                 }
             )
-            .AddRequestLogger()
             .SetMinimumLevel(configuredLogLevel);
 
         return builder;
