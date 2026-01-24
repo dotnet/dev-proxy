@@ -80,7 +80,7 @@ static class CsomParser
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error parsing XML: {ex.Message}");
+            errors.Add($"Error parsing XML: {ex.Message}");
         }
 
         return (actions, errors);

@@ -139,7 +139,7 @@ sealed class ProxyEngine(
         var isInteractive = !Console.IsInputRedirected &&
             Environment.GetEnvironmentVariable("CI") is null;
 
-        if (isInteractive)
+        if (isInteractive && _config.LogFor != LogFor.Machine)
         {
             // only print hotkeys when they can be used
             PrintHotkeys();
@@ -217,7 +217,10 @@ sealed class ProxyEngine(
                 break;
             case ConsoleKey.C:
                 Console.Clear();
-                PrintHotkeys();
+                if (_config.LogFor != LogFor.Machine)
+                {
+                    PrintHotkeys();
+                }
                 break;
             case ConsoleKey.W:
                 await _proxyController.MockRequestAsync(cancellationToken);
