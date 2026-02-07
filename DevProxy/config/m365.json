@@ -213,7 +213,7 @@
     "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.2.0/ratelimitingplugin.schema.json",
     "costPerRequest": 2,
     "rateLimit": 120,
-    "retryAfterSeconds": 5
+    "resetTimeWindowSeconds": 5
   },
   "labelMode": "text",
   "logLevel": "information"
