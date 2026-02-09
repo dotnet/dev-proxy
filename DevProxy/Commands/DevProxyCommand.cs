@@ -525,6 +525,11 @@ sealed class DevProxyCommand : RootCommand
                     : new KeyValuePair<string, string>(parts[0], parts[1]);
             }).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
         }
+        var logFor = parseResult.GetValueOrDefault<LogFor?>(LogForOptionName);
+        if (logFor is not null)
+        {
+            _proxyConfiguration.LogFor = logFor.Value;
+        }
     }
 
     private async Task CheckForNewVersionAsync()

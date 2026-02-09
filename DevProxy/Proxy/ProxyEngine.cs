@@ -139,9 +139,15 @@ sealed class ProxyEngine(
         var isInteractive = !Console.IsInputRedirected &&
             Environment.GetEnvironmentVariable("CI") is null;
 
-        if (isInteractive && _config.LogFor != LogFor.Machine)
+        if (_config.LogFor == LogFor.Machine)
         {
-            // only print hotkeys when they can be used
+            // Always print API instructions in machine mode
+            // since LLMs/agents can use the API even in non-interactive mode
+            PrintApiInstructions(_config);
+        }
+        else if (isInteractive)
+        {
+            // Print hotkeys only when they can be used (interactive terminal, human mode)
             PrintHotkeys();
         }
 
@@ -217,7 +223,11 @@ sealed class ProxyEngine(
                 break;
             case ConsoleKey.C:
                 Console.Clear();
-                if (_config.LogFor != LogFor.Machine)
+                if (_config.LogFor == LogFor.Machine)
+                {
+                    PrintApiInstructions(_config);
+                }
+                else
                 {
                     PrintHotkeys();
                 }
@@ -608,6 +618,18 @@ sealed class ProxyEngine(
         Console.WriteLine("");
         Console.WriteLine("Hotkeys: issue (w)eb request, (r)ecord, (s)top recording, (c)lear screen");
         Console.WriteLine("Press CTRL+C to stop Dev Proxy");
+        Console.WriteLine("");
+    }
+
+    private static void PrintApiInstructions(IProxyConfiguration config)
+    {
+        var baseUrl = $"http://{config.IPAddress}:{config.ApiPort}/proxy";
+        Console.WriteLine("");
+        Console.WriteLine("API commands:");
+        Console.WriteLine($"  Issue web request:  curl -X POST {baseUrl}/mockRequest");
+        Console.WriteLine($"  Start recording:    curl -X POST {baseUrl} -H \"Content-Type: application/json\" -d '{{\"recording\": true}}'");
+        Console.WriteLine($"  Stop recording:     curl -X POST {baseUrl} -H \"Content-Type: application/json\" -d '{{\"recording\": false}}'");
+        Console.WriteLine($"  Stop Dev Proxy:     curl -X POST {baseUrl}/stopProxy");
         Console.WriteLine("");
     }
 

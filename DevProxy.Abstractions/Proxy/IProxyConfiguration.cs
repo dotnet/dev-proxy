@@ -37,7 +37,7 @@ public interface IProxyConfiguration
     IEnumerable<MockRequestHeader>? FilterByHeaders { get; }
     bool InstallCert { get; set; }
     string? IPAddress { get; set; }
-    LogFor LogFor { get; }
+    LogFor LogFor { get; set; }
     LogLevel LogLevel { get; }
     ReleaseType NewVersionNotification { get; }
     bool NoFirstRun { get; set; }
