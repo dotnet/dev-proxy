@@ -624,12 +624,12 @@ sealed class ProxyEngine(
     private static void PrintApiInstructions(IProxyConfiguration config)
     {
         var baseUrl = $"http://{config.IPAddress}:{config.ApiPort}/proxy";
+        var timestamp = DateTime.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture);
         Console.WriteLine("");
-        Console.WriteLine("API commands:");
-        Console.WriteLine($"  Issue web request:  curl -X POST {baseUrl}/mockRequest");
-        Console.WriteLine($"  Start recording:    curl -X POST {baseUrl} -H \"Content-Type: application/json\" -d '{{\"recording\": true}}'");
-        Console.WriteLine($"  Stop recording:     curl -X POST {baseUrl} -H \"Content-Type: application/json\" -d '{{\"recording\": false}}'");
-        Console.WriteLine($"  Stop Dev Proxy:     curl -X POST {baseUrl}/stopProxy");
+        Console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"Issue web request: curl -X POST {baseUrl}/mockRequest\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
+        Console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"Start recording: curl -X POST {baseUrl} -H \\\"Content-Type: application/json\\\" -d '{{\\\"recording\\\": true}}'\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
+        Console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"Stop recording: curl -X POST {baseUrl} -H \\\"Content-Type: application/json\\\" -d '{{\\\"recording\\\": false}}'\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
+        Console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"Stop Dev Proxy: curl -X POST {baseUrl}/stopProxy\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
         Console.WriteLine("");
     }
 
