@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy MockStdioResponsePlugin mocks",
+  "description": "Mocks for the Dev Proxy MockStdioResponsePlugin",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "The JSON schema reference for validation."
+    },
+    "mocks": {
+      "type": "array",
+      "description": "Array of stdio mock definitions.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "description": "The request pattern to match against stdin.",
+            "properties": {
+              "bodyFragment": {
+                "type": "string",
+                "description": "(Optional) A fragment of the stdin body to match. If null or empty, the mock matches any stdin or is applied immediately on startup."
+              },
+              "nth": {
+                "type": "integer",
+                "description": "(Optional) Match the nth occurrence. If not specified, matches every occurrence."
+              }
+            }
+          },
+          "response": {
+            "type": "object",
+            "description": "The mock response to return.",
+            "properties": {
+              "stdout": {
+                "type": [
+                  "object",
+                  "array",
+                  "string"
+                ],
+                "description": "The stdout content to return. Can be a string, object, or array. If the value starts with @, it's treated as a file path."
+              },
+              "stderr": {
+                "type": [
+                  "object",
+                  "array",
+                  "string"
+                ],
+                "description": "The stderr content to return. Can be a string, object, or array. If the value starts with @, it's treated as a file path."
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "mocks"
+  ],
+  "additionalProperties": false
+}
