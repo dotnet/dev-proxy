@@ -13,7 +13,7 @@ public class GenericErrorResponse
 public class GenericErrorResponseRequest
 {
     public string? BodyFragment { get; set; }
-    public string Method { get; set; } = "GET";
+    public string? Method { get; set; }
     public string Url { get; set; } = string.Empty;
 }
 

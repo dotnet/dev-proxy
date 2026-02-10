@@ -41,7 +41,7 @@ With Dev Proxy you:
 
 ## Get started
 
-To get started with Dev Proxy, follow our [tutorial](https://aka.ms/devproxy/setup) to install and run Dev Proxy for the first time.
+To get started with Dev Proxy, follow our [tutorial](https://aka.ms/devproxy/start) to install and run Dev Proxy for the first time.
 
 [![Getting started with Dev Proxy](https://img.youtube.com/vi/HVTJlGSxhcw/0.jpg)](https://www.youtube.com/watch?v=HVTJlGSxhcw)
 

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy LanguageModelRateLimitingPlugin response",
+  "description": "Mock for the Dev Proxy LanguageModelRateLimitingPlugin",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "The URL of the JSON schema used to validate this custom response file."
+    },
+    "body": {
+      "type": [
+        "object",
+        "array",
+        "string"
+      ],
+      "description": "The body of the custom response returned when the token limit is exceeded. Can be an object, array, or string."
+    },
+    "statusCode": {
+      "type": "integer",
+      "description": "HTTP status code to return when the token limit is exceeded (e.g., 429)."
+    },
+    "headers": {
+      "type": "array",
+      "description": "List of headers to include in the custom response.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Header name."
+          },
+          "value": {
+            "type": "string",
+            "description": "Header value. Use '@dynamic' for the Retry-After header to automatically calculate seconds until reset."
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ]
+      }
+    }
+  },
+  "additionalProperties": false
+}

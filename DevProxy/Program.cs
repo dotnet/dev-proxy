@@ -32,6 +32,7 @@ static WebApplication BuildApplication(DevProxyConfigOptions options)
 
     var app = builder.Build();
 
+    _ = app.UseCors();
     _ = app.UseSwagger();
     _ = app.UseSwaggerUI();
     _ = app.MapControllers();
