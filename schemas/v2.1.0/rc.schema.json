@@ -85,6 +85,14 @@
       ],
       "description": "The minimum log level for Dev Proxy output."
     },
+    "logFor": {
+      "type": "string",
+      "enum": [
+        "human",
+        "machine"
+      ],
+      "description": "Target audience for log output. Use 'human' for readable console output (default), or 'machine' for structured JSON Lines output suitable for LLMs and agents."
+    },
     "newVersionNotification": {
       "type": "string",
       "enum": [

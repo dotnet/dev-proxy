@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Abstractions.Proxy;
 using DevProxy.Commands;
 using DevProxy.Logging;
 
@@ -26,6 +27,10 @@ static class ILoggingBuilderExtensions
         var configuredLogLevel = options.LogLevel ??
             configuration.GetValue("logLevel", LogLevel.Information);
 
+        // Determine the log target audience (human or machine)
+        var configuredLogFor = options.LogFor ??
+            configuration.GetValue("logFor", LogFor.Human);
+
         // For stdio command, log to file instead of console to avoid interfering with proxied streams
         if (DevProxyCommand.IsStdioCommand)
         {
@@ -48,6 +53,14 @@ static class ILoggingBuilderExtensions
             return builder;
         }
 
+        var showSkipMessages = configuration.GetValue("showSkipMessages", true);
+        var showTimestamps = configuration.GetValue("showTimestamps", true);
+
+        // Select the appropriate formatter based on logFor setting
+        var formatterName = configuredLogFor == LogFor.Machine
+            ? MachineConsoleFormatter.FormatterName
+            : ProxyConsoleFormatter.DefaultCategoryName;
+
         // For root command (proxy itself), use rich logging
         if (DevProxyCommand.IsRootCommand)
         {
@@ -60,17 +73,24 @@ static class ILoggingBuilderExtensions
                 .AddFilter("DevProxy.Plugins.*", level =>
                     level >= configuredLogLevel &&
                     !DevProxyCommand.HasGlobalOptions)
-                .AddConsole(options =>
+                .AddConsole(consoleOptions =>
                     {
-                        options.FormatterName = ProxyConsoleFormatter.DefaultCategoryName;
-                        options.LogToStandardErrorThreshold = LogLevel.Warning;
+                        consoleOptions.FormatterName = formatterName;
+                        consoleOptions.LogToStandardErrorThreshold = LogLevel.Warning;
                     }
                 )
-                .AddConsoleFormatter<ProxyConsoleFormatter, ProxyConsoleFormatterOptions>(options =>
+                .AddConsoleFormatter<ProxyConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
                     {
-                        options.IncludeScopes = true;
-                        options.ShowSkipMessages = configuration.GetValue("showSkipMessages", true);
-                        options.ShowTimestamps = configuration.GetValue("showTimestamps", true);
+                        formatterOptions.IncludeScopes = true;
+                        formatterOptions.ShowSkipMessages = showSkipMessages;
+                        formatterOptions.ShowTimestamps = showTimestamps;
+                    }
+                )
+                .AddConsoleFormatter<MachineConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
+                    {
+                        formatterOptions.IncludeScopes = true;
+                        formatterOptions.ShowSkipMessages = showSkipMessages;
+                        formatterOptions.ShowTimestamps = showTimestamps;
                     }
                 )
                 .AddRequestLogger()
@@ -86,17 +106,24 @@ static class ILoggingBuilderExtensions
             .AddFilter("Microsoft.Extensions.*", LogLevel.Error)
             .AddFilter("System.*", LogLevel.Error)
             .AddFilter("DevProxy.Plugins.*", LogLevel.None)
-            .AddConsole(options =>
+            .AddConsole(consoleOptions =>
                 {
-                    options.FormatterName = ProxyConsoleFormatter.DefaultCategoryName;
-                    options.LogToStandardErrorThreshold = LogLevel.Warning;
+                    consoleOptions.FormatterName = formatterName;
+                    consoleOptions.LogToStandardErrorThreshold = LogLevel.Warning;
                 }
             )
-            .AddConsoleFormatter<ProxyConsoleFormatter, ProxyConsoleFormatterOptions>(options =>
+            .AddConsoleFormatter<ProxyConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
                 {
-                    options.IncludeScopes = true;
-                    options.ShowSkipMessages = configuration.GetValue("showSkipMessages", true);
-                    options.ShowTimestamps = configuration.GetValue("showTimestamps", true);
+                    formatterOptions.IncludeScopes = true;
+                    formatterOptions.ShowSkipMessages = showSkipMessages;
+                    formatterOptions.ShowTimestamps = showTimestamps;
+                }
+            )
+            .AddConsoleFormatter<MachineConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
+                {
+                    formatterOptions.IncludeScopes = true;
+                    formatterOptions.ShowSkipMessages = showSkipMessages;
+                    formatterOptions.ShowTimestamps = showTimestamps;
                 }
             )
             .SetMinimumLevel(configuredLogLevel);
