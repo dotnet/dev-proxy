@@ -36,7 +36,7 @@ public sealed class MockResponseConfiguration
     [JsonIgnore]
     public bool NoMocks { get; set; }
     [JsonPropertyName("$schema")]
-    public string Schema { get; set; } = "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/mockresponseplugin.mocksfile.schema.json";
+    public string Schema { get; set; } = "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.2.0/mockresponseplugin.mocksfile.schema.json";
 }
 
 public class MockResponsePlugin(
@@ -534,6 +534,19 @@ public class MockResponsePlugin(
             response.Body is null || !request.HasBody)
         {
             logger.LogTrace("Body is empty. Skipping replacing placeholders");
+            return;
+        }
+
+        var contentType = request.ContentType;
+        // Only attempt to parse JSON if content-type is:
+        // - null or empty (for backward compatibility)
+        // - a JSON type (application/json, application/vnd.api+json, etc.)
+        var isJsonContent = string.IsNullOrEmpty(contentType) ||
+            contentType.Contains("json", StringComparison.OrdinalIgnoreCase);
+
+        if (!isJsonContent)
+        {
+            logger.LogDebug("Content-Type '{ContentType}' is not JSON. Skipping placeholder replacement", contentType);
             return;
         }
 

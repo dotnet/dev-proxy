@@ -21,6 +21,16 @@ static class IServiceCollectionExtensions
         DevProxyConfigOptions options)
     {
         _ = services.AddControllers();
+        _ = services.AddCors(options =>
+        {
+            options.AddDefaultPolicy(builder =>
+            {
+                _ = builder
+                    .AllowAnyOrigin()
+                    .AllowAnyMethod()
+                    .AllowAnyHeader();
+            });
+        });
         _ = services
             .AddApplicationServices(configuration, options)
             .AddHostedService<ProxyEngine>()

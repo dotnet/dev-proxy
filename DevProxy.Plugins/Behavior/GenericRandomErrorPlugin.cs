@@ -157,10 +157,10 @@ public sealed class GenericRandomErrorPlugin(
         }
     }
 
-    private ThrottlingInfo ShouldThrottle(Request request, string throttlingKey)
+    private static ThrottlingInfo ShouldThrottle(Request request, string throttlingKey, int retryAfterInSeconds)
     {
         var throttleKeyForRequest = BuildThrottleKey(request);
-        return new(throttleKeyForRequest == throttlingKey ? Configuration.RetryAfterInSeconds : 0, "Retry-After");
+        return new(throttleKeyForRequest == throttlingKey ? retryAfterInSeconds : 0, "Retry-After");
     }
 
     private GenericErrorResponse? GetMatchingErrorResponse(Request request)
@@ -183,7 +183,8 @@ public sealed class GenericRandomErrorPlugin(
                 return false;
             }
 
-            if (errorResponse.Request.Method != request.Method)
+            if (errorResponse.Request.Method is not null &&
+                errorResponse.Request.Method != request.Method)
             {
                 return false;
             }
@@ -221,21 +222,47 @@ public sealed class GenericRandomErrorPlugin(
         }
 
         if (error.StatusCode == (int)HttpStatusCode.TooManyRequests &&
-            error.Headers is not null &&
-            error.Headers.FirstOrDefault(h => h.Name is "Retry-After" or "retry-after")?.Value == "@dynamic")
+            error.Headers is not null)
         {
-            var retryAfterDate = DateTime.Now.AddSeconds(Configuration.RetryAfterInSeconds);
-            if (!e.GlobalData.TryGetValue(RetryAfterPlugin.ThrottledRequestsKey, out var value))
+            var retryAfterHeader = error.Headers.FirstOrDefault(h => h.Name is "Retry-After" or "retry-after");
+            if (retryAfterHeader?.Value is not null && retryAfterHeader.Value.StartsWith("@dynamic", StringComparison.OrdinalIgnoreCase))
             {
-                value = new List<ThrottlerInfo>();
-                e.GlobalData.Add(RetryAfterPlugin.ThrottledRequestsKey, value);
+                // Parse @dynamic or @dynamic=value syntax
+                var retryAfterInSeconds = Configuration.RetryAfterInSeconds;
+                if (retryAfterHeader.Value.StartsWith("@dynamic=", StringComparison.OrdinalIgnoreCase))
+                {
+                    var valueStr = retryAfterHeader.Value["@dynamic=".Length..];
+                    if (int.TryParse(valueStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedValue))
+                    {
+                        if (parsedValue < 0)
+                        {
+                            Logger.LogWarning("Negative @dynamic value '{Value}' for Retry-After header is not allowed. Using default value {Default}.", valueStr, Configuration.RetryAfterInSeconds);
+                        }
+                        else
+                        {
+                            retryAfterInSeconds = parsedValue;
+                        }
+                    }
+                    else
+                    {
+                        Logger.LogWarning("Invalid @dynamic value '{Value}' for Retry-After header. Using default value {Default}.", valueStr, Configuration.RetryAfterInSeconds);
+                    }
+                }
+
+                var retryAfterDate = DateTime.Now.AddSeconds(retryAfterInSeconds);
+                if (!e.GlobalData.TryGetValue(RetryAfterPlugin.ThrottledRequestsKey, out var value))
+                {
+                    value = new List<ThrottlerInfo>();
+                    e.GlobalData.Add(RetryAfterPlugin.ThrottledRequestsKey, value);
+                }
+                var throttledRequests = value as List<ThrottlerInfo>;
+                var throttleKey = BuildThrottleKey(request);
+                throttledRequests?.Add(new(throttleKey, (req, key) => ShouldThrottle(req, key, retryAfterInSeconds), retryAfterDate));
+                // replace the header with the @dynamic value with the actual value
+                var h = headers.First(h => h.Name is "Retry-After" or "retry-after");
+                _ = headers.Remove(h);
+                headers.Add(new("Retry-After", retryAfterInSeconds.ToString(CultureInfo.InvariantCulture)));
             }
-            var throttledRequests = value as List<ThrottlerInfo>;
-            throttledRequests?.Add(new(BuildThrottleKey(request), ShouldThrottle, retryAfterDate));
-            // replace the header with the @dynamic value with the actual value
-            var h = headers.First(h => h.Name is "Retry-After" or "retry-after");
-            _ = headers.Remove(h);
-            headers.Add(new("Retry-After", Configuration.RetryAfterInSeconds.ToString(CultureInfo.InvariantCulture)));
         }
 
         var statusCode = (HttpStatusCode)(error.StatusCode ?? 400);
