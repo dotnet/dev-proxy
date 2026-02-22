@@ -820,7 +820,7 @@ public sealed class OpenAITelemetryPlugin(
         {
             // Format input items to a more readable form for the span
             var formattedInputs = responsesRequest.Input
-                .Select(i => $"{i.Role}: {i.Content}")
+                .Select(i => $"{i.Role}: {(i.Content is string s ? s : JsonSerializer.Serialize(i.Content, ProxyUtils.JsonSerializerOptions))}")
                 .ToArray();
 
             _ = activity.SetTag(SemanticConvention.GEN_AI_CONTENT_PROMPT, string.Join("\n", formattedInputs));

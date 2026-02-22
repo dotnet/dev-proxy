@@ -62,18 +62,11 @@ public class OpenAIRequest
 
             // Responses API request - has "input" array with objects containing role/content
             // Must be checked before embedding request because both have "input"
-            if (rawRequest.TryGetProperty("input", out var inputProperty) &&
-                inputProperty.ValueKind == JsonValueKind.Array &&
-                inputProperty.GetArrayLength() > 0)
+            if (IsResponsesApiRequest(rawRequest))
             {
-                var firstItem = inputProperty.EnumerateArray().First();
-                if (firstItem.ValueKind == JsonValueKind.Object &&
-                    (firstItem.TryGetProperty("role", out _) || firstItem.TryGetProperty("type", out _)))
-                {
-                    logger.LogDebug("Request is a Responses API request");
-                    request = JsonSerializer.Deserialize<OpenAIResponsesRequest>(content, ProxyUtils.JsonSerializerOptions);
-                    return true;
-                }
+                logger.LogDebug("Request is a Responses API request");
+                request = JsonSerializer.Deserialize<OpenAIResponsesRequest>(content, ProxyUtils.JsonSerializerOptions);
+                return true;
             }
 
             // Embedding request
@@ -169,18 +162,11 @@ public class OpenAIRequest
             }
 
             // Responses API request - has "input" array with objects containing role/content
-            if (rawRequest.TryGetProperty("input", out var inputProperty) &&
-                inputProperty.ValueKind == JsonValueKind.Array &&
-                inputProperty.GetArrayLength() > 0)
+            if (IsResponsesApiRequest(rawRequest))
             {
-                var firstItem = inputProperty.EnumerateArray().First();
-                if (firstItem.ValueKind == JsonValueKind.Object &&
-                    (firstItem.TryGetProperty("role", out _) || firstItem.TryGetProperty("type", out _)))
-                {
-                    logger.LogDebug("Request is a Responses API request");
-                    request = JsonSerializer.Deserialize<OpenAIResponsesRequest>(content, ProxyUtils.JsonSerializerOptions);
-                    return true;
-                }
+                logger.LogDebug("Request is a Responses API request");
+                request = JsonSerializer.Deserialize<OpenAIResponsesRequest>(content, ProxyUtils.JsonSerializerOptions);
+                return true;
             }
 
             logger.LogDebug("Request is not a completion-like OpenAI request.");
@@ -191,6 +177,16 @@ public class OpenAIRequest
             logger.LogDebug(ex, "Failed to deserialize OpenAI request.");
             return false;
         }
+    }
+
+    private static bool IsResponsesApiRequest(JsonElement rawRequest)
+    {
+        return rawRequest.TryGetProperty("input", out var inputProperty) &&
+            inputProperty.ValueKind == JsonValueKind.Array &&
+            inputProperty.GetArrayLength() > 0 &&
+            inputProperty.EnumerateArray().First().ValueKind == JsonValueKind.Object &&
+            (inputProperty.EnumerateArray().First().TryGetProperty("role", out _) ||
+             inputProperty.EnumerateArray().First().TryGetProperty("type", out _));
     }
 }
 
@@ -571,16 +567,6 @@ public class OpenAIResponsesOutputContent
 {
     public string? Type { get; set; }
     public string? Text { get; set; }
-}
-
-public class OpenAIResponsesUsage
-{
-    [JsonPropertyName("input_tokens")]
-    public long InputTokens { get; set; }
-    [JsonPropertyName("output_tokens")]
-    public long OutputTokens { get; set; }
-    [JsonPropertyName("total_tokens")]
-    public long TotalTokens { get; set; }
 }
 
 #endregion
