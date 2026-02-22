@@ -259,18 +259,20 @@ public class MockStdioResponsePlugin(
                 return false;
             }
 
-            // Check if stdin contains the body fragment
-            if (hasBodyFragment &&
-                !stdinBody.Contains(mockResponse.Request.BodyFragment!, StringComparison.OrdinalIgnoreCase))
+            // Use bodyRegex if specified, otherwise use bodyFragment (either/or)
+            if (hasBodyRegex)
             {
-                return false;
+                if (!Regex.IsMatch(stdinBody, mockResponse.Request.BodyRegex!, RegexOptions.IgnoreCase, TimeSpan.FromSeconds(5)))
+                {
+                    return false;
+                }
             }
-
-            // Check if stdin matches the body regex
-            if (hasBodyRegex &&
-                !Regex.IsMatch(stdinBody, mockResponse.Request.BodyRegex!, RegexOptions.IgnoreCase, TimeSpan.FromSeconds(5)))
+            else if (hasBodyFragment)
             {
-                return false;
+                if (!stdinBody.Contains(mockResponse.Request.BodyFragment!, StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
             }
 
             // Check Nth condition
@@ -303,15 +305,9 @@ public class MockStdioResponsePlugin(
 
     private static string GetMockKey(MockStdioResponse mockResponse)
     {
-        var fragment = mockResponse.Request?.BodyFragment;
-        var regex = mockResponse.Request?.BodyRegex;
-
-        if (!string.IsNullOrEmpty(fragment) && !string.IsNullOrEmpty(regex))
-        {
-            return $"{fragment}|{regex}";
-        }
-
-        return fragment ?? regex ?? "default";
+        return mockResponse.Request?.BodyRegex
+            ?? mockResponse.Request?.BodyFragment
+            ?? "default";
     }
 
     private void ProcessMockResponse(StdioRequestArgs e, MockStdioResponse matchingResponse)

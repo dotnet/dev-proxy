@@ -35,15 +35,15 @@ public class MockStdioRequest
 {
     /// <summary>
     /// A fragment of the stdin body to match (case-insensitive contains).
-    /// If null or empty and <see cref="BodyRegex"/> is also null or empty,
-    /// the mock matches any stdin (or is applied immediately on startup).
+    /// Use either <see cref="BodyFragment"/> or <see cref="BodyRegex"/>, not both.
+    /// If neither is specified, the mock matches any stdin (or is applied immediately on startup).
     /// </summary>
     public string? BodyFragment { get; set; }
 
     /// <summary>
-    /// A regular expression pattern to match against the stdin body.
-    /// If null or empty and <see cref="BodyFragment"/> is also null or empty,
-    /// the mock matches any stdin (or is applied immediately on startup).
+    /// A regular expression pattern to match against the stdin body (case-insensitive).
+    /// Use either <see cref="BodyRegex"/> or <see cref="BodyFragment"/>, not both.
+    /// If neither is specified, the mock matches any stdin (or is applied immediately on startup).
     /// </summary>
     public string? BodyRegex { get; set; }
 
