@@ -2,11 +2,9 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using DevProxy.Abstractions.Utils;
 using DevProxy.Proxy;
 using System.CommandLine;
 using System.CommandLine.Parsing;
-using System.Diagnostics;
 using Titanium.Web.Proxy.Helpers;
 
 namespace DevProxy.Commands;
@@ -14,15 +12,17 @@ namespace DevProxy.Commands;
 sealed class CertCommand : Command
 {
     private readonly ILogger _logger;
+    private readonly ILoggerFactory _loggerFactory;
     private readonly Option<bool> _forceOption = new("--force", "-f")
     {
         Description = "Don't prompt for confirmation when removing the certificate"
     };
 
-    public CertCommand(ILogger<CertCommand> logger) :
+    public CertCommand(ILogger<CertCommand> logger, ILoggerFactory loggerFactory) :
         base("cert", "Manage the Dev Proxy certificate")
     {
         _logger = logger;
+        _loggerFactory = loggerFactory;
 
         ConfigureCommand();
     }
@@ -49,8 +49,21 @@ sealed class CertCommand : Command
 
         try
         {
+            // Ensure ProxyServer is initialized with LoggerFactory for Unobtanium logging
+            ProxyEngine.EnsureProxyServerInitialized(_loggerFactory);
+
             _logger.LogInformation("Ensuring certificate exists and is trusted...");
             await ProxyEngine.ProxyServer.CertificateManager.EnsureRootCertificateAsync();
+
+            if (RunTime.IsMac)
+            {
+                var certificate = ProxyEngine.ProxyServer.CertificateManager.RootCertificate;
+                if (certificate is not null)
+                {
+                    MacCertificateHelper.TrustCertificate(certificate, _logger);
+                }
+            }
+
             _logger.LogInformation("DONE");
         }
         catch (Exception ex)
@@ -79,8 +92,23 @@ sealed class CertCommand : Command
 
             _logger.LogInformation("Uninstalling the root certificate...");
 
-            RemoveTrustedCertificateOnMac();
-            ProxyEngine.ProxyServer.CertificateManager.RemoveTrustedRootCertificate(machineTrusted: false);
+            // Ensure ProxyServer is initialized with LoggerFactory for Unobtanium logging
+            ProxyEngine.EnsureProxyServerInitialized(_loggerFactory);
+
+            if (RunTime.IsMac)
+            {
+                var certificate = ProxyEngine.ProxyServer.CertificateManager.RootCertificate;
+                if (certificate is not null)
+                {
+                    MacCertificateHelper.RemoveTrustedCertificate(certificate, _logger);
+                }
+
+                HasRunFlag.Remove();
+            }
+            else
+            {
+                ProxyEngine.ProxyServer.CertificateManager.RemoveTrustedRootCertificate(machineTrusted: false);
+            }
 
             _logger.LogInformation("DONE");
         }
@@ -114,28 +142,5 @@ sealed class CertCommand : Command
                 return false;
             }
         }
-    }
-
-    private static void RemoveTrustedCertificateOnMac()
-    {
-        if (!RunTime.IsMac)
-        {
-            return;
-        }
-
-        var bashScriptPath = Path.Join(ProxyUtils.AppFolder, "remove-cert.sh");
-        var startInfo = new ProcessStartInfo()
-        {
-            FileName = "/bin/bash",
-            Arguments = bashScriptPath,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-
-        using var process = new Process() { StartInfo = startInfo };
-        _ = process.Start();
-        process.WaitForExit();
-
-        HasRunFlag.Remove();
     }
 }

@@ -14,11 +14,12 @@ namespace DevProxy.ApiControllers;
 [ApiController]
 [Route("[controller]")]
 #pragma warning disable CA1515 // required for the API controller
-public sealed class ProxyController(IProxyStateController proxyStateController, IProxyConfiguration proxyConfiguration) : ControllerBase
+public sealed class ProxyController(IProxyStateController proxyStateController, IProxyConfiguration proxyConfiguration, ILoggerFactory loggerFactory) : ControllerBase
 #pragma warning restore CA1515
 {
     private readonly IProxyStateController _proxyStateController = proxyStateController;
     private readonly IProxyConfiguration _proxyConfiguration = proxyConfiguration;
+    private readonly ILoggerFactory _loggerFactory = loggerFactory;
 
     [HttpGet]
     public ProxyInfo Get() => ProxyInfo.From(_proxyStateController.ProxyState, _proxyConfiguration);
@@ -113,6 +114,9 @@ public sealed class ProxyController(IProxyStateController proxyStateController, 
             ModelState.AddModelError("format", "Invalid format. Supported format is 'crt'.");
             return ValidationProblem(ModelState);
         }
+
+        // Ensure ProxyServer is initialized with LoggerFactory for Unobtanium logging
+        ProxyEngine.EnsureProxyServerInitialized(_loggerFactory);
 
         var certificate = ProxyEngine.ProxyServer.CertificateManager.RootCertificate;
         if (certificate == null)
