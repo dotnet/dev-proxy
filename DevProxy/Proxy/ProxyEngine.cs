@@ -79,7 +79,11 @@ sealed class ProxyEngine(
                 return;
             }
 
-            ProxyServer = new(loggerFactory: loggerFactory);
+            // On macOS/Linux, don't let Unobtanium try to install the cert
+            // in the Root store via .NET's X509Store API — it requires admin
+            // privileges and fails with "Access is denied".
+            // On macOS, Dev Proxy handles trust via MacCertificateHelper instead.
+            ProxyServer = new(userTrustRootCertificate: RunTime.IsWindows, loggerFactory: loggerFactory);
             ProxyServer.CertificateManager.PfxFilePath = Environment.GetEnvironmentVariable("DEV_PROXY_CERT_PATH") ?? string.Empty;
             ProxyServer.CertificateManager.RootCertificateName = "Dev Proxy CA";
             ProxyServer.CertificateManager.CertificateStorage = new CertificateDiskCache();
@@ -217,18 +221,25 @@ sealed class ProxyEngine(
             return;
         }
 
-        var bashScriptPath = Path.Join(ProxyUtils.AppFolder, "trust-cert.sh");
-        ProcessStartInfo startInfo = new()
-        {
-            FileName = "/bin/bash",
-            Arguments = bashScriptPath,
-            UseShellExecute = true,
-            CreateNoWindow = false
-        };
+        Console.WriteLine();
+        Console.WriteLine("Dev Proxy uses a self-signed certificate to intercept and inspect HTTPS traffic.");
+        Console.Write("Update the certificate in your Keychain so that it's trusted by your browser? (Y/n): ");
+        var answer = Console.ReadLine()?.Trim();
 
-        using var process = new Process() { StartInfo = startInfo };
-        _ = process.Start();
-        process.WaitForExit();
+        if (string.Equals(answer, "n", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning("Trust the certificate in your Keychain manually to avoid errors.");
+            return;
+        }
+
+        var certificate = ProxyServer.CertificateManager.RootCertificate;
+        if (certificate is null)
+        {
+            _logger.LogError("Root certificate not found. Cannot trust certificate.");
+            return;
+        }
+
+        MacCertificateHelper.TrustCertificate(certificate, _logger);
     }
 
     private async Task ReadKeysAsync(CancellationToken cancellationToken)
