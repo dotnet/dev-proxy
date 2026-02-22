@@ -20,24 +20,35 @@ static class ConfigurationManagerExtensions
             // config file specified by the user takes precedence
             // null if not specified
             options.ConfigFile,
-            // current directory
+            // current directory - JSON/JSONC files
             "devproxyrc.jsonc",
             "devproxyrc.json",
+            // current directory - YAML files
+            "devproxyrc.yaml",
+            "devproxyrc.yml",
+            // .devproxy subdirectory - JSON/JSONC files
             Path.Combine(".devproxy", "devproxyrc.jsonc"),
             Path.Combine(".devproxy", "devproxyrc.json"),
+            // .devproxy subdirectory - YAML files
+            Path.Combine(".devproxy", "devproxyrc.yaml"),
+            Path.Combine(".devproxy", "devproxyrc.yml"),
+            // app folder - JSON/JSONC files
             Path.Combine(ProxyUtils.AppFolder ?? "", "devproxyrc.jsonc"),
-            Path.Combine(ProxyUtils.AppFolder ?? "", "devproxyrc.json")
+            Path.Combine(ProxyUtils.AppFolder ?? "", "devproxyrc.json"),
+            // app folder - YAML files
+            Path.Combine(ProxyUtils.AppFolder ?? "", "devproxyrc.yaml"),
+            Path.Combine(ProxyUtils.AppFolder ?? "", "devproxyrc.yml")
         ];
 
         foreach (var configFile in configFiles)
         {
             if (!string.IsNullOrEmpty(configFile) && File.Exists(configFile))
             {
-                _ = configuration.AddJsonFile(configFile, optional: false, reloadOnChange: true);
+                _ = configuration.AddConfigFile(configFile, optional: false, reloadOnChange: true);
                 return configuration;
             }
         }
 
-        throw new InvalidOperationException("No configuration file found. Please create a devproxyrc.json file in the current directory.");
+        throw new InvalidOperationException("No configuration file found. Please create a devproxyrc.json or devproxyrc.yaml file in the current directory.");
     }
 }

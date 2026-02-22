@@ -120,11 +120,27 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
         {
             using var stream = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             using var reader = new StreamReader(stream);
-            var responsesString = await reader.ReadToEndAsync(cancellationToken);
+            var fileContents = await reader.ReadToEndAsync(cancellationToken);
 
-            if (!_validateSchemas || await ValidateFileContentsAsync(responsesString, cancellationToken))
+            // Convert YAML to JSON if needed
+            string jsonContents;
+            if (ProxyYaml.IsYamlFile(FilePath))
             {
-                LoadData(responsesString);
+                if (!ProxyYaml.TryConvertYamlToJson(fileContents, out var converted, out var error))
+                {
+                    Logger.LogError("Failed to parse YAML file {File}: {Error}", FilePath, error);
+                    return;
+                }
+                jsonContents = converted!;
+            }
+            else
+            {
+                jsonContents = fileContents;
+            }
+
+            if (!_validateSchemas || await ValidateFileContentsAsync(jsonContents, cancellationToken))
+            {
+                LoadData(jsonContents);
             }
         }
         catch (Exception ex)
