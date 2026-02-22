@@ -268,7 +268,7 @@ public class MockStdioResponsePlugin(
 
             // Check if stdin matches the body regex
             if (hasBodyRegex &&
-                !Regex.IsMatch(stdinBody, mockResponse.Request.BodyRegex!, RegexOptions.IgnoreCase))
+                !Regex.IsMatch(stdinBody, mockResponse.Request.BodyRegex!, RegexOptions.IgnoreCase, TimeSpan.FromSeconds(5)))
             {
                 return false;
             }
