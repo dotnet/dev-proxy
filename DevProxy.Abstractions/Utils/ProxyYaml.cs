@@ -192,6 +192,13 @@ public static class ProxyYaml
             return null;
         }
 
+        // Only apply type inference to plain (unquoted) scalars.
+        // Quoted scalars are always strings.
+        if (scalarNode.Style != ScalarStyle.Plain)
+        {
+            return value;
+        }
+
         // Check for null values (YAML 1.1 and 1.2 spec)
         if (IsNullValue(value))
         {

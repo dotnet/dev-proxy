@@ -70,7 +70,7 @@ public sealed class YamlConfigurationProvider : FileConfigurationProvider
                 FlattenSequenceNode(sequenceNode, prefix);
                 break;
             case YamlScalarNode scalarNode:
-                Data[prefix] = scalarNode.Value;
+                Data[prefix] = NormalizeScalar(scalarNode);
                 break;
         }
     }
@@ -145,6 +145,29 @@ public sealed class YamlConfigurationProvider : FileConfigurationProvider
         return node is YamlScalarNode scalarNode ? scalarNode.Value : null;
     }
 
+    private static string? NormalizeScalar(YamlScalarNode scalarNode)
+    {
+        var value = scalarNode.Value;
+        if (value is null)
+        {
+            return null;
+        }
+
+        // Only normalize plain (unquoted) scalars
+        if (scalarNode.Style != YamlDotNet.Core.ScalarStyle.Plain)
+        {
+            return value;
+        }
+
+        return value.ToLowerInvariant() switch
+        {
+            "y" or "yes" or "true" or "on" => "true",
+            "n" or "no" or "false" or "off" => "false",
+            "~" or "null" or "" => null,
+            _ => value
+        };
+    }
+
     private void CollectMergedValues(YamlMappingNode mappingNode, string prefix, Dictionary<string, string?> values)
     {
         foreach (var entry in mappingNode.Children)
@@ -155,9 +178,24 @@ public sealed class YamlConfigurationProvider : FileConfigurationProvider
                 continue;
             }
 
-            // Skip nested merge keys in merged content
+            // Handle nested merge keys recursively
             if (key == "<<")
             {
+                switch (entry.Value)
+                {
+                    case YamlMappingNode mergeMapping:
+                        CollectMergedValues(mergeMapping, prefix, values);
+                        break;
+                    case YamlSequenceNode mergeSequence:
+                        foreach (var child in mergeSequence.Children)
+                        {
+                            if (child is YamlMappingNode childMapping)
+                            {
+                                CollectMergedValues(childMapping, prefix, values);
+                            }
+                        }
+                        break;
+                }
                 continue;
             }
 
