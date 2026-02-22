@@ -73,7 +73,7 @@ public sealed class LanguageModelFailurePlugin(
             return;
         }
 
-        if (!TryGetOpenAIRequest(request.BodyString, out var openAiRequest))
+        if (!OpenAIRequest.TryGetCompletionLikeRequest(request.BodyString, Logger, out var openAiRequest))
         {
             Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new LoggingContext(e.Session));
             return;
@@ -116,6 +116,36 @@ public sealed class LanguageModelFailurePlugin(
             Logger.LogRequest($"Simulating fault {faultName}", MessageType.Chaos, new LoggingContext(e.Session));
             e.Session.SetRequestBodyString(JsonSerializer.Serialize(newRequest, ProxyUtils.JsonSerializerOptions));
         }
+        else if (openAiRequest is OpenAIResponsesRequest responsesRequest)
+        {
+            var inputItems = new List<OpenAIResponsesInputItem>(responsesRequest.Input ?? [])
+            {
+                new()
+                {
+                    Role = "user",
+                    Content = faultPrompt
+                }
+            };
+            var newRequest = new OpenAIResponsesRequest
+            {
+                Model = responsesRequest.Model,
+                Stream = responsesRequest.Stream,
+                Temperature = responsesRequest.Temperature,
+                TopP = responsesRequest.TopP,
+                FrequencyPenalty = responsesRequest.FrequencyPenalty,
+                MaxTokens = responsesRequest.MaxTokens,
+                PresencePenalty = responsesRequest.PresencePenalty,
+                Stop = responsesRequest.Stop,
+                Instructions = responsesRequest.Instructions,
+                PreviousResponseId = responsesRequest.PreviousResponseId,
+                MaxOutputTokens = responsesRequest.MaxOutputTokens,
+                Input = inputItems
+            };
+
+            Logger.LogDebug("Added fault prompt to Responses API input: {Prompt}", faultPrompt);
+            Logger.LogRequest($"Simulating fault {faultName}", MessageType.Chaos, new LoggingContext(e.Session));
+            e.Session.SetRequestBodyString(JsonSerializer.Serialize(newRequest, ProxyUtils.JsonSerializerOptions));
+        }
         else
         {
             Logger.LogDebug("Unknown OpenAI request type. Passing request as-is.");
@@ -124,45 +154,6 @@ public sealed class LanguageModelFailurePlugin(
         await Task.CompletedTask;
 
         Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
-    }
-
-    private bool TryGetOpenAIRequest(string content, out OpenAIRequest? request)
-    {
-        request = null;
-
-        if (string.IsNullOrEmpty(content))
-        {
-            return false;
-        }
-
-        try
-        {
-            Logger.LogDebug("Checking if the request is an OpenAI request...");
-
-            var rawRequest = JsonSerializer.Deserialize<JsonElement>(content, ProxyUtils.JsonSerializerOptions);
-
-            if (rawRequest.TryGetProperty("prompt", out _))
-            {
-                Logger.LogDebug("Request is a completion request");
-                request = JsonSerializer.Deserialize<OpenAICompletionRequest>(content, ProxyUtils.JsonSerializerOptions);
-                return true;
-            }
-
-            if (rawRequest.TryGetProperty("messages", out _))
-            {
-                Logger.LogDebug("Request is a chat completion request");
-                request = JsonSerializer.Deserialize<OpenAIChatCompletionRequest>(content, ProxyUtils.JsonSerializerOptions);
-                return true;
-            }
-
-            Logger.LogDebug("Request is not an OpenAI request.");
-            return false;
-        }
-        catch (JsonException ex)
-        {
-            Logger.LogDebug(ex, "Failed to deserialize OpenAI request.");
-            return false;
-        }
     }
 
     private (string? Name, string? Prompt) GetFault()

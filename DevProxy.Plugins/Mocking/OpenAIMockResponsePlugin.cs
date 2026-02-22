@@ -18,6 +18,8 @@ public sealed class OpenAIMockResponsePlugin(
     ISet<UrlToWatch> urlsToWatch,
     ILanguageModelClient languageModelClient) : BasePlugin(logger, urlsToWatch)
 {
+    private const string ResponsesMessageIdPrefix = "msg_";
+
     public override string Name => nameof(OpenAIMockResponsePlugin);
 
     public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
@@ -58,7 +60,7 @@ public sealed class OpenAIMockResponsePlugin(
             return;
         }
 
-        if (!TryGetOpenAIRequest(request.BodyString, out var openAiRequest))
+        if (!OpenAIRequest.TryGetCompletionLikeRequest(request.BodyString, Logger, out var openAiRequest))
         {
             Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new LoggingContext(e.Session));
             return;
@@ -95,6 +97,25 @@ public sealed class OpenAIMockResponsePlugin(
             var openAiResponse = lmResponse.ConvertToOpenAIResponse();
             SendMockResponse<OpenAIChatCompletionResponse>(openAiResponse, lmResponse.RequestUrl ?? string.Empty, e);
         }
+        else if (openAiRequest is OpenAIResponsesRequest responsesRequest)
+        {
+            // Convert Responses API input to chat completion messages
+            var messages = ConvertResponsesInputToChatMessages(responsesRequest);
+            if ((await languageModelClient
+                .GenerateChatCompletionAsync(messages, null, cancellationToken)) is not ILanguageModelCompletionResponse lmResponse)
+            {
+                return;
+            }
+            if (lmResponse.ErrorMessage is not null)
+            {
+                Logger.LogError("Error from local language model: {Error}", lmResponse.ErrorMessage);
+                return;
+            }
+
+            // Convert the chat completion response to Responses API format
+            var responsesResponse = ConvertToResponsesResponse(lmResponse.ConvertToOpenAIResponse());
+            SendMockResponse<OpenAIResponsesResponse>(responsesResponse, lmResponse.RequestUrl ?? string.Empty, e);
+        }
         else
         {
             Logger.LogError("Unknown OpenAI request type.");
@@ -103,43 +124,50 @@ public sealed class OpenAIMockResponsePlugin(
         Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
     }
 
-    private bool TryGetOpenAIRequest(string content, out OpenAIRequest? request)
+    private static IEnumerable<OpenAIChatCompletionMessage> ConvertResponsesInputToChatMessages(OpenAIResponsesRequest responsesRequest)
     {
-        request = null;
-
-        if (string.IsNullOrEmpty(content))
+        if (responsesRequest.Input is null)
         {
-            return false;
+            return [];
         }
 
-        try
+        return responsesRequest.Input.Select(item => new OpenAIChatCompletionMessage
         {
-            Logger.LogDebug("Checking if the request is an OpenAI request...");
+            Role = item.Role,
+            Content = item.Content
+        });
+    }
 
-            var rawRequest = JsonSerializer.Deserialize<JsonElement>(content, ProxyUtils.JsonSerializerOptions);
-
-            if (rawRequest.TryGetProperty("prompt", out _))
-            {
-                Logger.LogDebug("Request is a completion request");
-                request = JsonSerializer.Deserialize<OpenAICompletionRequest>(content, ProxyUtils.JsonSerializerOptions);
-                return true;
-            }
-
-            if (rawRequest.TryGetProperty("messages", out _))
-            {
-                Logger.LogDebug("Request is a chat completion request");
-                request = JsonSerializer.Deserialize<OpenAIChatCompletionRequest>(content, ProxyUtils.JsonSerializerOptions);
-                return true;
-            }
-
-            Logger.LogDebug("Request is not an OpenAI request.");
-            return false;
-        }
-        catch (JsonException ex)
+    private static OpenAIResponsesResponse ConvertToResponsesResponse(OpenAIResponse chatResponse)
+    {
+        return new OpenAIResponsesResponse
         {
-            Logger.LogDebug(ex, "Failed to deserialize OpenAI request.");
-            return false;
-        }
+            Id = chatResponse.Id,
+            Model = chatResponse.Model,
+            Object = "response",
+            Created = chatResponse.Created,
+            CreatedAt = chatResponse.Created,
+            Status = "completed",
+            Usage = chatResponse.Usage,
+            Output =
+            [
+                new OpenAIResponsesOutputItem
+                {
+                    Type = "message",
+                    Id = $"{ResponsesMessageIdPrefix}{Guid.NewGuid():N}",
+                    Role = "assistant",
+                    Status = "completed",
+                    Content =
+                    [
+                        new OpenAIResponsesOutputContent
+                        {
+                            Type = "output_text",
+                            Text = chatResponse.Response
+                        }
+                    ]
+                }
+            ]
+        };
     }
 
     private void SendMockResponse<TResponse>(OpenAIResponse response, string localLmUrl, ProxyRequestArgs e) where TResponse : OpenAIResponse
