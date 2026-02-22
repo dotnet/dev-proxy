@@ -34,10 +34,18 @@ public class MockStdioResponse : ICloneable
 public class MockStdioRequest
 {
     /// <summary>
-    /// A fragment of the stdin body to match.
-    /// If null or empty, the mock matches any stdin (or is applied immediately on startup).
+    /// A fragment of the stdin body to match (case-insensitive contains).
+    /// If null or empty and <see cref="BodyRegex"/> is also null or empty,
+    /// the mock matches any stdin (or is applied immediately on startup).
     /// </summary>
     public string? BodyFragment { get; set; }
+
+    /// <summary>
+    /// A regular expression pattern to match against the stdin body.
+    /// If null or empty and <see cref="BodyFragment"/> is also null or empty,
+    /// the mock matches any stdin (or is applied immediately on startup).
+    /// </summary>
+    public string? BodyRegex { get; set; }
 
     /// <summary>
     /// The Nth occurrence to match. If null, matches every occurrence.

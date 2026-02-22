@@ -20,7 +20,11 @@
             "properties": {
               "bodyFragment": {
                 "type": "string",
-                "description": "(Optional) A fragment of the stdin body to match. If null or empty, the mock matches any stdin or is applied immediately on startup."
+                "description": "(Optional) A fragment of the stdin body to match (case-insensitive contains). If neither bodyFragment nor bodyRegex is specified, the mock matches any stdin or is applied immediately on startup."
+              },
+              "bodyRegex": {
+                "type": "string",
+                "description": "(Optional) A regular expression pattern to match against the stdin body (case-insensitive). If neither bodyFragment nor bodyRegex is specified, the mock matches any stdin or is applied immediately on startup."
               },
               "nth": {
                 "type": "integer",

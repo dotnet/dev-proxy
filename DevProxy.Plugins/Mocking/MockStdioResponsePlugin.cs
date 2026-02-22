@@ -202,7 +202,8 @@ public class MockStdioResponsePlugin(
 
         // Find mocks without stdin patterns (startup mocks)
         var startupMocks = Configuration.Mocks
-            .Where(m => string.IsNullOrEmpty(m.Request?.BodyFragment))
+            .Where(m => string.IsNullOrEmpty(m.Request?.BodyFragment) &&
+                        string.IsNullOrEmpty(m.Request?.BodyRegex))
             .ToList();
 
         foreach (var mock in startupMocks)
@@ -249,14 +250,25 @@ public class MockStdioResponsePlugin(
                 return false;
             }
 
-            if (string.IsNullOrEmpty(mockResponse.Request.BodyFragment))
+            var hasBodyFragment = !string.IsNullOrEmpty(mockResponse.Request.BodyFragment);
+            var hasBodyRegex = !string.IsNullOrEmpty(mockResponse.Request.BodyRegex);
+
+            if (!hasBodyFragment && !hasBodyRegex)
             {
-                // No body fragment means startup mock, handled separately
+                // No body fragment or regex means startup mock, handled separately
                 return false;
             }
 
             // Check if stdin contains the body fragment
-            if (!stdinBody.Contains(mockResponse.Request.BodyFragment, StringComparison.OrdinalIgnoreCase))
+            if (hasBodyFragment &&
+                !stdinBody.Contains(mockResponse.Request.BodyFragment!, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            // Check if stdin matches the body regex
+            if (hasBodyRegex &&
+                !Regex.IsMatch(stdinBody, mockResponse.Request.BodyRegex!, RegexOptions.IgnoreCase))
             {
                 return false;
             }
@@ -267,7 +279,7 @@ public class MockStdioResponsePlugin(
 
         if (mockResponse?.Request is not null)
         {
-            var mockKey = mockResponse.Request.BodyFragment ?? "default";
+            var mockKey = GetMockKey(mockResponse);
             _ = _appliedMocks.AddOrUpdate(mockKey, 1, (_, value) => ++value);
         }
 
@@ -282,11 +294,24 @@ public class MockStdioResponsePlugin(
             return true;
         }
 
-        var mockKey = mockResponse.Request.BodyFragment ?? "default";
+        var mockKey = GetMockKey(mockResponse);
         _ = _appliedMocks.TryGetValue(mockKey, out var nth);
         nth++;
 
         return mockResponse.Request.Nth == nth;
+    }
+
+    private static string GetMockKey(MockStdioResponse mockResponse)
+    {
+        var fragment = mockResponse.Request?.BodyFragment;
+        var regex = mockResponse.Request?.BodyRegex;
+
+        if (!string.IsNullOrEmpty(fragment) && !string.IsNullOrEmpty(regex))
+        {
+            return $"{fragment}|{regex}";
+        }
+
+        return fragment ?? regex ?? "default";
     }
 
     private void ProcessMockResponse(StdioRequestArgs e, MockStdioResponse matchingResponse)
