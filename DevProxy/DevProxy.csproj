@@ -72,9 +72,6 @@
     <None Update="toggle-proxy.sh">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="trust-cert.sh">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
     <None Update="config\m365.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
