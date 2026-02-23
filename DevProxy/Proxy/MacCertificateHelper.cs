@@ -97,6 +97,10 @@ internal static class MacCertificateHelper
         {
             logger.LogError("Failed to {Action} certificate: {Error}", action, stderr);
         }
+        else
+        {
+            logger.LogInformation("Successfully completed {Action} certificate operation.", action);
+        }
     }
 
     private static void CleanupFile(string filePath)
