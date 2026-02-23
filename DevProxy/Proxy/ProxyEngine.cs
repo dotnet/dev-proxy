@@ -240,6 +240,7 @@ sealed class ProxyEngine(
         }
 
         MacCertificateHelper.TrustCertificate(certificate, _logger);
+        _logger.LogInformation("Certificate trusted successfully.");
     }
 
     private async Task ReadKeysAsync(CancellationToken cancellationToken)
