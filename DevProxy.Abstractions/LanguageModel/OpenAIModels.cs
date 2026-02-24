@@ -60,6 +60,15 @@ public class OpenAIRequest
                 return true;
             }
 
+            // Responses API request - has "input" array with objects containing role/content
+            // Must be checked before embedding request because both have "input"
+            if (IsResponsesApiRequest(rawRequest))
+            {
+                logger.LogDebug("Request is a Responses API request");
+                request = JsonSerializer.Deserialize<OpenAIResponsesRequest>(content, ProxyUtils.JsonSerializerOptions);
+                return true;
+            }
+
             // Embedding request
             if (rawRequest.TryGetProperty("input", out _) &&
                 rawRequest.TryGetProperty("model", out _) &&
@@ -111,6 +120,73 @@ public class OpenAIRequest
             logger.LogDebug(ex, "Failed to deserialize OpenAI request.");
             return false;
         }
+    }
+
+    /// <summary>
+    /// Tries to parse text generation OpenAI requests (completion, chat completion, and responses API).
+    /// Used by plugins that only need to handle text-based generation requests, as opposed to
+    /// embeddings, audio, images, or fine-tuning requests.
+    /// </summary>
+    public static bool TryGetCompletionLikeRequest(string content, ILogger logger, out OpenAIRequest? request)
+    {
+        logger.LogTrace("{Method} called", nameof(TryGetCompletionLikeRequest));
+
+        request = null;
+
+        if (string.IsNullOrEmpty(content))
+        {
+            logger.LogDebug("Request content is empty or null");
+            return false;
+        }
+
+        try
+        {
+            logger.LogDebug("Checking if the request is a completion-like OpenAI request...");
+
+            var rawRequest = JsonSerializer.Deserialize<JsonElement>(content, ProxyUtils.JsonSerializerOptions);
+
+            // Completion request
+            if (rawRequest.TryGetProperty("prompt", out _))
+            {
+                logger.LogDebug("Request is a completion request");
+                request = JsonSerializer.Deserialize<OpenAICompletionRequest>(content, ProxyUtils.JsonSerializerOptions);
+                return true;
+            }
+
+            // Chat completion request
+            if (rawRequest.TryGetProperty("messages", out _))
+            {
+                logger.LogDebug("Request is a chat completion request");
+                request = JsonSerializer.Deserialize<OpenAIChatCompletionRequest>(content, ProxyUtils.JsonSerializerOptions);
+                return true;
+            }
+
+            // Responses API request - has "input" array with objects containing role/content
+            if (IsResponsesApiRequest(rawRequest))
+            {
+                logger.LogDebug("Request is a Responses API request");
+                request = JsonSerializer.Deserialize<OpenAIResponsesRequest>(content, ProxyUtils.JsonSerializerOptions);
+                return true;
+            }
+
+            logger.LogDebug("Request is not a completion-like OpenAI request.");
+            return false;
+        }
+        catch (JsonException ex)
+        {
+            logger.LogDebug(ex, "Failed to deserialize OpenAI request.");
+            return false;
+        }
+    }
+
+    private static bool IsResponsesApiRequest(JsonElement rawRequest)
+    {
+        return rawRequest.TryGetProperty("input", out var inputProperty) &&
+            inputProperty.ValueKind == JsonValueKind.Array &&
+            inputProperty.GetArrayLength() > 0 &&
+            inputProperty.EnumerateArray().First().ValueKind == JsonValueKind.Object &&
+            (inputProperty.EnumerateArray().First().TryGetProperty("role", out _) ||
+             inputProperty.EnumerateArray().First().TryGetProperty("type", out _));
     }
 }
 
@@ -178,6 +254,23 @@ public class OpenAIResponseUsage
     public PromptTokenDetails? PromptTokensDetails { get; set; }
     [JsonPropertyName("total_tokens")]
     public long TotalTokens { get; set; }
+
+    // Responses API uses different property names (input_tokens, output_tokens)
+    // These property aliases allow the same class to deserialize both formats.
+    // When JSON contains "input_tokens", it maps to PromptTokens.
+    // When JSON contains "output_tokens", it maps to CompletionTokens.
+    [JsonPropertyName("input_tokens")]
+    public long InputTokens
+    {
+        get => PromptTokens;
+        set => PromptTokens = value;
+    }
+    [JsonPropertyName("output_tokens")]
+    public long OutputTokens
+    {
+        get => CompletionTokens;
+        set => CompletionTokens = value;
+    }
 }
 
 public class PromptTokenDetails
@@ -409,3 +502,71 @@ public class OpenAIImageData
     [JsonPropertyName("revised_prompt")]
     public string? RevisedPrompt { get; set; }
 }
+
+#region Responses API
+
+public class OpenAIResponsesRequest : OpenAIRequest
+{
+    public IEnumerable<OpenAIResponsesInputItem>? Input { get; set; }
+    public string? Instructions { get; set; }
+    [JsonPropertyName("previous_response_id")]
+    public string? PreviousResponseId { get; set; }
+    [JsonPropertyName("max_output_tokens")]
+    public long? MaxOutputTokens { get; set; }
+}
+
+public class OpenAIResponsesInputItem
+{
+    public string Role { get; set; } = string.Empty;
+    [JsonConverter(typeof(OpenAIContentPartJsonConverter))]
+    public object Content { get; set; } = string.Empty;
+    public string? Type { get; set; }
+}
+
+public class OpenAIResponsesResponse : OpenAIResponse
+{
+    [JsonPropertyName("created_at")]
+    public long CreatedAt { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public IEnumerable<OpenAIResponsesOutputItem>? Output { get; set; }
+    [JsonPropertyName("previous_response_id")]
+    public string? PreviousResponseId { get; set; }
+
+    public override string? Response => GetTextFromOutput();
+
+    private string? GetTextFromOutput()
+    {
+        if (Output is null)
+        {
+            return null;
+        }
+
+        var messageOutput = Output.FirstOrDefault(o =>
+            string.Equals(o.Type, "message", StringComparison.OrdinalIgnoreCase));
+        if (messageOutput?.Content is null)
+        {
+            return null;
+        }
+
+        var textContent = messageOutput.Content.FirstOrDefault(c =>
+            string.Equals(c.Type, "output_text", StringComparison.OrdinalIgnoreCase));
+        return textContent?.Text;
+    }
+}
+
+public class OpenAIResponsesOutputItem
+{
+    public string? Type { get; set; }
+    public string? Id { get; set; }
+    public string? Role { get; set; }
+    public IEnumerable<OpenAIResponsesOutputContent>? Content { get; set; }
+    public string? Status { get; set; }
+}
+
+public class OpenAIResponsesOutputContent
+{
+    public string? Type { get; set; }
+    public string? Text { get; set; }
+}
+
+#endregion
