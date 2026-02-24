@@ -1,3 +1,4 @@
+using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using System.CommandLine;
 using System.CommandLine.Parsing;
@@ -20,6 +21,7 @@ sealed class DevProxyConfigOptions : RootCommand
     public int? ApiPort => _parseResult?.GetValueOrDefault<int?>(DevProxyCommand.ApiPortOptionName);
     public bool Discover => _parseResult?.GetValueOrDefault<bool?>(DevProxyCommand.DiscoverOptionName) ?? false;
     public string? IPAddress => _parseResult?.GetValueOrDefault<string?>(DevProxyCommand.IpAddressOptionName);
+    public LogFor? LogFor => _parseResult?.GetValueOrDefault<LogFor?>(DevProxyCommand.LogForOptionName);
     public LogLevel? LogLevel => _parseResult?.GetValueOrDefault<LogLevel?>(DevProxyCommand.LogLevelOptionName);
 
     public List<string>? UrlsToWatch
@@ -114,6 +116,25 @@ sealed class DevProxyConfigOptions : RootCommand
                 }
             }
         };
+
+        var logForOption = new Option<LogFor?>(DevProxyCommand.LogForOptionName)
+        {
+            CustomParser = result =>
+            {
+                if (!result.Tokens.Any())
+                {
+                    return null;
+                }
+
+                if (Enum.TryParse<LogFor>(result.Tokens[0].Value, true, out var logFor))
+                {
+                    return logFor;
+                }
+
+                return null;
+            }
+        };
+
         var apiPortOption = new Option<int?>(DevProxyCommand.ApiPortOptionName);
 
         var discoverOption = new Option<bool>(DevProxyCommand.DiscoverOptionName, "--discover")
@@ -127,6 +148,7 @@ sealed class DevProxyConfigOptions : RootCommand
             ipAddressOption,
             configFileOption,
             urlsToWatchOption,
+            logForOption,
             logLevelOption,
             discoverOption
         };

@@ -34,6 +34,8 @@ sealed class ProxyConfiguration : IProxyConfiguration
     public string? IPAddress { get; set; } = "127.0.0.1";
     public bool InstallCert { get; set; } = true;
     [JsonConverter(typeof(JsonStringEnumConverter))]
+    public LogFor LogFor { get; set; } = LogFor.Human;
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public LogLevel LogLevel { get; set; } = LogLevel.Information;
     public bool NoFirstRun { get; set; }
     [JsonConverter(typeof(JsonStringEnumConverter))]
