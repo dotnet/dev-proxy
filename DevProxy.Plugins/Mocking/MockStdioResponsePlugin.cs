@@ -271,12 +271,12 @@ public class MockStdioResponsePlugin(
                 }
                 catch (RegexMatchTimeoutException ex)
                 {
-                    _logger.LogError(ex, "Regex match timed out for body regex pattern '{Pattern}'. Treating as non-matching mock.", mockResponse.Request.BodyRegex);
+                    Logger.LogError(ex, "Regex match timed out for body regex pattern '{Pattern}'. Treating as non-matching mock.", mockResponse.Request.BodyRegex);
                     return false;
                 }
                 catch (ArgumentException ex)
                 {
-                    _logger.LogError(ex, "Invalid body regex pattern '{Pattern}'. Treating as non-matching mock.", mockResponse.Request.BodyRegex);
+                    Logger.LogError(ex, "Invalid body regex pattern '{Pattern}'. Treating as non-matching mock.", mockResponse.Request.BodyRegex);
                     return false;
                 }
             }
