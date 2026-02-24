@@ -10,10 +10,10 @@
     "type": {
       "type": "string",
       "enum": [
-        "Delegated",
-        "Application"
+        "delegated",
+        "application"
       ],
-      "description": "Determines which type of permission scopes to return. Can be 'Delegated' or 'Application'. Default: 'Delegated'."
+      "description": "Determines which type of permission scopes to return. Can be 'delegated' or 'application'. Default: 'delegated'."
     }
   },
   "additionalProperties": false
