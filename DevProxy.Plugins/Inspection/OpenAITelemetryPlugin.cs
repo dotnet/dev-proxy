@@ -368,6 +368,9 @@ public sealed class OpenAITelemetryPlugin(
                 case OpenAIFineTuneRequest:
                     AddFineTuneResponseTags(activity, openAiRequest, responseBody);
                     break;
+                case OpenAIResponsesRequest:
+                    AddResponsesResponseTags(activity, openAiRequest, responseBody);
+                    break;
                 default:
                     throw new InvalidOperationException($"Unsupported OpenAI request type: {openAiRequest.GetType().Name}");
             }
@@ -400,6 +403,33 @@ public sealed class OpenAITelemetryPlugin(
         }
 
         Logger.LogTrace("AddFineTuneResponseTags() finished");
+    }
+
+    private void AddResponsesResponseTags(Activity activity, OpenAIRequest openAIRequest, string responseBody)
+    {
+        Logger.LogTrace("AddResponsesResponseTags() called");
+
+        var responsesResponse = JsonSerializer.Deserialize<OpenAIResponsesResponse>(responseBody, ProxyUtils.JsonSerializerOptions);
+        if (responsesResponse is null)
+        {
+            return;
+        }
+
+        RecordUsageMetrics(activity, openAIRequest, responsesResponse);
+
+        _ = activity.SetTag(SemanticConvention.GEN_AI_RESPONSE_ID, responsesResponse.Id);
+
+        if (!string.IsNullOrEmpty(responsesResponse.Status))
+        {
+            _ = activity.SetTag("ai.response.status", responsesResponse.Status);
+        }
+
+        if (Configuration.IncludeCompletion && responsesResponse.Response is not null)
+        {
+            _ = activity.SetTag(SemanticConvention.GEN_AI_CONTENT_COMPLETION, responsesResponse.Response);
+        }
+
+        Logger.LogTrace("AddResponsesResponseTags() finished");
     }
 
     private void AddAudioResponseTags(Activity activity, OpenAIRequest openAIRequest, string responseBody)
@@ -561,6 +591,9 @@ public sealed class OpenAITelemetryPlugin(
                 break;
             case OpenAIFineTuneRequest fineTuneRequest:
                 AddFineTuneRequestTags(activity, fineTuneRequest);
+                break;
+            case OpenAIResponsesRequest responsesRequest:
+                AddResponsesRequestTags(activity, responsesRequest);
                 break;
             default:
                 throw new InvalidOperationException($"Unsupported OpenAI request type: {openAiRequest.GetType().Name}");
@@ -772,6 +805,43 @@ public sealed class OpenAITelemetryPlugin(
         }
 
         Logger.LogTrace("AddFineTuneRequestTags() finished");
+    }
+
+    private void AddResponsesRequestTags(Activity activity, OpenAIResponsesRequest responsesRequest)
+    {
+        Logger.LogTrace("AddResponsesRequestTags() called");
+
+        // OpenLIT
+        _ = activity.SetTag(SemanticConvention.GEN_AI_OPERATION, SemanticConvention.GEN_AI_OPERATION_TYPE_CHAT)
+        // OpenTelemetry
+            .SetTag(SemanticConvention.GEN_AI_OPERATION_NAME, "responses");
+
+        if (Configuration.IncludePrompt && responsesRequest.Input is not null)
+        {
+            // Format input items to a more readable form for the span
+            var formattedInputs = responsesRequest.Input
+                .Select(i => $"{i.Role}: {(i.Content is string s ? s : JsonSerializer.Serialize(i.Content, ProxyUtils.JsonSerializerOptions))}")
+                .ToArray();
+
+            _ = activity.SetTag(SemanticConvention.GEN_AI_CONTENT_PROMPT, string.Join("\n", formattedInputs));
+        }
+
+        if (!string.IsNullOrEmpty(responsesRequest.Instructions))
+        {
+            _ = activity.SetTag("ai.request.instructions", responsesRequest.Instructions);
+        }
+
+        if (!string.IsNullOrEmpty(responsesRequest.PreviousResponseId))
+        {
+            _ = activity.SetTag("ai.request.previous_response_id", responsesRequest.PreviousResponseId);
+        }
+
+        if (responsesRequest.MaxOutputTokens.HasValue)
+        {
+            _ = activity.SetTag(SemanticConvention.GEN_AI_REQUEST_MAX_TOKENS, responsesRequest.MaxOutputTokens.Value);
+        }
+
+        Logger.LogTrace("AddResponsesRequestTags() finished");
     }
 
     private void AddCommonRequestTags(Activity activity, OpenAIRequest openAiRequest)
@@ -1004,6 +1074,7 @@ public sealed class OpenAITelemetryPlugin(
             OpenAIAudioRequest => "audio.transcriptions",
             OpenAIAudioSpeechRequest => "audio.speech",
             OpenAIFineTuneRequest => "fine_tuning.jobs",
+            OpenAIResponsesRequest => "responses",
             _ => "unknown"
         };
     }
