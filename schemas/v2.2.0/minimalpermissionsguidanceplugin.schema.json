@@ -7,6 +7,10 @@
       "type": "string",
       "description": "The JSON schema reference for validation."
     },
+    "definitions": {
+      "type": "object",
+      "description": "Reusable definitions for YAML anchors. This property has no effect in JSON configs."
+    },
     "apiSpecsFolderPath": {
       "type": "string",
       "description": "Relative or absolute path to the folder with API specs. Used to compare JWT token permissions against minimal required scopes."
@@ -17,7 +21,12 @@
         "type": "string"
       },
       "description": "The scopes to ignore and not include in the report. Default: ['profile', 'openid', 'offline_access', 'email'].",
-      "default": ["profile", "openid", "offline_access", "email"]
+      "default": [
+        "profile",
+        "openid",
+        "offline_access",
+        "email"
+      ]
     },
     "schemeName": {
       "type": "string",

@@ -7,6 +7,10 @@
       "type": "string",
       "description": "The URL of the JSON schema used to validate this configuration file."
     },
+    "definitions": {
+      "type": "object",
+      "description": "Reusable definitions for YAML anchors. This property has no effect in JSON configs."
+    },
     "headerRetryAfter": {
       "type": "string",
       "description": "Name of the response header that communicates the retry-after period (e.g., 'Retry-After')."

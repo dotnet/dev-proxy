@@ -7,6 +7,10 @@
       "type": "string",
       "description": "The JSON schema reference for validation."
     },
+    "definitions": {
+      "type": "object",
+      "description": "Reusable definitions for YAML anchors. This property has no effect in JSON configs."
+    },
     "apiFile": {
       "type": "string",
       "description": "Path to the file that contains the definition of the CRUD API."

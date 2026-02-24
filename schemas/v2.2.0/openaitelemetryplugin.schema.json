@@ -8,6 +8,10 @@
       "type": "string",
       "description": "The JSON schema reference for validation."
     },
+    "definitions": {
+      "type": "object",
+      "description": "Reusable definitions for YAML anchors. This property has no effect in JSON configs."
+    },
     "application": {
       "type": "string",
       "description": "The name of the application using the OpenTelemetry plugin.",

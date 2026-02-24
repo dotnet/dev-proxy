@@ -3,11 +3,19 @@
   "title": "SharePoint CSOM Types and Permissions Schema",
   "description": "Schema for defining SharePoint CSOM types, return types, and their required permissions",
   "type": "object",
-  "required": ["types", "returnTypes", "actions"],
+  "required": [
+    "types",
+    "returnTypes",
+    "actions"
+  ],
   "properties": {
     "$schema": {
       "type": "string",
       "description": "Reference to the JSON schema definition."
+    },
+    "definitions": {
+      "type": "object",
+      "description": "Reusable definitions for YAML anchors. This property has no effect in JSON configs."
     },
     "types": {
       "type": "object",

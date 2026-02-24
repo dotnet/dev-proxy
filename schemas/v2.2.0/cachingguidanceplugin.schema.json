@@ -7,6 +7,10 @@
       "type": "string",
       "description": "The JSON schema reference for validation."
     },
+    "definitions": {
+      "type": "object",
+      "description": "Reusable definitions for YAML anchors. This property has no effect in JSON configs."
+    },
     "cacheThresholdSeconds": {
       "type": "integer",
       "description": "The number of seconds between the same request that triggers the guidance warning. Default is 5."

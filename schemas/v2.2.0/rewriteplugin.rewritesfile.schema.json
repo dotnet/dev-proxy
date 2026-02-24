@@ -8,6 +8,10 @@
       "type": "string",
       "description": "The URL of the JSON schema used to validate this rewrite rules file."
     },
+    "definitions": {
+      "type": "object",
+      "description": "Reusable definitions for YAML anchors. This property has no effect in JSON configs."
+    },
     "rewrites": {
       "type": "array",
       "description": "Array of rewrite rule objects that define the list of rewrite rules the RewritePlugin applies.",
@@ -24,7 +28,9 @@
                 "description": "Regular expression to match the incoming request URL."
               }
             },
-            "required": ["url"]
+            "required": [
+              "url"
+            ]
           },
           "out": {
             "type": "object",
@@ -36,10 +42,15 @@
                 "description": "URL to rewrite the request to. Can use capture groups from the 'in' pattern."
               }
             },
-            "required": ["url"]
+            "required": [
+              "url"
+            ]
           }
         },
-        "required": ["in", "out"]
+        "required": [
+          "in",
+          "out"
+        ]
       }
     }
   },

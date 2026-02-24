@@ -8,6 +8,10 @@
       "type": "string",
       "description": "The JSON schema reference for validation."
     },
+    "definitions": {
+      "type": "object",
+      "description": "Reusable definitions for YAML anchors. This property has no effect in JSON configs."
+    },
     "errors": {
       "type": "array",
       "description": "List of error response definitions to simulate. Each entry defines a request pattern and possible error responses.",
