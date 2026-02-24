@@ -262,8 +262,21 @@ public class MockStdioResponsePlugin(
             // Use bodyRegex if specified, otherwise use bodyFragment (either/or)
             if (hasBodyRegex)
             {
-                if (!Regex.IsMatch(stdinBody, mockResponse.Request.BodyRegex!, RegexOptions.IgnoreCase, TimeSpan.FromSeconds(5)))
+                try
                 {
+                    if (!Regex.IsMatch(stdinBody, mockResponse.Request.BodyRegex!, RegexOptions.IgnoreCase, TimeSpan.FromSeconds(5)))
+                    {
+                        return false;
+                    }
+                }
+                catch (RegexMatchTimeoutException ex)
+                {
+                    _logger.LogError(ex, "Regex match timed out for body regex pattern '{Pattern}'. Treating as non-matching mock.", mockResponse.Request.BodyRegex);
+                    return false;
+                }
+                catch (ArgumentException ex)
+                {
+                    _logger.LogError(ex, "Invalid body regex pattern '{Pattern}'. Treating as non-matching mock.", mockResponse.Request.BodyRegex);
                     return false;
                 }
             }
