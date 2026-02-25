@@ -33,6 +33,12 @@ sealed class OutdatedCommand : Command
             Description = "Return version only",
         };
         Add(outdatedShortOption);
+
+        HelpExamples.Add(this, [
+            "devproxy outdated                                   Check for updates (human output)",
+            "devproxy outdated --short                           Version number only",
+        ]);
+
         SetAction(async (parseResult) =>
         {
             var versionOnly = parseResult.GetValue(outdatedShortOption);

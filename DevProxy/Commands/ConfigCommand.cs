@@ -106,6 +106,13 @@ sealed class ConfigCommand : Command
             configNewCommand,
             configOpenCommand
         }.OrderByName());
+
+        HelpExamples.Add(this, [
+            "devproxy config new                                 Create default devproxyrc.json",
+            "devproxy config new myconfig.json                   Create named config file",
+            "devproxy config get <config-id>                     Download config from gallery",
+            "devproxy config open                                Open config in default editor",
+        ]);
     }
 
     private async Task DownloadConfigAsync(string configId)

@@ -41,6 +41,11 @@ sealed class CertCommand : Command
             certEnsureCommand,
             certRemoveCommand,
         }.OrderByName());
+
+        HelpExamples.Add(this, [
+            "devproxy cert ensure                                Install and trust certificate",
+            "devproxy cert remove --force                        Remove certificate (no prompt)",
+        ]);
     }
 
     private async Task EnsureCertAsync()
