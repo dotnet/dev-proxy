@@ -119,7 +119,7 @@ sealed class JwtCommand : Command
             "devproxy jwt create                                 Create token with defaults",
             "devproxy jwt create -n \"John Doe\" -r admin -r user  Token with name and roles",
             "devproxy jwt create -s \"read\" -s \"write\" -a myapp   Token with scopes and audience",
-            "devproxy jwt create --claims \"dept:eng\" --claims \"level:5\"  Custom claims",
+            "devproxy jwt create --claims \"dept:eng\"             Custom claims",
         ]);
 
         jwtCreateCommand.SetAction(parseResult =>
