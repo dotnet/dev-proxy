@@ -7,10 +7,6 @@
       "type": "string",
       "description": "Reference to the JSON schema definition."
     },
-    "definitions": {
-      "type": "object",
-      "description": "Reusable definitions for YAML anchors. This property has no effect in JSON configs."
-    },
     "minMs": {
       "type": "integer",
       "minimum": 0,

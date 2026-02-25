@@ -8,10 +8,6 @@
       "type": "string",
       "description": "The URL of the JSON schema used to validate this configuration file. Should match the Dev Proxy version."
     },
-    "definitions": {
-      "type": "object",
-      "description": "Reusable definitions for YAML anchors. This property has no effect in JSON configs."
-    },
     "apiPort": {
       "type": "number",
       "minimum": 0,

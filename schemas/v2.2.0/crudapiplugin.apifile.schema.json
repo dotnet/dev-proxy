@@ -8,10 +8,6 @@
       "type": "string",
       "description": "The JSON schema reference for validation."
     },
-    "definitions": {
-      "type": "object",
-      "description": "Reusable definitions for YAML anchors. This property has no effect in JSON configs."
-    },
     "baseUrl": {
       "type": "string",
       "description": "Base URL where Dev Proxy exposes the API. Dev Proxy prepends this base URL to the URLs defined in actions."
@@ -84,16 +80,12 @@
               },
               "scopes": {
                 "type": "array",
-                "items": {
-                  "type": "string"
-                },
+                "items": { "type": "string" },
                 "description": "Array of valid scopes. At least one must be present in the token."
               },
               "roles": {
                 "type": "array",
-                "items": {
-                  "type": "string"
-                },
+                "items": { "type": "string" },
                 "description": "Array of valid roles. At least one must be present in the token."
               },
               "validateLifetime": {
@@ -135,16 +127,12 @@
         },
         "scopes": {
           "type": "array",
-          "items": {
-            "type": "string"
-          },
+          "items": { "type": "string" },
           "description": "Array of valid scopes. At least one must be present in the token."
         },
         "roles": {
           "type": "array",
-          "items": {
-            "type": "string"
-          },
+          "items": { "type": "string" },
           "description": "Array of valid roles. At least one must be present in the token."
         },
         "validateLifetime": {
@@ -163,5 +151,5 @@
     "dataFile",
     "actions"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

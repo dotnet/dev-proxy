@@ -8,10 +8,6 @@
       "type": "string",
       "description": "The JSON schema reference for validation."
     },
-    "definitions": {
-      "type": "object",
-      "description": "Reusable definitions for YAML anchors. This property has no effect in JSON configs."
-    },
     "request": {
       "type": "object",
       "description": "The request to issue.",
@@ -70,5 +66,5 @@
   "required": [
     "request"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

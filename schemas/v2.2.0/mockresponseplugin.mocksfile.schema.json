@@ -8,10 +8,6 @@
       "type": "string",
       "description": "The JSON schema reference for validation."
     },
-    "definitions": {
-      "type": "object",
-      "description": "Reusable definitions for YAML anchors. This property has no effect in JSON configs."
-    },
     "mocks": {
       "type": "array",
       "description": "Array of mock definitions.",
@@ -104,5 +100,5 @@
   "required": [
     "mocks"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

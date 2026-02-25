@@ -8,10 +8,6 @@
       "type": "string",
       "description": "The URL of the JSON schema used to validate this custom response file."
     },
-    "definitions": {
-      "type": "object",
-      "description": "Reusable definitions for YAML anchors. This property has no effect in JSON configs."
-    },
     "body": {
       "type": [
         "object",
@@ -46,5 +42,5 @@
       }
     }
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }
