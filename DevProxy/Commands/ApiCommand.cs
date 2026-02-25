@@ -4,6 +4,7 @@
 
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
+using Microsoft.Extensions.Logging;
 using System.CommandLine;
 using System.CommandLine.Parsing;
 using System.Text.Json;
@@ -13,11 +14,13 @@ namespace DevProxy.Commands;
 sealed class ApiCommand : Command
 {
     private readonly IProxyConfiguration _proxyConfiguration;
+    private readonly ILogger _logger;
 
-    public ApiCommand(IProxyConfiguration proxyConfiguration) :
+    public ApiCommand(IProxyConfiguration proxyConfiguration, ILogger<ApiCommand> logger) :
         base("api", "Manage Dev Proxy API information")
     {
         _proxyConfiguration = proxyConfiguration;
+        _logger = logger;
         ConfigureCommand();
     }
 
@@ -37,7 +40,7 @@ sealed class ApiCommand : Command
 
     private void PrintApiInfo()
     {
-        var ipAddress = _proxyConfiguration.IPAddress ?? "127.0.0.1";
+        var ipAddress = _proxyConfiguration.IPAddress;
         var apiPort = _proxyConfiguration.ApiPort;
         var baseUrl = $"http://{ipAddress}:{apiPort}";
 
@@ -56,7 +59,7 @@ sealed class ApiCommand : Command
             ]
         };
 
-        Console.WriteLine(JsonSerializer.Serialize(apiInfo, ProxyUtils.JsonSerializerOptions));
+        _logger.LogInformation("{ApiInfo}", JsonSerializer.Serialize(apiInfo, ProxyUtils.JsonSerializerOptions));
     }
 }
 
