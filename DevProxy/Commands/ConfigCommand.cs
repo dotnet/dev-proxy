@@ -70,7 +70,7 @@ sealed class ConfigCommand : Command
     internal static async Task<int> RunValidateStandaloneAsync(string[] args)
     {
         string? configFile = null;
-        string output = "text";
+        var isJsonOutput = false;
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -81,10 +81,10 @@ sealed class ConfigCommand : Command
                 configFile = args[i + 1];
                 i++;
             }
-            else if (string.Equals(args[i], "--output", StringComparison.OrdinalIgnoreCase) &&
+            else if (string.Equals(args[i], DevProxyCommand.LogForOptionName, StringComparison.OrdinalIgnoreCase) &&
                      i + 1 < args.Length)
             {
-                output = args[i + 1];
+                isJsonOutput = string.Equals(args[i + 1], "machine", StringComparison.OrdinalIgnoreCase);
                 i++;
             }
         }
@@ -111,7 +111,7 @@ sealed class ConfigCommand : Command
         });
         var logger = loggerFactory.CreateLogger<ConfigCommand>();
 
-        return await ValidateConfigCoreAsync(configFile, output, httpClient, logger, CancellationToken.None);
+        return await ValidateConfigCoreAsync(configFile, isJsonOutput, httpClient, logger, CancellationToken.None);
     }
 
     private void ConfigureCommand()
@@ -161,19 +161,13 @@ sealed class ConfigCommand : Command
             Description = "The path to the configuration file to validate",
             HelpName = "config-file"
         };
-        var outputOption = new Option<string>("--output")
-        {
-            Description = "Output format (text or json)",
-            HelpName = "output",
-            DefaultValueFactory = _ => "text"
-        };
         configValidateCommand.Add(validateConfigFileOption);
-        configValidateCommand.Add(outputOption);
         configValidateCommand.SetAction(async (parseResult, cancellationToken) =>
         {
             var configFile = parseResult.GetValue(validateConfigFileOption);
-            var output = parseResult.GetValue(outputOption) ?? "text";
-            return await ValidateConfigAsync(configFile, output, cancellationToken);
+            var logFor = parseResult.GetValueOrDefault<LogFor?>(DevProxyCommand.LogForOptionName);
+            var isJsonOutput = logFor == LogFor.Machine;
+            return await ValidateConfigAsync(configFile, isJsonOutput, cancellationToken);
         });
 
         this.AddCommands(new List<Command>
@@ -515,14 +509,14 @@ sealed class ConfigCommand : Command
         return null;
     }
 
-    private async Task<int> ValidateConfigAsync(string? configFilePath, string output, CancellationToken cancellationToken)
+    private async Task<int> ValidateConfigAsync(string? configFilePath, bool isJsonOutput, CancellationToken cancellationToken)
     {
-        return await ValidateConfigCoreAsync(configFilePath, output, _httpClient, _logger, cancellationToken);
+        return await ValidateConfigCoreAsync(configFilePath, isJsonOutput, _httpClient, _logger, cancellationToken);
     }
 
     private static async Task<int> ValidateConfigCoreAsync(
         string? configFilePath,
-        string output,
+        bool isJsonOutput,
         HttpClient httpClient,
         ILogger logger,
         CancellationToken cancellationToken)
@@ -538,7 +532,7 @@ sealed class ConfigCommand : Command
             errors.Add(new("configFile", configFilePath is not null
                 ? $"Configuration file '{configFilePath}' not found"
                 : "No configuration file found"));
-            WriteResults(output, null, errors, warnings, pluginNames, urlPatterns, logger);
+            WriteResults(isJsonOutput, null, errors, warnings, pluginNames, urlPatterns, logger);
             return 1;
         }
 
@@ -552,7 +546,7 @@ sealed class ConfigCommand : Command
         catch (JsonException ex)
         {
             errors.Add(new("configFile", $"Invalid JSON: {ex.Message}"));
-            WriteResults(output, resolvedConfigFile, errors, warnings, pluginNames, urlPatterns, logger);
+            WriteResults(isJsonOutput, resolvedConfigFile, errors, warnings, pluginNames, urlPatterns, logger);
             return 1;
         }
 
@@ -611,7 +605,7 @@ sealed class ConfigCommand : Command
         }
 
         var isConfigValid = errors.Count == 0;
-        WriteResults(output, resolvedConfigFile, errors, warnings, pluginNames, urlPatterns, logger);
+        WriteResults(isJsonOutput, resolvedConfigFile, errors, warnings, pluginNames, urlPatterns, logger);
         return isConfigValid ? 0 : 1;
     }
 
@@ -738,7 +732,7 @@ sealed class ConfigCommand : Command
     }
 
     private static void WriteResults(
-        string output,
+        bool isJsonOutput,
         string? configFile,
         List<ValidationMessage> errors,
         List<ValidationMessage> warnings,
@@ -748,7 +742,7 @@ sealed class ConfigCommand : Command
     {
         var isValid = errors.Count == 0;
 
-        if (string.Equals(output, "json", StringComparison.OrdinalIgnoreCase))
+        if (isJsonOutput)
         {
             WriteJsonResults(configFile, errors, warnings, pluginNames, urlPatterns, isValid, logger);
         }
