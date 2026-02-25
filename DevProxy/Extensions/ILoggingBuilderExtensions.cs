@@ -100,6 +100,7 @@ static class ILoggingBuilderExtensions
 
         // For other subcommands (cert, config, outdated, msgraphdb), use rich logging
         // but with plugin messages filtered out
+
         _ = builder
             .AddFilter("Microsoft.Hosting.*", LogLevel.Error)
             .AddFilter("Microsoft.AspNetCore.*", LogLevel.Error)
