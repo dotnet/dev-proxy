@@ -16,7 +16,7 @@ static class TextWriterExtensions
 
     public static void ResetColor(this TextWriter writer)
     {
-        if (DevProxyCommand.NoColor)
+        if (Console.IsOutputRedirected || DevProxyCommand.NoColor)
         {
             return;
         }
