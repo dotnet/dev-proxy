@@ -5,6 +5,7 @@
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using System.CommandLine;
+using System.CommandLine.Parsing;
 using System.Text.Json;
 
 namespace DevProxy.Commands;
@@ -14,7 +15,7 @@ sealed class ApiCommand : Command
     private readonly IProxyConfiguration _proxyConfiguration;
 
     public ApiCommand(IProxyConfiguration proxyConfiguration) :
-        base("api", "Display Dev Proxy API information for runtime management")
+        base("api", "Manage Dev Proxy API information")
     {
         _proxyConfiguration = proxyConfiguration;
         ConfigureCommand();
@@ -22,10 +23,16 @@ sealed class ApiCommand : Command
 
     private void ConfigureCommand()
     {
-        SetAction(parseResult =>
+        var apiShowCommand = new Command("show", "Display Dev Proxy API information for runtime management");
+        apiShowCommand.SetAction(parseResult =>
         {
             PrintApiInfo();
         });
+
+        this.AddCommands(new List<Command>
+        {
+            apiShowCommand
+        }.OrderByName());
     }
 
     private void PrintApiInfo()

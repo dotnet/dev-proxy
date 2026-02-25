@@ -145,7 +145,7 @@ sealed class DevProxyCommand : RootCommand
         IProxyConfiguration proxyConfiguration,
         IServiceProvider serviceProvider,
         UpdateNotification updateNotification,
-        ILogger<DevProxyCommand> logger) : base("Start Dev Proxy\n\nAPI:\n  Dev Proxy exposes a REST API for runtime management.\n  OpenAPI spec: http://{ip-address}:{api-port}/swagger\n  Use --api-port to configure (default: 8897).\n  Run 'devproxy api' for more information.")
+        ILogger<DevProxyCommand> logger) : base("Start Dev Proxy\n\nAPI:\n  Dev Proxy exposes a REST API for runtime management.\n  OpenAPI spec: http://{ip-address}:{api-port}/swagger\n  Use --api-port to configure (default: 8897).\n  Run 'devproxy api show' for more information.")
     {
         _serviceProvider = serviceProvider;
         _plugins = plugins;
