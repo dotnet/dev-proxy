@@ -8,8 +8,9 @@ static class LogEvents
 {
     /// <summary>
     /// EventId for structured output (e.g., JSON from subcommands).
-    /// When MachineConsoleFormatter sees this EventId, it writes the raw
-    /// message without wrapping it in a JSONL envelope.
+    /// When MachineConsoleFormatter sees this EventId, it wraps the message
+    /// in a consistent envelope with type "result" and a data field
+    /// containing the parsed JSON object.
     /// </summary>
     public static readonly EventId StructuredOutput = new(1, "StructuredOutput");
 }

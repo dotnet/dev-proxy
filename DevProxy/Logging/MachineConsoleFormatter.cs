@@ -124,11 +124,12 @@ sealed class MachineConsoleFormatter : ConsoleFormatter
             return;
         }
 
-        // Structured output (e.g., subcommand JSON) is written as-is
-        // without the JSONL envelope
+        // Structured output (e.g., subcommand JSON) uses the same envelope
+        // format as log entries but with type "result" and a data field
+        // containing the parsed JSON object
         if (logEntry.EventId == LogEvents.StructuredOutput)
         {
-            textWriter.WriteLine(message);
+            WriteStructuredOutput(message, logEntry.Category, textWriter);
             return;
         }
 
@@ -154,6 +155,45 @@ sealed class MachineConsoleFormatter : ConsoleFormatter
 
         var json = JsonSerializer.Serialize(logObject, _jsonOptions);
         textWriter.WriteLine(json);
+    }
+
+    private static void WriteStructuredOutput(string message, string category, TextWriter textWriter)
+    {
+        // Extract short category name
+        if (category is not null)
+        {
+            category = category[(category.LastIndexOf('.') + 1)..];
+        }
+
+        try
+        {
+            var data = JsonSerializer.Deserialize<JsonElement>(message);
+            var logObject = new MachineResultEntry
+            {
+                Type = "result",
+                Data = data,
+                Category = category,
+                Timestamp = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture)
+            };
+
+            var json = JsonSerializer.Serialize(logObject, _jsonOptions);
+            textWriter.WriteLine(json);
+        }
+        catch (JsonException)
+        {
+            // Fallback: if the message isn't valid JSON, write it as a
+            // regular log entry
+            var logObject = new MachineLogEntry
+            {
+                Type = "result",
+                Message = message,
+                Category = category,
+                Timestamp = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture)
+            };
+
+            var json = JsonSerializer.Serialize(logObject, _jsonOptions);
+            textWriter.WriteLine(json);
+        }
     }
 
     private static string GetMessageTypeString(MessageType messageType) =>
@@ -197,5 +237,13 @@ sealed class MachineConsoleFormatter : ConsoleFormatter
         public string? RequestId { get; set; }
         public string? Timestamp { get; set; }
         public string? Exception { get; set; }
+    }
+
+    private sealed class MachineResultEntry
+    {
+        public string? Type { get; set; }
+        public JsonElement? Data { get; set; }
+        public string? Category { get; set; }
+        public string? Timestamp { get; set; }
     }
 }
