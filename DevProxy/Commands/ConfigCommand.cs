@@ -5,6 +5,7 @@
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
+using DevProxy.Logging;
 using DevProxy.Plugins;
 using System.CommandLine;
 using System.CommandLine.Parsing;
@@ -94,7 +95,19 @@ sealed class ConfigCommand : Command
 
         using var loggerFactory = LoggerFactory.Create(builder =>
         {
-            builder.SetMinimumLevel(LogLevel.Debug);
+            builder
+                .SetMinimumLevel(LogLevel.Information)
+                .AddConsole(consoleOptions =>
+                {
+                    consoleOptions.FormatterName = ProxyConsoleFormatter.DefaultCategoryName;
+                    consoleOptions.LogToStandardErrorThreshold = LogLevel.Warning;
+                })
+                .AddConsoleFormatter<ProxyConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
+                {
+                    formatterOptions.IncludeScopes = false;
+                    formatterOptions.ShowSkipMessages = true;
+                    formatterOptions.ShowTimestamps = false;
+                });
         });
         var logger = loggerFactory.CreateLogger<ConfigCommand>();
 
@@ -517,7 +530,7 @@ sealed class ConfigCommand : Command
             errors.Add(new("configFile", configFilePath is not null
                 ? $"Configuration file '{configFilePath}' not found"
                 : "No configuration file found"));
-            WriteResults(output, null, errors, warnings, pluginNames, urlPatterns);
+            WriteResults(output, null, errors, warnings, pluginNames, urlPatterns, logger);
             return 1;
         }
 
@@ -531,7 +544,7 @@ sealed class ConfigCommand : Command
         catch (JsonException ex)
         {
             errors.Add(new("configFile", $"Invalid JSON: {ex.Message}"));
-            WriteResults(output, resolvedConfigFile, errors, warnings, pluginNames, urlPatterns);
+            WriteResults(output, resolvedConfigFile, errors, warnings, pluginNames, urlPatterns, logger);
             return 1;
         }
 
@@ -590,7 +603,7 @@ sealed class ConfigCommand : Command
         }
 
         var isConfigValid = errors.Count == 0;
-        WriteResults(output, resolvedConfigFile, errors, warnings, pluginNames, urlPatterns);
+        WriteResults(output, resolvedConfigFile, errors, warnings, pluginNames, urlPatterns, logger);
         return isConfigValid ? 0 : 1;
     }
 
@@ -741,17 +754,18 @@ sealed class ConfigCommand : Command
         List<ValidationMessage> errors,
         List<ValidationMessage> warnings,
         List<string> pluginNames,
-        List<string> urlPatterns)
+        List<string> urlPatterns,
+        ILogger logger)
     {
         var isValid = errors.Count == 0;
 
         if (string.Equals(output, "json", StringComparison.OrdinalIgnoreCase))
         {
-            WriteJsonResults(configFile, errors, warnings, pluginNames, urlPatterns, isValid);
+            WriteJsonResults(configFile, errors, warnings, pluginNames, urlPatterns, isValid, logger);
         }
         else
         {
-            WriteTextResults(configFile, errors, warnings, pluginNames, urlPatterns, isValid);
+            WriteTextResults(configFile, errors, warnings, pluginNames, urlPatterns, isValid, logger);
         }
     }
 
@@ -761,7 +775,8 @@ sealed class ConfigCommand : Command
         List<ValidationMessage> warnings,
         List<string> pluginNames,
         List<string> urlPatterns,
-        bool isValid)
+        bool isValid,
+        ILogger logger)
     {
         var result = new
         {
@@ -774,7 +789,7 @@ sealed class ConfigCommand : Command
         };
 
         var json = JsonSerializer.Serialize(result, ProxyUtils.JsonSerializerOptions);
-        Console.WriteLine(json);
+        logger.LogInformation("{Result}", json);
     }
 
     private static void WriteTextResults(
@@ -783,47 +798,46 @@ sealed class ConfigCommand : Command
         List<ValidationMessage> warnings,
         List<string> pluginNames,
         List<string> urlPatterns,
-        bool isValid)
+        bool isValid,
+        ILogger logger)
     {
         if (isValid)
         {
-            Console.WriteLine("\u2713 Configuration is valid");
+            logger.LogInformation("\u2713 Configuration is valid");
         }
         else
         {
-            Console.WriteLine("\u2717 Configuration is invalid");
+            logger.LogError("\u2717 Configuration is invalid");
         }
 
         if (configFile is not null)
         {
-            Console.WriteLine($"  Config file: {configFile}");
+            logger.LogInformation("  Config file: {ConfigFile}", configFile);
         }
         if (pluginNames.Count > 0)
         {
-            Console.WriteLine($"  Plugins: {pluginNames.Count} loaded");
+            logger.LogInformation("  Plugins: {Count} loaded", pluginNames.Count);
         }
         if (urlPatterns.Count > 0)
         {
-            Console.WriteLine($"  URLs to watch: {urlPatterns.Count} pattern{(urlPatterns.Count != 1 ? "s" : "")}");
+            logger.LogInformation("  URLs to watch: {Count} pattern{Plural}", urlPatterns.Count, urlPatterns.Count != 1 ? "s" : "");
         }
 
         if (errors.Count > 0)
         {
-            Console.WriteLine();
-            Console.WriteLine("Errors:");
+            logger.LogInformation("");
             foreach (var error in errors)
             {
-                Console.WriteLine($"  - {error.Path}: {error.Message}");
+                logger.LogError("  - {Path}: {Message}", error.Path, error.Message);
             }
         }
 
         if (warnings.Count > 0)
         {
-            Console.WriteLine();
-            Console.WriteLine("Warnings:");
+            logger.LogInformation("");
             foreach (var warning in warnings)
             {
-                Console.WriteLine($"  - {warning.Path}: {warning.Message}");
+                logger.LogWarning("  - {Path}: {Message}", warning.Path, warning.Message);
             }
         }
     }
