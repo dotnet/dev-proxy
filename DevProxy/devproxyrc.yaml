@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.2.0/rc.schema.json
+# Dev Proxy configuration file
+# This YAML version serves as a reference example alongside the default JSON configuration.
+
+plugins:
+  - name: RetryAfterPlugin
+    enabled: true
+    pluginPath: "~appFolder/plugins/DevProxy.Plugins.dll"
+
+  - name: GenericRandomErrorPlugin
+    enabled: true
+    pluginPath: "~appFolder/plugins/DevProxy.Plugins.dll"
+    configSection: genericRandomErrorPlugin
+
+urlsToWatch:
+  - "https://jsonplaceholder.typicode.com/*"
+
+genericRandomErrorPlugin:
+  # yaml-language-server: $schema=https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.2.0/genericrandomerrorplugin.schema.json
+  errorsFile: devproxy-errors.yaml
+  rate: 50
+
+logLevel: information
+newVersionNotification: stable
+showSkipMessages: true
+showTimestamps: true
+validateSchemas: true
