@@ -504,16 +504,7 @@ sealed class ConfigCommand : Command
             return File.Exists(resolved) ? resolved : null;
         }
 
-        string?[] configFiles = [
-            "devproxyrc.jsonc",
-            "devproxyrc.json",
-            Path.Combine(".devproxy", "devproxyrc.jsonc"),
-            Path.Combine(".devproxy", "devproxyrc.json"),
-            Path.Combine(ProxyUtils.AppFolder ?? "", "devproxyrc.jsonc"),
-            Path.Combine(ProxyUtils.AppFolder ?? "", "devproxyrc.json")
-        ];
-
-        foreach (var configFile in configFiles)
+        foreach (var configFile in ProxyUtils.GetConfigFileCandidates(null))
         {
             if (!string.IsNullOrEmpty(configFile) && File.Exists(configFile))
             {
@@ -626,29 +617,10 @@ sealed class ConfigCommand : Command
 
     private static void ValidateSchemaVersion(string schemaUrl, List<ValidationMessage> warnings)
     {
-        try
+        var warning = ProxyUtils.GetSchemaVersionMismatchWarning(schemaUrl);
+        if (warning is not null)
         {
-            var uri = new Uri(schemaUrl);
-            if (uri.Segments.Length > 2)
-            {
-                var schemaVersion = uri.Segments[^2]
-                    .TrimStart('v')
-                    .TrimEnd('/');
-                var currentVersion = ProxyUtils.NormalizeVersion(ProxyUtils.ProductVersion);
-                if (ProxyUtils.CompareSemVer(currentVersion, schemaVersion) != 0)
-                {
-                    var currentSchemaUrl = uri.ToString().Replace(
-                        $"/v{schemaVersion}/",
-                        $"/v{currentVersion}/",
-                        StringComparison.OrdinalIgnoreCase);
-                    warnings.Add(new("$schema",
-                        $"Schema version does not match Dev Proxy version, expected schema: {currentSchemaUrl}"));
-                }
-            }
-        }
-        catch
-        {
-            // Ignore schema version parsing errors
+            warnings.Add(new("$schema", warning));
         }
     }
 

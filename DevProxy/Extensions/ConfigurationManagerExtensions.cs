@@ -16,31 +16,7 @@ static class ConfigurationManagerExtensions
         configuration.Sources.Clear();
         _ = configuration.SetBasePath(Directory.GetCurrentDirectory());
 
-        string?[] configFiles = [
-            // config file specified by the user takes precedence
-            // null if not specified
-            options.ConfigFile,
-            // current directory - JSON/JSONC files
-            "devproxyrc.jsonc",
-            "devproxyrc.json",
-            // current directory - YAML files
-            "devproxyrc.yaml",
-            "devproxyrc.yml",
-            // .devproxy subdirectory - JSON/JSONC files
-            Path.Combine(".devproxy", "devproxyrc.jsonc"),
-            Path.Combine(".devproxy", "devproxyrc.json"),
-            // .devproxy subdirectory - YAML files
-            Path.Combine(".devproxy", "devproxyrc.yaml"),
-            Path.Combine(".devproxy", "devproxyrc.yml"),
-            // app folder - JSON/JSONC files
-            Path.Combine(ProxyUtils.AppFolder ?? "", "devproxyrc.jsonc"),
-            Path.Combine(ProxyUtils.AppFolder ?? "", "devproxyrc.json"),
-            // app folder - YAML files
-            Path.Combine(ProxyUtils.AppFolder ?? "", "devproxyrc.yaml"),
-            Path.Combine(ProxyUtils.AppFolder ?? "", "devproxyrc.yml")
-        ];
-
-        foreach (var configFile in configFiles)
+        foreach (var configFile in ProxyUtils.GetConfigFileCandidates(options.ConfigFile))
         {
             if (!string.IsNullOrEmpty(configFile) && File.Exists(configFile))
             {

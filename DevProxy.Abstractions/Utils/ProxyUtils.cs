@@ -273,6 +273,25 @@ public static class ProxyUtils
             return;
         }
 
+        var warning = GetSchemaVersionMismatchWarning(schemaUrl);
+        if (warning is not null)
+        {
+            logger.LogWarning("{Warning}", warning);
+        }
+    }
+
+    /// <summary>
+    /// Checks if the schema URL version matches the current Dev Proxy version.
+    /// Returns a warning message if versions don't match, or null if they match
+    /// or the schema URL cannot be parsed.
+    /// </summary>
+    public static string? GetSchemaVersionMismatchWarning(string schemaUrl)
+    {
+        if (string.IsNullOrWhiteSpace(schemaUrl))
+        {
+            return null;
+        }
+
         try
         {
             var uri = new Uri(schemaUrl);
@@ -285,18 +304,47 @@ public static class ProxyUtils
                 if (CompareSemVer(currentVersion, schemaVersion) != 0)
                 {
                     var currentSchemaUrl = uri.ToString().Replace($"/v{schemaVersion}/", $"/v{currentVersion}/", StringComparison.OrdinalIgnoreCase);
-                    logger.LogWarning("The version of schema does not match the installed Dev Proxy version, the expected schema is {Schema}", currentSchemaUrl);
+                    return $"The version of schema does not match the installed Dev Proxy version, the expected schema is {currentSchemaUrl}";
                 }
             }
-            else
-            {
-                logger.LogDebug("Invalid schema {SchemaUrl}, skipping schema version validation.", schemaUrl);
-            }
         }
-        catch (Exception ex)
+        catch
         {
-            logger.LogWarning("Invalid schema {SchemaUrl}, skipping schema version validation. Error: {Error}", schemaUrl, ex.Message);
+            // Ignore schema URL parsing errors
         }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Returns the ordered list of config file paths to search.
+    /// The first existing file in the list should be used.
+    /// </summary>
+    public static IEnumerable<string?> GetConfigFileCandidates(string? userConfigFile)
+    {
+        return [
+            // config file specified by the user takes precedence
+            // null if not specified
+            userConfigFile,
+            // current directory - JSON/JSONC files
+            "devproxyrc.jsonc",
+            "devproxyrc.json",
+            // current directory - YAML files
+            "devproxyrc.yaml",
+            "devproxyrc.yml",
+            // .devproxy subdirectory - JSON/JSONC files
+            Path.Combine(".devproxy", "devproxyrc.jsonc"),
+            Path.Combine(".devproxy", "devproxyrc.json"),
+            // .devproxy subdirectory - YAML files
+            Path.Combine(".devproxy", "devproxyrc.yaml"),
+            Path.Combine(".devproxy", "devproxyrc.yml"),
+            // app folder - JSON/JSONC files
+            Path.Combine(AppFolder ?? "", "devproxyrc.jsonc"),
+            Path.Combine(AppFolder ?? "", "devproxyrc.json"),
+            // app folder - YAML files
+            Path.Combine(AppFolder ?? "", "devproxyrc.yaml"),
+            Path.Combine(AppFolder ?? "", "devproxyrc.yml")
+        ];
     }
 
     /// <summary>
