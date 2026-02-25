@@ -166,7 +166,17 @@ sealed class DevProxyCommand : RootCommand
         var parseResult = IsStdioCommand
             ? StdioCommand.ParseStdioArgs(this, args)
             : Parse(args);
-        return await parseResult.InvokeAsync(app.Lifetime.ApplicationStopping);
+        var exitCode = await parseResult.InvokeAsync(app.Lifetime.ApplicationStopping);
+
+        // Return exit code 2 for input validation and parse errors to distinguish
+        // them from runtime errors (exit code 1), following conventions from
+        // curl, git, and others
+        if (exitCode != 0 && parseResult.Errors.Count > 0)
+        {
+            return 2;
+        }
+
+        return exitCode;
     }
 
     private async Task<int> InvokeAsync(ParseResult parseResult, CancellationToken cancellationToken)

@@ -26,7 +26,8 @@ sealed class ExitCodeHelpAction : SynchronousCommandLineAction
         output.WriteLine();
         output.WriteLine("Exit codes:");
         output.WriteLine("  0  Success");
-        output.WriteLine("  1  Error");
+        output.WriteLine("  1  Runtime error");
+        output.WriteLine("  2  Invalid input or usage");
 
         return result;
     }
