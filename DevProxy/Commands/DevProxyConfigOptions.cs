@@ -184,9 +184,9 @@ sealed class DevProxyConfigOptions : RootCommand
             Usage errors and exceptions are written to stderr.
 
             Examples:
-              devproxy stdio npx -y @devproxy/mcp                 Proxy MCP server
-              devproxy stdio node server.js                        Proxy Node.js app
-              devproxy stdio -c myconfig.json node app.js          With custom config
+              devproxy stdio npx -y @devproxy/mcp          Proxy MCP server
+              devproxy stdio node server.js                Proxy Node.js app
+              devproxy stdio -c myconfig.json node app.js  With custom config
             """)
         {
             stdioConfigFileOption,
