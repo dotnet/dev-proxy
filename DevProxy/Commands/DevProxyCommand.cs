@@ -2,6 +2,7 @@ using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using System.CommandLine;
+using System.CommandLine.Help;
 using System.CommandLine.Parsing;
 using System.Globalization;
 
@@ -452,6 +453,12 @@ sealed class DevProxyCommand : RootCommand
         };
         commands.AddRange(_plugins.SelectMany(p => p.GetCommands()));
         this.AddCommands(commands.OrderByName());
+
+        var helpOption = Options.OfType<HelpOption>().FirstOrDefault();
+        if (helpOption?.Action is HelpAction helpAction)
+        {
+            helpOption.Action = new ExitCodeHelpAction(helpAction);
+        }
 
         SetAction(InvokeAsync);
     }
