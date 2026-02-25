@@ -40,6 +40,7 @@ sealed class DevProxyCommand : RootCommand
     internal const string LogForOptionName = "--log-for";
     internal const string DetachedOptionName = "--detach";
     internal const string InternalDaemonOptionName = "--_internal-daemon";
+    internal const string NoColorOptionName = "--no-color";
 
     private static readonly string[] globalOptions = ["--version"];
     private static readonly string[] helpOptions = ["--help", "-h", "/h", "-?", "/?"];
@@ -52,6 +53,7 @@ sealed class DevProxyCommand : RootCommand
     private static bool _isInternalDaemonResolved;
     private static bool _stdioLogFilePathResolved;
     private static bool _detachedLogFilePathResolved;
+    private static bool _noColorResolved;
 
     public static bool HasGlobalOptions
     {
@@ -187,6 +189,24 @@ sealed class DevProxyCommand : RootCommand
 
             field = State.StateManager.GenerateLogFilePath();
             _detachedLogFilePathResolved = true;
+            return field;
+        }
+    }
+
+    public static bool NoColor
+    {
+        get
+        {
+            if (_noColorResolved)
+            {
+                return field;
+            }
+
+            var args = Environment.GetCommandLineArgs();
+            field = args.Contains(NoColorOptionName) ||
+                Environment.GetEnvironmentVariable("NO_COLOR") is not null ||
+                string.Equals(Environment.GetEnvironmentVariable("TERM"), "dumb", StringComparison.OrdinalIgnoreCase);
+            _noColorResolved = true;
             return field;
         }
     }
@@ -478,6 +498,13 @@ sealed class DevProxyCommand : RootCommand
             Hidden = true
         };
 
+        var noColorOption = new Option<bool>(NoColorOptionName)
+        {
+            Description = "Disable colored output",
+            Arity = ArgumentArity.Zero,
+            Recursive = true
+        };
+
         var options = new List<Option>
         {
             apiPortOption,
@@ -491,6 +518,7 @@ sealed class DevProxyCommand : RootCommand
             ipAddressOption,
             logForOption,
             logLevelOption,
+            noColorOption,
             noFirstRunOption,
             portOption,
             recordOption,
