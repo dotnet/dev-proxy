@@ -32,7 +32,19 @@ sealed class StdioCommand : Command
         ILogger<StdioCommand> logger,
         ILoggerFactory loggerFactory,
         IEnumerable<IStdioPlugin> plugins) :
-        base("stdio", "Proxy stdin/stdout/stderr of local executables")
+        base("stdio", """
+            Proxy stdin/stdout/stderr of local executables.
+            Dev Proxy intercepts and processes the stdio streams of the specified command,
+            applying configured plugins (mocking, error simulation, etc.) to the traffic.
+            Logs are written to a timestamped file (devproxy-stdio-YYYYMMDD-HHmmss.log)
+            to avoid interfering with the proxied streams.
+            Usage errors and exceptions are written to stderr.
+
+            Examples:
+              devproxy stdio npx -y @devproxy/mcp                 Proxy MCP server
+              devproxy stdio node server.js                        Proxy Node.js app
+              devproxy stdio -c myconfig.json node app.js          With custom config
+            """)
     {
         _logger = logger;
         _loggerFactory = loggerFactory;
