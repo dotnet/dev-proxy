@@ -2,6 +2,7 @@ using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using System.CommandLine;
+using System.CommandLine.Invocation;
 using System.CommandLine.Parsing;
 using System.Globalization;
 
@@ -165,6 +166,12 @@ sealed class DevProxyCommand : RootCommand
         var parseResult = IsStdioCommand
             ? StdioCommand.ParseStdioArgs(this, args)
             : Parse(args);
+
+        if (parseResult.Action is ParseErrorAction parseErrorAction)
+        {
+            parseErrorAction.ShowHelp = false;
+        }
+
         return await parseResult.InvokeAsync(app.Lifetime.ApplicationStopping);
     }
 
@@ -237,7 +244,7 @@ sealed class DevProxyCommand : RootCommand
 
             if (!File.Exists(filePath))
             {
-                input.AddError($"Configuration file {filePath} does not exist");
+                input.AddError($"Configuration file '{filePath}' does not exist. Check the file path and try again.");
             }
         });
 
@@ -250,7 +257,7 @@ sealed class DevProxyCommand : RootCommand
         {
             if (!System.Net.IPAddress.TryParse(input.Tokens[0].Value, out _))
             {
-                input.AddError($"{input.Tokens[0].Value} is not a valid IP address");
+                input.AddError($"'{input.Tokens[0].Value}' is not a valid IP address. Example: 127.0.0.1");
             }
         });
 
@@ -272,7 +279,7 @@ sealed class DevProxyCommand : RootCommand
         {
             if (!Enum.TryParse<LogLevel>(input.Tokens[0].Value, true, out _))
             {
-                input.AddError($"{input.Tokens[0].Value} is not a valid log level. Allowed values are: {string.Join(", ", Enum.GetNames<LogLevel>())}");
+                input.AddError($"'{input.Tokens[0].Value}' is not a valid log level. Allowed values: {string.Join(", ", Enum.GetNames<LogLevel>())}");
             }
         });
 
@@ -354,7 +361,7 @@ sealed class DevProxyCommand : RootCommand
             {
                 if (!long.TryParse(input.Tokens[0].Value, out var timeoutInput) || timeoutInput < 1)
                 {
-                    input.AddError($"{input.Tokens[0].Value} is not valid as a timeout value");
+                    input.AddError($"'{input.Tokens[0].Value}' is not a valid timeout value. Specify a positive integer (in seconds).");
                 }
             }
             catch (InvalidOperationException ex)
@@ -411,7 +418,7 @@ sealed class DevProxyCommand : RootCommand
             }
             if (!Enum.TryParse<LogFor>(input.Tokens[0].Value, true, out _))
             {
-                input.AddError($"{input.Tokens[0].Value} is not a valid log-for value. Allowed values are: {string.Join(", ", Enum.GetNames<LogFor>())}");
+                input.AddError($"'{input.Tokens[0].Value}' is not a valid log-for value. Allowed values: {string.Join(", ", Enum.GetNames<LogFor>())}");
             }
         });
 
