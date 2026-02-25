@@ -524,7 +524,7 @@ sealed class DevProxyCommand : RootCommand
         HelpExamples.Add(this, [
             "devproxy                                            Start with default config",
             "devproxy -c myconfig.json                           Start with custom config",
-            "devproxy -u \"https://api.example.com/*\"             Watch specific URLs",
+            "devproxy -u \"https://api.example.com/*\"           Watch specific URLs",
             "devproxy --port 9000 --record                       Custom port, record requests",
         ]);
         HelpExamples.Install(this);
