@@ -3,11 +3,9 @@
 // See the LICENSE file in the project root for more information.
 
 using DevProxy.Abstractions.Proxy;
-using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Logging;
 using System.CommandLine;
 using System.CommandLine.Parsing;
-using System.Text.Json;
 
 namespace DevProxy.Commands;
 
@@ -44,31 +42,26 @@ sealed class ApiCommand : Command
         var apiPort = _proxyConfiguration.ApiPort;
         var baseUrl = $"http://{ipAddress}:{apiPort}";
 
-        var apiInfo = new ApiInfo
+        var endpoints = new[]
         {
-            BaseUrl = baseUrl,
-            SwaggerUrl = $"{baseUrl}/swagger/v1/swagger.json",
-            Endpoints =
-            [
-                new ApiEndpointInfo { Method = "GET", Path = "/proxy", Description = "Get proxy status" },
-                new ApiEndpointInfo { Method = "POST", Path = "/proxy", Description = "Update proxy status (e.g. start/stop recording)" },
-                new ApiEndpointInfo { Method = "POST", Path = "/proxy/mockRequest", Description = "Issue a mock request" },
-                new ApiEndpointInfo { Method = "POST", Path = "/proxy/stopProxy", Description = "Stop the proxy" },
-                new ApiEndpointInfo { Method = "POST", Path = "/proxy/jwtToken", Description = "Create a JWT token" },
-                new ApiEndpointInfo { Method = "GET", Path = "/proxy/rootCertificate", Description = "Get the root certificate" },
-                new ApiEndpointInfo { Method = "GET", Path = "/proxy/logs", Description = "Get proxy logs (for detached mode access)" }
-            ]
+            new ApiEndpointInfo { Method = "GET", Path = "/proxy", Description = "Get proxy status" },
+            new ApiEndpointInfo { Method = "POST", Path = "/proxy", Description = "Update proxy status (e.g. start/stop recording)" },
+            new ApiEndpointInfo { Method = "POST", Path = "/proxy/mockRequest", Description = "Issue a mock request" },
+            new ApiEndpointInfo { Method = "POST", Path = "/proxy/stopProxy", Description = "Stop the proxy" },
+            new ApiEndpointInfo { Method = "POST", Path = "/proxy/jwtToken", Description = "Create a JWT token" },
+            new ApiEndpointInfo { Method = "GET", Path = "/proxy/rootCertificate", Description = "Get the root certificate" },
+            new ApiEndpointInfo { Method = "GET", Path = "/proxy/logs", Description = "Get proxy logs (for detached mode access)" }
         };
 
-        _logger.LogInformation("{ApiInfo}", JsonSerializer.Serialize(apiInfo, ProxyUtils.JsonSerializerOptions));
+        _logger.LogInformation("Base URL: {BaseUrl}", baseUrl);
+        _logger.LogInformation("OpenAPI spec: {SwaggerUrl}", $"{baseUrl}/swagger/v1/swagger.json");
+        _logger.LogInformation("");
+        _logger.LogInformation("Endpoints:");
+        foreach (var endpoint in endpoints)
+        {
+            _logger.LogInformation("  {Method,-6} {Path,-30} {Description}", endpoint.Method, endpoint.Path, endpoint.Description);
+        }
     }
-}
-
-sealed class ApiInfo
-{
-    public string BaseUrl { get; set; } = string.Empty;
-    public string SwaggerUrl { get; set; } = string.Empty;
-    public ApiEndpointInfo[] Endpoints { get; set; } = [];
 }
 
 sealed class ApiEndpointInfo
