@@ -13,9 +13,9 @@ using System.Text.Json.Serialization;
 
 namespace DevProxy.Logging;
 
-sealed class MachineConsoleFormatter : ConsoleFormatter
+sealed class JsonConsoleFormatter : ConsoleFormatter
 {
-    public const string FormatterName = "devproxy-machine";
+    public const string FormatterName = "devproxy-json";
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -55,7 +55,7 @@ sealed class MachineConsoleFormatter : ConsoleFormatter
     private readonly ProxyConsoleFormatterOptions _options;
     private readonly HashSet<MessageType> _filteredMessageTypes;
 
-    public MachineConsoleFormatter(IOptions<ProxyConsoleFormatterOptions> options) : base(FormatterName)
+    public JsonConsoleFormatter(IOptions<ProxyConsoleFormatterOptions> options) : base(FormatterName)
     {
         Console.OutputEncoding = Encoding.UTF8;
         _options = options.Value;
@@ -101,7 +101,7 @@ sealed class MachineConsoleFormatter : ConsoleFormatter
             pluginName = pluginName[(pluginName.LastIndexOf('.') + 1)..];
         }
 
-        var logObject = new MachineRequestLogEntry
+        var logObject = new JsonRequestLogEntry
         {
             Type = GetMessageTypeString(messageType),
             Message = requestLog.Message,
@@ -142,7 +142,7 @@ sealed class MachineConsoleFormatter : ConsoleFormatter
             category = category[(category.LastIndexOf('.') + 1)..];
         }
 
-        var logObject = new MachineLogEntry
+        var logObject = new JsonLogEntry
         {
             Type = "log",
             Level = GetLogLevelString(logEntry.LogLevel),
@@ -168,7 +168,7 @@ sealed class MachineConsoleFormatter : ConsoleFormatter
         try
         {
             var data = JsonSerializer.Deserialize<JsonElement>(message);
-            var logObject = new MachineResultEntry
+            var logObject = new JsonResultEntry
             {
                 Type = "result",
                 Data = data,
@@ -183,7 +183,7 @@ sealed class MachineConsoleFormatter : ConsoleFormatter
         {
             // Fallback: if the message isn't valid JSON, write it as a
             // regular log entry
-            var logObject = new MachineLogEntry
+            var logObject = new JsonLogEntry
             {
                 Type = "result",
                 Message = message,
@@ -216,8 +216,8 @@ sealed class MachineConsoleFormatter : ConsoleFormatter
         return requestId;
     }
 
-    // JSON serialization models for machine output
-    private sealed class MachineRequestLogEntry
+    // JSON serialization models for JSON output
+    private sealed class JsonRequestLogEntry
     {
         public string? Type { get; set; }
         public string? Message { get; set; }
@@ -228,7 +228,7 @@ sealed class MachineConsoleFormatter : ConsoleFormatter
         public string? Timestamp { get; set; }
     }
 
-    private sealed class MachineLogEntry
+    private sealed class JsonLogEntry
     {
         public string? Type { get; set; }
         public string? Level { get; set; }
@@ -239,7 +239,7 @@ sealed class MachineConsoleFormatter : ConsoleFormatter
         public string? Exception { get; set; }
     }
 
-    private sealed class MachineResultEntry
+    private sealed class JsonResultEntry
     {
         public string? Type { get; set; }
         public JsonElement? Data { get; set; }

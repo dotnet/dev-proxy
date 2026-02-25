@@ -58,7 +58,7 @@ static class ILoggingBuilderExtensions
 
         // Select the appropriate formatter based on output setting
         var formatterName = configuredOutput == OutputFormat.Json
-            ? MachineConsoleFormatter.FormatterName
+            ? JsonConsoleFormatter.FormatterName
             : ProxyConsoleFormatter.DefaultCategoryName;
 
         // For root command (proxy itself), use rich logging
@@ -86,7 +86,7 @@ static class ILoggingBuilderExtensions
                         formatterOptions.ShowTimestamps = showTimestamps;
                     }
                 )
-                .AddConsoleFormatter<MachineConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
+                .AddConsoleFormatter<JsonConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
                     {
                         formatterOptions.IncludeScopes = true;
                         formatterOptions.ShowSkipMessages = showSkipMessages;
@@ -120,7 +120,7 @@ static class ILoggingBuilderExtensions
                     formatterOptions.ShowTimestamps = showTimestamps;
                 }
             )
-            .AddConsoleFormatter<MachineConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
+            .AddConsoleFormatter<JsonConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
                 {
                     formatterOptions.IncludeScopes = true;
                     formatterOptions.ShowSkipMessages = showSkipMessages;

@@ -8,7 +8,7 @@ static class LogEvents
 {
     /// <summary>
     /// EventId for structured output (e.g., JSON from subcommands).
-    /// When MachineConsoleFormatter sees this EventId, it wraps the message
+    /// When JsonConsoleFormatter sees this EventId, it wraps the message
     /// in a consistent envelope with type "result" and a data field
     /// containing the parsed JSON object.
     /// </summary>
