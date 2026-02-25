@@ -41,6 +41,7 @@ public interface IProxyConfiguration
     LogLevel LogLevel { get; }
     ReleaseType NewVersionNotification { get; }
     bool NoFirstRun { get; set; }
+    bool NoWatch { get; set; }
     int Port { get; set; }
     bool Record { get; set; }
     bool ShowTimestamps { get; }

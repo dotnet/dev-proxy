@@ -38,6 +38,7 @@ sealed class ProxyConfiguration : IProxyConfiguration
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public LogLevel LogLevel { get; set; } = LogLevel.Information;
     public bool NoFirstRun { get; set; }
+    public bool NoWatch { get; set; }
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public ReleaseType NewVersionNotification { get; set; } = ReleaseType.Stable;
     public int Port { get; set; } = 8000;
