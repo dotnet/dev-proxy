@@ -135,7 +135,10 @@ sealed class ConfigCommand : Command
             _logger.LogDebug("Creating target folder {TargetFolderPath}...", targetFolderPath);
             _ = Directory.CreateDirectory(targetFolderPath);
 
-            _logger.LogInformation("Downloading config {ConfigId}...", configId);
+            if (outputFormat == OutputFormat.Text)
+            {
+                _logger.LogInformation("Downloading config {ConfigId}...", configId);
+            }
 
             var sampleFiles = await GetFilesToDownloadAsync(configId);
             if (sampleFiles.Length == 0)
@@ -148,7 +151,6 @@ sealed class ConfigCommand : Command
                 await DownloadFileAsync(sampleFile, targetFolderPath, configId);
             }
 
-            _logger.LogInformation("Config saved in {TargetFolderPath}\r\n", targetFolderPath);
             var configInfo = GetConfigInfo(targetFolderPath);
 
             if (outputFormat == OutputFormat.Json)
@@ -163,6 +165,8 @@ sealed class ConfigCommand : Command
                 Console.WriteLine(json);
                 return;
             }
+
+            _logger.LogInformation("Config saved in {TargetFolderPath}\r\n", targetFolderPath);
 
             if (!configInfo.ConfigFiles.Any() && !configInfo.MockFiles.Any())
             {
