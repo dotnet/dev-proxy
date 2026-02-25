@@ -38,6 +38,8 @@ sealed class DevProxyCommand : RootCommand
     internal const string DiscoverOptionName = "--discover";
     internal const string EnvOptionName = "--env";
     internal const string LogForOptionName = "--log-for";
+    internal const string DetachedOptionName = "--detach";
+    internal const string InternalDaemonOptionName = "--_internal-daemon";
 
     private static readonly string[] globalOptions = ["--version"];
     private static readonly string[] helpOptions = ["--help", "-h", "/h", "-?", "/?"];
@@ -46,7 +48,10 @@ sealed class DevProxyCommand : RootCommand
     private static bool _isStdioCommandResolved;
     private static bool _isJwtCommandResolved;
     private static bool _isRootCommandResolved;
+    private static bool _isDetachedModeResolved;
+    private static bool _isInternalDaemonResolved;
     private static bool _stdioLogFilePathResolved;
+    private static bool _detachedLogFilePathResolved;
 
     public static bool HasGlobalOptions
     {
@@ -97,6 +102,22 @@ sealed class DevProxyCommand : RootCommand
         }
     }
 
+    public static bool IsDetachedMode
+    {
+        get
+        {
+            if (_isDetachedModeResolved)
+            {
+                return field;
+            }
+
+            var args = Environment.GetCommandLineArgs();
+            field = args.Contains("--detach") || args.Contains("-d");
+            _isDetachedModeResolved = true;
+            return field;
+        }
+    }
+
     /// <summary>
     /// Determines if the root command (proxy itself) is being invoked.
     /// Returns true when no subcommand is specified (only options or no args).
@@ -122,6 +143,22 @@ sealed class DevProxyCommand : RootCommand
         }
     }
 
+    public static bool IsInternalDaemon
+    {
+        get
+        {
+            if (_isInternalDaemonResolved)
+            {
+                return field;
+            }
+
+            var args = Environment.GetCommandLineArgs();
+            field = args.Contains("--_internal-daemon");
+            _isInternalDaemonResolved = true;
+            return field;
+        }
+    }
+
     public static string StdioLogFilePath
     {
         get
@@ -135,6 +172,21 @@ sealed class DevProxyCommand : RootCommand
                 Directory.GetCurrentDirectory(),
                 $"devproxy-stdio-{DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)}.log");
             _stdioLogFilePathResolved = true;
+            return field;
+        }
+    }
+
+    public static string DetachedLogFilePath
+    {
+        get
+        {
+            if (_detachedLogFilePathResolved)
+            {
+                return field ?? string.Empty;
+            }
+
+            field = State.StateManager.GenerateLogFilePath();
+            _detachedLogFilePathResolved = true;
             return field;
         }
     }
@@ -415,14 +467,27 @@ sealed class DevProxyCommand : RootCommand
             }
         });
 
+        var detachedOption = new Option<bool?>(DetachedOptionName, "-d")
+        {
+            Description = "Run Dev Proxy in the background"
+        };
+
+        var internalDaemonOption = new Option<bool?>(InternalDaemonOptionName)
+        {
+            Description = "Internal use only - do not use directly",
+            Hidden = true
+        };
+
         var options = new List<Option>
         {
             apiPortOption,
             asSystemProxyOption,
             ConfigFileOption,
+            detachedOption,
             discoverOption,
             envOption,
             installCertOption,
+            internalDaemonOption,
             ipAddressOption,
             logForOption,
             logLevelOption,
@@ -448,7 +513,10 @@ sealed class DevProxyCommand : RootCommand
             ActivatorUtilities.CreateInstance<OutdatedCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<JwtCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<CertCommand>(_serviceProvider),
-            ActivatorUtilities.CreateInstance<StdioCommand>(_serviceProvider)
+            ActivatorUtilities.CreateInstance<StdioCommand>(_serviceProvider),
+            ActivatorUtilities.CreateInstance<StatusCommand>(_serviceProvider),
+            ActivatorUtilities.CreateInstance<StopCommand>(_serviceProvider),
+            ActivatorUtilities.CreateInstance<LogsCommand>(_serviceProvider)
         };
         commands.AddRange(_plugins.SelectMany(p => p.GetCommands()));
         this.AddCommands(commands.OrderByName());
