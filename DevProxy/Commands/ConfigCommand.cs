@@ -48,13 +48,6 @@ sealed class ConfigCommand : Command
     private readonly HttpClient _httpClient;
     private readonly string snippetsFileUrl = $"https://aka.ms/devproxy/snippets/v{ProxyUtils.NormalizeVersion(ProxyUtils.ProductVersion)}";
     private readonly string configFileSnippetName = "ConfigFile";
-    private static readonly JsonSerializerOptions _jsonOutputOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-    };
-
     public ConfigCommand(
         HttpClient httpClient,
         IProxyConfiguration proxyConfiguration,
@@ -533,11 +526,7 @@ sealed class ConfigCommand : Command
         try
         {
             configJson = await File.ReadAllTextAsync(resolvedConfigFile, cancellationToken);
-            configDoc = JsonDocument.Parse(configJson, new JsonDocumentOptions
-            {
-                CommentHandling = JsonCommentHandling.Skip,
-                AllowTrailingCommas = true
-            });
+            configDoc = JsonDocument.Parse(configJson, ProxyUtils.JsonDocumentOptions);
         }
         catch (JsonException ex)
         {
@@ -784,7 +773,7 @@ sealed class ConfigCommand : Command
             warnings = warnings.Select(w => new { path = w.Path, message = w.Message })
         };
 
-        var json = JsonSerializer.Serialize(result, _jsonOutputOptions);
+        var json = JsonSerializer.Serialize(result, ProxyUtils.JsonSerializerOptions);
         Console.WriteLine(json);
     }
 
