@@ -2,6 +2,7 @@ using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using System.CommandLine;
+using System.CommandLine.Help;
 using System.CommandLine.Parsing;
 using System.Globalization;
 
@@ -28,7 +29,7 @@ sealed class DevProxyCommand : RootCommand
     internal static readonly Option<string?> ConfigFileOption = new(ConfigFileOptionName, "-c")
     {
         HelpName = "config-file",
-        Description = "The path to the configuration file"
+        Description = "Path to config file. Defaults to devproxyrc.json in current directory. Supports ~appFolder token."
     };
     internal const string NoFirstRunOptionName = "--no-first-run";
     internal const string AsSystemProxyOptionName = "--as-system-proxy";
@@ -453,7 +454,18 @@ sealed class DevProxyCommand : RootCommand
         commands.AddRange(_plugins.SelectMany(p => p.GetCommands()));
         this.AddCommands(commands.OrderByName());
 
+        CustomizeHelp();
+
         SetAction(InvokeAsync);
+    }
+
+    private void CustomizeHelp()
+    {
+        var helpOption = Options.OfType<HelpOption>().FirstOrDefault();
+        if (helpOption?.Action is HelpAction originalAction)
+        {
+            helpOption.Action = new DevProxyHelpAction(originalAction);
+        }
     }
 
     private void ConfigureFromOptions(ParseResult parseResult)
