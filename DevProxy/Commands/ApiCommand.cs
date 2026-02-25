@@ -1,0 +1,68 @@
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
+
+using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Utils;
+using System.CommandLine;
+using System.Text.Json;
+
+namespace DevProxy.Commands;
+
+sealed class ApiCommand : Command
+{
+    private readonly IProxyConfiguration _proxyConfiguration;
+
+    public ApiCommand(IProxyConfiguration proxyConfiguration) :
+        base("api", "Display Dev Proxy API information for runtime management")
+    {
+        _proxyConfiguration = proxyConfiguration;
+        ConfigureCommand();
+    }
+
+    private void ConfigureCommand()
+    {
+        SetAction(parseResult =>
+        {
+            PrintApiInfo();
+        });
+    }
+
+    private void PrintApiInfo()
+    {
+        var ipAddress = _proxyConfiguration.IPAddress ?? "127.0.0.1";
+        var apiPort = _proxyConfiguration.ApiPort;
+        var baseUrl = $"http://{ipAddress}:{apiPort}";
+
+        var apiInfo = new ApiInfo
+        {
+            BaseUrl = baseUrl,
+            SwaggerUrl = $"{baseUrl}/swagger/v1/swagger.json",
+            Endpoints =
+            [
+                new ApiEndpointInfo { Method = "GET", Path = "/proxy", Description = "Get proxy status" },
+                new ApiEndpointInfo { Method = "POST", Path = "/proxy", Description = "Update proxy status (e.g. start/stop recording)" },
+                new ApiEndpointInfo { Method = "POST", Path = "/proxy/mockRequest", Description = "Issue a mock request" },
+                new ApiEndpointInfo { Method = "POST", Path = "/proxy/stopProxy", Description = "Stop the proxy" },
+                new ApiEndpointInfo { Method = "POST", Path = "/proxy/jwtToken", Description = "Create a JWT token" },
+                new ApiEndpointInfo { Method = "GET", Path = "/proxy/rootCertificate", Description = "Get the root certificate" }
+            ]
+        };
+
+        Console.WriteLine(JsonSerializer.Serialize(apiInfo, ProxyUtils.JsonSerializerOptions));
+    }
+}
+
+sealed class ApiInfo
+{
+    public string BaseUrl { get; set; } = string.Empty;
+    public string SwaggerUrl { get; set; } = string.Empty;
+    public ApiEndpointInfo[] Endpoints { get; set; } = [];
+}
+
+sealed class ApiEndpointInfo
+{
+    public string Method { get; set; } = string.Empty;
+    public string Path { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+}
