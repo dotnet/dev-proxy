@@ -167,7 +167,7 @@ sealed class ConfigCommand : Command
             var configFile = parseResult.GetValue(validateConfigFileOption);
             var logFor = parseResult.GetValueOrDefault<LogFor?>(DevProxyCommand.LogForOptionName);
             var isJsonOutput = logFor == LogFor.Machine;
-            return await ValidateConfigAsync(configFile, isJsonOutput, cancellationToken);
+            return await ValidateConfigCoreAsync(configFile, isJsonOutput, _httpClient, _logger, cancellationToken);
         });
 
         this.AddCommands(new List<Command>
@@ -509,11 +509,6 @@ sealed class ConfigCommand : Command
         return null;
     }
 
-    private async Task<int> ValidateConfigAsync(string? configFilePath, bool isJsonOutput, CancellationToken cancellationToken)
-    {
-        return await ValidateConfigCoreAsync(configFilePath, isJsonOutput, _httpClient, _logger, cancellationToken);
-    }
-
     private static async Task<int> ValidateConfigCoreAsync(
         string? configFilePath,
         bool isJsonOutput,
@@ -533,7 +528,7 @@ sealed class ConfigCommand : Command
                 ? $"Configuration file '{configFilePath}' not found"
                 : "No configuration file found"));
             WriteResults(isJsonOutput, null, errors, warnings, pluginNames, urlPatterns, logger);
-            return 1;
+            return 2;
         }
 
         string configJson;
@@ -547,7 +542,7 @@ sealed class ConfigCommand : Command
         {
             errors.Add(new("configFile", $"Invalid JSON: {ex.Message}"));
             WriteResults(isJsonOutput, resolvedConfigFile, errors, warnings, pluginNames, urlPatterns, logger);
-            return 1;
+            return 2;
         }
 
         using (configDoc)
@@ -606,7 +601,7 @@ sealed class ConfigCommand : Command
 
         var isConfigValid = errors.Count == 0;
         WriteResults(isJsonOutput, resolvedConfigFile, errors, warnings, pluginNames, urlPatterns, logger);
-        return isConfigValid ? 0 : 1;
+        return isConfigValid ? 0 : 2;
     }
 
     private static void ValidateSchemaVersion(string schemaUrl, List<ValidationMessage> warnings)
