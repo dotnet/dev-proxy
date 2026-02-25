@@ -117,7 +117,10 @@ sealed class ConfigCommand : Command
             var appFolder = ProxyUtils.AppFolder;
             if (string.IsNullOrEmpty(appFolder) || !Directory.Exists(appFolder))
             {
-                _logger.LogError("App folder {AppFolder} not found", appFolder);
+                if (outputFormat == OutputFormat.Text)
+                {
+                    _logger.LogError("App folder {AppFolder} not found", appFolder);
+                }
                 return;
             }
 
@@ -143,7 +146,10 @@ sealed class ConfigCommand : Command
             var sampleFiles = await GetFilesToDownloadAsync(configId);
             if (sampleFiles.Length == 0)
             {
-                _logger.LogError("Config {ConfigId} not found in the samples repo", configId);
+                if (outputFormat == OutputFormat.Text)
+                {
+                    _logger.LogError("Config {ConfigId} not found in the samples repo", configId);
+                }
                 return;
             }
             foreach (var sampleFile in sampleFiles)
@@ -198,7 +204,10 @@ sealed class ConfigCommand : Command
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error downloading config");
+            if (outputFormat == OutputFormat.Text)
+            {
+                _logger.LogError(ex, "Error downloading config");
+            }
         }
     }
 
@@ -352,13 +361,19 @@ sealed class ConfigCommand : Command
 
             if (!snippets.TryGetValue(configFileSnippetName, out var snippet))
             {
-                _logger.LogError("Snippet {SnippetName} not found", configFileSnippetName);
+                if (outputFormat == OutputFormat.Text)
+                {
+                    _logger.LogError("Snippet {SnippetName} not found", configFileSnippetName);
+                }
                 return;
             }
 
             if (snippet.Body is null || snippet.Body.Length == 0)
             {
-                _logger.LogError("Snippet {SnippetName} is empty", configFileSnippetName);
+                if (outputFormat == OutputFormat.Text)
+                {
+                    _logger.LogError("Snippet {SnippetName} is empty", configFileSnippetName);
+                }
                 return;
             }
 
@@ -381,7 +396,10 @@ sealed class ConfigCommand : Command
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error downloading config");
+            if (outputFormat == OutputFormat.Text)
+            {
+                _logger.LogError(ex, "Error downloading config");
+            }
         }
     }
 
