@@ -66,5 +66,5 @@
   "required": [
     "request"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

@@ -154,7 +154,7 @@
     },
     "validateSchemas": {
       "type": "boolean",
-      "description": "Whether to validate configuration files against their schemas."
+      "description": "Whether to validate configuration files against their schemas. Only applies to JSON-based configuration files."
     },
     "watchPids": {
       "type": "array",
