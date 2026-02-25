@@ -162,7 +162,7 @@ sealed class ConfigCommand : Command
                     configFiles = configInfo.ConfigFiles,
                     mockFiles = configInfo.MockFiles
                 }, ProxyUtils.JsonSerializerOptions);
-                Console.WriteLine(json);
+                _logger.LogStructuredOutput(json);
                 return;
             }
 
@@ -372,7 +372,7 @@ sealed class ConfigCommand : Command
                 {
                     path = targetFileName
                 }, ProxyUtils.JsonSerializerOptions);
-                Console.WriteLine(json);
+                _logger.LogStructuredOutput(json);
             }
             else
             {

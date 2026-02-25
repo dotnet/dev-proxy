@@ -80,7 +80,7 @@ sealed class OutdatedCommand : Command
         }
     }
 
-    private static void WriteJsonOutput(ReleaseInfo? releaseInfo, bool versionOnly)
+    private void WriteJsonOutput(ReleaseInfo? releaseInfo, bool versionOnly)
     {
         if (releaseInfo is not null && releaseInfo.Version is not null)
         {
@@ -93,7 +93,7 @@ sealed class OutdatedCommand : Command
                 {
                     version = releaseInfo.Version
                 }, ProxyUtils.JsonSerializerOptions);
-                Console.WriteLine(json);
+                _logger.LogStructuredOutput(json);
             }
             else
             {
@@ -104,7 +104,7 @@ sealed class OutdatedCommand : Command
                     releaseNotes = notesLink,
                     upgradeUrl = "https://aka.ms/devproxy/upgrade"
                 }, ProxyUtils.JsonSerializerOptions);
-                Console.WriteLine(json);
+                _logger.LogStructuredOutput(json);
             }
         }
         else
@@ -113,7 +113,7 @@ sealed class OutdatedCommand : Command
             {
                 current = ProxyUtils.ProductVersion
             }, ProxyUtils.JsonSerializerOptions);
-            Console.WriteLine(json);
+            _logger.LogStructuredOutput(json);
         }
     }
 }

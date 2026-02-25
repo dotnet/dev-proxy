@@ -124,6 +124,14 @@ sealed class MachineConsoleFormatter : ConsoleFormatter
             return;
         }
 
+        // Structured output (e.g., subcommand JSON) is written as-is
+        // without the JSONL envelope
+        if (logEntry.EventId == LogEvents.StructuredOutput)
+        {
+            textWriter.WriteLine(message);
+            return;
+        }
+
         var requestId = GetRequestIdScope(scopeProvider);
         var category = logEntry.Category;
 
