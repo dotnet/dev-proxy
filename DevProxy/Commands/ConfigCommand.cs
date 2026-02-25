@@ -70,9 +70,10 @@ sealed class ConfigCommand : Command
         configGetCommand.SetAction(async (parseResult) =>
         {
             var configId = parseResult.GetValue(configIdArgument);
+            var outputFormat = parseResult.GetValueOrDefault<OutputFormat?>(DevProxyCommand.OutputOptionName) ?? OutputFormat.Text;
             if (configId != null)
             {
-                await DownloadConfigAsync(configId);
+                await DownloadConfigAsync(configId, outputFormat);
             }
         });
 
@@ -87,7 +88,8 @@ sealed class ConfigCommand : Command
         configNewCommand.SetAction(async (parseResult) =>
         {
             var name = parseResult.GetValue(nameArgument) ?? "devproxyrc.json";
-            await CreateConfigFileAsync(name);
+            var outputFormat = parseResult.GetValueOrDefault<OutputFormat?>(DevProxyCommand.OutputOptionName) ?? OutputFormat.Text;
+            await CreateConfigFileAsync(name, outputFormat);
         });
 
         var configOpenCommand = new Command("open", "Open devproxyrc.json");
@@ -108,7 +110,7 @@ sealed class ConfigCommand : Command
         }.OrderByName());
     }
 
-    private async Task DownloadConfigAsync(string configId)
+    private async Task DownloadConfigAsync(string configId, OutputFormat outputFormat)
     {
         try
         {
@@ -148,6 +150,20 @@ sealed class ConfigCommand : Command
 
             _logger.LogInformation("Config saved in {TargetFolderPath}\r\n", targetFolderPath);
             var configInfo = GetConfigInfo(targetFolderPath);
+
+            if (outputFormat == OutputFormat.Json)
+            {
+                var json = JsonSerializer.Serialize(new
+                {
+                    configId,
+                    path = targetFolderPath,
+                    configFiles = configInfo.ConfigFiles,
+                    mockFiles = configInfo.MockFiles
+                }, ProxyUtils.JsonSerializerOptions);
+                Console.WriteLine(json);
+                return;
+            }
+
             if (!configInfo.ConfigFiles.Any() && !configInfo.MockFiles.Any())
             {
                 return;
@@ -320,7 +336,7 @@ sealed class ConfigCommand : Command
         }
     }
 
-    private async Task CreateConfigFileAsync(string name)
+    private async Task CreateConfigFileAsync(string name, OutputFormat outputFormat)
     {
         try
         {
@@ -345,7 +361,19 @@ sealed class ConfigCommand : Command
             var snippetBody = GetSnippetBody(snippet.Body);
             var targetFileName = GetTargetFileName(name);
             await File.WriteAllTextAsync(targetFileName, snippetBody);
-            _logger.LogInformation("Config file created at {TargetFileName}", targetFileName);
+
+            if (outputFormat == OutputFormat.Json)
+            {
+                var json = JsonSerializer.Serialize(new
+                {
+                    path = targetFileName
+                }, ProxyUtils.JsonSerializerOptions);
+                Console.WriteLine(json);
+            }
+            else
+            {
+                _logger.LogInformation("Config file created at {TargetFileName}", targetFileName);
+            }
         }
         catch (Exception ex)
         {

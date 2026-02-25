@@ -174,7 +174,7 @@ sealed class ProxyEngine(
             !DevProxyCommand.IsInternalDaemon &&
             Environment.GetEnvironmentVariable("CI") is null;
 
-        if (_config.LogFor == LogFor.Machine)
+        if (_config.Output == OutputFormat.Json)
         {
             // Always print API instructions in machine mode
             // since LLMs/agents can use the API even in non-interactive mode
@@ -266,7 +266,7 @@ sealed class ProxyEngine(
                 break;
             case ConsoleKey.C:
                 Console.Clear();
-                if (_config.LogFor == LogFor.Machine)
+                if (_config.Output == OutputFormat.Json)
                 {
                     PrintApiInstructions(_config);
                 }
