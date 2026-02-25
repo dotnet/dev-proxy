@@ -202,7 +202,8 @@ public class MockStdioResponsePlugin(
 
         // Find mocks without stdin patterns (startup mocks)
         var startupMocks = Configuration.Mocks
-            .Where(m => string.IsNullOrEmpty(m.Request?.BodyFragment))
+            .Where(m => string.IsNullOrEmpty(m.Request?.BodyFragment) &&
+                        string.IsNullOrEmpty(m.Request?.BodyRegex))
             .ToList();
 
         foreach (var mock in startupMocks)
@@ -249,16 +250,42 @@ public class MockStdioResponsePlugin(
                 return false;
             }
 
-            if (string.IsNullOrEmpty(mockResponse.Request.BodyFragment))
+            var hasBodyFragment = !string.IsNullOrEmpty(mockResponse.Request.BodyFragment);
+            var hasBodyRegex = !string.IsNullOrEmpty(mockResponse.Request.BodyRegex);
+
+            if (!hasBodyFragment && !hasBodyRegex)
             {
-                // No body fragment means startup mock, handled separately
+                // No body fragment or regex means startup mock, handled separately
                 return false;
             }
 
-            // Check if stdin contains the body fragment
-            if (!stdinBody.Contains(mockResponse.Request.BodyFragment, StringComparison.OrdinalIgnoreCase))
+            // Use bodyRegex if specified, otherwise use bodyFragment (either/or)
+            if (hasBodyRegex)
             {
-                return false;
+                try
+                {
+                    if (!Regex.IsMatch(stdinBody, mockResponse.Request.BodyRegex!, RegexOptions.IgnoreCase, TimeSpan.FromSeconds(5)))
+                    {
+                        return false;
+                    }
+                }
+                catch (RegexMatchTimeoutException ex)
+                {
+                    Logger.LogError(ex, "Regex match timed out for body regex pattern '{Pattern}'. Treating as non-matching mock.", mockResponse.Request.BodyRegex);
+                    return false;
+                }
+                catch (ArgumentException ex)
+                {
+                    Logger.LogError(ex, "Invalid body regex pattern '{Pattern}'. Treating as non-matching mock.", mockResponse.Request.BodyRegex);
+                    return false;
+                }
+            }
+            else if (hasBodyFragment)
+            {
+                if (!stdinBody.Contains(mockResponse.Request.BodyFragment!, StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
             }
 
             // Check Nth condition
@@ -267,7 +294,7 @@ public class MockStdioResponsePlugin(
 
         if (mockResponse?.Request is not null)
         {
-            var mockKey = mockResponse.Request.BodyFragment ?? "default";
+            var mockKey = GetMockKey(mockResponse);
             _ = _appliedMocks.AddOrUpdate(mockKey, 1, (_, value) => ++value);
         }
 
@@ -282,11 +309,18 @@ public class MockStdioResponsePlugin(
             return true;
         }
 
-        var mockKey = mockResponse.Request.BodyFragment ?? "default";
+        var mockKey = GetMockKey(mockResponse);
         _ = _appliedMocks.TryGetValue(mockKey, out var nth);
         nth++;
 
         return mockResponse.Request.Nth == nth;
+    }
+
+    private static string GetMockKey(MockStdioResponse mockResponse)
+    {
+        return mockResponse.Request?.BodyRegex
+            ?? mockResponse.Request?.BodyFragment
+            ?? "default";
     }
 
     private void ProcessMockResponse(StdioRequestArgs e, MockStdioResponse matchingResponse)

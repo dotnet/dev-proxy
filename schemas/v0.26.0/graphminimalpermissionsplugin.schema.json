@@ -9,8 +9,8 @@
     "type": {
       "type": "string",
       "enum": [
-        "Delegated",
-        "Application"
+        "delegated",
+        "application"
       ]
     }
   },

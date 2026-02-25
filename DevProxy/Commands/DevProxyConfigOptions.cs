@@ -21,6 +21,7 @@ sealed class DevProxyConfigOptions : RootCommand
     public int? ApiPort => _parseResult?.GetValueOrDefault<int?>(DevProxyCommand.ApiPortOptionName);
     public bool Discover => _parseResult?.GetValueOrDefault<bool?>(DevProxyCommand.DiscoverOptionName) ?? false;
     public string? IPAddress => _parseResult?.GetValueOrDefault<string?>(DevProxyCommand.IpAddressOptionName);
+    public bool IsStdioMode => _parseResult?.CommandResult.Command.Name == "stdio";
     public LogFor? LogFor => _parseResult?.GetValueOrDefault<LogFor?>(DevProxyCommand.LogForOptionName);
     public LogLevel? LogLevel => _parseResult?.GetValueOrDefault<LogLevel?>(DevProxyCommand.LogLevelOptionName);
 

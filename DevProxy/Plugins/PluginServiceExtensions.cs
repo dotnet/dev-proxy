@@ -125,7 +125,8 @@ static class PluginServiceExtensions
                     assembly,
                     configuration,
                     services,
-                    logger);
+                    logger,
+                    options.IsStdioMode);
             }
             catch (Exception ex)
             {
@@ -149,19 +150,22 @@ static class PluginServiceExtensions
         Assembly assembly,
         IConfiguration configuration,
         IServiceCollection services,
-        ILogger logger)
+        ILogger logger,
+        bool isStdioMode)
     {
-        if (urlsToWatch.Count == 0)
-        {
-            logger.LogError("Plugin {PluginName} must have at least one URL to watch. Please add a URL to watch in the configuration file or use the --urls-to-watch option.", pluginRef.Name);
-            return;
-        }
-
         var pluginType = assembly.GetTypes()
             .FirstOrDefault(t => t.Name == pluginRef.Name && typeof(IPlugin).IsAssignableFrom(t));
         if (pluginType is null)
         {
             logger.LogError("Plugin {PluginName} not found in assembly {Assembly}.", pluginRef.Name, assembly);
+            return;
+        }
+
+        // In stdio mode, plugins don't need URLs to watch because they
+        // communicate through STDIO (JSON-RPC) rather than HTTP
+        if (urlsToWatch.Count == 0 && !isStdioMode)
+        {
+            logger.LogError("Plugin {PluginName} must have at least one URL to watch. Please add a URL to watch in the configuration file or use the --urls-to-watch option.", pluginRef.Name);
             return;
         }
 
