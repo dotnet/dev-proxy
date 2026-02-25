@@ -229,8 +229,19 @@ sealed class ProxyEngine(
 
         Console.WriteLine();
         Console.WriteLine("Dev Proxy uses a self-signed certificate to intercept and inspect HTTPS traffic.");
-        Console.Write("Update the certificate in your Keychain so that it's trusted by your browser? (Y/n): ");
-        var answer = Console.ReadLine()?.Trim();
+
+        string? answer;
+        if (Console.IsInputRedirected)
+        {
+            // Non-interactive mode, default to trusting the certificate
+            _logger.LogInformation("Non-interactive mode detected. Defaulting to trusting the certificate.");
+            answer = "y";
+        }
+        else
+        {
+            Console.Write("Update the certificate in your Keychain so that it's trusted by your browser? (Y/n): ");
+            answer = Console.ReadLine()?.Trim();
+        }
 
         if (string.Equals(answer, "n", StringComparison.OrdinalIgnoreCase))
         {
