@@ -23,5 +23,5 @@ static class ILoggerExtensions
     /// without any log envelope formatting.
     /// </summary>
     public static void LogStructuredOutput(this ILogger logger, string message) =>
-        logger.Log(LogLevel.Information, LogEvents.StructuredOutput, "{Message}", message);
+        logger.Log(LogLevel.Information, LogEvents.StructuredOutput, message);
 }
