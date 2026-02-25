@@ -10,6 +10,7 @@ using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using YamlDotNet.Serialization;
 
 namespace DevProxy.Commands;
 
@@ -326,6 +327,13 @@ sealed class ConfigCommand : Command
             }
 
             var snippetBody = GetSnippetBody(snippet.Body);
+
+            var extension = Path.GetExtension(name).ToLowerInvariant();
+            if (extension is ".yaml" or ".yml")
+            {
+                snippetBody = ConvertJsonToYaml(snippetBody!);
+            }
+
             var targetFileName = GetTargetFileName(name);
             await File.WriteAllTextAsync(targetFileName, snippetBody);
             _logger.LogInformation("Config file created at {TargetFileName}", targetFileName);
@@ -400,5 +408,30 @@ sealed class ConfigCommand : Command
         // remove snippet $n markers
         body = Regex.Replace(body, @"\$[0-9]+", "");
         return body;
+    }
+
+    private static string ConvertJsonToYaml(string json)
+    {
+        var jsonDocument = JsonDocument.Parse(json);
+        var obj = ConvertJsonElement(jsonDocument.RootElement);
+        var serializer = new SerializerBuilder().Build();
+        return serializer.Serialize(obj);
+    }
+
+    private static object? ConvertJsonElement(JsonElement element)
+    {
+        return element.ValueKind switch
+        {
+            JsonValueKind.Object => element.EnumerateObject()
+                .ToDictionary(p => (object)p.Name, p => ConvertJsonElement(p.Value)),
+            JsonValueKind.Array => element.EnumerateArray()
+                .Select(ConvertJsonElement)
+                .ToList(),
+            JsonValueKind.String => element.GetString(),
+            JsonValueKind.Number => element.TryGetInt64(out var l) ? (object)l : element.GetDouble(),
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => null
+        };
     }
 }
