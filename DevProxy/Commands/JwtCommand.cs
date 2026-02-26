@@ -94,7 +94,7 @@ sealed class JwtCommand : Command
                 var value = input.GetValue(jwtSigningKeyOption);
                 if (string.IsNullOrWhiteSpace(value) || value.Length < 32)
                 {
-                    input.AddError($"Requires option '--{jwtSigningKeyOption.Name}' to be at least 32 characters");
+                    input.AddError($"Requires option '{jwtSigningKeyOption.Name}' to be at least 32 characters");
                 }
             }
             catch (InvalidOperationException ex)
@@ -114,6 +114,13 @@ sealed class JwtCommand : Command
             jwtValidForOption,
             jwtSigningKeyOption
         }.OrderByName());
+
+        HelpExamples.Add(jwtCreateCommand, [
+            "devproxy jwt create                                    Create token with defaults",
+            "devproxy jwt create -n \"John Doe\" -r admin -r user   Token with name and roles",
+            "devproxy jwt create -s \"read\" -s \"write\" -a myapp  Token with scopes and audience",
+            "devproxy jwt create --claims \"dept:eng\"              Custom claims",
+        ]);
 
         jwtCreateCommand.SetAction(parseResult =>
         {

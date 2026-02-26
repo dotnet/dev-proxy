@@ -8,7 +8,7 @@ using System.CommandLine.Invocation;
 
 namespace DevProxy.Commands;
 
-sealed class DevProxyHelpAction(HelpAction originalAction) : SynchronousCommandLineAction
+sealed class DevProxyHelpAction(SynchronousCommandLineAction originalAction) : SynchronousCommandLineAction
 {
     public override int Invoke(ParseResult parseResult)
     {
@@ -27,10 +27,15 @@ sealed class DevProxyHelpAction(HelpAction originalAction) : SynchronousCommandL
         output.WriteLine();
         output.WriteLine("Output:");
         output.WriteLine("  Primary output goes to stdout. Errors and diagnostics go to stderr.");
-        output.WriteLine("  Use --log-for Machine for structured output.");
+        output.WriteLine("  Use --output json for structured output.");
         output.WriteLine();
         output.WriteLine("Configuration precedence:");
         output.WriteLine("  CLI flags > config file > defaults");
+        output.WriteLine();
+        output.WriteLine("Exit codes:");
+        output.WriteLine("  0  Success");
+        output.WriteLine("  1  Runtime error");
+        output.WriteLine("  2  Invalid input or usage");
 
         return 0;
     }

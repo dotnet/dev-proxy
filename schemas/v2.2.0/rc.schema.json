@@ -85,6 +85,14 @@
       ],
       "description": "The minimum log level for Dev Proxy output."
     },
+    "output": {
+      "type": "string",
+      "enum": [
+        "text",
+        "json"
+      ],
+      "description": "Output format. Use 'text' for readable console output (default), or 'json' for structured JSON Lines output suitable for LLMs and agents."
+    },
     "newVersionNotification": {
       "type": "string",
       "enum": [
