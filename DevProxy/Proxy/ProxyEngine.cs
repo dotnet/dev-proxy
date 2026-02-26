@@ -174,7 +174,7 @@ sealed class ProxyEngine(
             !DevProxyCommand.IsInternalDaemon &&
             Environment.GetEnvironmentVariable("CI") is null;
 
-        if (_config.LogFor == LogFor.Machine)
+        if (_config.Output == OutputFormat.Json)
         {
             // Always print API instructions in machine mode
             // since LLMs/agents can use the API even in non-interactive mode
@@ -231,8 +231,20 @@ sealed class ProxyEngine(
 
         Console.WriteLine();
         Console.WriteLine("Dev Proxy uses a self-signed certificate to intercept and inspect HTTPS traffic.");
-        Console.Write("Update the certificate in your Keychain so that it's trusted by your browser? (Y/n): ");
-        var answer = Console.ReadLine()?.Trim();
+
+        string? answer;
+        if (Console.IsInputRedirected ||
+            Environment.GetEnvironmentVariable("CI") is not null)
+        {
+            // Non-interactive mode, default to trusting the certificate
+            _logger.LogInformation("Non-interactive mode detected. Defaulting to trusting the certificate.");
+            answer = "y";
+        }
+        else
+        {
+            Console.Write("Update the certificate in your Keychain so that it's trusted by your browser? (Y/n): ");
+            answer = Console.ReadLine()?.Trim();
+        }
 
         if (string.Equals(answer, "n", StringComparison.OrdinalIgnoreCase))
         {
@@ -266,7 +278,7 @@ sealed class ProxyEngine(
                 break;
             case ConsoleKey.C:
                 Console.Clear();
-                if (_config.LogFor == LogFor.Machine)
+                if (_config.Output == OutputFormat.Json)
                 {
                     PrintApiInstructions(_config);
                 }
