@@ -4,6 +4,7 @@
 
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Commands;
 using Titanium.Web.Proxy;
 
 namespace DevProxy.Proxy;
@@ -95,9 +96,15 @@ sealed class ProxyStateController(
         {
             if (isRecording)
             {
-                Console.ForegroundColor = ConsoleColor.Red;
+                if (!DevProxyCommand.NoColor)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                }
                 Console.Error.Write("◉");
-                Console.ResetColor();
+                if (!DevProxyCommand.NoColor)
+                {
+                    Console.ResetColor();
+                }
                 Console.Error.WriteLine(" Recording... ");
             }
             else

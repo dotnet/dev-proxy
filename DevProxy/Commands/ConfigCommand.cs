@@ -2,15 +2,20 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
+using DevProxy.Logging;
+using DevProxy.Plugins;
 using System.CommandLine;
 using System.CommandLine.Parsing;
 using System.Diagnostics;
 using System.Net.Http.Headers;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using YamlDotNet.Serialization;
+using YamlDotNet.Core;
 
 namespace DevProxy.Commands;
 
@@ -46,7 +51,6 @@ sealed class ConfigCommand : Command
     private readonly HttpClient _httpClient;
     private readonly string snippetsFileUrl = $"https://aka.ms/devproxy/snippets/v{ProxyUtils.NormalizeVersion(ProxyUtils.ProductVersion)}";
     private readonly string configFileSnippetName = "ConfigFile";
-
     public ConfigCommand(
         HttpClient httpClient,
         IProxyConfiguration proxyConfiguration,
@@ -60,6 +64,68 @@ sealed class ConfigCommand : Command
         ConfigureCommand();
     }
 
+    /// <summary>
+    /// Runs config validation standalone, without requiring the full DI container.
+    /// Used when the proxy is invoked with 'config validate' to allow validating
+    /// even broken config files.
+    /// </summary>
+    internal static async Task<int> RunValidateStandaloneAsync(string[] args)
+    {
+        string? configFile = null;
+        var isJsonOutput = false;
+
+        for (var i = 0; i < args.Length; i++)
+        {
+            if ((string.Equals(args[i], "--config-file", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(args[i], "-c", StringComparison.OrdinalIgnoreCase)) &&
+                i + 1 < args.Length)
+            {
+                configFile = args[i + 1];
+                i++;
+            }
+            else if (string.Equals(args[i], DevProxyCommand.OutputOptionName, StringComparison.OrdinalIgnoreCase) &&
+                     i + 1 < args.Length)
+            {
+                isJsonOutput = string.Equals(args[i + 1], "json", StringComparison.OrdinalIgnoreCase);
+                i++;
+            }
+        }
+
+        using var httpClient = new HttpClient();
+        httpClient.DefaultRequestHeaders.UserAgent.Add(
+            new ProductInfoHeaderValue("dev-proxy", ProxyUtils.ProductVersion));
+
+        var formatterName = isJsonOutput
+            ? JsonConsoleFormatter.FormatterName
+            : ProxyConsoleFormatter.DefaultCategoryName;
+
+        using var loggerFactory = LoggerFactory.Create(builder =>
+        {
+            builder
+                .SetMinimumLevel(LogLevel.Information)
+                .AddConsole(consoleOptions =>
+                {
+                    consoleOptions.FormatterName = formatterName;
+                    consoleOptions.LogToStandardErrorThreshold = LogLevel.Warning;
+                })
+                .AddConsoleFormatter<ProxyConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
+                {
+                    formatterOptions.IncludeScopes = false;
+                    formatterOptions.ShowSkipMessages = true;
+                    formatterOptions.ShowTimestamps = false;
+                })
+                .AddConsoleFormatter<JsonConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
+                {
+                    formatterOptions.IncludeScopes = false;
+                    formatterOptions.ShowSkipMessages = true;
+                    formatterOptions.ShowTimestamps = false;
+                });
+        });
+        var logger = loggerFactory.CreateLogger<ConfigCommand>();
+
+        return await ValidateConfigCoreAsync(configFile, isJsonOutput, httpClient, logger, CancellationToken.None);
+    }
+
     private void ConfigureCommand()
     {
         var configGetCommand = new Command("get", "Download the specified config from the Sample Solution Gallery");
@@ -71,9 +137,10 @@ sealed class ConfigCommand : Command
         configGetCommand.SetAction(async (parseResult) =>
         {
             var configId = parseResult.GetValue(configIdArgument);
+            var outputFormat = parseResult.GetValueOrDefault<OutputFormat?>(DevProxyCommand.OutputOptionName) ?? OutputFormat.Text;
             if (configId != null)
             {
-                await DownloadConfigAsync(configId);
+                await DownloadConfigAsync(configId, outputFormat);
             }
         });
 
@@ -88,7 +155,8 @@ sealed class ConfigCommand : Command
         configNewCommand.SetAction(async (parseResult) =>
         {
             var name = parseResult.GetValue(nameArgument) ?? "devproxyrc.json";
-            await CreateConfigFileAsync(name);
+            var outputFormat = parseResult.GetValueOrDefault<OutputFormat?>(DevProxyCommand.OutputOptionName) ?? OutputFormat.Text;
+            await CreateConfigFileAsync(name, outputFormat);
         });
 
         var configOpenCommand = new Command("open", "Open devproxyrc.json");
@@ -101,22 +169,48 @@ sealed class ConfigCommand : Command
             _ = Process.Start(cfgPsi);
         });
 
+        var configValidateCommand = new Command("validate", "Validate a Dev Proxy configuration file");
+        var validateConfigFileOption = new Option<string?>("--config-file", "-c")
+        {
+            Description = "The path to the configuration file to validate",
+            HelpName = "config-file"
+        };
+        configValidateCommand.Add(validateConfigFileOption);
+        configValidateCommand.SetAction(async (parseResult, cancellationToken) =>
+        {
+            var configFile = parseResult.GetValue(validateConfigFileOption);
+            var output = parseResult.GetValueOrDefault<OutputFormat?>(DevProxyCommand.OutputOptionName);
+            var isJsonOutput = output == OutputFormat.Json;
+            return await ValidateConfigCoreAsync(configFile, isJsonOutput, _httpClient, _logger, cancellationToken);
+        });
+
         this.AddCommands(new List<Command>
         {
             configGetCommand,
             configNewCommand,
-            configOpenCommand
+            configOpenCommand,
+            configValidateCommand
         }.OrderByName());
+
+        HelpExamples.Add(this, [
+            "devproxy config new                                 Create default devproxyrc.json",
+            "devproxy config new myconfig.json                   Create named config file",
+            "devproxy config get <config-id>                     Download config from gallery",
+            "devproxy config open                                Open config in default editor",
+        ]);
     }
 
-    private async Task DownloadConfigAsync(string configId)
+    private async Task DownloadConfigAsync(string configId, OutputFormat outputFormat)
     {
         try
         {
             var appFolder = ProxyUtils.AppFolder;
             if (string.IsNullOrEmpty(appFolder) || !Directory.Exists(appFolder))
             {
-                _logger.LogError("App folder {AppFolder} not found", appFolder);
+                if (outputFormat == OutputFormat.Text)
+                {
+                    _logger.LogError("App folder {AppFolder} not found", appFolder);
+                }
                 return;
             }
 
@@ -134,12 +228,18 @@ sealed class ConfigCommand : Command
             _logger.LogDebug("Creating target folder {TargetFolderPath}...", targetFolderPath);
             _ = Directory.CreateDirectory(targetFolderPath);
 
-            _logger.LogInformation("Downloading config {ConfigId}...", configId);
+            if (outputFormat == OutputFormat.Text)
+            {
+                _logger.LogInformation("Downloading config {ConfigId}...", configId);
+            }
 
             var sampleFiles = await GetFilesToDownloadAsync(configId);
             if (sampleFiles.Length == 0)
             {
-                _logger.LogError("Config {ConfigId} not found in the samples repo", configId);
+                if (outputFormat == OutputFormat.Text)
+                {
+                    _logger.LogError("Config {ConfigId} not found in the samples repo", configId);
+                }
                 return;
             }
             foreach (var sampleFile in sampleFiles)
@@ -147,8 +247,23 @@ sealed class ConfigCommand : Command
                 await DownloadFileAsync(sampleFile, targetFolderPath, configId);
             }
 
-            _logger.LogInformation("Config saved in {TargetFolderPath}\r\n", targetFolderPath);
             var configInfo = GetConfigInfo(targetFolderPath);
+
+            if (outputFormat == OutputFormat.Json)
+            {
+                var json = JsonSerializer.Serialize(new
+                {
+                    configId,
+                    path = targetFolderPath,
+                    configFiles = configInfo.ConfigFiles,
+                    mockFiles = configInfo.MockFiles
+                }, ProxyUtils.JsonSerializerOptions);
+                _logger.LogStructuredOutput(json);
+                return;
+            }
+
+            _logger.LogInformation("Config saved in {TargetFolderPath}\r\n", targetFolderPath);
+
             if (!configInfo.ConfigFiles.Any() && !configInfo.MockFiles.Any())
             {
                 return;
@@ -179,7 +294,10 @@ sealed class ConfigCommand : Command
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error downloading config");
+            if (outputFormat == OutputFormat.Text)
+            {
+                _logger.LogError(ex, "Error downloading config");
+            }
         }
     }
 
@@ -321,7 +439,7 @@ sealed class ConfigCommand : Command
         }
     }
 
-    private async Task CreateConfigFileAsync(string name)
+    private async Task CreateConfigFileAsync(string name, OutputFormat outputFormat)
     {
         try
         {
@@ -333,13 +451,19 @@ sealed class ConfigCommand : Command
 
             if (!snippets.TryGetValue(configFileSnippetName, out var snippet))
             {
-                _logger.LogError("Snippet {SnippetName} not found", configFileSnippetName);
+                if (outputFormat == OutputFormat.Text)
+                {
+                    _logger.LogError("Snippet {SnippetName} not found", configFileSnippetName);
+                }
                 return;
             }
 
             if (snippet.Body is null || snippet.Body.Length == 0)
             {
-                _logger.LogError("Snippet {SnippetName} is empty", configFileSnippetName);
+                if (outputFormat == OutputFormat.Text)
+                {
+                    _logger.LogError("Snippet {SnippetName} is empty", configFileSnippetName);
+                }
                 return;
             }
 
@@ -353,11 +477,26 @@ sealed class ConfigCommand : Command
 
             var targetFileName = GetTargetFileName(name);
             await File.WriteAllTextAsync(targetFileName, snippetBody);
-            _logger.LogInformation("Config file created at {TargetFileName}", targetFileName);
+
+            if (outputFormat == OutputFormat.Json)
+            {
+                var json = JsonSerializer.Serialize(new
+                {
+                    path = targetFileName
+                }, ProxyUtils.JsonSerializerOptions);
+                _logger.LogStructuredOutput(json);
+            }
+            else
+            {
+                _logger.LogInformation("Config file created at {TargetFileName}", targetFileName);
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error downloading config");
+            if (outputFormat == OutputFormat.Text)
+            {
+                _logger.LogError(ex, "Error downloading config");
+            }
         }
     }
 
@@ -451,4 +590,380 @@ sealed class ConfigCommand : Command
             _ => null
         };
     }
+    private static string? ResolveConfigFile(string? configFilePath)
+    {
+        if (!string.IsNullOrEmpty(configFilePath))
+        {
+            var resolved = Path.GetFullPath(ProxyUtils.ReplacePathTokens(configFilePath));
+            return File.Exists(resolved) ? resolved : null;
+        }
+
+        foreach (var configFile in ProxyUtils.GetConfigFileCandidates(null))
+        {
+            if (!string.IsNullOrEmpty(configFile) && File.Exists(configFile))
+            {
+                return Path.GetFullPath(configFile);
+            }
+        }
+
+        return null;
+    }
+
+    private static async Task<int> ValidateConfigCoreAsync(
+        string? configFilePath,
+        bool isJsonOutput,
+        HttpClient httpClient,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        var errors = new List<ValidationMessage>();
+        var warnings = new List<ValidationMessage>();
+        var pluginNames = new List<string>();
+        var urlPatterns = new List<string>();
+
+        var resolvedConfigFile = ResolveConfigFile(configFilePath);
+        if (resolvedConfigFile is null)
+        {
+            errors.Add(new("configFile", configFilePath is not null
+                ? $"Configuration file '{configFilePath}' not found"
+                : "No configuration file found"));
+            WriteResults(isJsonOutput, null, errors, warnings, pluginNames, urlPatterns, logger);
+            return 2;
+        }
+
+        string configJson;
+        JsonDocument configDoc;
+        try
+        {
+            var configText = await File.ReadAllTextAsync(resolvedConfigFile, cancellationToken);
+
+            if (ProxyYaml.IsYamlFile(resolvedConfigFile))
+            {
+                if (!ProxyYaml.TryConvertYamlToJson(configText, out var converted, out var yamlError))
+                {
+                    throw new JsonException($"Could not convert YAML configuration to JSON: {yamlError}");
+                }
+                configJson = converted!;
+            }
+            else
+            {
+                configJson = configText;
+            }
+
+            configDoc = JsonDocument.Parse(configJson, ProxyUtils.JsonDocumentOptions);
+        }
+        catch (JsonException ex)
+        {
+            errors.Add(new("configFile", $"Invalid configuration: {ex.Message}"));
+            WriteResults(isJsonOutput, resolvedConfigFile, errors, warnings, pluginNames, urlPatterns, logger);
+            return 2;
+        }
+        catch (YamlException ex)
+        {
+            errors.Add(new("configFile", $"Invalid YAML: {ex.Message}"));
+            WriteResults(isJsonOutput, resolvedConfigFile, errors, warnings, pluginNames, urlPatterns, logger);
+            return 2;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            errors.Add(new("configFile", $"Could not read configuration file: {ex.Message}"));
+            WriteResults(isJsonOutput, resolvedConfigFile, errors, warnings, pluginNames, urlPatterns, logger);
+            return 2;
+        }
+
+        using (configDoc)
+        {
+            var schemaUrl = configDoc.RootElement.TryGetProperty("$schema", out var schemaProp)
+                ? schemaProp.GetString()
+                : null;
+            if (!string.IsNullOrEmpty(schemaUrl))
+            {
+                try
+                {
+                    var (isValid, validationErrors) = await ProxyUtils.ValidateJsonAsync(
+                        configJson, schemaUrl, httpClient, logger, cancellationToken);
+                    if (!isValid)
+                    {
+                        foreach (var error in validationErrors)
+                        {
+                            errors.Add(new("schema", error));
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    warnings.Add(new("$schema", $"Could not validate schema: {ex.Message}"));
+                }
+
+                ValidateSchemaVersion(schemaUrl, warnings);
+            }
+            else
+            {
+                warnings.Add(new("$schema", "No schema URL found, skipping schema validation"));
+            }
+
+            var configFileDirectory = Path.GetDirectoryName(resolvedConfigFile) ?? ".";
+
+            if (configDoc.RootElement.TryGetProperty("plugins", out var pluginsElement) &&
+                pluginsElement.ValueKind == JsonValueKind.Array)
+            {
+                ValidatePlugins(pluginsElement, configFileDirectory, errors, warnings, pluginNames);
+            }
+            else
+            {
+                errors.Add(new("plugins", "No plugins configured"));
+            }
+
+            if (configDoc.RootElement.TryGetProperty("urlsToWatch", out var urlsElement) &&
+                urlsElement.ValueKind == JsonValueKind.Array)
+            {
+                ValidateUrls(urlsElement, errors, warnings, urlPatterns);
+            }
+            else
+            {
+                warnings.Add(new("urlsToWatch", "No URLs to watch configured"));
+            }
+        }
+
+        var isConfigValid = errors.Count == 0;
+        WriteResults(isJsonOutput, resolvedConfigFile, errors, warnings, pluginNames, urlPatterns, logger);
+        return isConfigValid ? 0 : 2;
+    }
+
+    private static void ValidateSchemaVersion(string schemaUrl, List<ValidationMessage> warnings)
+    {
+        var warning = ProxyUtils.GetSchemaVersionMismatchWarning(schemaUrl);
+        if (warning is not null)
+        {
+            warnings.Add(new("$schema", warning));
+        }
+    }
+
+    private static void ValidatePlugins(
+        JsonElement pluginsElement,
+        string configFileDirectory,
+        List<ValidationMessage> errors,
+        List<ValidationMessage> warnings,
+        List<string> pluginNames)
+    {
+        var hasEnabledPlugins = false;
+        var i = 0;
+
+        foreach (var plugin in pluginsElement.EnumerateArray())
+        {
+            string? name;
+            bool enabled;
+            string? pluginPath;
+            try
+            {
+                name = plugin.TryGetProperty("name", out var nameProp) ? nameProp.GetString() : null;
+                enabled = !plugin.TryGetProperty("enabled", out var enabledProp) || enabledProp.GetBoolean();
+                pluginPath = plugin.TryGetProperty("pluginPath", out var pathProp) ? pathProp.GetString() : null;
+            }
+            catch (InvalidOperationException ex)
+            {
+                errors.Add(new($"plugins[{i}]", $"Invalid plugin definition: {ex.Message}"));
+                i++;
+                continue;
+            }
+
+            if (string.IsNullOrEmpty(name))
+            {
+                errors.Add(new($"plugins[{i}].name", "Plugin name is required"));
+                i++;
+                continue;
+            }
+
+            if (!enabled)
+            {
+                i++;
+                continue;
+            }
+
+            hasEnabledPlugins = true;
+            pluginNames.Add(name);
+
+            if (string.IsNullOrEmpty(pluginPath))
+            {
+                errors.Add(new($"plugins[{i}].pluginPath", $"Plugin path is required for '{name}'"));
+                i++;
+                continue;
+            }
+
+            var resolvedPluginPath = Path.GetFullPath(
+                Path.Combine(
+                    configFileDirectory,
+                    ProxyUtils.ReplacePathTokens(pluginPath.Replace('\\', Path.DirectorySeparatorChar))));
+
+            if (!File.Exists(resolvedPluginPath))
+            {
+                errors.Add(new($"plugins[{i}].pluginPath",
+                    $"Plugin assembly '{resolvedPluginPath}' not found"));
+                i++;
+                continue;
+            }
+
+            try
+            {
+                var pluginLoadContext = new PluginLoadContext(resolvedPluginPath);
+                var assembly = pluginLoadContext.LoadFromAssemblyName(
+                    new AssemblyName(Path.GetFileNameWithoutExtension(resolvedPluginPath)));
+                var pluginType = assembly.GetTypes()
+                    .FirstOrDefault(t => t.Name == name && typeof(IPlugin).IsAssignableFrom(t));
+                if (pluginType is null)
+                {
+                    errors.Add(new($"plugins[{i}].name",
+                        $"Plugin '{name}' not found in assembly '{Path.GetFileName(resolvedPluginPath)}'"));
+                }
+            }
+            catch (Exception ex)
+            {
+                errors.Add(new($"plugins[{i}]",
+                    $"Failed to load plugin assembly: {ex.Message}"));
+            }
+
+            i++;
+        }
+
+        if (!hasEnabledPlugins)
+        {
+            errors.Add(new("plugins", "No enabled plugins found"));
+        }
+    }
+
+    private static void ValidateUrls(
+        JsonElement urlsElement,
+        List<ValidationMessage> errors,
+        List<ValidationMessage> warnings,
+        List<string> urlPatterns)
+    {
+        var i = 0;
+        foreach (var url in urlsElement.EnumerateArray())
+        {
+            if (url.ValueKind != JsonValueKind.String)
+            {
+                errors.Add(new($"urlsToWatch[{i}]", $"Expected a string but got {url.ValueKind}"));
+                i++;
+                continue;
+            }
+
+            var pattern = url.GetString();
+            if (string.IsNullOrEmpty(pattern))
+            {
+                warnings.Add(new($"urlsToWatch[{i}]", "Empty URL pattern"));
+            }
+            else
+            {
+                urlPatterns.Add(pattern);
+                try
+                {
+                    var cleanPattern = pattern.StartsWith('!') ? pattern[1..] : pattern;
+                    _ = new Regex(
+                        $"^{Regex.Escape(cleanPattern).Replace("\\*", ".*", StringComparison.OrdinalIgnoreCase)}$");
+                }
+                catch (ArgumentException ex)
+                {
+                    errors.Add(new($"urlsToWatch[{i}]",
+                        $"Invalid URL pattern '{pattern}': {ex.Message}"));
+                }
+            }
+            i++;
+        }
+    }
+
+    private static void WriteResults(
+        bool isJsonOutput,
+        string? configFile,
+        List<ValidationMessage> errors,
+        List<ValidationMessage> warnings,
+        List<string> pluginNames,
+        List<string> urlPatterns,
+        ILogger logger)
+    {
+        var isValid = errors.Count == 0;
+
+        if (isJsonOutput)
+        {
+            WriteJsonResults(configFile, errors, warnings, pluginNames, urlPatterns, isValid, logger);
+        }
+        else
+        {
+            WriteTextResults(configFile, errors, warnings, pluginNames, urlPatterns, isValid, logger);
+        }
+    }
+
+    private static void WriteJsonResults(
+        string? configFile,
+        List<ValidationMessage> errors,
+        List<ValidationMessage> warnings,
+        List<string> pluginNames,
+        List<string> urlPatterns,
+        bool isValid,
+        ILogger logger)
+    {
+        var result = new
+        {
+            valid = isValid,
+            configFile,
+            plugins = pluginNames,
+            urlsToWatch = urlPatterns,
+            errors = errors.Select(e => new { path = e.Path, message = e.Message }),
+            warnings = warnings.Select(w => new { path = w.Path, message = w.Message })
+        };
+
+        var json = JsonSerializer.Serialize(result, ProxyUtils.JsonSerializerOptions);
+        logger.LogInformation("{Result}", json);
+    }
+
+    private static void WriteTextResults(
+        string? configFile,
+        List<ValidationMessage> errors,
+        List<ValidationMessage> warnings,
+        List<string> pluginNames,
+        List<string> urlPatterns,
+        bool isValid,
+        ILogger logger)
+    {
+        if (isValid)
+        {
+            logger.LogInformation("\u2713 Configuration is valid");
+        }
+        else
+        {
+            logger.LogError("\u2717 Configuration is invalid");
+        }
+
+        if (configFile is not null)
+        {
+            logger.LogInformation("  Config file: {ConfigFile}", configFile);
+        }
+        if (pluginNames.Count > 0)
+        {
+            logger.LogInformation("  Plugins: {Count} loaded", pluginNames.Count);
+        }
+        if (urlPatterns.Count > 0)
+        {
+            logger.LogInformation("  URLs to watch: {Count} pattern{Plural}", urlPatterns.Count, urlPatterns.Count != 1 ? "s" : "");
+        }
+
+        if (errors.Count > 0)
+        {
+            logger.LogInformation("");
+            foreach (var error in errors)
+            {
+                logger.LogError("  - {Path}: {Message}", error.Path, error.Message);
+            }
+        }
+
+        if (warnings.Count > 0)
+        {
+            logger.LogInformation("");
+            foreach (var warning in warnings)
+            {
+                logger.LogWarning("  - {Path}: {Message}", warning.Path, warning.Message);
+            }
+        }
+    }
+
+    private sealed record ValidationMessage(string Path, string Message);
 }

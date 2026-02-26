@@ -23,7 +23,7 @@ sealed class DevProxyConfigOptions : RootCommand
     public bool Discover => _parseResult?.GetValueOrDefault<bool?>(DevProxyCommand.DiscoverOptionName) ?? false;
     public string? IPAddress => _parseResult?.GetValueOrDefault<string?>(DevProxyCommand.IpAddressOptionName);
     public bool IsStdioMode => _parseResult?.CommandResult.Command.Name == "stdio";
-    public LogFor? LogFor => _parseResult?.GetValueOrDefault<LogFor?>(DevProxyCommand.LogForOptionName);
+    public OutputFormat? Output => _parseResult?.GetValueOrDefault<OutputFormat?>(DevProxyCommand.OutputOptionName);
     public LogLevel? LogLevel => _parseResult?.GetValueOrDefault<LogLevel?>(DevProxyCommand.LogLevelOptionName);
 
     public List<string>? UrlsToWatch
@@ -119,7 +119,7 @@ sealed class DevProxyConfigOptions : RootCommand
             }
         };
 
-        var logForOption = new Option<LogFor?>(DevProxyCommand.LogForOptionName)
+        var outputOption = new Option<OutputFormat?>(DevProxyCommand.OutputOptionName)
         {
             CustomParser = result =>
             {
@@ -128,9 +128,9 @@ sealed class DevProxyConfigOptions : RootCommand
                     return null;
                 }
 
-                if (Enum.TryParse<LogFor>(result.Tokens[0].Value, true, out var logFor))
+                if (Enum.TryParse<OutputFormat>(result.Tokens[0].Value, true, out var output))
                 {
-                    return logFor;
+                    return output;
                 }
 
                 return null;
@@ -145,6 +145,11 @@ sealed class DevProxyConfigOptions : RootCommand
             Arity = ArgumentArity.Zero
         };
 
+        var noColorOption = new Option<bool>(DevProxyCommand.NoColorOptionName)
+        {
+            Arity = ArgumentArity.Zero
+        };
+
         var options = new List<Option>
         {
             apiPortOption,
@@ -152,9 +157,10 @@ sealed class DevProxyConfigOptions : RootCommand
             configFileOption,
             portOption,
             urlsToWatchOption,
-            logForOption,
             logLevelOption,
-            discoverOption
+            outputOption,
+            discoverOption,
+            noColorOption
         };
         this.AddOptions(options.OrderByName());
 
@@ -178,7 +184,19 @@ sealed class DevProxyConfigOptions : RootCommand
                 return value;
             }
         };
-        var stdioCommand = new Command("stdio", "Proxy stdin/stdout/stderr of local executables")
+        var stdioCommand = new Command("stdio", """
+            Proxy stdin/stdout/stderr of local executables.
+            Dev Proxy intercepts and processes the stdio streams of the specified command,
+            applying configured plugins (mocking, error simulation, etc.) to the traffic.
+            Logs are written to a timestamped file (devproxy-stdio-YYYYMMDD-HHmmss.log)
+            to avoid interfering with the proxied streams.
+            Usage errors and exceptions are written to stderr.
+
+            Examples:
+              devproxy stdio npx -y @devproxy/mcp          Proxy MCP server
+              devproxy stdio node server.js                Proxy Node.js app
+              devproxy stdio -c myconfig.json node app.js  With custom config
+            """)
         {
             stdioConfigFileOption,
             // Add a catch-all argument to consume remaining args (command to execute)

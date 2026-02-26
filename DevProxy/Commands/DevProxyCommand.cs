@@ -2,6 +2,8 @@ using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using System.CommandLine;
+using System.CommandLine.Help;
+using System.CommandLine.Invocation;
 using System.CommandLine.Parsing;
 using System.Globalization;
 
@@ -28,18 +30,20 @@ sealed class DevProxyCommand : RootCommand
     internal static readonly Option<string?> ConfigFileOption = new(ConfigFileOptionName, "-c")
     {
         HelpName = "config-file",
-        Description = "The path to the configuration file"
+        Description = "Path to config file. If not specified, Dev Proxy searches for devproxyrc.jsonc or devproxyrc.json in the current directory, then in a .devproxy/ directory, then under the ~appFolder location. Supports ~appFolder token."
     };
     internal const string NoFirstRunOptionName = "--no-first-run";
+    internal const string NoWatchOptionName = "--no-watch";
     internal const string AsSystemProxyOptionName = "--as-system-proxy";
     internal const string InstallCertOptionName = "--install-cert";
     internal const string UrlsToWatchOptionName = "--urls-to-watch";
     internal const string TimeoutOptionName = "--timeout";
     internal const string DiscoverOptionName = "--discover";
     internal const string EnvOptionName = "--env";
-    internal const string LogForOptionName = "--log-for";
+    internal const string OutputOptionName = "--output";
     internal const string DetachedOptionName = "--detach";
     internal const string InternalDaemonOptionName = "--_internal-daemon";
+    internal const string NoColorOptionName = "--no-color";
 
     private static readonly string[] globalOptions = ["--version"];
     private static readonly string[] helpOptions = ["--help", "-h", "/h", "-?", "/?"];
@@ -48,10 +52,12 @@ sealed class DevProxyCommand : RootCommand
     private static bool _isStdioCommandResolved;
     private static bool _isJwtCommandResolved;
     private static bool _isRootCommandResolved;
+    private static bool _isConfigValidateCommandResolved;
     private static bool _isDetachedModeResolved;
     private static bool _isInternalDaemonResolved;
     private static bool _stdioLogFilePathResolved;
     private static bool _detachedLogFilePathResolved;
+    private static bool _noColorResolved;
 
     public static bool HasGlobalOptions
     {
@@ -98,6 +104,25 @@ sealed class DevProxyCommand : RootCommand
             var args = Environment.GetCommandLineArgs();
             field = args.Length > 1 && string.Equals(args[1], "jwt", StringComparison.OrdinalIgnoreCase);
             _isJwtCommandResolved = true;
+            return field;
+        }
+    }
+
+    public static bool IsConfigValidateCommand
+    {
+        get
+        {
+            if (_isConfigValidateCommandResolved)
+            {
+                return field;
+            }
+
+            var args = Environment.GetCommandLineArgs();
+            field = args.Length > 2 &&
+                string.Equals(args[1], "config", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(args[2], "validate", StringComparison.OrdinalIgnoreCase) &&
+                !args.Any(arg => helpOptions.Contains(arg));
+            _isConfigValidateCommandResolved = true;
             return field;
         }
     }
@@ -191,13 +216,31 @@ sealed class DevProxyCommand : RootCommand
         }
     }
 
+    public static bool NoColor
+    {
+        get
+        {
+            if (_noColorResolved)
+            {
+                return field;
+            }
+
+            var args = Environment.GetCommandLineArgs();
+            field = args.Contains(NoColorOptionName) ||
+                Environment.GetEnvironmentVariable("NO_COLOR") is not null ||
+                string.Equals(Environment.GetEnvironmentVariable("TERM"), "dumb", StringComparison.OrdinalIgnoreCase);
+            _noColorResolved = true;
+            return field;
+        }
+    }
+
     public DevProxyCommand(
         IEnumerable<IPlugin> plugins,
         ISet<UrlToWatch> urlsToWatch,
         IProxyConfiguration proxyConfiguration,
         IServiceProvider serviceProvider,
         UpdateNotification updateNotification,
-        ILogger<DevProxyCommand> logger) : base("Start Dev Proxy")
+        ILogger<DevProxyCommand> logger) : base($"Start Dev Proxy\n\nAPI:\n  Dev Proxy exposes a REST API for runtime management.\n  OpenAPI spec: http://{proxyConfiguration.IPAddress ?? "127.0.0.1"}:{proxyConfiguration.ApiPort}/swagger\n  Use --api-port to configure (default: {proxyConfiguration.ApiPort}).\n  Run 'devproxy api show' for more information.")
     {
         _serviceProvider = serviceProvider;
         _plugins = plugins;
@@ -217,7 +260,23 @@ sealed class DevProxyCommand : RootCommand
         var parseResult = IsStdioCommand
             ? StdioCommand.ParseStdioArgs(this, args)
             : Parse(args);
-        return await parseResult.InvokeAsync(app.Lifetime.ApplicationStopping);
+
+        if (parseResult.Action is ParseErrorAction parseErrorAction)
+        {
+            parseErrorAction.ShowHelp = false;
+        }
+
+        var exitCode = await parseResult.InvokeAsync(app.Lifetime.ApplicationStopping);
+
+        // Return exit code 2 for input validation and parse errors to distinguish
+        // them from runtime errors (exit code 1), following conventions from
+        // curl, git, and others
+        if (exitCode != 0 && parseResult.Errors.Count > 0)
+        {
+            return 2;
+        }
+
+        return exitCode;
     }
 
     private async Task<int> InvokeAsync(ParseResult parseResult, CancellationToken cancellationToken)
@@ -289,7 +348,7 @@ sealed class DevProxyCommand : RootCommand
 
             if (!File.Exists(filePath))
             {
-                input.AddError($"Configuration file {filePath} does not exist");
+                input.AddError($"Configuration file '{filePath}' does not exist. Check the file path and try again.");
             }
         });
 
@@ -302,7 +361,7 @@ sealed class DevProxyCommand : RootCommand
         {
             if (!System.Net.IPAddress.TryParse(input.Tokens[0].Value, out _))
             {
-                input.AddError($"{input.Tokens[0].Value} is not a valid IP address");
+                input.AddError($"'{input.Tokens[0].Value}' is not a valid IP address. Example: 127.0.0.1");
             }
         });
 
@@ -324,7 +383,7 @@ sealed class DevProxyCommand : RootCommand
         {
             if (!Enum.TryParse<LogLevel>(input.Tokens[0].Value, true, out _))
             {
-                input.AddError($"{input.Tokens[0].Value} is not a valid log level. Allowed values are: {string.Join(", ", Enum.GetNames<LogLevel>())}");
+                input.AddError($"'{input.Tokens[0].Value}' is not a valid log level. Allowed values: {string.Join(", ", Enum.GetNames<LogLevel>())}");
             }
         });
 
@@ -362,6 +421,11 @@ sealed class DevProxyCommand : RootCommand
         var noFirstRunOption = new Option<bool?>(NoFirstRunOptionName)
         {
             Description = "Skip the first run experience"
+        };
+
+        var noWatchOption = new Option<bool?>(NoWatchOptionName)
+        {
+            Description = "Disable automatic restart on configuration file changes"
         };
 
         var discoverOption = new Option<bool?>(DiscoverOptionName)
@@ -406,7 +470,7 @@ sealed class DevProxyCommand : RootCommand
             {
                 if (!long.TryParse(input.Tokens[0].Value, out var timeoutInput) || timeoutInput < 1)
                 {
-                    input.AddError($"{input.Tokens[0].Value} is not valid as a timeout value");
+                    input.AddError($"'{input.Tokens[0].Value}' is not a valid timeout value. Specify a positive integer (in seconds).");
                 }
             }
             catch (InvalidOperationException ex)
@@ -449,21 +513,21 @@ sealed class DevProxyCommand : RootCommand
             }
         });
 
-        var logForOption = new Option<LogFor?>(LogForOptionName)
+        var outputOption = new Option<OutputFormat?>(OutputOptionName)
         {
-            Description = $"Target audience for log output. Allowed values: {string.Join(", ", Enum.GetNames<LogFor>())}",
-            HelpName = "log-for",
+            Description = $"Output format. Allowed values: {string.Join(", ", Enum.GetNames<OutputFormat>())}",
+            HelpName = "format",
             Recursive = true
         };
-        logForOption.Validators.Add(input =>
+        outputOption.Validators.Add(input =>
         {
             if (input.Tokens.Count == 0)
             {
                 return;
             }
-            if (!Enum.TryParse<LogFor>(input.Tokens[0].Value, true, out _))
+            if (!Enum.TryParse<OutputFormat>(input.Tokens[0].Value, true, out _))
             {
-                input.AddError($"{input.Tokens[0].Value} is not a valid log-for value. Allowed values are: {string.Join(", ", Enum.GetNames<LogFor>())}");
+                input.AddError($"'{input.Tokens[0].Value}' is not a valid output format. Allowed values: {string.Join(", ", Enum.GetNames<OutputFormat>())}");
             }
         });
 
@@ -478,6 +542,13 @@ sealed class DevProxyCommand : RootCommand
             Hidden = true
         };
 
+        var noColorOption = new Option<bool>(NoColorOptionName)
+        {
+            Description = "Disable colored output",
+            Arity = ArgumentArity.Zero,
+            Recursive = true
+        };
+
         var options = new List<Option>
         {
             apiPortOption,
@@ -489,9 +560,11 @@ sealed class DevProxyCommand : RootCommand
             installCertOption,
             internalDaemonOption,
             ipAddressOption,
-            logForOption,
             logLevelOption,
+            noColorOption,
             noFirstRunOption,
+            noWatchOption,
+            outputOption,
             portOption,
             recordOption,
             timeoutOption,
@@ -508,6 +581,7 @@ sealed class DevProxyCommand : RootCommand
 
         var commands = new List<Command>
         {
+            ActivatorUtilities.CreateInstance<ApiCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<MsGraphDbCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<ConfigCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<OutdatedCommand>(_serviceProvider),
@@ -521,7 +595,26 @@ sealed class DevProxyCommand : RootCommand
         commands.AddRange(_plugins.SelectMany(p => p.GetCommands()));
         this.AddCommands(commands.OrderByName());
 
+        HelpExamples.Add(this, [
+            "devproxy                                            Start with default config",
+            "devproxy -c myconfig.json                           Start with custom config",
+            "devproxy -u \"https://api.example.com/*\"           Watch specific URLs",
+            "devproxy --port 9000 --record                       Custom port, record requests",
+        ]);
+        HelpExamples.Install(this);
+
+        CustomizeHelp();
+
         SetAction(InvokeAsync);
+    }
+
+    private void CustomizeHelp()
+    {
+        var helpOption = Options.OfType<HelpOption>().FirstOrDefault();
+        if (helpOption?.Action is SynchronousCommandLineAction currentAction)
+        {
+            helpOption.Action = new DevProxyHelpAction(currentAction);
+        }
     }
 
     private void ConfigureFromOptions(ParseResult parseResult)
@@ -561,6 +654,11 @@ sealed class DevProxyCommand : RootCommand
         {
             _proxyConfiguration.NoFirstRun = noFirstRun.Value;
         }
+        var noWatch = parseResult.GetValueOrDefault<bool?>(NoWatchOptionName);
+        if (noWatch is not null)
+        {
+            _proxyConfiguration.NoWatch = noWatch.Value;
+        }
         var asSystemProxy = parseResult.GetValueOrDefault<bool?>(AsSystemProxyOptionName);
         if (asSystemProxy is not null)
         {
@@ -593,10 +691,10 @@ sealed class DevProxyCommand : RootCommand
                     : new KeyValuePair<string, string>(parts[0], parts[1]);
             }).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
         }
-        var logFor = parseResult.GetValueOrDefault<LogFor?>(LogForOptionName);
-        if (logFor is not null)
+        var output = parseResult.GetValueOrDefault<OutputFormat?>(OutputOptionName);
+        if (output is not null)
         {
-            _proxyConfiguration.LogFor = logFor.Value;
+            _proxyConfiguration.Output = output.Value;
         }
     }
 
