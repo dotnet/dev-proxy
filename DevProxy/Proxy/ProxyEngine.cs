@@ -233,7 +233,8 @@ sealed class ProxyEngine(
         Console.WriteLine("Dev Proxy uses a self-signed certificate to intercept and inspect HTTPS traffic.");
 
         string? answer;
-        if (Console.IsInputRedirected)
+        if (Console.IsInputRedirected ||
+            Environment.GetEnvironmentVariable("CI") is not null)
         {
             // Non-interactive mode, default to trusting the certificate
             _logger.LogInformation("Non-interactive mode detected. Defaulting to trusting the certificate.");
