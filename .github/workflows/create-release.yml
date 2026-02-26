@@ -287,7 +287,7 @@ jobs:
           build-args: |
             DEVPROXY_VERSION=${{ steps.meta.outputs.version }}
       - name: Generate artifact attestation
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest-build-provenance@v4
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.push.outputs.digest || steps.push_beta.outputs.digest }}
