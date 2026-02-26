@@ -44,6 +44,12 @@ sealed class ConfigFileWatcher(
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        if (_proxyConfiguration.NoWatch)
+        {
+            _logger.LogDebug("Configuration file watching is disabled");
+            return Task.CompletedTask;
+        }
+
         var configFilePath = _proxyConfiguration.ConfigFile;
         if (string.IsNullOrEmpty(configFilePath) || !File.Exists(configFilePath))
         {
