@@ -14,6 +14,7 @@ using System.Net.Http.Headers;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using YamlDotNet.Core;
 
 namespace DevProxy.Commands;
 
@@ -93,16 +94,26 @@ sealed class ConfigCommand : Command
         httpClient.DefaultRequestHeaders.UserAgent.Add(
             new ProductInfoHeaderValue("dev-proxy", ProxyUtils.ProductVersion));
 
+        var formatterName = isJsonOutput
+            ? MachineConsoleFormatter.FormatterName
+            : ProxyConsoleFormatter.DefaultCategoryName;
+
         using var loggerFactory = LoggerFactory.Create(builder =>
         {
             builder
                 .SetMinimumLevel(LogLevel.Information)
                 .AddConsole(consoleOptions =>
                 {
-                    consoleOptions.FormatterName = ProxyConsoleFormatter.DefaultCategoryName;
+                    consoleOptions.FormatterName = formatterName;
                     consoleOptions.LogToStandardErrorThreshold = LogLevel.Warning;
                 })
                 .AddConsoleFormatter<ProxyConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
+                {
+                    formatterOptions.IncludeScopes = false;
+                    formatterOptions.ShowSkipMessages = true;
+                    formatterOptions.ShowTimestamps = false;
+                })
+                .AddConsoleFormatter<MachineConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
                 {
                     formatterOptions.IncludeScopes = false;
                     formatterOptions.ShowSkipMessages = true;
@@ -535,12 +546,38 @@ sealed class ConfigCommand : Command
         JsonDocument configDoc;
         try
         {
-            configJson = await File.ReadAllTextAsync(resolvedConfigFile, cancellationToken);
+            var configText = await File.ReadAllTextAsync(resolvedConfigFile, cancellationToken);
+
+            if (ProxyYaml.IsYamlFile(resolvedConfigFile))
+            {
+                if (!ProxyYaml.TryConvertYamlToJson(configText, out var converted, out var yamlError))
+                {
+                    throw new JsonException($"Could not convert YAML configuration to JSON: {yamlError}");
+                }
+                configJson = converted!;
+            }
+            else
+            {
+                configJson = configText;
+            }
+
             configDoc = JsonDocument.Parse(configJson, ProxyUtils.JsonDocumentOptions);
         }
         catch (JsonException ex)
         {
-            errors.Add(new("configFile", $"Invalid JSON: {ex.Message}"));
+            errors.Add(new("configFile", $"Invalid configuration: {ex.Message}"));
+            WriteResults(isJsonOutput, resolvedConfigFile, errors, warnings, pluginNames, urlPatterns, logger);
+            return 2;
+        }
+        catch (YamlException ex)
+        {
+            errors.Add(new("configFile", $"Invalid YAML: {ex.Message}"));
+            WriteResults(isJsonOutput, resolvedConfigFile, errors, warnings, pluginNames, urlPatterns, logger);
+            return 2;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            errors.Add(new("configFile", $"Could not read configuration file: {ex.Message}"));
             WriteResults(isJsonOutput, resolvedConfigFile, errors, warnings, pluginNames, urlPatterns, logger);
             return 2;
         }
@@ -625,9 +662,21 @@ sealed class ConfigCommand : Command
 
         foreach (var plugin in pluginsElement.EnumerateArray())
         {
-            var name = plugin.TryGetProperty("name", out var nameProp) ? nameProp.GetString() : null;
-            var enabled = !plugin.TryGetProperty("enabled", out var enabledProp) || enabledProp.GetBoolean();
-            var pluginPath = plugin.TryGetProperty("pluginPath", out var pathProp) ? pathProp.GetString() : null;
+            string? name;
+            bool enabled;
+            string? pluginPath;
+            try
+            {
+                name = plugin.TryGetProperty("name", out var nameProp) ? nameProp.GetString() : null;
+                enabled = !plugin.TryGetProperty("enabled", out var enabledProp) || enabledProp.GetBoolean();
+                pluginPath = plugin.TryGetProperty("pluginPath", out var pathProp) ? pathProp.GetString() : null;
+            }
+            catch (InvalidOperationException ex)
+            {
+                errors.Add(new($"plugins[{i}]", $"Invalid plugin definition: {ex.Message}"));
+                i++;
+                continue;
+            }
 
             if (string.IsNullOrEmpty(name))
             {
@@ -702,6 +751,13 @@ sealed class ConfigCommand : Command
         var i = 0;
         foreach (var url in urlsElement.EnumerateArray())
         {
+            if (url.ValueKind != JsonValueKind.String)
+            {
+                errors.Add(new($"urlsToWatch[{i}]", $"Expected a string but got {url.ValueKind}"));
+                i++;
+                continue;
+            }
+
             var pattern = url.GetString();
             if (string.IsNullOrEmpty(pattern))
             {

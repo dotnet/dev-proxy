@@ -310,7 +310,7 @@ public static class ProxyUtils
         }
         catch
         {
-            // Ignore schema URL parsing errors
+            return $"The $schema value '{schemaUrl}' is not a valid URL. Schema version could not be validated.";
         }
 
         return null;
