@@ -3,9 +3,11 @@
 // See the LICENSE file in the project root for more information.
 
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Logging;
 using System.CommandLine;
 using System.CommandLine.Parsing;
+using System.Text.Json;
 
 namespace DevProxy.Commands;
 
@@ -27,7 +29,8 @@ sealed class ApiCommand : Command
         var apiShowCommand = new Command("show", "Display Dev Proxy API information for runtime management");
         apiShowCommand.SetAction(parseResult =>
         {
-            PrintApiInfo();
+            var outputFormat = parseResult.GetValueOrDefault<OutputFormat?>(DevProxyCommand.OutputOptionName) ?? OutputFormat.Text;
+            PrintApiInfo(outputFormat);
         });
 
         this.AddCommands(new List<Command>
@@ -36,7 +39,7 @@ sealed class ApiCommand : Command
         }.OrderByName());
     }
 
-    private void PrintApiInfo()
+    private void PrintApiInfo(OutputFormat outputFormat)
     {
         var ipAddress = _proxyConfiguration.IPAddress;
         var apiPort = _proxyConfiguration.ApiPort;
@@ -53,13 +56,31 @@ sealed class ApiCommand : Command
             new ApiEndpointInfo { Method = "GET", Path = "/proxy/logs", Description = "Get proxy logs (for detached mode access)" }
         };
 
-        _logger.LogInformation("Base URL: {BaseUrl}", baseUrl);
-        _logger.LogInformation("OpenAPI spec: {SwaggerUrl}", $"{baseUrl}/swagger/v1/swagger.json");
-        _logger.LogInformation("");
-        _logger.LogInformation("Endpoints:");
-        foreach (var endpoint in endpoints)
+        if (outputFormat == OutputFormat.Json)
         {
-            _logger.LogInformation("  {Method,-6} {Path,-30} {Description}", endpoint.Method, endpoint.Path, endpoint.Description);
+            var json = JsonSerializer.Serialize(new
+            {
+                baseUrl,
+                swaggerUrl = $"{baseUrl}/swagger/v1/swagger.json",
+                endpoints = endpoints.Select(e => new
+                {
+                    method = e.Method,
+                    path = e.Path,
+                    description = e.Description
+                })
+            }, ProxyUtils.JsonSerializerOptions);
+            _logger.LogStructuredOutput(json);
+        }
+        else
+        {
+            _logger.LogInformation("Base URL: {BaseUrl}", baseUrl);
+            _logger.LogInformation("OpenAPI spec: {SwaggerUrl}", $"{baseUrl}/swagger/v1/swagger.json");
+            _logger.LogInformation("");
+            _logger.LogInformation("Endpoints:");
+            foreach (var endpoint in endpoints)
+            {
+                _logger.LogInformation("  {Method,-6} {Path,-30} {Description}", endpoint.Method, endpoint.Path, endpoint.Description);
+            }
         }
     }
 }
