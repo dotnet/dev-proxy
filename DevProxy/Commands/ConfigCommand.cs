@@ -201,34 +201,51 @@ sealed class ConfigCommand : Command
     {
         var configInfo = new ProxyConfigInfo();
 
-        _logger.LogDebug("Getting list of JSON files in {ConfigFolder}...", configFolder);
+        _logger.LogDebug("Getting list of config files in {ConfigFolder}...", configFolder);
+        
+        // Get both JSON and YAML files
         var jsonFiles = Directory.GetFiles(configFolder, "*.json");
-        if (jsonFiles.Length == 0)
+        var yamlFiles = Directory.GetFiles(configFolder, "*.yaml");
+        var ymlFiles = Directory.GetFiles(configFolder, "*.yml");
+        var allConfigFiles = jsonFiles.Concat(yamlFiles).Concat(ymlFiles).ToArray();
+        
+        if (allConfigFiles.Length == 0)
         {
-            _logger.LogDebug("No JSON files found");
+            _logger.LogDebug("No config files found");
             return configInfo;
         }
 
-        foreach (var jsonFile in jsonFiles)
+        foreach (var configFile in allConfigFiles)
         {
-            _logger.LogDebug("Reading file {JsonFile}...", jsonFile);
+            _logger.LogDebug("Reading file {ConfigFile}...", configFile);
 
-            var fileContents = File.ReadAllText(jsonFile);
-            if (fileContents.Contains("\"plugins\":", StringComparison.OrdinalIgnoreCase))
+            var fileContents = File.ReadAllText(configFile);
+            
+            // Check for plugins marker (case-insensitive)
+            // For JSON: "plugins":
+            // For YAML: plugins:
+            if (fileContents.Contains("\"plugins\":", StringComparison.OrdinalIgnoreCase) ||
+                fileContents.Contains("plugins:", StringComparison.OrdinalIgnoreCase))
             {
-                _logger.LogDebug("File {JsonFile} contains proxy config", jsonFile);
-                configInfo.ConfigFiles.Add(jsonFile);
+                _logger.LogDebug("File {ConfigFile} contains proxy config", configFile);
+                configInfo.ConfigFiles.Add(configFile);
                 continue;
             }
 
-            if (fileContents.Contains("\"responses\":", StringComparison.OrdinalIgnoreCase))
+            // Check for responses/mocks marker (case-insensitive)
+            // For JSON: "responses": or "mocks":
+            // For YAML: responses: or mocks:
+            if (fileContents.Contains("\"responses\":", StringComparison.OrdinalIgnoreCase) ||
+                fileContents.Contains("\"mocks\":", StringComparison.OrdinalIgnoreCase) ||
+                fileContents.Contains("responses:", StringComparison.OrdinalIgnoreCase) ||
+                fileContents.Contains("mocks:", StringComparison.OrdinalIgnoreCase))
             {
-                _logger.LogDebug("File {JsonFile} contains mock data", jsonFile);
-                configInfo.MockFiles.Add(jsonFile);
+                _logger.LogDebug("File {ConfigFile} contains mock data", configFile);
+                configInfo.MockFiles.Add(configFile);
                 continue;
             }
 
-            _logger.LogDebug("File {JsonFile} is not a proxy config or mock data", jsonFile);
+            _logger.LogDebug("File {ConfigFile} is not a proxy config or mock data", configFile);
         }
 
         if (configInfo.ConfigFiles.Any())
