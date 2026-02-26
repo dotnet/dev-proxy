@@ -61,5 +61,5 @@
   "required": [
     "mocks"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }
