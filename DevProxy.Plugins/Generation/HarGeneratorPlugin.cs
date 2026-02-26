@@ -9,7 +9,9 @@ using DevProxy.Plugins.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Web;
 
 namespace DevProxy.Plugins.Generation;
@@ -33,6 +35,8 @@ public sealed class HarGeneratorPlugin(
         proxyConfiguration,
         pluginConfigurationSection)
 {
+    private static readonly Regex surrogatePairRegex = new(@"\\u([dD][89aAbB][0-9a-fA-F]{2})\\u([dD][cCdDeEfF][0-9a-fA-F]{2})");
+
     public override string Name => nameof(HarGeneratorPlugin);
 
     public override async Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
@@ -69,6 +73,7 @@ public sealed class HarGeneratorPlugin(
 
         Logger.LogDebug("Serializing HAR file...");
         var harFileJson = JsonSerializer.Serialize(harFile, ProxyUtils.JsonSerializerOptions);
+        harFileJson = UnescapeSurrogatePairs(harFileJson);
         var fileName = $"devproxy-{DateTime.Now:yyyyMMddHHmmss}.har";
 
         Logger.LogDebug("Writing HAR file to {FileName}...", fileName);
@@ -158,5 +163,16 @@ public sealed class HarGeneratorPlugin(
         };
 
         return entry;
+    }
+
+    private static string UnescapeSurrogatePairs(string json)
+    {
+        return surrogatePairRegex.Replace(json, match =>
+        {
+            var high = int.Parse(match.Groups[1].Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+            var low = int.Parse(match.Groups[2].Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+            var codePoint = 0x10000 + ((high - 0xD800) << 10) + (low - 0xDC00);
+            return char.ConvertFromUtf32(codePoint);
+        });
     }
 }

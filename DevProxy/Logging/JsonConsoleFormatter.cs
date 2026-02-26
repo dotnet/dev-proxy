@@ -13,9 +13,9 @@ using System.Text.Json.Serialization;
 
 namespace DevProxy.Logging;
 
-sealed class MachineConsoleFormatter : ConsoleFormatter
+sealed class JsonConsoleFormatter : ConsoleFormatter
 {
-    public const string FormatterName = "devproxy-machine";
+    public const string FormatterName = "devproxy-json";
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -55,7 +55,7 @@ sealed class MachineConsoleFormatter : ConsoleFormatter
     private readonly ProxyConsoleFormatterOptions _options;
     private readonly HashSet<MessageType> _filteredMessageTypes;
 
-    public MachineConsoleFormatter(IOptions<ProxyConsoleFormatterOptions> options) : base(FormatterName)
+    public JsonConsoleFormatter(IOptions<ProxyConsoleFormatterOptions> options) : base(FormatterName)
     {
         Console.OutputEncoding = Encoding.UTF8;
         _options = options.Value;
@@ -101,7 +101,7 @@ sealed class MachineConsoleFormatter : ConsoleFormatter
             pluginName = pluginName[(pluginName.LastIndexOf('.') + 1)..];
         }
 
-        var logObject = new MachineRequestLogEntry
+        var logObject = new JsonRequestLogEntry
         {
             Type = GetMessageTypeString(messageType),
             Message = requestLog.Message,
@@ -124,6 +124,15 @@ sealed class MachineConsoleFormatter : ConsoleFormatter
             return;
         }
 
+        // Structured output (e.g., subcommand JSON) uses the same envelope
+        // format as log entries but with type "result" and a data field
+        // containing the parsed JSON object
+        if (logEntry.EventId == LogEvents.StructuredOutput)
+        {
+            WriteStructuredOutput(message, logEntry.Category, textWriter);
+            return;
+        }
+
         var requestId = GetRequestIdScope(scopeProvider);
         var category = logEntry.Category;
 
@@ -133,7 +142,7 @@ sealed class MachineConsoleFormatter : ConsoleFormatter
             category = category[(category.LastIndexOf('.') + 1)..];
         }
 
-        var logObject = new MachineLogEntry
+        var logObject = new JsonLogEntry
         {
             Type = "log",
             Level = GetLogLevelString(logEntry.LogLevel),
@@ -146,6 +155,45 @@ sealed class MachineConsoleFormatter : ConsoleFormatter
 
         var json = JsonSerializer.Serialize(logObject, _jsonOptions);
         textWriter.WriteLine(json);
+    }
+
+    private static void WriteStructuredOutput(string message, string category, TextWriter textWriter)
+    {
+        // Extract short category name
+        if (category is not null)
+        {
+            category = category[(category.LastIndexOf('.') + 1)..];
+        }
+
+        try
+        {
+            var data = JsonSerializer.Deserialize<JsonElement>(message);
+            var logObject = new JsonResultEntry
+            {
+                Type = "result",
+                Data = data,
+                Category = category,
+                Timestamp = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture)
+            };
+
+            var json = JsonSerializer.Serialize(logObject, _jsonOptions);
+            textWriter.WriteLine(json);
+        }
+        catch (JsonException)
+        {
+            // Fallback: if the message isn't valid JSON, write it as a
+            // regular log entry
+            var logObject = new JsonLogEntry
+            {
+                Type = "result",
+                Message = message,
+                Category = category,
+                Timestamp = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture)
+            };
+
+            var json = JsonSerializer.Serialize(logObject, _jsonOptions);
+            textWriter.WriteLine(json);
+        }
     }
 
     private static string GetMessageTypeString(MessageType messageType) =>
@@ -168,8 +216,8 @@ sealed class MachineConsoleFormatter : ConsoleFormatter
         return requestId;
     }
 
-    // JSON serialization models for machine output
-    private sealed class MachineRequestLogEntry
+    // JSON serialization models for JSON output
+    private sealed class JsonRequestLogEntry
     {
         public string? Type { get; set; }
         public string? Message { get; set; }
@@ -180,7 +228,7 @@ sealed class MachineConsoleFormatter : ConsoleFormatter
         public string? Timestamp { get; set; }
     }
 
-    private sealed class MachineLogEntry
+    private sealed class JsonLogEntry
     {
         public string? Type { get; set; }
         public string? Level { get; set; }
@@ -189,5 +237,13 @@ sealed class MachineConsoleFormatter : ConsoleFormatter
         public string? RequestId { get; set; }
         public string? Timestamp { get; set; }
         public string? Exception { get; set; }
+    }
+
+    private sealed class JsonResultEntry
+    {
+        public string? Type { get; set; }
+        public JsonElement? Data { get; set; }
+        public string? Category { get; set; }
+        public string? Timestamp { get; set; }
     }
 }
