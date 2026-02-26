@@ -15,7 +15,7 @@ sealed class CertCommand : Command
     private readonly ILoggerFactory _loggerFactory;
     private readonly Option<bool> _forceOption = new("--force", "-f")
     {
-        Description = "Don't prompt for confirmation when removing the certificate"
+        Description = "Don't prompt for confirmation when removing the certificate. Required for non-interactive use (CI, piped stdin, automation)."
     };
 
     public CertCommand(ILogger<CertCommand> logger, ILoggerFactory loggerFactory) :
@@ -74,7 +74,7 @@ sealed class CertCommand : Command
         _logger.LogTrace("EnsureCertAsync() finished");
     }
 
-    public void RemoveCert(ParseResult parseResult)
+    public int RemoveCert(ParseResult parseResult)
     {
         _logger.LogTrace("RemoveCert() called");
 
@@ -83,10 +83,17 @@ sealed class CertCommand : Command
             var isForced = parseResult.GetValue(_forceOption);
             if (!isForced)
             {
+                if (Console.IsInputRedirected ||
+                    Environment.GetEnvironmentVariable("CI") is not null)
+                {
+                    _logger.LogError("Confirmation required but running in non-interactive mode. Use --force to skip confirmation.");
+                    return 1;
+                }
+
                 var isConfirmed = PromptConfirmation("Do you want to remove the root certificate", acceptByDefault: false);
                 if (!isConfirmed)
                 {
-                    return;
+                    return 0;
                 }
             }
 
@@ -111,10 +118,12 @@ sealed class CertCommand : Command
             }
 
             _logger.LogInformation("DONE");
+            return 0;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error removing certificate");
+            return 1;
         }
         finally
         {
