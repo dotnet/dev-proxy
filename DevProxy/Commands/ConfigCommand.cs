@@ -82,10 +82,10 @@ sealed class ConfigCommand : Command
                 configFile = args[i + 1];
                 i++;
             }
-            else if (string.Equals(args[i], DevProxyCommand.LogForOptionName, StringComparison.OrdinalIgnoreCase) &&
+            else if (string.Equals(args[i], DevProxyCommand.OutputOptionName, StringComparison.OrdinalIgnoreCase) &&
                      i + 1 < args.Length)
             {
-                isJsonOutput = string.Equals(args[i + 1], "machine", StringComparison.OrdinalIgnoreCase);
+                isJsonOutput = string.Equals(args[i + 1], "json", StringComparison.OrdinalIgnoreCase);
                 i++;
             }
         }
@@ -95,7 +95,7 @@ sealed class ConfigCommand : Command
             new ProductInfoHeaderValue("dev-proxy", ProxyUtils.ProductVersion));
 
         var formatterName = isJsonOutput
-            ? MachineConsoleFormatter.FormatterName
+            ? JsonConsoleFormatter.FormatterName
             : ProxyConsoleFormatter.DefaultCategoryName;
 
         using var loggerFactory = LoggerFactory.Create(builder =>
@@ -113,7 +113,7 @@ sealed class ConfigCommand : Command
                     formatterOptions.ShowSkipMessages = true;
                     formatterOptions.ShowTimestamps = false;
                 })
-                .AddConsoleFormatter<MachineConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
+                .AddConsoleFormatter<JsonConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
                 {
                     formatterOptions.IncludeScopes = false;
                     formatterOptions.ShowSkipMessages = true;
@@ -178,8 +178,8 @@ sealed class ConfigCommand : Command
         configValidateCommand.SetAction(async (parseResult, cancellationToken) =>
         {
             var configFile = parseResult.GetValue(validateConfigFileOption);
-            var logFor = parseResult.GetValueOrDefault<LogFor?>(DevProxyCommand.LogForOptionName);
-            var isJsonOutput = logFor == LogFor.Machine;
+            var output = parseResult.GetValueOrDefault<OutputFormat?>(DevProxyCommand.OutputOptionName);
+            var isJsonOutput = output == OutputFormat.Json;
             return await ValidateConfigCoreAsync(configFile, isJsonOutput, _httpClient, _logger, cancellationToken);
         });
 
