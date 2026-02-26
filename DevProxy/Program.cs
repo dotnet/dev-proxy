@@ -237,6 +237,15 @@ static async Task<int> RunProxyAsync(string[] args, DevProxyConfigOptions option
 
 _ = Announcement.ShowAsync();
 
+// Handle 'config validate' early to allow validation of broken configs
+// without requiring the full DI container to be built
+if (DevProxyCommand.IsConfigValidateCommand)
+{
+    var validateExitCode = await ConfigCommand.RunValidateStandaloneAsync(args);
+    Environment.Exit(validateExitCode);
+    return;
+}
+
 var options = new DevProxyConfigOptions();
 options.ParseOptions(args);
 
