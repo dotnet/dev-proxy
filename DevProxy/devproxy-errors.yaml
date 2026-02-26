@@ -1,0 +1,72 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.2.0/genericrandomerrorplugin.errorsfile.schema.json
+# Dev Proxy error responses configuration
+# This YAML version serves as a reference example alongside the default JSON configuration.
+# It demonstrates YAML features like comments, multiline strings, and anchors.
+
+# Define reusable error body templates using YAML anchors
+definitions:
+  client_error_body: &client_error_body
+    message: "Client Error"
+
+  server_error_body: &server_error_body
+    message: "Server Error"
+
+errors:
+  - request:
+      url: "https://*/*"
+    responses:
+      - statusCode: 400
+        body:
+          <<: *client_error_body
+          message: Bad Request
+          details: The server cannot process the request due to invalid syntax.
+
+      - statusCode: 401
+        body:
+          <<: *client_error_body
+          message: Unauthorized
+          details: The request requires user authentication.
+
+      - statusCode: 403
+        body:
+          <<: *client_error_body
+          message: Forbidden
+          details: The server understood the request, but refuses to authorize it.
+
+      - statusCode: 404
+        body:
+          <<: *client_error_body
+          message: Not Found
+          details: The requested resource could not be found.
+
+      - statusCode: 418
+        body:
+          message: I'm a teapot
+          details: The server refuses the attempt to brew coffee with a teapot.
+
+      - statusCode: 429
+        body:
+          message: Too Many Requests
+          details: >-
+            The user has sent too many requests in a given amount of time
+            ("rate limiting").
+        headers:
+          - name: Retry-After
+            value: "@dynamic"
+
+      - statusCode: 500
+        body:
+          <<: *server_error_body
+          message: Internal Server Error
+          details: >-
+            The server encountered an internal error and was unable to complete
+            your request. Either the server is overloaded or there is an error
+            in the application.
+
+      - statusCode: 503
+        body:
+          <<: *server_error_body
+          message: Service Unavailable
+          details: >-
+            The server is currently unable to handle the request due to a
+            temporary overload or maintenance. Please try again later.
