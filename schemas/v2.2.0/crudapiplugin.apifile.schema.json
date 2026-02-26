@@ -151,5 +151,5 @@
     "dataFile",
     "actions"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }
