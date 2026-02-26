@@ -30,7 +30,7 @@ sealed class DevProxyCommand : RootCommand
     internal static readonly Option<string?> ConfigFileOption = new(ConfigFileOptionName, "-c")
     {
         HelpName = "config-file",
-        Description = "The path to the configuration file"
+        Description = "Path to config file. If not specified, Dev Proxy searches for devproxyrc.jsonc or devproxyrc.json in the current directory, then in a .devproxy/ directory, then under the ~appFolder location. Supports ~appFolder token."
     };
     internal const string NoFirstRunOptionName = "--no-first-run";
     internal const string NoWatchOptionName = "--no-watch";
@@ -43,6 +43,7 @@ sealed class DevProxyCommand : RootCommand
     internal const string OutputOptionName = "--output";
     internal const string DetachedOptionName = "--detach";
     internal const string InternalDaemonOptionName = "--_internal-daemon";
+    internal const string NoColorOptionName = "--no-color";
 
     private static readonly string[] globalOptions = ["--version"];
     private static readonly string[] helpOptions = ["--help", "-h", "/h", "-?", "/?"];
@@ -56,6 +57,7 @@ sealed class DevProxyCommand : RootCommand
     private static bool _isInternalDaemonResolved;
     private static bool _stdioLogFilePathResolved;
     private static bool _detachedLogFilePathResolved;
+    private static bool _noColorResolved;
 
     public static bool HasGlobalOptions
     {
@@ -210,6 +212,24 @@ sealed class DevProxyCommand : RootCommand
 
             field = State.StateManager.GenerateLogFilePath();
             _detachedLogFilePathResolved = true;
+            return field;
+        }
+    }
+
+    public static bool NoColor
+    {
+        get
+        {
+            if (_noColorResolved)
+            {
+                return field;
+            }
+
+            var args = Environment.GetCommandLineArgs();
+            field = args.Contains(NoColorOptionName) ||
+                Environment.GetEnvironmentVariable("NO_COLOR") is not null ||
+                string.Equals(Environment.GetEnvironmentVariable("TERM"), "dumb", StringComparison.OrdinalIgnoreCase);
+            _noColorResolved = true;
             return field;
         }
     }
@@ -522,6 +542,13 @@ sealed class DevProxyCommand : RootCommand
             Hidden = true
         };
 
+        var noColorOption = new Option<bool>(NoColorOptionName)
+        {
+            Description = "Disable colored output",
+            Arity = ArgumentArity.Zero,
+            Recursive = true
+        };
+
         var options = new List<Option>
         {
             apiPortOption,
@@ -534,6 +561,7 @@ sealed class DevProxyCommand : RootCommand
             internalDaemonOption,
             ipAddressOption,
             logLevelOption,
+            noColorOption,
             noFirstRunOption,
             noWatchOption,
             outputOption,
@@ -575,13 +603,18 @@ sealed class DevProxyCommand : RootCommand
         ]);
         HelpExamples.Install(this);
 
-        var helpOption = Options.OfType<HelpOption>().FirstOrDefault();
-        if (helpOption?.Action is HelpAction helpAction)
-        {
-            helpOption.Action = new ExitCodeHelpAction(helpAction);
-        }
+        CustomizeHelp();
 
         SetAction(InvokeAsync);
+    }
+
+    private void CustomizeHelp()
+    {
+        var helpOption = Options.OfType<HelpOption>().FirstOrDefault();
+        if (helpOption?.Action is SynchronousCommandLineAction currentAction)
+        {
+            helpOption.Action = new DevProxyHelpAction(currentAction);
+        }
     }
 
     private void ConfigureFromOptions(ParseResult parseResult)

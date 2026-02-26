@@ -145,6 +145,11 @@ sealed class DevProxyConfigOptions : RootCommand
             Arity = ArgumentArity.Zero
         };
 
+        var noColorOption = new Option<bool>(DevProxyCommand.NoColorOptionName)
+        {
+            Arity = ArgumentArity.Zero
+        };
+
         var options = new List<Option>
         {
             apiPortOption,
@@ -154,7 +159,8 @@ sealed class DevProxyConfigOptions : RootCommand
             urlsToWatchOption,
             logLevelOption,
             outputOption,
-            discoverOption
+            discoverOption,
+            noColorOption
         };
         this.AddOptions(options.OrderByName());
 

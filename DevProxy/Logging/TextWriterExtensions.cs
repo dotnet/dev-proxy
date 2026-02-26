@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Commands;
 using DevProxy.Logging;
 
 #pragma warning disable IDE0130
@@ -15,13 +16,18 @@ static class TextWriterExtensions
 
     public static void ResetColor(this TextWriter writer)
     {
+        if (Console.IsOutputRedirected || DevProxyCommand.NoColor)
+        {
+            return;
+        }
+
         writer.Write(_defaultForegroundColor);
         writer.Write(_defaultBackgroundColor);
     }
 
     public static void WriteColoredMessage(this TextWriter textWriter, string message, ConsoleColor? background, ConsoleColor? foreground)
     {
-        if (Console.IsOutputRedirected)
+        if (Console.IsOutputRedirected || DevProxyCommand.NoColor)
         {
             textWriter.Write(message);
             return;
