@@ -136,9 +136,10 @@ sealed class ConfigCommand : Command
         configGetCommand.SetAction(async (parseResult) =>
         {
             var configId = parseResult.GetValue(configIdArgument);
+            var outputFormat = parseResult.GetValueOrDefault<OutputFormat?>(DevProxyCommand.OutputOptionName) ?? OutputFormat.Text;
             if (configId != null)
             {
-                await DownloadConfigAsync(configId);
+                await DownloadConfigAsync(configId, outputFormat);
             }
         });
 
@@ -153,7 +154,8 @@ sealed class ConfigCommand : Command
         configNewCommand.SetAction(async (parseResult) =>
         {
             var name = parseResult.GetValue(nameArgument) ?? "devproxyrc.json";
-            await CreateConfigFileAsync(name);
+            var outputFormat = parseResult.GetValueOrDefault<OutputFormat?>(DevProxyCommand.OutputOptionName) ?? OutputFormat.Text;
+            await CreateConfigFileAsync(name, outputFormat);
         });
 
         var configOpenCommand = new Command("open", "Open devproxyrc.json");
@@ -188,16 +190,26 @@ sealed class ConfigCommand : Command
             configOpenCommand,
             configValidateCommand
         }.OrderByName());
+
+        HelpExamples.Add(this, [
+            "devproxy config new                                 Create default devproxyrc.json",
+            "devproxy config new myconfig.json                   Create named config file",
+            "devproxy config get <config-id>                     Download config from gallery",
+            "devproxy config open                                Open config in default editor",
+        ]);
     }
 
-    private async Task DownloadConfigAsync(string configId)
+    private async Task DownloadConfigAsync(string configId, OutputFormat outputFormat)
     {
         try
         {
             var appFolder = ProxyUtils.AppFolder;
             if (string.IsNullOrEmpty(appFolder) || !Directory.Exists(appFolder))
             {
-                _logger.LogError("App folder {AppFolder} not found", appFolder);
+                if (outputFormat == OutputFormat.Text)
+                {
+                    _logger.LogError("App folder {AppFolder} not found", appFolder);
+                }
                 return;
             }
 
@@ -215,12 +227,18 @@ sealed class ConfigCommand : Command
             _logger.LogDebug("Creating target folder {TargetFolderPath}...", targetFolderPath);
             _ = Directory.CreateDirectory(targetFolderPath);
 
-            _logger.LogInformation("Downloading config {ConfigId}...", configId);
+            if (outputFormat == OutputFormat.Text)
+            {
+                _logger.LogInformation("Downloading config {ConfigId}...", configId);
+            }
 
             var sampleFiles = await GetFilesToDownloadAsync(configId);
             if (sampleFiles.Length == 0)
             {
-                _logger.LogError("Config {ConfigId} not found in the samples repo", configId);
+                if (outputFormat == OutputFormat.Text)
+                {
+                    _logger.LogError("Config {ConfigId} not found in the samples repo", configId);
+                }
                 return;
             }
             foreach (var sampleFile in sampleFiles)
@@ -228,8 +246,23 @@ sealed class ConfigCommand : Command
                 await DownloadFileAsync(sampleFile, targetFolderPath, configId);
             }
 
-            _logger.LogInformation("Config saved in {TargetFolderPath}\r\n", targetFolderPath);
             var configInfo = GetConfigInfo(targetFolderPath);
+
+            if (outputFormat == OutputFormat.Json)
+            {
+                var json = JsonSerializer.Serialize(new
+                {
+                    configId,
+                    path = targetFolderPath,
+                    configFiles = configInfo.ConfigFiles,
+                    mockFiles = configInfo.MockFiles
+                }, ProxyUtils.JsonSerializerOptions);
+                _logger.LogStructuredOutput(json);
+                return;
+            }
+
+            _logger.LogInformation("Config saved in {TargetFolderPath}\r\n", targetFolderPath);
+
             if (!configInfo.ConfigFiles.Any() && !configInfo.MockFiles.Any())
             {
                 return;
@@ -260,7 +293,10 @@ sealed class ConfigCommand : Command
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error downloading config");
+            if (outputFormat == OutputFormat.Text)
+            {
+                _logger.LogError(ex, "Error downloading config");
+            }
         }
     }
 
@@ -402,7 +438,7 @@ sealed class ConfigCommand : Command
         }
     }
 
-    private async Task CreateConfigFileAsync(string name)
+    private async Task CreateConfigFileAsync(string name, OutputFormat outputFormat)
     {
         try
         {
@@ -414,24 +450,45 @@ sealed class ConfigCommand : Command
 
             if (!snippets.TryGetValue(configFileSnippetName, out var snippet))
             {
-                _logger.LogError("Snippet {SnippetName} not found", configFileSnippetName);
+                if (outputFormat == OutputFormat.Text)
+                {
+                    _logger.LogError("Snippet {SnippetName} not found", configFileSnippetName);
+                }
                 return;
             }
 
             if (snippet.Body is null || snippet.Body.Length == 0)
             {
-                _logger.LogError("Snippet {SnippetName} is empty", configFileSnippetName);
+                if (outputFormat == OutputFormat.Text)
+                {
+                    _logger.LogError("Snippet {SnippetName} is empty", configFileSnippetName);
+                }
                 return;
             }
 
             var snippetBody = GetSnippetBody(snippet.Body);
             var targetFileName = GetTargetFileName(name);
             await File.WriteAllTextAsync(targetFileName, snippetBody);
-            _logger.LogInformation("Config file created at {TargetFileName}", targetFileName);
+
+            if (outputFormat == OutputFormat.Json)
+            {
+                var json = JsonSerializer.Serialize(new
+                {
+                    path = targetFileName
+                }, ProxyUtils.JsonSerializerOptions);
+                _logger.LogStructuredOutput(json);
+            }
+            else
+            {
+                _logger.LogInformation("Config file created at {TargetFileName}", targetFileName);
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error downloading config");
+            if (outputFormat == OutputFormat.Text)
+            {
+                _logger.LogError(ex, "Error downloading config");
+            }
         }
     }
 

@@ -18,12 +18,12 @@ public enum ReleaseType
     Beta
 }
 
-public enum LogFor
+public enum OutputFormat
 {
-    [EnumMember(Value = "human")]
-    Human,
-    [EnumMember(Value = "machine")]
-    Machine
+    [EnumMember(Value = "text")]
+    Text,
+    [EnumMember(Value = "json")]
+    Json
 }
 
 public interface IProxyConfiguration
@@ -37,7 +37,7 @@ public interface IProxyConfiguration
     IEnumerable<MockRequestHeader>? FilterByHeaders { get; }
     bool InstallCert { get; set; }
     string? IPAddress { get; set; }
-    LogFor LogFor { get; set; }
+    OutputFormat Output { get; set; }
     LogLevel LogLevel { get; }
     ReleaseType NewVersionNotification { get; }
     bool NoFirstRun { get; set; }
