@@ -23,7 +23,7 @@ sealed class DevProxyConfigOptions : RootCommand
     public bool Discover => _parseResult?.GetValueOrDefault<bool?>(DevProxyCommand.DiscoverOptionName) ?? false;
     public string? IPAddress => _parseResult?.GetValueOrDefault<string?>(DevProxyCommand.IpAddressOptionName);
     public bool IsStdioMode => _parseResult?.CommandResult.Command.Name == "stdio";
-    public LogFor? LogFor => _parseResult?.GetValueOrDefault<LogFor?>(DevProxyCommand.LogForOptionName);
+    public OutputFormat? Output => _parseResult?.GetValueOrDefault<OutputFormat?>(DevProxyCommand.OutputOptionName);
     public LogLevel? LogLevel => _parseResult?.GetValueOrDefault<LogLevel?>(DevProxyCommand.LogLevelOptionName);
 
     public List<string>? UrlsToWatch
@@ -119,7 +119,7 @@ sealed class DevProxyConfigOptions : RootCommand
             }
         };
 
-        var logForOption = new Option<LogFor?>(DevProxyCommand.LogForOptionName)
+        var outputOption = new Option<OutputFormat?>(DevProxyCommand.OutputOptionName)
         {
             CustomParser = result =>
             {
@@ -128,9 +128,9 @@ sealed class DevProxyConfigOptions : RootCommand
                     return null;
                 }
 
-                if (Enum.TryParse<LogFor>(result.Tokens[0].Value, true, out var logFor))
+                if (Enum.TryParse<OutputFormat>(result.Tokens[0].Value, true, out var output))
                 {
-                    return logFor;
+                    return output;
                 }
 
                 return null;
@@ -152,8 +152,8 @@ sealed class DevProxyConfigOptions : RootCommand
             configFileOption,
             portOption,
             urlsToWatchOption,
-            logForOption,
             logLevelOption,
+            outputOption,
             discoverOption
         };
         this.AddOptions(options.OrderByName());

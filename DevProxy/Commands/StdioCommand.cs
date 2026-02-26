@@ -55,6 +55,12 @@ sealed class StdioCommand : Command
             .Select(g => g.First()));
         this.AddOptions(options.OrderByName());
 
+        HelpExamples.Add(this, [
+            "devproxy stdio npx -y @devproxy/mcp                 Proxy MCP server stdio",
+            "devproxy stdio node server.js                       Proxy Node.js app stdio",
+            "devproxy stdio -c myconfig.json node app.js         With custom config",
+        ]);
+
         SetAction(RunAsync);
     }
 

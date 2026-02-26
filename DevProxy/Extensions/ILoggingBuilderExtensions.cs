@@ -27,9 +27,9 @@ static class ILoggingBuilderExtensions
         var configuredLogLevel = options.LogLevel ??
             configuration.GetValue("logLevel", LogLevel.Information);
 
-        // Determine the log target audience (human or machine)
-        var configuredLogFor = options.LogFor ??
-            configuration.GetValue("logFor", LogFor.Human);
+        // Determine the output format (text or json)
+        var configuredOutput = options.Output ??
+            configuration.GetValue("output", OutputFormat.Text);
 
         // For stdio command, log to file instead of console to avoid interfering with proxied streams
         if (DevProxyCommand.IsStdioCommand)
@@ -56,9 +56,9 @@ static class ILoggingBuilderExtensions
         var showSkipMessages = configuration.GetValue("showSkipMessages", true);
         var showTimestamps = configuration.GetValue("showTimestamps", true);
 
-        // Select the appropriate formatter based on logFor setting
-        var formatterName = configuredLogFor == LogFor.Machine
-            ? MachineConsoleFormatter.FormatterName
+        // Select the appropriate formatter based on output setting
+        var formatterName = configuredOutput == OutputFormat.Json
+            ? JsonConsoleFormatter.FormatterName
             : ProxyConsoleFormatter.DefaultCategoryName;
 
         // For root command (proxy itself), use rich logging
@@ -86,7 +86,7 @@ static class ILoggingBuilderExtensions
                         formatterOptions.ShowTimestamps = showTimestamps;
                     }
                 )
-                .AddConsoleFormatter<MachineConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
+                .AddConsoleFormatter<JsonConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
                     {
                         formatterOptions.IncludeScopes = true;
                         formatterOptions.ShowSkipMessages = showSkipMessages;
@@ -120,7 +120,7 @@ static class ILoggingBuilderExtensions
                     formatterOptions.ShowTimestamps = showTimestamps;
                 }
             )
-            .AddConsoleFormatter<MachineConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
+            .AddConsoleFormatter<JsonConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
                 {
                     formatterOptions.IncludeScopes = true;
                     formatterOptions.ShowSkipMessages = showSkipMessages;
