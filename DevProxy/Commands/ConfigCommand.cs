@@ -589,7 +589,7 @@ sealed class ConfigCommand : Command
 
     private static string ConvertJsonToYaml(string json)
     {
-        var jsonDocument = JsonDocument.Parse(json);
+        using var jsonDocument = JsonDocument.Parse(json);
         var obj = ConvertJsonElement(jsonDocument.RootElement);
         var serializer = new SerializerBuilder().Build();
         return serializer.Serialize(obj);
