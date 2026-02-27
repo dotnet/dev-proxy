@@ -605,7 +605,11 @@ sealed class ConfigCommand : Command
                 .Select(ConvertJsonElement)
                 .ToList(),
             JsonValueKind.String => element.GetString(),
-            JsonValueKind.Number => element.TryGetInt64(out var l) ? (object)l : element.GetDouble(),
+            JsonValueKind.Number => element.TryGetInt64(out var l)
+                ? (object)l
+                : element.TryGetUInt64(out var ul)
+                    ? (object)ul
+                    : element.GetDouble(),
             JsonValueKind.True => true,
             JsonValueKind.False => false,
             _ => null
