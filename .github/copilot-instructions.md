@@ -50,7 +50,7 @@ dotnet run --project DevProxy -- --as-system-proxy false --port 0 --api-port 0
 
 **Auth for M365/Azure:** No automated auth. You can try `m365 util accesstoken get` or `az account get-access-token` (use `-h` for options) but the user may not be signed in.
 
-**Cleanup:** After testing, stop the proxy process using `kill <PID>`. Clean up any generated log files (`devproxy-*.log`).
+**Cleanup:** After testing, stop the proxy using `devproxy stop` (preferred, cross-platform). If you started it with `dotnet run`, you can also stop it with `Ctrl+C` in that terminal; as a last resort, terminate the process using OS-specific tools (for example, `kill <PID>` on Unix-like systems or Task Manager on Windows). Clean up any generated log files (`devproxy-*.log`).
 
 ## Reference (Architecture)
 
