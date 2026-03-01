@@ -26,9 +26,9 @@ Key points:
 ## Plugin Development
 
 To create a new plugin:
-1. Pick the relevant interface: `IProxyPlugin` (HTTP interception) or `IStdioPlugin` (stdio communication)
-2. Implement as a **public class** in a class library project
-3. Override the relevant methods/events for your use case
+1. Implement the `IPlugin` interface (`DevProxy.Abstractions/Plugins/IPlugin.cs`) either directly or by inheriting from `BasePlugin` / `BaseReportingPlugin`. Optionally implement `IStdioPlugin` for stdio-based communication.
+2. Implement it as a **public class** in a class library project.
+3. Implement the required interface members and override any relevant base class methods/events for your use case.
 
 ## Commits & Releases
 
