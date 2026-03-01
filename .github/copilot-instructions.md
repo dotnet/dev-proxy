@@ -21,7 +21,7 @@ Key points:
 - Plugin order matters: latency plugins first, response simulators before reporters, reporters last
 - URL matching is order-dependent: most specific URLs first, use `!` prefix to exclude
 - File paths are relative to the config file where they're defined
-- Hot reload (v2.1.0+): config changes apply automatically without restart
+- Hot reload (v2.1.0+): config changes are detected and the proxy restarts automatically to apply them
 
 ## Plugin Development
 
