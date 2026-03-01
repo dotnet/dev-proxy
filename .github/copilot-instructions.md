@@ -41,7 +41,7 @@ To create a new plugin:
 When testing code, features, or changes, **always launch the proxy in detached mode** with these settings to avoid conflicts:
 
 ```bash
-dotnet run --project DevProxy -- --as-system-proxy false --port 0 --api-port 0
+dotnet run --project DevProxy -- --detach --as-system-proxy false --port 0 --api-port 0
 ```
 
 - `--as-system-proxy false` — prevents modifying system-wide network settings
