@@ -4,12 +4,11 @@
 # It demonstrates YAML features like comments, multiline strings, and anchors.
 
 # Define reusable error body templates using YAML anchors
-definitions:
-  client_error_body: &client_error_body
-    message: "Client Error"
+client_error_body: &client_error_body
+  message: "Client Error"
 
-  server_error_body: &server_error_body
-    message: "Server Error"
+server_error_body: &server_error_body
+  message: "Server Error"
 
 errors:
   - request:
