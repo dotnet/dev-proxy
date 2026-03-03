@@ -615,6 +615,7 @@ sealed class ConfigCommand : Command
             _ => null
         };
     }
+
     private static string? ResolveConfigFile(string? configFilePath)
     {
         if (!string.IsNullOrEmpty(configFilePath))
