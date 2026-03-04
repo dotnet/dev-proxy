@@ -14,7 +14,6 @@ using System.Net.Http.Headers;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using YamlDotNet.Serialization;
 using YamlDotNet.Core;
 
 namespace DevProxy.Commands;
@@ -55,7 +54,7 @@ sealed class ConfigCommand : Command
     private readonly ILogger _logger;
     private readonly IProxyConfiguration _proxyConfiguration;
     private readonly HttpClient _httpClient;
-    private readonly string snippetsFileUrl = $"https://aka.ms/devproxy/snippets/v{ProxyUtils.NormalizeVersion(ProxyUtils.ProductVersion)}";
+    private readonly string snippetsBaseUrl = $"https://aka.ms/devproxy/snippets/v{ProxyUtils.NormalizeVersion(ProxyUtils.ProductVersion)}";
     private readonly string configFileSnippetName = "ConfigFile";
     public ConfigCommand(
         HttpClient httpClient,
@@ -455,7 +454,9 @@ sealed class ConfigCommand : Command
     {
         try
         {
-            var snippets = await DownloadSnippetsAsync();
+            var selectedFormat = format ?? GetConfigFileFormatFromFileName(name);
+
+            var snippets = await DownloadSnippetsAsync(selectedFormat);
             if (snippets is null)
             {
                 return;
@@ -480,12 +481,6 @@ sealed class ConfigCommand : Command
             }
 
             var snippetBody = GetSnippetBody(snippet.Body);
-
-            var selectedFormat = format ?? GetConfigFileFormatFromFileName(name);
-            if (selectedFormat == ConfigFileFormat.Yaml)
-            {
-                snippetBody = ConvertJsonToYaml(snippetBody!);
-            }
 
             var targetFileName = GetTargetFileName(name);
             await File.WriteAllTextAsync(targetFileName, snippetBody);
@@ -521,8 +516,10 @@ sealed class ConfigCommand : Command
         return extension is ".yaml" or ".yml" ? ConfigFileFormat.Yaml : ConfigFileFormat.Json;
     }
 
-    private async Task<Dictionary<string, VisualStudioCodeSnippet>?> DownloadSnippetsAsync()
+    private async Task<Dictionary<string, VisualStudioCodeSnippet>?> DownloadSnippetsAsync(ConfigFileFormat format)
     {
+        var formatSuffix = format == ConfigFileFormat.Yaml ? "yaml" : "json";
+        var snippetsFileUrl = $"{snippetsBaseUrl}/{formatSuffix}";
         _logger.LogDebug("Downloading snippets from {SnippetsFileUrl}...", snippetsFileUrl);
         var response = await _httpClient.GetAsync(new Uri(snippetsFileUrl));
         if (response.IsSuccessStatusCode)
@@ -585,35 +582,6 @@ sealed class ConfigCommand : Command
         // remove snippet $n markers
         body = Regex.Replace(body, @"\$[0-9]+", "");
         return body;
-    }
-
-    private static string ConvertJsonToYaml(string json)
-    {
-        using var jsonDocument = JsonDocument.Parse(json);
-        var obj = ConvertJsonElement(jsonDocument.RootElement);
-        var serializer = new SerializerBuilder().Build();
-        return serializer.Serialize(obj);
-    }
-
-    private static object? ConvertJsonElement(JsonElement element)
-    {
-        return element.ValueKind switch
-        {
-            JsonValueKind.Object => element.EnumerateObject()
-                .ToDictionary(p => (object)p.Name, p => ConvertJsonElement(p.Value)),
-            JsonValueKind.Array => element.EnumerateArray()
-                .Select(ConvertJsonElement)
-                .ToList(),
-            JsonValueKind.String => element.GetString(),
-            JsonValueKind.Number => element.TryGetInt64(out var l)
-                ? (object)l
-                : element.TryGetUInt64(out var ul)
-                    ? (object)ul
-                    : element.GetDouble(),
-            JsonValueKind.True => true,
-            JsonValueKind.False => false,
-            _ => null
-        };
     }
 
     private static string? ResolveConfigFile(string? configFilePath)
