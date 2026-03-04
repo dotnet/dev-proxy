@@ -1,6 +1,8 @@
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using System.CommandLine;
 using System.CommandLine.Help;
 using System.CommandLine.Invocation;
@@ -307,8 +309,12 @@ sealed class DevProxyCommand : RootCommand
 
         try
         {
-            var ipAddress = parseResult.GetValue<string?>(IpAddressOptionName) ?? _proxyConfiguration.IPAddress;
-            _logger.LogInformation("Dev Proxy API listening on http://{IPAddress}:{Port}...", ipAddress, _proxyConfiguration.ApiPort);
+            _app.Lifetime.ApplicationStarted.Register(() =>
+            {
+                var serverAddresses = _app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>();
+                var address = serverAddresses?.Addresses.FirstOrDefault() ?? $"http://{_proxyConfiguration.IPAddress}:{_proxyConfiguration.ApiPort}";
+                _logger.LogInformation("Dev Proxy API listening on {Address}...", address);
+            });
             await _app.RunAsync(cancellationToken);
 
             return 0;
