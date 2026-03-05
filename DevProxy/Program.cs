@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using DevProxy;
+using DevProxy.Abstractions.Utils;
 using DevProxy.Commands;
 using DevProxy.Proxy;
 using DevProxy.State;
@@ -10,6 +11,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json;
 
 // Handle detached mode - spawn a child process and exit
 // Only applies to root command (starting the proxy), not subcommands
@@ -46,12 +48,26 @@ if (DevProxyCommand.IsInternalDaemon)
 
 static async Task<int> StartDetachedProcessAsync(string[] args)
 {
+    var isJsonOutput = IsJsonOutputRequested(args);
+
     // Check if an instance is already running
     if (await StateManager.IsInstanceRunningAsync())
     {
         var existingState = await StateManager.LoadStateAsync();
-        await Console.Error.WriteLineAsync($"Dev Proxy is already running (PID: {existingState?.Pid}).");
-        await Console.Error.WriteLineAsync("Use 'devproxy stop' to stop it first.");
+        if (isJsonOutput)
+        {
+            var json = JsonSerializer.Serialize(new
+            {
+                error = $"Dev Proxy is already running (PID: {existingState?.Pid}).",
+                message = "Use 'devproxy stop' to stop it first."
+            }, ProxyUtils.JsonSerializerOptions);
+            await Console.Error.WriteLineAsync(json);
+        }
+        else
+        {
+            await Console.Error.WriteLineAsync($"Dev Proxy is already running (PID: {existingState?.Pid}).");
+            await Console.Error.WriteLineAsync("Use 'devproxy stop' to stop it first.");
+        }
         return 1;
     }
 
@@ -68,7 +84,18 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
     var executablePath = Environment.ProcessPath;
     if (string.IsNullOrEmpty(executablePath))
     {
-        await Console.Error.WriteLineAsync("Could not determine executable path.");
+        if (isJsonOutput)
+        {
+            var json = JsonSerializer.Serialize(new
+            {
+                error = "Could not determine executable path."
+            }, ProxyUtils.JsonSerializerOptions);
+            await Console.Error.WriteLineAsync(json);
+        }
+        else
+        {
+            await Console.Error.WriteLineAsync("Could not determine executable path.");
+        }
         return 1;
     }
 
@@ -94,7 +121,18 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
         var process = Process.Start(startInfo);
         if (process == null)
         {
-            await Console.Error.WriteLineAsync("Failed to start Dev Proxy process.");
+            if (isJsonOutput)
+            {
+                var json = JsonSerializer.Serialize(new
+                {
+                    error = "Failed to start Dev Proxy process."
+                }, ProxyUtils.JsonSerializerOptions);
+                await Console.Error.WriteLineAsync(json);
+            }
+            else
+            {
+                await Console.Error.WriteLineAsync("Failed to start Dev Proxy process.");
+            }
             return 1;
         }
 
@@ -109,15 +147,28 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
             var state = await StateManager.LoadStateAsync();
             if (state != null)
             {
-                await Console.Out.WriteLineAsync("Dev Proxy started in background.");
-                await Console.Out.WriteLineAsync();
-                await Console.Out.WriteLineAsync($"  PID:       {state.Pid}");
-                await Console.Out.WriteLineAsync($"  API URL:   {state.ApiUrl}");
-                await Console.Out.WriteLineAsync($"  Log file:  {state.LogFile}");
-                await Console.Out.WriteLineAsync();
-                await Console.Out.WriteLineAsync("Use 'devproxy status' to check status.");
-                await Console.Out.WriteLineAsync("Use 'devproxy logs' to view logs.");
-                await Console.Out.WriteLineAsync("Use 'devproxy stop' to stop.");
+                if (isJsonOutput)
+                {
+                    var json = JsonSerializer.Serialize(new
+                    {
+                        state.Pid,
+                        state.ApiUrl,
+                        state.LogFile
+                    }, ProxyUtils.JsonSerializerOptions);
+                    await Console.Out.WriteLineAsync(json);
+                }
+                else
+                {
+                    await Console.Out.WriteLineAsync("Dev Proxy started in background.");
+                    await Console.Out.WriteLineAsync();
+                    await Console.Out.WriteLineAsync($"  PID:       {state.Pid}");
+                    await Console.Out.WriteLineAsync($"  API URL:   {state.ApiUrl}");
+                    await Console.Out.WriteLineAsync($"  Log file:  {state.LogFile}");
+                    await Console.Out.WriteLineAsync();
+                    await Console.Out.WriteLineAsync("Use 'devproxy status' to check status.");
+                    await Console.Out.WriteLineAsync("Use 'devproxy logs' to view logs.");
+                    await Console.Out.WriteLineAsync("Use 'devproxy stop' to stop.");
+                }
                 return 0;
             }
 
@@ -127,28 +178,77 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
                 var errorOutput = await process.StandardError.ReadToEndAsync();
                 var standardOutput = await process.StandardOutput.ReadToEndAsync();
 
-                await Console.Error.WriteLineAsync("Dev Proxy failed to start.");
-                if (!string.IsNullOrEmpty(errorOutput))
+                if (isJsonOutput)
                 {
-                    await Console.Error.WriteLineAsync(errorOutput);
+                    var json = JsonSerializer.Serialize(new
+                    {
+                        error = "Dev Proxy failed to start.",
+                        errorOutput = string.IsNullOrEmpty(errorOutput) ? null : errorOutput,
+                        standardOutput = string.IsNullOrEmpty(standardOutput) ? null : standardOutput
+                    }, ProxyUtils.JsonSerializerOptions);
+                    await Console.Error.WriteLineAsync(json);
                 }
-                if (!string.IsNullOrEmpty(standardOutput))
+                else
                 {
-                    await Console.Error.WriteLineAsync(standardOutput);
+                    await Console.Error.WriteLineAsync("Dev Proxy failed to start.");
+                    if (!string.IsNullOrEmpty(errorOutput))
+                    {
+                        await Console.Error.WriteLineAsync(errorOutput);
+                    }
+                    if (!string.IsNullOrEmpty(standardOutput))
+                    {
+                        await Console.Error.WriteLineAsync(standardOutput);
+                    }
                 }
                 return process.ExitCode;
             }
         }
 
-        await Console.Error.WriteLineAsync("Timeout waiting for Dev Proxy to start.");
-        await Console.Error.WriteLineAsync($"Check the log folder: {StateManager.GetLogsFolder()}");
+        if (isJsonOutput)
+        {
+            var json = JsonSerializer.Serialize(new
+            {
+                error = "Timeout waiting for Dev Proxy to start.",
+                logFolder = StateManager.GetLogsFolder()
+            }, ProxyUtils.JsonSerializerOptions);
+            await Console.Error.WriteLineAsync(json);
+        }
+        else
+        {
+            await Console.Error.WriteLineAsync("Timeout waiting for Dev Proxy to start.");
+            await Console.Error.WriteLineAsync($"Check the log folder: {StateManager.GetLogsFolder()}");
+        }
         return 1;
     }
     catch (Exception ex)
     {
-        await Console.Error.WriteLineAsync($"Failed to start Dev Proxy: {ex.Message}");
+        if (isJsonOutput)
+        {
+            var json = JsonSerializer.Serialize(new
+            {
+                error = $"Failed to start Dev Proxy: {ex.Message}"
+            }, ProxyUtils.JsonSerializerOptions);
+            await Console.Error.WriteLineAsync(json);
+        }
+        else
+        {
+            await Console.Error.WriteLineAsync($"Failed to start Dev Proxy: {ex.Message}");
+        }
         return 1;
     }
+}
+
+static bool IsJsonOutputRequested(string[] args)
+{
+    for (var i = 0; i < args.Length; i++)
+    {
+        if (string.Equals(args[i], DevProxyCommand.OutputOptionName, StringComparison.OrdinalIgnoreCase) &&
+            i + 1 < args.Length)
+        {
+            return string.Equals(args[i + 1], "json", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+    return false;
 }
 
 static string EscapeArgument(string arg)
