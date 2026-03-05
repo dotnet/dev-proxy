@@ -109,9 +109,16 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
             var state = await StateManager.LoadStateAsync();
             if (state is { Port: > 0 })
             {
-                var apiUri = new Uri(state.ApiUrl);
-                var proxyUrl = $"http://{apiUri.Host}:{state.Port}";
+                Uri? apiUri = null;
+                if (!string.IsNullOrWhiteSpace(state.ApiUrl))
+                {
+                    Uri.TryCreate(state.ApiUrl, UriKind.Absolute, out apiUri);
+                }
 
+                // Build proxy URL in a way that correctly handles IPv6 hosts.
+                string hostForProxy = apiUri?.Host ?? IPAddress.Loopback.ToString();
+                var proxyUriBuilder = new UriBuilder(Uri.UriSchemeHttp, hostForProxy, state.Port);
+                var proxyUrl = proxyUriBuilder.Uri.ToString().TrimEnd('/');
                 await Console.Out.WriteLineAsync("Dev Proxy started in background.");
                 await Console.Out.WriteLineAsync();
                 await Console.Out.WriteLineAsync($"  PID:       {state.Pid}");
