@@ -107,11 +107,15 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
             await Task.Delay(200);
 
             var state = await StateManager.LoadStateAsync();
-            if (state != null)
+            if (state is { Port: > 0 })
             {
+                var apiUri = new Uri(state.ApiUrl);
+                var proxyUrl = $"http://{apiUri.Host}:{state.Port}";
+
                 await Console.Out.WriteLineAsync("Dev Proxy started in background.");
                 await Console.Out.WriteLineAsync();
                 await Console.Out.WriteLineAsync($"  PID:       {state.Pid}");
+                await Console.Out.WriteLineAsync($"  Proxy URL: {proxyUrl}");
                 await Console.Out.WriteLineAsync($"  API URL:   {state.ApiUrl}");
                 await Console.Out.WriteLineAsync($"  Log file:  {state.LogFile}");
                 await Console.Out.WriteLineAsync();

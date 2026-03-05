@@ -6,6 +6,7 @@ using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Commands;
+using DevProxy.State;
 using Microsoft.VisualStudio.Threading;
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -140,6 +141,20 @@ sealed class ProxyEngine(
 
         ProxyServer.AddEndPoint(_explicitEndPoint);
         await ProxyServer.StartAsync(cancellationToken: stoppingToken);
+
+        // Update config with actual port (resolves port 0 to OS-assigned port)
+        _config.Port = _explicitEndPoint.Port;
+
+        // Update state file with actual port so detach parent gets the resolved port
+        if (DevProxyCommand.IsInternalDaemon)
+        {
+            var state = await StateManager.LoadStateAsync(stoppingToken);
+            if (state is not null)
+            {
+                state.Port = _config.Port;
+                await StateManager.SaveStateAsync(state, stoppingToken);
+            }
+        }
 
         // run first-run setup on macOS
         FirstRunSetup();
