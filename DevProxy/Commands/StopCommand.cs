@@ -87,7 +87,7 @@ internal sealed class StopCommand : Command
                     return 1;
                 }
 
-                await StateManager.DeleteStateAsync(cancellationToken);
+                await StateManager.DeleteStateAsync(state.Pid, cancellationToken);
                 Console.WriteLine("Dev Proxy stopped.");
                 return 0;
             }
@@ -135,7 +135,7 @@ internal sealed class StopCommand : Command
             return 1;
         }
 
-        await StateManager.DeleteStateAsync(cancellationToken);
+        await StateManager.DeleteStateAsync(state.Pid, cancellationToken);
         return 0;
     }
 
