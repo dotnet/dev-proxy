@@ -46,11 +46,11 @@ if (DevProxyCommand.IsInternalDaemon)
 
 static async Task<int> StartDetachedProcessAsync(string[] args)
 {
-    // Check if an instance is already running
-    if (await StateManager.IsInstanceRunningAsync())
+    // Check if an instance is already running as system proxy
+    var existingState = await StateManager.LoadStateAsync();
+    if (existingState is not null && existingState.AsSystemProxy)
     {
-        var existingState = await StateManager.LoadStateAsync();
-        await Console.Error.WriteLineAsync($"Dev Proxy is already running (PID: {existingState?.Pid}).");
+        await Console.Error.WriteLineAsync($"Dev Proxy is already running (PID: {existingState.Pid}).");
         await Console.Error.WriteLineAsync("Use 'devproxy stop' to stop it first.");
         return 1;
     }
@@ -206,6 +206,8 @@ static async Task<int> RunProxyAsync(string[] args, DevProxyConfigOptions option
             var apiPort = options.ApiPort ?? app.Configuration.GetValue("apiPort", 8897);
             var port = options.Port ?? app.Configuration.GetValue("port", 8000);
 
+            var asSystemProxy = options.AsSystemProxy ?? app.Configuration.GetValue("asSystemProxy", true);
+
             var state = new ProxyInstanceState
             {
                 Pid = Environment.ProcessId,
@@ -213,7 +215,8 @@ static async Task<int> RunProxyAsync(string[] args, DevProxyConfigOptions option
                 LogFile = DevProxyCommand.DetachedLogFilePath,
                 StartedAt = DateTimeOffset.UtcNow,
                 ConfigFile = options.ConfigFile,
-                Port = port
+                Port = port,
+                AsSystemProxy = asSystemProxy
             };
 
             await StateManager.SaveStateAsync(state);
