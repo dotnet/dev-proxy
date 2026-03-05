@@ -111,7 +111,7 @@ internal static class StateManager
     {
         var states = await LoadAllStatesAsync(cancellationToken);
         return states
-            .OrderByDescending(s => s.AsSystemProxy)
+            .OrderByDescending(s => s.AsSystemProxy ? 1 : 0)
             .ThenByDescending(s => s.StartedAt)
             .FirstOrDefault();
     }
