@@ -3,15 +3,16 @@
 // See the LICENSE file in the project root for more information.
 
 using DevProxy;
-using DevProxy.Abstractions.Utils;
 using DevProxy.Commands;
 using DevProxy.Proxy;
 using DevProxy.State;
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 // Handle detached mode - spawn a child process and exit
 // Only applies to root command (starting the proxy), not subcommands
@@ -56,12 +57,8 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
         var existingState = await StateManager.LoadStateAsync();
         if (isJsonOutput)
         {
-            var json = JsonSerializer.Serialize(new
-            {
-                error = $"Dev Proxy is already running (PID: {existingState?.Pid}).",
-                message = "Use 'devproxy stop' to stop it first."
-            }, ProxyUtils.JsonSerializerOptions);
-            await Console.Error.WriteLineAsync(json);
+            await Console.Error.WriteLineAsync(
+                FormatJsonLogEntry("error", $"Dev Proxy is already running (PID: {existingState?.Pid}). Use 'devproxy stop' to stop it first."));
         }
         else
         {
@@ -86,11 +83,8 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
     {
         if (isJsonOutput)
         {
-            var json = JsonSerializer.Serialize(new
-            {
-                error = "Could not determine executable path."
-            }, ProxyUtils.JsonSerializerOptions);
-            await Console.Error.WriteLineAsync(json);
+            await Console.Error.WriteLineAsync(
+                FormatJsonLogEntry("error", "Could not determine executable path."));
         }
         else
         {
@@ -123,11 +117,8 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
         {
             if (isJsonOutput)
             {
-                var json = JsonSerializer.Serialize(new
-                {
-                    error = "Failed to start Dev Proxy process."
-                }, ProxyUtils.JsonSerializerOptions);
-                await Console.Error.WriteLineAsync(json);
+                await Console.Error.WriteLineAsync(
+                    FormatJsonLogEntry("error", "Failed to start Dev Proxy process."));
             }
             else
             {
@@ -149,13 +140,12 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
             {
                 if (isJsonOutput)
                 {
-                    var json = JsonSerializer.Serialize(new
+                    await Console.Out.WriteLineAsync(FormatJsonResultEntry(new
                     {
                         state.Pid,
                         state.ApiUrl,
                         state.LogFile
-                    }, ProxyUtils.JsonSerializerOptions);
-                    await Console.Out.WriteLineAsync(json);
+                    }));
                 }
                 else
                 {
@@ -180,13 +170,16 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
 
                 if (isJsonOutput)
                 {
-                    var json = JsonSerializer.Serialize(new
+                    var message = "Dev Proxy failed to start.";
+                    if (!string.IsNullOrEmpty(errorOutput))
                     {
-                        error = "Dev Proxy failed to start.",
-                        errorOutput = string.IsNullOrEmpty(errorOutput) ? null : errorOutput,
-                        standardOutput = string.IsNullOrEmpty(standardOutput) ? null : standardOutput
-                    }, ProxyUtils.JsonSerializerOptions);
-                    await Console.Error.WriteLineAsync(json);
+                        message += $" {errorOutput.Trim()}";
+                    }
+                    if (!string.IsNullOrEmpty(standardOutput))
+                    {
+                        message += $" {standardOutput.Trim()}";
+                    }
+                    await Console.Error.WriteLineAsync(FormatJsonLogEntry("error", message));
                 }
                 else
                 {
@@ -206,12 +199,8 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
 
         if (isJsonOutput)
         {
-            var json = JsonSerializer.Serialize(new
-            {
-                error = "Timeout waiting for Dev Proxy to start.",
-                logFolder = StateManager.GetLogsFolder()
-            }, ProxyUtils.JsonSerializerOptions);
-            await Console.Error.WriteLineAsync(json);
+            await Console.Error.WriteLineAsync(
+                FormatJsonLogEntry("error", $"Timeout waiting for Dev Proxy to start. Check the log folder: {StateManager.GetLogsFolder()}"));
         }
         else
         {
@@ -224,11 +213,8 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
     {
         if (isJsonOutput)
         {
-            var json = JsonSerializer.Serialize(new
-            {
-                error = $"Failed to start Dev Proxy: {ex.Message}"
-            }, ProxyUtils.JsonSerializerOptions);
-            await Console.Error.WriteLineAsync(json);
+            await Console.Error.WriteLineAsync(
+                FormatJsonLogEntry("error", $"Failed to start Dev Proxy: {ex.Message}"));
         }
         else
         {
@@ -236,6 +222,51 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
         }
         return 1;
     }
+}
+
+/// <summary>
+/// Formats a result entry matching the JSONL envelope produced by JsonConsoleFormatter:
+/// {"type":"result","data":{...},"timestamp":"..."}
+/// </summary>
+static string FormatJsonResultEntry(object data)
+{
+#pragma warning disable CA1869 // Called at most once per process lifetime
+    var jsonlOptions = new JsonSerializerOptions
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+#pragma warning restore CA1869
+    var entry = new
+    {
+        type = "result",
+        data = JsonSerializer.SerializeToElement(data, jsonlOptions),
+        timestamp = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture)
+    };
+    return JsonSerializer.Serialize(entry, jsonlOptions);
+}
+
+/// <summary>
+/// Formats a log entry matching the JSONL envelope produced by JsonConsoleFormatter:
+/// {"type":"log","level":"...","message":"...","timestamp":"..."}
+/// </summary>
+static string FormatJsonLogEntry(string level, string message)
+{
+#pragma warning disable CA1869 // Called at most once per process lifetime
+    var jsonlOptions = new JsonSerializerOptions
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+#pragma warning restore CA1869
+    var entry = new
+    {
+        type = "log",
+        level,
+        message,
+        timestamp = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture)
+    };
+    return JsonSerializer.Serialize(entry, jsonlOptions);
 }
 
 static bool IsJsonOutputRequested(string[] args)
