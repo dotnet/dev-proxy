@@ -7,9 +7,12 @@ using DevProxy.Commands;
 using DevProxy.Proxy;
 using DevProxy.State;
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 // Handle detached mode - spawn a child process and exit
 // Only applies to root command (starting the proxy), not subcommands
@@ -46,12 +49,22 @@ if (DevProxyCommand.IsInternalDaemon)
 
 static async Task<int> StartDetachedProcessAsync(string[] args)
 {
+    var isJsonOutput = IsJsonOutputRequested(args);
+
     // Check if an instance is already running
     if (await StateManager.IsInstanceRunningAsync())
     {
         var existingState = await StateManager.LoadStateAsync();
-        await Console.Error.WriteLineAsync($"Dev Proxy is already running (PID: {existingState?.Pid}).");
-        await Console.Error.WriteLineAsync("Use 'devproxy stop' to stop it first.");
+        if (isJsonOutput)
+        {
+            await Console.Error.WriteLineAsync(
+                FormatJsonLogEntry("error", $"Dev Proxy is already running (PID: {existingState?.Pid}). Use 'devproxy stop' to stop it first."));
+        }
+        else
+        {
+            await Console.Error.WriteLineAsync($"Dev Proxy is already running (PID: {existingState?.Pid}).");
+            await Console.Error.WriteLineAsync("Use 'devproxy stop' to stop it first.");
+        }
         return 1;
     }
 
@@ -68,7 +81,15 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
     var executablePath = Environment.ProcessPath;
     if (string.IsNullOrEmpty(executablePath))
     {
-        await Console.Error.WriteLineAsync("Could not determine executable path.");
+        if (isJsonOutput)
+        {
+            await Console.Error.WriteLineAsync(
+                FormatJsonLogEntry("error", "Could not determine executable path."));
+        }
+        else
+        {
+            await Console.Error.WriteLineAsync("Could not determine executable path.");
+        }
         return 1;
     }
 
@@ -94,7 +115,15 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
         var process = Process.Start(startInfo);
         if (process == null)
         {
-            await Console.Error.WriteLineAsync("Failed to start Dev Proxy process.");
+            if (isJsonOutput)
+            {
+                await Console.Error.WriteLineAsync(
+                    FormatJsonLogEntry("error", "Failed to start Dev Proxy process."));
+            }
+            else
+            {
+                await Console.Error.WriteLineAsync("Failed to start Dev Proxy process.");
+            }
             return 1;
         }
 
@@ -109,15 +138,27 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
             var state = await StateManager.LoadStateAsync();
             if (state != null)
             {
-                await Console.Out.WriteLineAsync("Dev Proxy started in background.");
-                await Console.Out.WriteLineAsync();
-                await Console.Out.WriteLineAsync($"  PID:       {state.Pid}");
-                await Console.Out.WriteLineAsync($"  API URL:   {state.ApiUrl}");
-                await Console.Out.WriteLineAsync($"  Log file:  {state.LogFile}");
-                await Console.Out.WriteLineAsync();
-                await Console.Out.WriteLineAsync("Use 'devproxy status' to check status.");
-                await Console.Out.WriteLineAsync("Use 'devproxy logs' to view logs.");
-                await Console.Out.WriteLineAsync("Use 'devproxy stop' to stop.");
+                if (isJsonOutput)
+                {
+                    await Console.Out.WriteLineAsync(FormatJsonResultEntry(new
+                    {
+                        state.Pid,
+                        state.ApiUrl,
+                        state.LogFile
+                    }));
+                }
+                else
+                {
+                    await Console.Out.WriteLineAsync("Dev Proxy started in background.");
+                    await Console.Out.WriteLineAsync();
+                    await Console.Out.WriteLineAsync($"  PID:       {state.Pid}");
+                    await Console.Out.WriteLineAsync($"  API URL:   {state.ApiUrl}");
+                    await Console.Out.WriteLineAsync($"  Log file:  {state.LogFile}");
+                    await Console.Out.WriteLineAsync();
+                    await Console.Out.WriteLineAsync("Use 'devproxy status' to check status.");
+                    await Console.Out.WriteLineAsync("Use 'devproxy logs' to view logs.");
+                    await Console.Out.WriteLineAsync("Use 'devproxy stop' to stop.");
+                }
                 return 0;
             }
 
@@ -127,28 +168,118 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
                 var errorOutput = await process.StandardError.ReadToEndAsync();
                 var standardOutput = await process.StandardOutput.ReadToEndAsync();
 
-                await Console.Error.WriteLineAsync("Dev Proxy failed to start.");
-                if (!string.IsNullOrEmpty(errorOutput))
+                if (isJsonOutput)
                 {
-                    await Console.Error.WriteLineAsync(errorOutput);
+                    var message = "Dev Proxy failed to start.";
+                    if (!string.IsNullOrEmpty(errorOutput))
+                    {
+                        message += $" {errorOutput.Trim()}";
+                    }
+                    if (!string.IsNullOrEmpty(standardOutput))
+                    {
+                        message += $" {standardOutput.Trim()}";
+                    }
+                    await Console.Error.WriteLineAsync(FormatJsonLogEntry("error", message));
                 }
-                if (!string.IsNullOrEmpty(standardOutput))
+                else
                 {
-                    await Console.Error.WriteLineAsync(standardOutput);
+                    await Console.Error.WriteLineAsync("Dev Proxy failed to start.");
+                    if (!string.IsNullOrEmpty(errorOutput))
+                    {
+                        await Console.Error.WriteLineAsync(errorOutput);
+                    }
+                    if (!string.IsNullOrEmpty(standardOutput))
+                    {
+                        await Console.Error.WriteLineAsync(standardOutput);
+                    }
                 }
                 return process.ExitCode;
             }
         }
 
-        await Console.Error.WriteLineAsync("Timeout waiting for Dev Proxy to start.");
-        await Console.Error.WriteLineAsync($"Check the log folder: {StateManager.GetLogsFolder()}");
+        if (isJsonOutput)
+        {
+            await Console.Error.WriteLineAsync(
+                FormatJsonLogEntry("error", $"Timeout waiting for Dev Proxy to start. Check the log folder: {StateManager.GetLogsFolder()}"));
+        }
+        else
+        {
+            await Console.Error.WriteLineAsync("Timeout waiting for Dev Proxy to start.");
+            await Console.Error.WriteLineAsync($"Check the log folder: {StateManager.GetLogsFolder()}");
+        }
         return 1;
     }
     catch (Exception ex)
     {
-        await Console.Error.WriteLineAsync($"Failed to start Dev Proxy: {ex.Message}");
+        if (isJsonOutput)
+        {
+            await Console.Error.WriteLineAsync(
+                FormatJsonLogEntry("error", $"Failed to start Dev Proxy: {ex.Message}"));
+        }
+        else
+        {
+            await Console.Error.WriteLineAsync($"Failed to start Dev Proxy: {ex.Message}");
+        }
         return 1;
     }
+}
+
+/// <summary>
+/// Formats a result entry matching the JSONL envelope produced by JsonConsoleFormatter:
+/// {"type":"result","data":{...},"timestamp":"..."}
+/// </summary>
+static string FormatJsonResultEntry(object data)
+{
+#pragma warning disable CA1869 // Called at most once per process lifetime
+    var jsonlOptions = new JsonSerializerOptions
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+#pragma warning restore CA1869
+    var entry = new
+    {
+        type = "result",
+        data = JsonSerializer.SerializeToElement(data, jsonlOptions),
+        timestamp = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture)
+    };
+    return JsonSerializer.Serialize(entry, jsonlOptions);
+}
+
+/// <summary>
+/// Formats a log entry matching the JSONL envelope produced by JsonConsoleFormatter:
+/// {"type":"log","level":"...","message":"...","timestamp":"..."}
+/// </summary>
+static string FormatJsonLogEntry(string level, string message)
+{
+#pragma warning disable CA1869 // Called at most once per process lifetime
+    var jsonlOptions = new JsonSerializerOptions
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+#pragma warning restore CA1869
+    var entry = new
+    {
+        type = "log",
+        level,
+        message,
+        timestamp = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture)
+    };
+    return JsonSerializer.Serialize(entry, jsonlOptions);
+}
+
+static bool IsJsonOutputRequested(string[] args)
+{
+    for (var i = 0; i < args.Length; i++)
+    {
+        if (string.Equals(args[i], DevProxyCommand.OutputOptionName, StringComparison.OrdinalIgnoreCase) &&
+            i + 1 < args.Length)
+        {
+            return string.Equals(args[i + 1], "json", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+    return false;
 }
 
 static string EscapeArgument(string arg)
