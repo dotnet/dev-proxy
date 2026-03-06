@@ -50,9 +50,36 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
     var systemProxyInstance = await StateManager.FindSystemProxyInstanceAsync();
     if (systemProxyInstance is not null)
     {
-        await Console.Error.WriteLineAsync($"Dev Proxy is already running (PID: {systemProxyInstance.Pid}).");
+        await Console.Error.WriteLineAsync($"Dev Proxy is already running as system proxy (PID: {systemProxyInstance.Pid}).");
         await Console.Error.WriteLineAsync("Use 'devproxy stop' to stop it first.");
         return 1;
+    }
+
+    // Check for port conflicts with existing instances
+    var existingStates = await StateManager.LoadAllStatesAsync();
+    if (existingStates.Count > 0)
+    {
+        var earlyOptions = new DevProxyConfigOptions();
+        earlyOptions.ParseOptions(args);
+        var requestedPort = earlyOptions.Port ?? 8000;
+        var requestedApiPort = earlyOptions.ApiPort ?? 8897;
+
+        foreach (var existing in existingStates)
+        {
+            if (requestedPort != 0 && existing.Port == requestedPort)
+            {
+                await Console.Error.WriteLineAsync($"Port {requestedPort} is already in use by Dev Proxy instance (PID: {existing.Pid}).");
+                await Console.Error.WriteLineAsync("Use a different --port or stop the existing instance first.");
+                return 1;
+            }
+
+            if (requestedApiPort != 0 && existing.ApiUrl.EndsWith($":{requestedApiPort}", StringComparison.Ordinal))
+            {
+                await Console.Error.WriteLineAsync($"API port {requestedApiPort} is already in use by Dev Proxy instance (PID: {existing.Pid}).");
+                await Console.Error.WriteLineAsync("Use a different --api-port or stop the existing instance first.");
+                return 1;
+            }
+        }
     }
 
     // Clean up old log files
@@ -199,29 +226,6 @@ static async Task<int> RunProxyAsync(string[] args, DevProxyConfigOptions option
     var app = BuildApplication(options);
     try
     {
-        // If running as daemon, save state so other commands can find us
-        if (DevProxyCommand.IsInternalDaemon)
-        {
-            var ipAddress = options.IPAddress ?? app.Configuration.GetValue("ipAddress", "127.0.0.1") ?? "127.0.0.1";
-            var apiPort = options.ApiPort ?? app.Configuration.GetValue("apiPort", 8897);
-            var port = options.Port ?? app.Configuration.GetValue("port", 8000);
-
-            var asSystemProxy = options.AsSystemProxy ?? app.Configuration.GetValue("asSystemProxy", true);
-
-            var state = new ProxyInstanceState
-            {
-                Pid = Environment.ProcessId,
-                ApiUrl = $"http://{(ipAddress is "0.0.0.0" or "::" ? "127.0.0.1" : ipAddress)}:{apiPort}",
-                LogFile = DevProxyCommand.DetachedLogFilePath,
-                StartedAt = DateTimeOffset.UtcNow,
-                ConfigFile = options.ConfigFile,
-                Port = port,
-                AsSystemProxy = asSystemProxy
-            };
-
-            await StateManager.SaveStateAsync(state);
-        }
-
         var devProxyCommand = app.Services.GetRequiredService<DevProxyCommand>();
         return await devProxyCommand.InvokeAsync(args, app);
     }

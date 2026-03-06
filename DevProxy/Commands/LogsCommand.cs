@@ -28,11 +28,17 @@ internal sealed class LogsCommand : Command
         HelpName = "time"
     };
 
+    private readonly Option<int?> _pidOption = new("--pid")
+    {
+        Description = "Show logs from a specific Dev Proxy instance by PID"
+    };
+
     public LogsCommand() : base("logs", "Show logs from running Dev Proxy instance")
     {
         Add(_followOption);
         Add(_linesOption);
         Add(_sinceOption);
+        Add(_pidOption);
 
         SetAction(RunAsync);
     }
@@ -42,13 +48,26 @@ internal sealed class LogsCommand : Command
         var follow = parseResult.GetValue(_followOption);
         var lines = parseResult.GetValue(_linesOption);
         var since = parseResult.GetValue(_sinceOption);
+        var pid = parseResult.GetValue(_pidOption);
 
-        var state = await StateManager.LoadStateAsync(cancellationToken);
-
-        if (state == null)
+        ProxyInstanceState? state;
+        if (pid is not null)
         {
-            Console.WriteLine("Dev Proxy is not running.");
-            return 1;
+            state = await StateManager.LoadStateByPidAsync(pid.Value, cancellationToken);
+            if (state is null)
+            {
+                Console.WriteLine($"No running Dev Proxy instance with PID {pid.Value}.");
+                return 1;
+            }
+        }
+        else
+        {
+            state = await StateManager.LoadStateAsync(cancellationToken);
+            if (state is null)
+            {
+                Console.WriteLine("Dev Proxy is not running.");
+                return 1;
+            }
         }
 
         var logFile = state.LogFile;

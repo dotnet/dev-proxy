@@ -6,6 +6,9 @@ using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Commands;
+using DevProxy.State;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.VisualStudio.Threading;
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -32,7 +35,8 @@ sealed class ProxyEngine(
     ISet<UrlToWatch> urlsToWatch,
     IProxyStateController proxyController,
     ILogger<ProxyEngine> logger,
-    ILoggerFactory loggerFactory) : BackgroundService, IDisposable
+    ILoggerFactory loggerFactory,
+    IServer server) : BackgroundService, IDisposable
 {
     private readonly IEnumerable<IPlugin> _plugins = plugins;
     private readonly ILogger _logger = logger;
@@ -141,6 +145,12 @@ sealed class ProxyEngine(
         ProxyServer.AddEndPoint(_explicitEndPoint);
         await ProxyServer.StartAsync(cancellationToken: stoppingToken);
 
+        // Save state with actual bound ports so other commands can find us
+        if (DevProxyCommand.IsInternalDaemon)
+        {
+            await SaveInstanceStateAsync();
+        }
+
         // run first-run setup on macOS
         FirstRunSetup();
 
@@ -217,6 +227,31 @@ sealed class ProxyEngine(
         {
             throw;
         }
+    }
+
+    private async Task SaveInstanceStateAsync()
+    {
+        var proxyPort = _explicitEndPoint?.Port ?? _config.Port;
+        var ipAddress = _config.IPAddress;
+        var loopbackAddress = ipAddress is "0.0.0.0" or "::" ? "127.0.0.1" : ipAddress;
+
+        // Get real API port from Kestrel
+        var serverAddresses = server.Features.Get<IServerAddressesFeature>();
+        var apiAddress = serverAddresses?.Addresses.FirstOrDefault();
+        var apiUrl = apiAddress ?? $"http://{loopbackAddress}:{_config.ApiPort}";
+
+        var state = new ProxyInstanceState
+        {
+            Pid = Environment.ProcessId,
+            ApiUrl = apiUrl,
+            LogFile = DevProxyCommand.DetachedLogFilePath,
+            StartedAt = DateTimeOffset.UtcNow,
+            ConfigFile = _config.ConfigFile,
+            Port = proxyPort,
+            AsSystemProxy = _config.AsSystemProxy
+        };
+
+        await StateManager.SaveStateAsync(state);
     }
 
     private void FirstRunSetup()
