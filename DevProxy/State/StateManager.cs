@@ -9,11 +9,15 @@ using System.Text.Json;
 namespace DevProxy.State;
 
 /// <summary>
-/// Manages the state file for detached Dev Proxy instances.
+/// Manages per-instance state files for detached Dev Proxy instances.
+/// Each instance stores its state in a separate file keyed by PID
+/// (e.g. state-1234.json) to avoid cross-instance interference.
 /// </summary>
 internal static class StateManager
 {
-    private const string StateFileName = "state.json";
+    private const string LegacyStateFileName = "state.json";
+    private const string StateFilePrefix = "state-";
+    private const string StateFileExtension = ".json";
     private const string LogsFolderName = "logs";
     private const string ProxyConfigurationFolderName = "dev-proxy";
 
@@ -47,11 +51,19 @@ internal static class StateManager
     }
 
     /// <summary>
-    /// Gets the path to the state file.
+    /// Gets the per-instance state file path for the given PID.
+    /// </summary>
+    public static string GetInstanceStateFilePath(int pid)
+    {
+        return Path.Combine(GetConfigFolder(), $"{StateFilePrefix}{pid}{StateFileExtension}");
+    }
+
+    /// <summary>
+    /// Gets the path to the legacy single state file (for backward compatibility).
     /// </summary>
     public static string GetStateFilePath()
     {
-        return Path.Combine(GetConfigFolder(), StateFileName);
+        return Path.Combine(GetConfigFolder(), LegacyStateFileName);
     }
 
     /// <summary>
@@ -74,11 +86,11 @@ internal static class StateManager
     }
 
     /// <summary>
-    /// Saves the state of a running detached instance.
+    /// Saves the state of a running detached instance to a per-PID state file.
     /// </summary>
     public static async Task SaveStateAsync(ProxyInstanceState state, CancellationToken cancellationToken = default)
     {
-        var stateFilePath = GetStateFilePath();
+        var stateFilePath = GetInstanceStateFilePath(state.Pid);
         var directory = Path.GetDirectoryName(stateFilePath);
 
         if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
@@ -91,68 +103,116 @@ internal static class StateManager
     }
 
     /// <summary>
-    /// Loads the state of a running detached instance.
-    /// Returns null if no state file exists or if the state is stale (process not running).
+    /// Loads the primary running instance's state.
+    /// Prefers the system-proxy instance, then falls back to the most recently
+    /// started instance. Returns null if no live instance is found.
     /// </summary>
     public static async Task<ProxyInstanceState?> LoadStateAsync(CancellationToken cancellationToken = default)
     {
-        var stateFilePath = GetStateFilePath();
+        var states = await LoadAllStatesAsync(cancellationToken);
+        return states
+            .OrderByDescending(s => s.AsSystemProxy ? 1 : 0)
+            .ThenByDescending(s => s.StartedAt)
+            .FirstOrDefault();
+    }
 
-        if (!File.Exists(stateFilePath))
+    /// <summary>
+    /// Loads the state of a specific instance by PID.
+    /// Returns null if no state file exists or the process is no longer running.
+    /// </summary>
+    public static async Task<ProxyInstanceState?> LoadStateByPidAsync(int pid, CancellationToken cancellationToken = default)
+    {
+        return await LoadStateFromFileAsync(GetInstanceStateFilePath(pid), cancellationToken);
+    }
+
+    /// <summary>
+    /// Loads all live detached instance states, cleaning up stale state files.
+    /// Also checks the legacy state.json for backward compatibility.
+    /// </summary>
+    public static async Task<List<ProxyInstanceState>> LoadAllStatesAsync(CancellationToken cancellationToken = default)
+    {
+        var configFolder = GetConfigFolder();
+        if (!Directory.Exists(configFolder))
         {
-            return null;
+            return [];
         }
 
+        var states = new List<ProxyInstanceState>();
+        var seenPids = new HashSet<int>();
+
+        // Check per-instance state files
+        var stateFiles = Directory.GetFiles(configFolder, $"{StateFilePrefix}*{StateFileExtension}");
+        foreach (var filePath in stateFiles)
+        {
+            var state = await LoadStateFromFileAsync(filePath, cancellationToken);
+            if (state is not null && seenPids.Add(state.Pid))
+            {
+                states.Add(state);
+            }
+        }
+
+        // Also check legacy state file for backward compatibility
+        var legacyPath = GetStateFilePath();
+        if (File.Exists(legacyPath))
+        {
+            var legacyState = await LoadStateFromFileAsync(legacyPath, cancellationToken);
+            if (legacyState is not null && seenPids.Add(legacyState.Pid))
+            {
+                states.Add(legacyState);
+            }
+        }
+
+        return states;
+    }
+
+    /// <summary>
+    /// Finds a running detached instance that owns the system proxy.
+    /// Returns null if no system-proxy instance is running.
+    /// </summary>
+    public static async Task<ProxyInstanceState?> FindSystemProxyInstanceAsync(CancellationToken cancellationToken = default)
+    {
+        var states = await LoadAllStatesAsync(cancellationToken);
+        return states.Find(s => s.AsSystemProxy);
+    }
+
+    /// <summary>
+    /// Deletes the state file for a specific PID.
+    /// Also cleans up the legacy state file if it belongs to this PID.
+    /// </summary>
+    public static async Task DeleteStateAsync(int pid, CancellationToken cancellationToken = default)
+    {
+        DeleteFile(GetInstanceStateFilePath(pid));
+
+        // Also clean up legacy state file if it belongs to this PID
+        var legacyPath = GetStateFilePath();
         try
         {
-            var json = await File.ReadAllTextAsync(stateFilePath, cancellationToken);
-            var state = JsonSerializer.Deserialize<ProxyInstanceState>(json);
-
-            if (state == null)
+            if (File.Exists(legacyPath))
             {
-                return null;
+                var json = await File.ReadAllTextAsync(legacyPath, cancellationToken);
+                var state = JsonSerializer.Deserialize<ProxyInstanceState>(json);
+                if (state?.Pid == pid)
+                {
+                    DeleteFile(legacyPath);
+                }
             }
-
-            // Verify the process is still running
-            if (!IsProcessRunning(state.Pid))
-            {
-                // Clean up stale state file
-                await DeleteStateAsync(cancellationToken);
-                return null;
-            }
-
-            return state;
         }
         catch (JsonException)
         {
-            return null;
+            // Ignore corrupt legacy file
         }
         catch (IOException)
         {
-            return null;
+            // Ignore I/O errors
         }
     }
 
     /// <summary>
-    /// Deletes the state file.
+    /// Deletes the state file for the current process.
     /// </summary>
     public static Task DeleteStateAsync(CancellationToken cancellationToken = default)
     {
-        var stateFilePath = GetStateFilePath();
-
-        try
-        {
-            if (File.Exists(stateFilePath))
-            {
-                File.Delete(stateFilePath);
-            }
-        }
-        catch (IOException)
-        {
-            // Ignore - file might be locked or already deleted
-        }
-
-        return Task.CompletedTask;
+        return DeleteStateAsync(Environment.ProcessId, cancellationToken);
     }
 
     /// <summary>
@@ -161,7 +221,7 @@ internal static class StateManager
     public static async Task<bool> IsInstanceRunningAsync(CancellationToken cancellationToken = default)
     {
         var state = await LoadStateAsync(cancellationToken);
-        return state != null;
+        return state is not null;
     }
 
     /// <summary>
@@ -183,6 +243,66 @@ internal static class StateManager
         {
             // Process has exited
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Loads a state from a specific file path.
+    /// Returns null if the file doesn't exist, can't be parsed,
+    /// or refers to a process that's no longer running.
+    /// Cleans up the file if the process is stale.
+    /// </summary>
+    private static async Task<ProxyInstanceState?> LoadStateFromFileAsync(
+        string filePath,
+        CancellationToken cancellationToken)
+    {
+        if (!File.Exists(filePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            var json = await File.ReadAllTextAsync(filePath, cancellationToken);
+            var state = JsonSerializer.Deserialize<ProxyInstanceState>(json);
+
+            if (state is null)
+            {
+                return null;
+            }
+
+            // Verify the process is still running
+            if (!IsProcessRunning(state.Pid))
+            {
+                // Clean up stale state file
+                DeleteFile(filePath);
+                return null;
+            }
+
+            return state;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
+
+    private static void DeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (IOException)
+        {
+            // Ignore - file might be locked or already deleted
         }
     }
 
