@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.2.0/genericrandomerrorplugin.errorsfile.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.3.0/genericrandomerrorplugin.errorsfile.schema.json
 # Dev Proxy error responses configuration
 # This YAML version serves as a reference example alongside the default JSON configuration.
 # It demonstrates YAML features like comments, multiline strings, and anchors.
