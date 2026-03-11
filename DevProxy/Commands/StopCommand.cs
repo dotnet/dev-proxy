@@ -15,23 +15,57 @@ internal sealed class StopCommand : Command
         Description = "Force stop the proxy by killing the process"
     };
 
-    public StopCommand() : base("stop", "Stop running Dev Proxy instance")
+    private readonly Option<int?> _pidOption = new("--pid")
+    {
+        Description = "Stop a specific Dev Proxy instance by PID"
+    };
+
+    public StopCommand() : base("stop", "Stop running Dev Proxy instances")
     {
         Add(_forceOption);
+        Add(_pidOption);
         SetAction(RunAsync);
     }
 
     private async Task<int> RunAsync(ParseResult parseResult, CancellationToken cancellationToken)
     {
         var force = parseResult.GetValue(_forceOption);
-        var state = await StateManager.LoadStateAsync(cancellationToken);
+        var pid = parseResult.GetValue(_pidOption);
 
-        if (state == null)
+        if (pid is not null)
+        {
+            var state = await StateManager.LoadStateByPidAsync(pid.Value, cancellationToken);
+            if (state is null)
+            {
+                Console.WriteLine($"No running Dev Proxy instance with PID {pid.Value}.");
+                return 1;
+            }
+
+            return await StopInstanceAsync(state, force, cancellationToken);
+        }
+
+        var states = await StateManager.LoadAllStatesAsync(cancellationToken);
+        if (states.Count == 0)
         {
             Console.WriteLine("Dev Proxy is not running.");
             return 1;
         }
 
+        var exitCode = 0;
+        foreach (var state in states)
+        {
+            var result = await StopInstanceAsync(state, force, cancellationToken);
+            if (result != 0)
+            {
+                exitCode = result;
+            }
+        }
+
+        return exitCode;
+    }
+
+    private static async Task<int> StopInstanceAsync(ProxyInstanceState state, bool force, CancellationToken cancellationToken)
+    {
         if (force)
         {
             return await ForceStopAsync(state, cancellationToken);
@@ -45,7 +79,7 @@ internal sealed class StopCommand : Command
 
             if (response.IsSuccessStatusCode || response.StatusCode == System.Net.HttpStatusCode.Accepted)
             {
-                Console.WriteLine("Stopping Dev Proxy...");
+                Console.WriteLine($"Stopping Dev Proxy (PID: {state.Pid})...");
 
                 // Wait for process to exit
                 var stopwatch = Stopwatch.StartNew();
@@ -82,30 +116,30 @@ internal sealed class StopCommand : Command
 
                 if (!exited)
                 {
-                    Console.WriteLine("Dev Proxy did not stop in time.");
-                    Console.WriteLine("Use --force to forcefully terminate the process.");
+                    Console.WriteLine($"Dev Proxy (PID: {state.Pid}) did not stop in time.");
+                    Console.WriteLine($"Use --force --pid {state.Pid} to forcefully terminate the process.");
                     return 1;
                 }
 
-                await StateManager.DeleteStateAsync(cancellationToken);
-                Console.WriteLine("Dev Proxy stopped.");
+                await StateManager.DeleteStateAsync(state.Pid, cancellationToken);
+                Console.WriteLine($"Dev Proxy (PID: {state.Pid}) stopped.");
                 return 0;
             }
 
-            Console.WriteLine($"Failed to stop Dev Proxy: {response.StatusCode}");
-            Console.WriteLine("Use --force to forcefully terminate the process.");
+            Console.WriteLine($"Failed to stop Dev Proxy (PID: {state.Pid}): {response.StatusCode}");
+            Console.WriteLine($"Use --force --pid {state.Pid} to forcefully terminate the process.");
             return 1;
         }
         catch (HttpRequestException ex)
         {
-            Console.WriteLine($"Failed to connect to Dev Proxy API: {ex.Message}");
-            Console.WriteLine("Use --force to forcefully terminate the process.");
+            Console.WriteLine($"Failed to connect to Dev Proxy API (PID: {state.Pid}): {ex.Message}");
+            Console.WriteLine($"Use --force --pid {state.Pid} to forcefully terminate the process.");
             return 1;
         }
         catch (TaskCanceledException)
         {
-            Console.WriteLine("Timeout waiting for Dev Proxy to respond.");
-            Console.WriteLine("Use --force to forcefully terminate the process.");
+            Console.WriteLine($"Timeout waiting for Dev Proxy (PID: {state.Pid}) to respond.");
+            Console.WriteLine($"Use --force --pid {state.Pid} to forcefully terminate the process.");
             return 1;
         }
     }
@@ -135,7 +169,7 @@ internal sealed class StopCommand : Command
             return 1;
         }
 
-        await StateManager.DeleteStateAsync(cancellationToken);
+        await StateManager.DeleteStateAsync(state.Pid, cancellationToken);
         return 0;
     }
 

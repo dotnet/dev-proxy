@@ -29,4 +29,7 @@ internal sealed class ProxyInstanceState
 
     [JsonPropertyName("port")]
     public int Port { get; set; }
+
+    [JsonPropertyName("asSystemProxy")]
+    public bool AsSystemProxy { get; set; } = true;
 }

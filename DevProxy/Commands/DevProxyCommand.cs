@@ -727,7 +727,7 @@ sealed class DevProxyCommand : RootCommand
 
     private static async Task UpdateStateWithApiUrlAsync(string apiUrl)
     {
-        var state = await StateManager.LoadStateAsync();
+        var state = await StateManager.LoadStateByPidAsync(Environment.ProcessId);
         if (state is not null)
         {
             state.ApiUrl = apiUrl;

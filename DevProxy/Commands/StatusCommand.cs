@@ -10,21 +10,56 @@ namespace DevProxy.Commands;
 
 internal sealed class StatusCommand : Command
 {
-    public StatusCommand() : base("status", "Show status of running Dev Proxy instance")
+    private readonly Option<int?> _pidOption = new("--pid")
     {
+        Description = "Show status of a specific Dev Proxy instance by PID"
+    };
+
+    public StatusCommand() : base("status", "Show status of running Dev Proxy instances")
+    {
+        Add(_pidOption);
         SetAction(RunAsync);
     }
 
     private async Task<int> RunAsync(ParseResult parseResult, CancellationToken cancellationToken)
     {
-        var state = await StateManager.LoadStateAsync(cancellationToken);
+        var pid = parseResult.GetValue(_pidOption);
 
-        if (state == null)
+        if (pid is not null)
+        {
+            var state = await StateManager.LoadStateByPidAsync(pid.Value, cancellationToken);
+            if (state is null)
+            {
+                Console.WriteLine($"No running Dev Proxy instance with PID {pid.Value}.");
+                return 1;
+            }
+
+            await PrintInstanceStatusAsync(state, cancellationToken);
+            return 0;
+        }
+
+        var states = await StateManager.LoadAllStatesAsync(cancellationToken);
+        if (states.Count == 0)
         {
             Console.WriteLine("Dev Proxy is not running.");
             return 1;
         }
 
+        for (var i = 0; i < states.Count; i++)
+        {
+            if (i > 0)
+            {
+                Console.WriteLine();
+            }
+
+            await PrintInstanceStatusAsync(states[i], cancellationToken);
+        }
+
+        return 0;
+    }
+
+    private static async Task PrintInstanceStatusAsync(ProxyInstanceState state, CancellationToken cancellationToken)
+    {
         // Try to get live status from the API
         try
         {
@@ -37,18 +72,19 @@ internal sealed class StatusCommand : Command
 
                 Console.WriteLine("Dev Proxy is running.");
                 Console.WriteLine();
-                Console.WriteLine($"  PID:        {state.Pid}");
-                Console.WriteLine($"  API URL:    {state.ApiUrl}");
-                Console.WriteLine($"  Port:       {state.Port}");
-                Console.WriteLine($"  Recording:  {(proxyInfo?.Recording == true ? "Yes" : "No")}");
+                Console.WriteLine($"  PID:              {state.Pid}");
+                Console.WriteLine($"  API URL:          {state.ApiUrl}");
+                Console.WriteLine($"  Port:             {state.Port}");
+                Console.WriteLine($"  System proxy:     {(state.AsSystemProxy ? "Yes" : "No")}");
+                Console.WriteLine($"  Recording:        {(proxyInfo?.Recording == true ? "Yes" : "No")}");
                 if (!string.IsNullOrEmpty(state.ConfigFile))
                 {
-                    Console.WriteLine($"  Config:     {state.ConfigFile}");
+                    Console.WriteLine($"  Config:           {state.ConfigFile}");
                 }
-                Console.WriteLine($"  Log file:   {state.LogFile}");
-                Console.WriteLine($"  Started:    {state.StartedAt.LocalDateTime:g}");
+                Console.WriteLine($"  Log file:         {state.LogFile}");
+                Console.WriteLine($"  Started:          {state.StartedAt.LocalDateTime:g}");
 
-                return 0;
+                return;
             }
         }
         catch (HttpRequestException)
@@ -63,12 +99,11 @@ internal sealed class StatusCommand : Command
         // Fall back to state file info
         Console.WriteLine("Dev Proxy appears to be running (API not responding).");
         Console.WriteLine();
-        Console.WriteLine($"  PID:        {state.Pid}");
-        Console.WriteLine($"  API URL:    {state.ApiUrl}");
-        Console.WriteLine($"  Log file:   {state.LogFile}");
-        Console.WriteLine($"  Started:    {state.StartedAt.LocalDateTime:g}");
-
-        return 0;
+        Console.WriteLine($"  PID:              {state.Pid}");
+        Console.WriteLine($"  API URL:          {state.ApiUrl}");
+        Console.WriteLine($"  System proxy:     {(state.AsSystemProxy ? "Yes" : "No")}");
+        Console.WriteLine($"  Log file:         {state.LogFile}");
+        Console.WriteLine($"  Started:          {state.StartedAt.LocalDateTime:g}");
     }
 
     private sealed class ProxyStatusInfo
