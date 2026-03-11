@@ -1,6 +1,7 @@
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
+using DevProxy.State;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using System.CommandLine;
@@ -314,6 +315,13 @@ sealed class DevProxyCommand : RootCommand
                 var serverAddresses = _app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>();
                 var address = serverAddresses?.Addresses.FirstOrDefault() ?? $"http://{_proxyConfiguration.IPAddress}:{_proxyConfiguration.ApiPort}";
                 _logger.LogInformation("Dev Proxy API listening on {Address}...", address);
+
+                // Update state file with the actual Kestrel API address
+                // (resolves port 0 to OS-assigned port)
+                if (IsInternalDaemon)
+                {
+                    _ = UpdateStateWithApiUrlAsync(address);
+                }
             });
             await _app.RunAsync(cancellationToken);
 
@@ -714,6 +722,16 @@ sealed class DevProxyCommand : RootCommand
                 newReleaseInfo.Version,
                 Environment.NewLine
             );
+        }
+    }
+
+    private static async Task UpdateStateWithApiUrlAsync(string apiUrl)
+    {
+        var state = await StateManager.LoadStateAsync();
+        if (state is not null)
+        {
+            state.ApiUrl = apiUrl;
+            await StateManager.SaveStateAsync(state);
         }
     }
 }

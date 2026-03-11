@@ -136,7 +136,7 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
             await Task.Delay(200);
 
             var state = await StateManager.LoadStateAsync();
-            if (state is { Port: > 0 })
+            if (state is { Port: > 0 } && !string.IsNullOrEmpty(state.ApiUrl) && !state.ApiUrl.EndsWith(":0", StringComparison.Ordinal))
             {
                 Uri? apiUri = null;
                 if (!string.IsNullOrWhiteSpace(state.ApiUrl))
