@@ -84,9 +84,9 @@
       },
       "Scriban": {
         "type": "Direct",
-        "requested": "[6.6.0, )",
-        "resolved": "6.6.0",
-        "contentHash": "rDzWFaCLsnFMRifEs9F95mCQ1f9thva2ckXlHZ6xzCJ5SFqsB1u1Y/ZtQlc0iySg+H7HOR75J7ya2X4RmJvOFw=="
+        "requested": "[7.0.0, )",
+        "resolved": "7.0.0",
+        "contentHash": "Y4/BGU/c2TjvGUfMBm5jZfPjHe8B4dk8ej72Vsy+nTsRCb/TNqZ1PdGQnV+04p7RJ85UiM4ni2Dx2F7yKOORNw=="
       },
       "System.CommandLine": {
         "type": "Direct",
