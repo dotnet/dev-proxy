@@ -141,22 +141,20 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
             }
             else
             {
-                // skip empty roles which are returned in case we couldn't get permissions information
-                // 
                 // application permissions are always the same because they come from app reg
                 // so we can just use the first request that has them
                 if (permissions.Any() && !rolesToEvaluate.Any())
                 {
                     rolesToEvaluate = permissions;
+                }
 
-                    if (ProxyUtils.IsGraphBatchUrl(uri))
-                    {
-                        applicationEndpoints.AddRange(requestsFromBatch);
-                    }
-                    else
-                    {
-                        applicationEndpoints.Add(methodAndUrl);
-                    }
+                if (ProxyUtils.IsGraphBatchUrl(uri))
+                {
+                    applicationEndpoints.AddRange(requestsFromBatch);
+                }
+                else
+                {
+                    applicationEndpoints.Add(methodAndUrl);
                 }
             }
         }
