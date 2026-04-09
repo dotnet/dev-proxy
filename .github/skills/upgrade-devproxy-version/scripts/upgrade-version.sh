@@ -83,7 +83,7 @@ fi
 # Beta installer (handle beta suffix separately if needed)
 if [[ -f "$WORKSPACE_ROOT/install-beta.iss" ]]; then
     # Extract current beta version
-    CURRENT_BETA=$(grep -oP '(?<=MyAppVersion ")[^"]+' "$WORKSPACE_ROOT/install-beta.iss" | head -1)
+    CURRENT_BETA=$(sed -n 's/.*MyAppVersion "\([^"]*\)".*/\1/p' "$WORKSPACE_ROOT/install-beta.iss" | head -1)
     if [[ -n "$CURRENT_BETA" ]]; then
         # Determine new beta version - if NEW_VERSION doesn't have beta suffix, add -beta.1
         if [[ "$NEW_VERSION" == *"-beta"* ]]; then
@@ -103,7 +103,7 @@ echo "Step 5: Updating PowerShell scripts..."
 for ps1 in scripts/local-setup.ps1 scripts/version.ps1; do
     if [[ -f "$WORKSPACE_ROOT/$ps1" ]]; then
         # These use format like "v2.0.0-beta.1"
-        CURRENT_PS_VERSION=$(grep -oP '(?<=versionString = ")[^"]+' "$WORKSPACE_ROOT/$ps1" | head -1)
+        CURRENT_PS_VERSION=$(sed -n 's/.*versionString = "\([^"]*\)".*/\1/p' "$WORKSPACE_ROOT/$ps1" | head -1)
         if [[ -n "$CURRENT_PS_VERSION" ]]; then
             # Determine new PS version
             if [[ "$NEW_VERSION" == *"-beta"* ]]; then
@@ -131,7 +131,7 @@ done
 # Beta/local Dockerfile (uses beta suffix)
 if [[ -f "$WORKSPACE_ROOT/scripts/Dockerfile_local" ]]; then
     # Extract current version from Dockerfile_local
-    CURRENT_DOCKER_LOCAL=$(grep -oP '(?<=DEVPROXY_VERSION=)[^\s]+' "$WORKSPACE_ROOT/scripts/Dockerfile_local" | head -1)
+    CURRENT_DOCKER_LOCAL=$(sed -n 's/.*DEVPROXY_VERSION=\([^ ]*\).*/\1/p' "$WORKSPACE_ROOT/scripts/Dockerfile_local" | head -1)
     if [[ -n "$CURRENT_DOCKER_LOCAL" ]]; then
         if [[ "$NEW_VERSION" == *"-beta"* ]]; then
             NEW_DOCKER_LOCAL="$NEW_VERSION"
