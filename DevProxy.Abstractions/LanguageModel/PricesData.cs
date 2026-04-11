@@ -54,15 +54,13 @@ public class PricesData : Dictionary<string, ModelPrices>
 
         Debug.Assert(prices != null, "Prices data should not be null here.");
 
-        // Prices in the data are per 1M tokens
-        // When cached input pricing is available, separate cached tokens
-        // from regular input tokens for accurate cost calculation
+        // Prices in the data are per 1M tokens.
+        // When no cached input price is configured, fall back to the
+        // regular input price so all tokens are billed correctly.
+        var effectiveCachedPrice = prices.CachedInput > 0 ? prices.CachedInput : prices.Input;
         var regularInputTokens = inputTokens - cachedInputTokens;
-        var inputCost = prices.Input * (regularInputTokens / 1_000_000.0);
-        if (cachedInputTokens > 0 && prices.CachedInput > 0)
-        {
-            inputCost += prices.CachedInput * (cachedInputTokens / 1_000_000.0);
-        }
+        var inputCost = (prices.Input * (regularInputTokens / 1_000_000.0))
+            + (effectiveCachedPrice * (cachedInputTokens / 1_000_000.0));
         var outputCost = prices.Output * (outputTokens / 1_000_000.0);
 
         return (inputCost, outputCost);
