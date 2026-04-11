@@ -153,11 +153,6 @@ public sealed class EntraMockResponsePlugin(
     private List<string> GetCertificateChain()
     {
         var cert = serviceProvider.GetRequiredService<X509Certificate2>();
-        if (cert is null)
-        {
-            return [];
-        }
-
         var collection = new X509Certificate2Collection
         {
             cert
