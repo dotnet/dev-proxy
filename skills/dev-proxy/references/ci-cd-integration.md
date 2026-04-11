@@ -63,7 +63,7 @@ Access via `${{ steps.<step-id>.outputs.proxy-url }}`.
 ```yaml
 - uses: dev-proxy-tools/actions/setup@v1
   with:
-    version: 0.29.2
+    version: 2.4.0
 ```
 
 ### Multiple Recording Sessions
@@ -103,7 +103,7 @@ jobs:
 
       - uses: dev-proxy-tools/actions/setup@v1
         with:
-          version: 0.29.2
+          version: 2.4.0
 
       - id: start-proxy
         uses: dev-proxy-tools/actions/start@v1
@@ -182,7 +182,7 @@ No dedicated actions — use script tasks with the Dev Proxy API.
 ```yaml
 variables:
   - name: DEV_PROXY_VERSION
-    value: v1.0.0
+    value: v2.4.0
 
 steps:
   - task: Cache@2
@@ -206,7 +206,7 @@ steps:
   - script: npm test
     displayName: Run tests
 
-  - script: curl -X POST http://localhost:8897/proxy/stop
+  - script: curl -X POST http://localhost:8897/proxy/stopProxy
     displayName: Stop Dev Proxy
 
   - script: |
@@ -233,7 +233,7 @@ pool:
 
 variables:
   - name: DEV_PROXY_VERSION
-    value: v1.0.0
+    value: v2.4.0
   - name: LOG_FILE
     value: devproxy.log
 
@@ -250,11 +250,11 @@ steps:
     condition: ne(variables.DEV_PROXY_CACHE_RESTORED, 'true')
 
   - script: |
-      mkdir -p ~/.config/dev-proxy/rootCert
+      mkdir -p ~/.config/dev-proxy
       ./devproxy/devproxy --config-file .devproxy/config.json > $(LOG_FILE) 2>&1 &
       echo "Waiting for Dev Proxy to start..."
       while true; do
-        if grep -q "Listening on 127.0.0.1:8000" $(LOG_FILE); then break; fi
+        if grep -q "Dev Proxy listening on" $(LOG_FILE); then break; fi
         sleep 1
       done
       echo "Exporting root certificate"
@@ -275,7 +275,7 @@ steps:
   - script: curl -X POST http://localhost:8897/proxy -H "Content-Type: application/json" -d '{"recording": false}'
     displayName: Stop recording
 
-  - script: curl -X POST http://localhost:8897/proxy/stop
+  - script: curl -X POST http://localhost:8897/proxy/stopProxy
     displayName: Stop Dev Proxy
 
   - script: |
@@ -300,13 +300,13 @@ For any CI system, follow these steps:
 ### 1. Install with Pinned Version
 
 ```bash
-bash -c "$(curl -sL https://aka.ms/devproxy/setup.sh)" -- v1.0.0
+bash -c "$(curl -sL https://aka.ms/devproxy/setup.sh)" -- v2.4.0
 ```
 
 ### 2. Start in Background with Logging
 
 ```bash
-mkdir -p ~/.config/dev-proxy/rootCert
+mkdir -p ~/.config/dev-proxy
 ./devproxy/devproxy > devproxy.log 2>&1 &
 ```
 
@@ -314,7 +314,7 @@ mkdir -p ~/.config/dev-proxy/rootCert
 
 ```bash
 while true; do
-  if grep -q "Listening on 127.0.0.1:8000" devproxy.log; then break; fi
+  if grep -q "Dev Proxy listening on" devproxy.log; then break; fi
   sleep 1
 done
 ```
@@ -344,7 +344,7 @@ npm test
 # Stop recording
 curl -X POST http://localhost:8897/proxy -H "Content-Type: application/json" -d '{"recording": false}'
 # Stop proxy
-curl -X POST http://localhost:8897/proxy/stop
+curl -X POST http://localhost:8897/proxy/stopProxy
 ```
 
 ### 7. Wait for Completion
@@ -362,9 +362,9 @@ done
 |----------|--------|-------------|
 | `/proxy` | GET | Get proxy status (`recording`, `configFile`) |
 | `/proxy` | POST | Start/stop recording: `{"recording": true/false}` |
-| `/proxy/stopproxy` | POST | Graceful shutdown |
+| `/proxy/stopProxy` | POST | Graceful shutdown |
 | `/proxy/jwtToken` | POST | Generate JWT for testing |
-| `/proxy/mockrequest` | POST | Trigger mock request (equivalent of pressing `w`) |
+| `/proxy/mockRequest` | POST | Trigger mock request (equivalent of pressing `w`) |
 | `/proxy/rootCertificate?format=crt` | GET | Download root cert in PEM format |
 
 Swagger: `http://localhost:8897/swagger`
@@ -392,11 +392,11 @@ set -e
 LOG_FILE=${LOG_FILE:-devproxy.log}
 CONFIG_FILE=${CONFIG_FILE:-.devproxy/devproxyrc.json}
 
-mkdir -p ~/.config/dev-proxy/rootCert
+mkdir -p ~/.config/dev-proxy
 ./devproxy/devproxy --config-file "$CONFIG_FILE" > "$LOG_FILE" 2>&1 &
 
 while true; do
-  if grep -q "Listening on 127.0.0.1:8000" "$LOG_FILE"; then break; fi
+  if grep -q "Dev Proxy listening on" "$LOG_FILE"; then break; fi
   sleep 1
 done
 
@@ -417,7 +417,7 @@ set -e
 
 LOG_FILE=${LOG_FILE:-devproxy.log}
 
-curl -s -X POST http://localhost:8897/proxy/stop
+curl -s -X POST http://localhost:8897/proxy/stopProxy
 
 while true; do
   if grep -q -e "DONE" -e "No requests to process" -e "An error occurred in a plugin" "$LOG_FILE"; then break; fi

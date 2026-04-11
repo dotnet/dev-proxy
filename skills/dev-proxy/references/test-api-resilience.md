@@ -10,7 +10,7 @@ Randomly fails requests with errors from a configured file. Works with any API.
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
   "plugins": [
     {
       "name": "GenericRandomErrorPlugin",
@@ -21,7 +21,7 @@ Randomly fails requests with errors from a configured file. Works with any API.
   ],
   "urlsToWatch": ["https://api.contoso.com/*"],
   "genericRandomErrorPlugin": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/genericrandomerrorplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/genericrandomerrorplugin.schema.json",
     "errorsFile": "errors.json",
     "rate": 50,
     "retryAfterInSeconds": 5
@@ -41,7 +41,7 @@ CLI: `devproxy --failure-rate 80` overrides `rate`.
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/genericrandomerrorplugin.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/genericrandomerrorplugin.errorsfile.schema.json",
   "errors": [
     {
       "statusCode": 429,
@@ -70,7 +70,7 @@ When `addDynamicRetryAfter: true`, Dev Proxy auto-calculates the Retry-After val
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/genericrandomerrorplugin.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/genericrandomerrorplugin.errorsfile.schema.json",
   "errors": [
     { "statusCode": 400, "body": { "error": { "code": "BadRequest", "message": "The request was malformed or contains invalid parameters." } } },
     { "statusCode": 401, "body": { "error": { "code": "Unauthorized", "message": "Authentication required." } } },
@@ -89,7 +89,7 @@ When `addDynamicRetryAfter: true`, Dev Proxy auto-calculates the Retry-After val
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/genericrandomerrorplugin.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/genericrandomerrorplugin.errorsfile.schema.json",
   "errors": [
     { "statusCode": 429, "headers": [{ "name": "Retry-After", "value": "@dynamic" }, { "name": "Content-Type", "value": "application/json" }], "body": { "error": { "message": "Rate limit reached for default-gpt-4 in organization org-xxx on tokens per min.", "type": "tokens", "param": null, "code": "rate_limit_exceeded" } }, "addDynamicRetryAfter": true },
     { "statusCode": 429, "body": { "error": { "message": "The engine is currently overloaded, please try again later.", "type": "server_error", "param": null, "code": null } } },
@@ -105,7 +105,7 @@ Fails Microsoft Graph requests with Graph-specific error responses. Supports bat
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
   "plugins": [
     {
       "name": "GraphRandomErrorPlugin",
@@ -119,7 +119,7 @@ Fails Microsoft Graph requests with Graph-specific error responses. Supports bat
     "https://graph.microsoft.com/beta/*"
   ],
   "graphRandomErrorPlugin": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/graphrandomerrorplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/graphrandomerrorplugin.schema.json",
     "allowedErrors": [429, 500, 502, 503, 504, 507],
     "rate": 50
   }
@@ -163,7 +163,7 @@ Simulates rate-limit behavior with configurable headers, thresholds, and respons
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
   "plugins": [
     {
       "name": "RateLimitingPlugin",
@@ -173,7 +173,7 @@ Simulates rate-limit behavior with configurable headers, thresholds, and respons
     }
   ],
   "rateLimiting": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/ratelimitingplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/ratelimitingplugin.schema.json",
     "costPerRequest": 2,
     "rateLimit": 120,
     "resetTimeWindowSeconds": 60,
@@ -271,7 +271,7 @@ Adds random delay to responses. Works with both HTTP and STDIO.
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
   "plugins": [
     {
       "name": "LatencyPlugin",
@@ -281,7 +281,7 @@ Adds random delay to responses. Works with both HTTP and STDIO.
     }
   ],
   "latencyPlugin": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/latencyplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/latencyplugin.schema.json",
     "minMs": 200,
     "maxMs": 10000
   }
@@ -311,7 +311,7 @@ devproxy config get openai-throttling
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
   "plugins": [
     { "name": "LatencyPlugin", "enabled": true, "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll", "configSection": "latencyPlugin" },
     { "name": "RateLimitingPlugin", "enabled": true, "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll", "configSection": "rateLimiting" },
@@ -328,7 +328,7 @@ devproxy config get openai-throttling
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
   "plugins": [
     { "name": "RetryAfterPlugin", "enabled": true, "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll" },
     { "name": "GraphRandomErrorPlugin", "enabled": true, "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll", "configSection": "graphRandomErrorPlugin" },

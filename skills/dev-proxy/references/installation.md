@@ -18,7 +18,7 @@ brew install dev-proxy
 1. [Download](https://aka.ms/devproxy/download/) the latest release and extract into a folder (e.g., `~/devproxy`).
 2. Add to PATH in `~/.zshrc`:
    ```bash
-   export PATH=".:$PATH:$HOME/devproxy"
+   export PATH="$PATH:$HOME/devproxy"
    ```
 3. Reload: `source ~/.zshrc`
 
@@ -54,7 +54,7 @@ Or with PowerShell:
 1. [Download](https://aka.ms/devproxy/download/) the latest release and extract into a folder (e.g., `~/devproxy`).
 2. Add to PATH in `~/.bashrc`:
    ```bash
-   export PATH=".:$PATH:$HOME/devproxy"
+   export PATH="$PATH:$HOME/devproxy"
    ```
 3. Reload: `source ~/.bashrc`
 

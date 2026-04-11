@@ -28,7 +28,7 @@ curl -X POST http://localhost:8897/proxy \
   -d '{"recording": false}'
 ```
 
-Use `--auto-record` to start recording automatically when Dev Proxy starts.
+Use `--record` to start recording automatically when Dev Proxy starts.
 
 ## Plugin Architecture for Analysis
 
@@ -40,7 +40,7 @@ Use `OpenApiSpecGeneratorPlugin` to reverse-engineer OpenAPI specs from intercep
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
   "plugins": [
     {
       "name": "OpenApiSpecGeneratorPlugin",
@@ -56,7 +56,7 @@ Use `OpenApiSpecGeneratorPlugin` to reverse-engineer OpenAPI specs from intercep
   ],
   "urlsToWatch": ["https://api.contoso.com/*"],
   "openApiSpecGeneratorPlugin": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/openapispecgeneratorplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/openapispecgeneratorplugin.schema.json",
     "specVersion": "v3_0",
     "specFormat": "Json",
     "includeOptionsRequests": false,
@@ -224,12 +224,12 @@ Use `GraphMinimalPermissionsPlugin` to find the minimum permissions needed for r
     "https://graph.microsoft.com/beta/*"
   ],
   "graphMinimalPermissionsPlugin": {
-    "type": "Delegated"
+    "type": "delegated"
   }
 }
 ```
 
-Set `type` to `Delegated` or `Application` depending on the auth flow.
+Set `type` to `delegated` or `application` depending on the auth flow.
 
 ### Detect Excessive Permissions
 
@@ -349,7 +349,7 @@ Reporter plugins format report output. Always place them AFTER reporting plugins
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
   "plugins": [
     { "name": "ExecutionSummaryPlugin", "enabled": true, "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll", "configSection": "executionSummaryPlugin" },
     { "name": "GraphMinimalPermissionsPlugin", "enabled": true, "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll", "configSection": "graphMinimalPermissionsPlugin" },
@@ -360,7 +360,7 @@ Reporter plugins format report output. Always place them AFTER reporting plugins
   ],
   "urlsToWatch": ["https://graph.microsoft.com/v1.0/*", "https://graph.microsoft.com/beta/*"],
   "executionSummaryPlugin": { "groupBy": "url" },
-  "graphMinimalPermissionsPlugin": { "type": "Delegated" },
+  "graphMinimalPermissionsPlugin": { "type": "delegated" },
   "openApiSpecGeneratorPlugin": { "specVersion": "v3_0", "specFormat": "Json" }
 }
 ```
@@ -369,7 +369,7 @@ Reporter plugins format report output. Always place them AFTER reporting plugins
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
   "plugins": [
     { "name": "ApiCenterOnboardingPlugin", "enabled": true, "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll", "configSection": "apiCenterOnboardingPlugin" },
     { "name": "ApiCenterProductionVersionPlugin", "enabled": true, "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll", "configSection": "apiCenterProductionVersionPlugin" },
@@ -385,7 +385,7 @@ Reporter plugins format report output. Always place them AFTER reporting plugins
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
   "plugins": [
     { "name": "UrlDiscoveryPlugin", "enabled": true, "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll" },
     { "name": "OpenApiSpecGeneratorPlugin", "enabled": true, "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll", "configSection": "openApiSpecGeneratorPlugin" },

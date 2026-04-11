@@ -20,7 +20,7 @@ The most common mocking plugin. Returns predefined responses matched by URL, HTT
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
   "plugins": [
     {
       "name": "MockResponsePlugin",
@@ -31,7 +31,7 @@ The most common mocking plugin. Returns predefined responses matched by URL, HTT
   ],
   "urlsToWatch": ["https://api.contoso.com/*"],
   "mocksPlugin": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/mockresponseplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/mockresponseplugin.schema.json",
     "mocksFile": "mocks.json",
     "blockUnmockedRequests": false
   }
@@ -46,7 +46,7 @@ CLI overrides: `--no-mocks` to disable, `--mocks-file <path>` to change mock fil
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/mockresponseplugin.mocksfile.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/mockresponseplugin.mocksfile.schema.json",
   "mocks": [
     {
       "request": {
@@ -174,7 +174,7 @@ Creates a fully functional CRUD API backed by an in-memory JSON data store. Supp
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
   "plugins": [
     {
       "name": "CrudApiPlugin",
@@ -184,7 +184,7 @@ Creates a fully functional CRUD API backed by an in-memory JSON data store. Supp
     }
   ],
   "customersApi": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/crudapiplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/crudapiplugin.schema.json",
     "apiFile": "customers-api.json"
   }
 }
@@ -194,7 +194,7 @@ Creates a fully functional CRUD API backed by an in-memory JSON data store. Supp
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/crudapiplugin.apifile.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/crudapiplugin.apifile.schema.json",
   "baseUrl": "https://api.contoso.com/v1/customers",
   "dataFile": "customers-data.json",
   "actions": [
@@ -266,7 +266,7 @@ Mocks STDIO communication for MCP servers and STDIO-based apps. Use with `devpro
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
   "plugins": [
     {
       "name": "MockStdioResponsePlugin",
@@ -276,7 +276,7 @@ Mocks STDIO communication for MCP servers and STDIO-based apps. Use with `devpro
     }
   ],
   "mockStdioResponsePlugin": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/mockstdioresponseplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/mockstdioresponseplugin.schema.json",
     "mocksFile": "stdio-mocks.json",
     "blockUnmockedRequests": false
   }
@@ -287,7 +287,7 @@ Mocks STDIO communication for MCP servers and STDIO-based apps. Use with `devpro
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/mockstdioresponseplugin.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/mockstdioresponseplugin.mocksfile.schema.json",
   "mocks": [
     {
       "request": { "bodyFragment": "initialize" },

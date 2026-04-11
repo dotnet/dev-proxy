@@ -19,7 +19,7 @@ Use `OpenAIMockResponsePlugin` to simulate OpenAI/Azure OpenAI completions and c
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
   "plugins": [
     {
       "name": "OpenAIMockResponsePlugin",
@@ -64,7 +64,7 @@ Use `LanguageModelFailurePlugin` to test how an app handles common LLM failure m
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
   "plugins": [
     {
       "name": "LanguageModelFailurePlugin",
@@ -123,7 +123,7 @@ Use `LanguageModelRateLimitingPlugin` to test token quota handling.
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
   "plugins": [
     {
       "name": "LanguageModelRateLimitingPlugin",
@@ -158,7 +158,7 @@ Use `LanguageModelRateLimitingPlugin` to test token quota handling.
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/languagemodelratelimitingplugin.customresponsefile.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/languagemodelratelimitingplugin.customresponsefile.schema.json",
   "statusCode": 429,
   "headers": [
     { "name": "retry-after", "value": "@dynamic" },
@@ -188,7 +188,7 @@ Use `OpenAITelemetryPlugin` to send usage telemetry to OpenTelemetry-compatible 
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
   "plugins": [
     {
       "name": "OpenAITelemetryPlugin",
@@ -228,7 +228,7 @@ Use `OpenAITelemetryPlugin` to send usage telemetry to OpenTelemetry-compatible 
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/openaitelemetryplugin.pricesfile.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/openaitelemetryplugin.pricesfile.schema.json",
   "prices": {
     "gpt-4": { "input": 0.03, "output": 0.06 },
     "gpt-4-turbo": { "input": 0.01, "output": 0.03 },
@@ -291,7 +291,7 @@ See the mocking reference (`references/mock-api-responses.md`) for STDIO mock fi
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
   "plugins": [
     { "name": "LanguageModelFailurePlugin", "enabled": true, "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll", "configSection": "languageModelFailurePlugin" },
     { "name": "LanguageModelRateLimitingPlugin", "enabled": true, "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll", "configSection": "languageModelRateLimitingPlugin" },
@@ -312,7 +312,7 @@ This config: randomly injects LLM failures (50% of requests), enforces token lim
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
   "plugins": [
     { "name": "OpenAIMockResponsePlugin", "enabled": true, "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll" },
     { "name": "OpenAIUsageDebuggingPlugin", "enabled": true, "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll" }
@@ -326,7 +326,7 @@ This config: randomly injects LLM failures (50% of requests), enforces token lim
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
   "plugins": [
     { "name": "LatencyPlugin", "enabled": true, "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll", "configSection": "latencyPlugin" },
     { "name": "MockStdioResponsePlugin", "enabled": true, "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll", "configSection": "mockStdioResponsePlugin" }

@@ -10,7 +10,7 @@ A configuration file follows a specific property order: `$schema`, then `plugins
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
   "plugins": [
     {
       "name": "RetryAfterPlugin",
@@ -28,7 +28,7 @@ A configuration file follows a specific property order: `$schema`, then `plugins
     "https://jsonplaceholder.typicode.com/*"
   ],
   "genericRandomErrorPlugin": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.1.0/genericrandomerrorplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/genericrandomerrorplugin.schema.json",
     "errorsFile": "devproxy-errors.json",
     "rate": 50
   },

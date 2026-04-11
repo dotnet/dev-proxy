@@ -212,7 +212,7 @@ CLI: `--summary-group-by`
 
 | Property | Default | Description |
 |----------|---------|-------------|
-| `type` | `Delegated` | `Delegated` or `Application` |
+| `type` | `delegated` | `delegated` or `application` |
 
 ### GraphMinimalPermissionsGuidancePlugin
 
