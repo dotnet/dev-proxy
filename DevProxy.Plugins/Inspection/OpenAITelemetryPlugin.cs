@@ -931,7 +931,8 @@ public sealed class OpenAITelemetryPlugin(
             return;
         }
 
-        var (inputCost, outputCost) = Configuration.Prices.CalculateCost(response.Model, usage.PromptTokens, usage.CompletionTokens);
+        var cachedTokens = usage.PromptTokensDetails?.CachedTokens ?? 0L;
+        var (inputCost, outputCost) = Configuration.Prices.CalculateCost(response.Model, usage.PromptTokens, usage.CompletionTokens, cachedTokens);
 
         if (inputCost > 0)
         {
@@ -1042,7 +1043,8 @@ public sealed class OpenAITelemetryPlugin(
             return usagePerModel;
         }
 
-        var (inputCost, outputCost) = Configuration.Prices.CalculateCost(response.Model, usage.PromptTokens, usage.CompletionTokens);
+        var cachedTokens = usage.PromptTokensDetails?.CachedTokens ?? 0L;
+        var (inputCost, outputCost) = Configuration.Prices.CalculateCost(response.Model, usage.PromptTokens, usage.CompletionTokens, cachedTokens);
 
         if (inputCost > 0)
         {

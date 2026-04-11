@@ -40,11 +40,18 @@ internal sealed class LanguageModelPricesLoader(
                     if (modelProperty.Value.TryGetProperty("input", out var inputElement) &&
                         modelProperty.Value.TryGetProperty("output", out var outputElement))
                     {
-                        pricesData[modelName] = new()
+                        var modelPrices = new ModelPrices
                         {
                             Input = inputElement.GetDouble(),
                             Output = outputElement.GetDouble()
                         };
+
+                        if (modelProperty.Value.TryGetProperty("cached_input", out var cachedInputElement))
+                        {
+                            modelPrices.CachedInput = cachedInputElement.GetDouble();
+                        }
+
+                        pricesData[modelName] = modelPrices;
                     }
                 }
 

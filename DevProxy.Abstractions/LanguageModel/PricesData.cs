@@ -9,6 +9,7 @@ namespace DevProxy.Abstractions.LanguageModel;
 public class ModelPrices
 {
     public double Input { get; set; }
+    public double CachedInput { get; set; }
     public double Output { get; set; }
 }
 
@@ -44,7 +45,7 @@ public class PricesData : Dictionary<string, ModelPrices>
         return false;
     }
 
-    public (double Input, double Output) CalculateCost(string modelName, long inputTokens, long outputTokens)
+    public (double Input, double Output) CalculateCost(string modelName, long inputTokens, long outputTokens, long cachedInputTokens = 0)
     {
         if (!TryGetModelPrices(modelName, out var prices))
         {
@@ -54,7 +55,14 @@ public class PricesData : Dictionary<string, ModelPrices>
         Debug.Assert(prices != null, "Prices data should not be null here.");
 
         // Prices in the data are per 1M tokens
-        var inputCost = prices.Input * (inputTokens / 1_000_000.0);
+        // When cached input pricing is available, separate cached tokens
+        // from regular input tokens for accurate cost calculation
+        var regularInputTokens = inputTokens - cachedInputTokens;
+        var inputCost = prices.Input * (regularInputTokens / 1_000_000.0);
+        if (cachedInputTokens > 0 && prices.CachedInput > 0)
+        {
+            inputCost += prices.CachedInput * (cachedInputTokens / 1_000_000.0);
+        }
         var outputCost = prices.Output * (outputTokens / 1_000_000.0);
 
         return (inputCost, outputCost);
