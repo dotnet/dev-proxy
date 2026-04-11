@@ -106,7 +106,7 @@ sealed class ConfigCommand : Command
 
         using var loggerFactory = LoggerFactory.Create(builder =>
         {
-            builder
+            _ = builder
                 .SetMinimumLevel(LogLevel.Information)
                 .AddConsole(consoleOptions =>
                 {
@@ -693,7 +693,7 @@ sealed class ConfigCommand : Command
             if (configDoc.RootElement.TryGetProperty("plugins", out var pluginsElement) &&
                 pluginsElement.ValueKind == JsonValueKind.Array)
             {
-                ValidatePlugins(pluginsElement, configFileDirectory, errors, warnings, pluginNames);
+                ValidatePlugins(pluginsElement, configFileDirectory, errors, pluginNames);
             }
             else
             {
@@ -729,7 +729,6 @@ sealed class ConfigCommand : Command
         JsonElement pluginsElement,
         string configFileDirectory,
         List<ValidationMessage> errors,
-        List<ValidationMessage> warnings,
         List<string> pluginNames)
     {
         var hasEnabledPlugins = false;
