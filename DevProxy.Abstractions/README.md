@@ -22,21 +22,13 @@ Then, implement the `IPlugin` interface or inherit from `BasePlugin`:
 ```csharp
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
-public class MyPlugin : BasePlugin
+public class MyPlugin(
+    ILogger logger,
+    ISet<UrlToWatch> urlsToWatch) : BasePlugin(logger, urlsToWatch)
 {
     public override string Name => nameof(MyPlugin);
-
-    public MyPlugin(
-        IPluginEvents pluginEvents,
-        IProxyContext context,
-        ISet<UrlToWatch> urlsToWatch,
-        IConfigurationSection? configSection = null
-    ) : base(pluginEvents, context, urlsToWatch, configSection)
-    {
-    }
 
     public override async Task BeforeRequestAsync(
         ProxyRequestArgs e,

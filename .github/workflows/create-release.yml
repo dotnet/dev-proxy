@@ -214,12 +214,14 @@ jobs:
           dotnet pack ./DevProxy.Abstractions/DevProxy.Abstractions.csproj
           -c Release
           -p:PackageVersion=${{ steps.get_version.outputs.VERSION }}
+          -p:Version=${{ steps.get_version.outputs.VERSION }}
           -o ./nupkg
       - name: Push to NuGet
         run: >
           dotnet nuget push ./nupkg/DevProxy.Abstractions.${{ steps.get_version.outputs.VERSION }}.nupkg
           --api-key ${{ secrets.NUGET_API_KEY }}
           --source https://api.nuget.org/v3/index.json
+          --skip-duplicate
   create_release:
     name: Create Release
     needs: [publish_binaries]
