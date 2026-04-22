@@ -36,7 +36,7 @@ public sealed class MockResponseConfiguration
     [JsonIgnore]
     public bool NoMocks { get; set; }
     [JsonPropertyName("$schema")]
-    public string Schema { get; set; } = "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/mockresponseplugin.mocksfile.schema.json";
+    public string Schema { get; set; } = "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.3.2/mockresponseplugin.mocksfile.schema.json";
 }
 
 public class MockResponsePlugin(
