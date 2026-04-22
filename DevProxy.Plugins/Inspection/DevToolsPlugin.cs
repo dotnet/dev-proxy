@@ -900,9 +900,9 @@ public sealed class DevToolsPlugin(
         _webSocket.ClientConnected += OnWebSocketClientConnected;
         _ = _webSocket.StartAsync();
 
-        var inspectionUrl = $"devtools://devtools/bundled/inspector.html?ws=127.0.0.1:{port}";
+        var inspectionUrl = $"http://localhost:9222/devtools/inspector.html?ws=127.0.0.1:{port}";
         var profilePath = Path.Combine(Path.GetTempPath(), "devtools-devproxy");
-        var args = $"{inspectionUrl} --user-data-dir=\"{profilePath}\"";
+        var args = $"{inspectionUrl} --remote-debugging-port=9222 --user-data-dir=\"{profilePath}\"";
 
         Logger.LogInformation("{Name} available at {InspectionUrl}", Name, inspectionUrl);
 
