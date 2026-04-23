@@ -3,8 +3,8 @@
 
 #define MyAppName "Dev Proxy"
 ; for local use only. In production replaced by a command line arg
-#define MyAppSetupExeName "dev-proxy-installer-win-x64-2.4.0"
-#define MyAppVersion "2.4.0"
+#define MyAppSetupExeName "dev-proxy-installer-win-x64-2.3.4"
+#define MyAppVersion "2.3.4"
 #define MyAppPublisher ".NET Foundation"
 #define MyAppURL "https://aka.ms/devproxy"
 #define DevProxyExecutable "devproxy.exe"

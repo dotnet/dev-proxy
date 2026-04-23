@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/genericrandomerrorplugin.errorsfile.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.3.4/genericrandomerrorplugin.errorsfile.schema.json",
   "errors": [
     {
       "request": {
