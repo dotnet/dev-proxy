@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy OpenApiSpecGeneratorPlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "The JSON schema reference for validation."
+    },
+    "includeOptionsRequests": {
+      "type": "boolean",
+      "description": "Determines whether to include OPTIONS requests in the generated OpenAPI spec. Default: false."
+    },
+    "ignoreResponseTypes": {
+      "type": "boolean",
+      "description": "Determines whether to ignore response types in the generated OpenAPI spec. Default: false."
+    },
+    "specVersion": {
+      "type": "string",
+      "enum": [
+        "v2_0",
+        "v3_0"
+      ],
+      "description": "Specifies the OpenAPI spec version to generate. Allowed values: 'v2_0' or 'v3_0'. Default: 'v3_0'."
+    },
+    "specFormat": {
+      "type": "string",
+      "enum": [
+        "Json",
+        "Yaml"
+      ],
+      "description": "Specifies the format of the generated OpenAPI spec. Allowed values: 'Json' or 'Yaml'. Default: 'Json'."
+    },
+    "includeParameters": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Defines the list of query string parameters to include in the generated OpenAPI spec, along with their default values. Default: []",
+      "default": []
+    }
+  },
+  "additionalProperties": false
+}
