@@ -106,7 +106,7 @@ public sealed class HarGeneratorPlugin(
 
         var entry = new HarEntry
         {
-            StartedDateTime = log.Timestamp.ToString("o"),
+            StartedDateTime = log.Timestamp.UtcDateTime.ToString("o"),
             Time = 0, // We don't have actual timing data in RequestLog
             Request = new HarRequest
             {
