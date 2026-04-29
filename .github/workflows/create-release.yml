@@ -193,6 +193,35 @@ jobs:
         if: contains(matrix.architecture, 'win-')
         run: |
           $(Get-FileHash ./${{ env.release }}/dev-proxy-installer-${{ matrix.architecture }}-${{ github.ref_name }}.exe -Algorithm SHA256).Hash
+  publish_nuget:
+    name: Publish to NuGet
+    needs: [publish_binaries]
+    runs-on: ubuntu-latest
+    environment:
+      name: gh_releases
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Setup .NET
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
+        with:
+          dotnet-version: 10.0.x
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      - name: Pack
+        run: >
+          dotnet pack ./DevProxy.Abstractions/DevProxy.Abstractions.csproj
+          -c Release
+          -p:PackageVersion=${{ steps.get_version.outputs.VERSION }}
+          -p:Version=${{ steps.get_version.outputs.VERSION }}
+          -o ./nupkg
+      - name: Push to NuGet
+        run: >
+          dotnet nuget push ./nupkg/DevProxy.Abstractions.${{ steps.get_version.outputs.VERSION }}.nupkg
+          --api-key ${{ secrets.NUGET_API_KEY }}
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate
   create_release:
     name: Create Release
     needs: [publish_binaries]

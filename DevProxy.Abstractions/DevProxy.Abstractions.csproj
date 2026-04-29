@@ -10,7 +10,26 @@
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AnalysisMode>AllEnabledByDefault</AnalysisMode>
+    <IsPackable>true</IsPackable>
+    <PackageId>DevProxy.Abstractions</PackageId>
+    <Title>Dev Proxy Abstractions</Title>
+    <Authors>Dev Proxy</Authors>
+    <Description>Abstractions for building custom Dev Proxy plugins. Dev Proxy is an API simulator that helps you effortlessly test your app beyond the happy path.</Description>
+    <PackageTags>devproxy;api;proxy;testing;mocking;plugins</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://aka.ms/devproxy</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/dotnet/dev-proxy</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
+    <!-- NU5104: stable package depends on prerelease System.CommandLine; suppress until a stable version is available -->
+    <NoWarn>NU5104</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="..\media\icon.png" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Markdig" Version="1.1.3" />
