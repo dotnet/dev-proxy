@@ -61,6 +61,7 @@ public class RequestLog
     public MessageType MessageType { get; set; }
     public string? Method { get; init; }
     public string? PluginName { get; set; }
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
     public string? Url { get; init; }
 
     public RequestLog(string message, MessageType messageType, LoggingContext? context) :

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy ApiCenterProductionVersionPlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "The JSON schema reference for validation."
+    },
+    "resourceGroupName": {
+      "type": "string",
+      "description": "Name of the resource group where the Azure API Center is located."
+    },
+    "serviceName": {
+      "type": "string",
+      "description": "Name of the Azure API Center instance that Dev Proxy should use to check if the APIs used in the app are registered."
+    },
+    "subscriptionId": {
+      "type": "string",
+      "description": "ID of the Azure subscription where the Azure API Center instance is located."
+    },
+    "workspace": {
+      "type": "string",
+      "description": "Name of the Azure API Center workspace to use. Default is 'default'."
+    }
+  },
+  "required": [
+    "resourceGroupName",
+    "serviceName",
+    "subscriptionId"
+  ],
+  "additionalProperties": false
+}

@@ -31,7 +31,7 @@ public sealed class WebSocketServer(int port, ILogger logger) : IDisposable
     public async Task StartAsync()
     {
         _listener = new();
-        _listener.Prefixes.Add($"http://localhost:{_port}/");
+        _listener.Prefixes.Add($"http://127.0.0.1:{_port}/");
         _listener.Start();
 
         while (true)
