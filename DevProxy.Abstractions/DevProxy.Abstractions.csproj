@@ -22,7 +22,7 @@
     <PackageReference Include="Microsoft.OpenApi.Readers" Version="1.6.29" />
     <PackageReference Include="Newtonsoft.Json.Schema" Version="4.0.1" />
     <PackageReference Include="Scriban" Version="7.1.0" />
-    <PackageReference Include="System.CommandLine" Version="2.0.0-beta5.25306.1" />
+    <PackageReference Include="System.CommandLine" Version="2.0.7" />
     <PackageReference Include="Unobtanium.Web.Proxy" Version="0.1.5" />
     <PackageReference Include="YamlDotNet" Version="17.1.0" />
   </ItemGroup>
