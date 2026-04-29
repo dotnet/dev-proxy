@@ -33,7 +33,7 @@ sealed class DevProxyCommand : RootCommand
     internal static readonly Option<string?> ConfigFileOption = new(ConfigFileOptionName, "-c")
     {
         HelpName = "config-file",
-        Description = "Path to config file. If not specified, Dev Proxy searches for devproxyrc.jsonc or devproxyrc.json in the current directory, then in a .devproxy/ directory, then under the ~appFolder location. Supports ~appFolder token."
+        Description = "Path to config file. If not specified, Dev Proxy searches for devproxyrc.jsonc or devproxyrc.json in the current directory, then in a .devproxy/ directory, then under the ~appFolder location. Supports ~appFolder and ~dataFolder tokens."
     };
     internal const string NoFirstRunOptionName = "--no-first-run";
     internal const string NoWatchOptionName = "--no-watch";

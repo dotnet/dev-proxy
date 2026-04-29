@@ -106,7 +106,7 @@ sealed class ConfigCommand : Command
 
         using var loggerFactory = LoggerFactory.Create(builder =>
         {
-            builder
+            _ = builder
                 .SetMinimumLevel(LogLevel.Information)
                 .AddConsole(consoleOptions =>
                 {
@@ -215,17 +215,9 @@ sealed class ConfigCommand : Command
     {
         try
         {
-            var appFolder = ProxyUtils.AppFolder;
-            if (string.IsNullOrEmpty(appFolder) || !Directory.Exists(appFolder))
-            {
-                if (outputFormat == OutputFormat.Text)
-                {
-                    _logger.LogError("App folder {AppFolder} not found", appFolder);
-                }
-                return;
-            }
+            var dataFolder = ProxyUtils.DataFolder;
 
-            var configFolderPath = Path.Combine(appFolder, "config");
+            var configFolderPath = Path.Combine(dataFolder, "configs");
             _logger.LogDebug("Checking if config folder {ConfigFolderPath} exists...", configFolderPath);
             if (!Directory.Exists(configFolderPath))
             {
@@ -235,7 +227,7 @@ sealed class ConfigCommand : Command
             }
 
             _logger.LogDebug("Getting target folder path for config {ConfigId}...", configId);
-            var targetFolderPath = GetTargetFolderPath(appFolder, configId);
+            var targetFolderPath = GetTargetFolderPath(dataFolder, configId);
             _logger.LogDebug("Creating target folder {TargetFolderPath}...", targetFolderPath);
             _ = Directory.CreateDirectory(targetFolderPath);
 
@@ -287,7 +279,7 @@ sealed class ConfigCommand : Command
                 {
                     if (_logger.IsEnabled(LogLevel.Information))
                     {
-                        _logger.LogInformation("  devproxy --config-file \"{ConfigFile}\"", configFile.Replace(appFolder, "~appFolder", StringComparison.OrdinalIgnoreCase));
+                        _logger.LogInformation("  devproxy --config-file \"{ConfigFile}\"", configFile.Replace(dataFolder, "~dataFolder", StringComparison.OrdinalIgnoreCase));
                     }
                 }
             }
@@ -298,7 +290,7 @@ sealed class ConfigCommand : Command
                 {
                     if (_logger.IsEnabled(LogLevel.Information))
                     {
-                        _logger.LogInformation("  devproxy --mock-file \"{MockFile}\"", mockFile.Replace(appFolder, "~appFolder", StringComparison.OrdinalIgnoreCase));
+                        _logger.LogInformation("  devproxy --mock-file \"{MockFile}\"", mockFile.Replace(dataFolder, "~dataFolder", StringComparison.OrdinalIgnoreCase));
                     }
                 }
             }
@@ -332,13 +324,13 @@ sealed class ConfigCommand : Command
         var configInfo = new ProxyConfigInfo();
 
         _logger.LogDebug("Getting list of config files in {ConfigFolder}...", configFolder);
-        
+
         // Get both JSON and YAML files
         var jsonFiles = Directory.GetFiles(configFolder, "*.json");
         var yamlFiles = Directory.GetFiles(configFolder, "*.yaml");
         var ymlFiles = Directory.GetFiles(configFolder, "*.yml");
         var allConfigFiles = jsonFiles.Concat(yamlFiles).Concat(ymlFiles).ToArray();
-        
+
         if (allConfigFiles.Length == 0)
         {
             _logger.LogDebug("No config files found");
@@ -350,7 +342,7 @@ sealed class ConfigCommand : Command
             _logger.LogDebug("Reading file {ConfigFile}...", configFile);
 
             var fileContents = File.ReadAllText(configFile);
-            
+
             // Check for plugins marker (case-insensitive)
             // For JSON: "plugins":
             // For YAML: plugins:
@@ -561,9 +553,9 @@ sealed class ConfigCommand : Command
         }
     }
 
-    private static string GetTargetFolderPath(string appFolder, string configId)
+    private static string GetTargetFolderPath(string dataFolder, string configId)
     {
-        var baseFolder = Path.Combine(appFolder, "config", configId);
+        var baseFolder = Path.Combine(dataFolder, "configs", configId);
         var newFolder = baseFolder;
         var i = 1;
         while (Directory.Exists(newFolder))
@@ -701,7 +693,7 @@ sealed class ConfigCommand : Command
             if (configDoc.RootElement.TryGetProperty("plugins", out var pluginsElement) &&
                 pluginsElement.ValueKind == JsonValueKind.Array)
             {
-                ValidatePlugins(pluginsElement, configFileDirectory, errors, warnings, pluginNames);
+                ValidatePlugins(pluginsElement, configFileDirectory, errors, pluginNames);
             }
             else
             {
@@ -737,7 +729,6 @@ sealed class ConfigCommand : Command
         JsonElement pluginsElement,
         string configFileDirectory,
         List<ValidationMessage> errors,
-        List<ValidationMessage> warnings,
         List<string> pluginNames)
     {
         var hasEnabledPlugins = false;
