@@ -2,9 +2,9 @@ version: 2
 updates:
 - package-ecosystem: nuget
   directories:
-    - "/dev-proxy"
-    - "/dev-proxy-abstractions"
-    - "/dev-proxy-plugins"
+    - "/DevProxy"
+    - "/DevProxy.Abstractions"
+    - "/DevProxy.Plugins"
   schedule:
     interval: daily
 
