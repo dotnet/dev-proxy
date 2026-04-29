@@ -103,11 +103,10 @@ public sealed class HarGeneratorPlugin(
 
         var request = log.Context.Session.HttpClient.Request;
         var response = log.Context.Session.HttpClient.Response;
-        var currentTime = DateTime.UtcNow;
 
         var entry = new HarEntry
         {
-            StartedDateTime = currentTime.ToString("o"),
+            StartedDateTime = log.Timestamp.UtcDateTime.ToString("o"),
             Time = 0, // We don't have actual timing data in RequestLog
             Request = new HarRequest
             {

@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -39,7 +40,7 @@ public sealed class EntraMockResponsePlugin(
     HttpClient httpClient,
     ILogger<EntraMockResponsePlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
-    X509Certificate2 certificate,
+    IServiceProvider serviceProvider,
     IProxyConfiguration proxyConfiguration,
     IConfigurationSection pluginConfigurationSection) :
     MockResponsePlugin(
@@ -147,18 +148,14 @@ public sealed class EntraMockResponsePlugin(
         changed = true;
     }
 
-    private string GetKeyId() => certificate.Thumbprint ?? "";
+    private string GetKeyId() => serviceProvider.GetRequiredService<X509Certificate2>().Thumbprint ?? "";
 
     private List<string> GetCertificateChain()
     {
-        if (certificate is null)
-        {
-            return [];
-        }
-
+        var cert = serviceProvider.GetRequiredService<X509Certificate2>();
         var collection = new X509Certificate2Collection
         {
-            certificate
+            cert
         };
 
         var certificateChain = new List<string>();
