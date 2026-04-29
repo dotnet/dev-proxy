@@ -12,17 +12,18 @@ sealed class ExitCodeHelpAction : SynchronousCommandLineAction
 {
     private readonly HelpAction _originalAction;
 
+    public override bool Terminating => true;
+
     public ExitCodeHelpAction(HelpAction originalAction)
     {
         _originalAction = originalAction;
-        Terminating = true;
     }
 
     public override int Invoke(ParseResult parseResult)
     {
         var result = _originalAction.Invoke(parseResult);
 
-        var output = parseResult.Configuration.Output;
+        var output = Console.Out;
         output.WriteLine();
         output.WriteLine("Exit codes:");
         output.WriteLine("  0  Success");
