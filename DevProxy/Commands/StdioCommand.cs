@@ -82,7 +82,7 @@ sealed class StdioCommand : Command
     /// </summary>
     internal static ParseResult ParseStdioArgs(Command rootCommand, string[] args)
     {
-        var configuration = new CommandLineConfiguration(rootCommand)
+        var configuration = new ParserConfiguration()
         {
             ResponseFileTokenReplacer = null
         };

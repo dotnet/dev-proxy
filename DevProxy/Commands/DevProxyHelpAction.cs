@@ -19,7 +19,7 @@ sealed class DevProxyHelpAction(SynchronousCommandLineAction originalAction) : S
             return 0;
         }
 
-        var output = parseResult.Configuration.Output;
+        var output = Console.Out;
 
         output.WriteLine();
         output.WriteLine("  Additional commands may be available depending on configured plugins.");
