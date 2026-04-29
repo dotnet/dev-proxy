@@ -33,7 +33,7 @@ static class HelpExamples
             var command = parseResult.CommandResult.Command;
             if (_examples.TryGetValue(command, out var examples))
             {
-                var output = parseResult.Configuration.Output;
+                var output = Console.Out;
                 output.WriteLine("Examples:");
                 foreach (var example in examples)
                 {

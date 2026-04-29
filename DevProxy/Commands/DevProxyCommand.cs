@@ -269,7 +269,7 @@ sealed class DevProxyCommand : RootCommand
             parseErrorAction.ShowHelp = false;
         }
 
-        var exitCode = await parseResult.InvokeAsync(app.Lifetime.ApplicationStopping);
+        var exitCode = await parseResult.InvokeAsync(null, app.Lifetime.ApplicationStopping);
 
         // Return exit code 2 for input validation and parse errors to distinguish
         // them from runtime errors (exit code 1), following conventions from

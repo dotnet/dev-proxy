@@ -30,9 +30,7 @@ internal sealed class ApiCenterClient : IDisposable
     private readonly ApiCenterClientConfiguration _configuration;
     private readonly TokenCredential _credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions()
     {
-        ExcludeInteractiveBrowserCredential = true,
-        // fails on Ubuntu
-        ExcludeSharedTokenCacheCredential = true
+        ExcludeInteractiveBrowserCredential = true
     });
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
