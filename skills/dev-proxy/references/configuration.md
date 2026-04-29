@@ -134,6 +134,8 @@ Plugin-specific override:
 | `watchPids` | — | `--watch-pids` | Only intercept from these PIDs |
 | `watchProcessNames` | — | `--watch-process-names` | Only intercept from these processes |
 | `asSystemProxy` | `true` | `--as-system-proxy` | Register as system proxy |
+| — | off | `--detach` | Run in detached (background) mode |
+| — | `text` | `--output` | Output format: `text` or `json` |
 
 ## Local Language Model
 
@@ -153,11 +155,75 @@ Enable a local LLM (e.g., Ollama) to improve AI-powered plugins:
 
 Used by: `OpenAIMockResponsePlugin`, `OpenApiSpecGeneratorPlugin`, `TypeSpecGeneratorPlugin`.
 
+## Detached Mode
+
+Detached mode runs Dev Proxy in the background as a separate process. Use it for long-running testing, CI/CD pipelines, or when you want the proxy to keep running after closing the terminal.
+
+### Starting in Detached Mode
+
+```bash
+devproxy --detach
+```
+
+Output includes PID, proxy URL, API URL, and log file path:
+
+```text
+Dev Proxy started in background.
+
+  PID:       6456
+  Proxy URL: http://127.0.0.1:8000
+  API URL:   http://127.0.0.1:8897
+  Log file:  /Users/user/.local/dev-proxy/logs/devproxy-6456-2026-03-05.log
+```
+
+For machine-readable output (useful in CI/CD), combine with `--output json`:
+
+```bash
+devproxy --detach --output json
+```
+
+```json
+{"type":"result","data":{"pid":6456,"proxyUrl":"http://127.0.0.1:8000","apiUrl":"http://127.0.0.1:8897","logFile":"/Users/user/.local/dev-proxy/logs/devproxy-6456-2026-03-05.log"},"timestamp":"2026-03-05T14:22:42.0000000Z"}
+```
+
+### Common Detached Mode Patterns
+
+Run detached without modifying system proxy settings and with OS-assigned ports:
+
+```bash
+devproxy --detach --as-system-proxy false --port 0 --api-port 0
+```
+
+Run detached with a specific config:
+
+```bash
+devproxy --detach --config-file .devproxy/devproxyrc.json
+```
+
+### Managing Detached Instances
+
+| Command | Description |
+|---------|-------------|
+| `devproxy status` | Show all running instances |
+| `devproxy status --pid 6456` | Show status of a specific instance |
+| `devproxy stop` | Stop all running instances |
+| `devproxy stop --pid 6456` | Stop a specific instance |
+| `devproxy stop --force` | Forcefully terminate all instances |
+
+### Log Files
+
+Detached instances write logs to: `~/.local/dev-proxy/logs/devproxy-{PID}-{DATE}.log`
+
+### Multiple Instances
+
+You can run multiple detached instances simultaneously when using `--as-system-proxy false`. Use `devproxy status` to list them and `devproxy stop --pid <PID>` to control individual instances.
+
 ## Common Commands
 
 | Command | Description |
 |---------|-------------|
 | `devproxy` | Start with default/local config |
+| `devproxy --detach` | Start in detached (background) mode |
 | `devproxy --config-file path.json` | Start with specific config |
 | `devproxy config new` | Create new config file |
 | `devproxy config new myconfig` | Create named config file |
@@ -165,6 +231,8 @@ Used by: `OpenAIMockResponsePlugin`, `OpenApiSpecGeneratorPlugin`, `TypeSpecGene
 | `devproxy cert ensure` | Ensure SSL cert exists and is trusted |
 | `devproxy jwt create` | Create a JWT for testing |
 | `devproxy stdio <command>` | Proxy STDIO communication |
+| `devproxy status` | Show running detached instances |
+| `devproxy stop` | Stop running detached instances |
 
 ## Process Filtering
 

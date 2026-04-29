@@ -1,6 +1,6 @@
 ---
 name: dev-proxy
-description: "Simulate API failures, mock responses, test rate limiting, and analyze API traffic using Dev Proxy's plugin-based proxy engine. WHEN: 'mock API responses', 'simulate API errors', 'test rate limiting', 'test error handling', 'mock OpenAI responses', 'test AI app', 'analyze API usage', 'configure Dev Proxy', 'install Dev Proxy', 'set up Dev Proxy', 'use Dev Proxy in CI/CD', 'chaos testing for APIs'."
+description: "Simulate API failures, mock responses, test rate limiting, and analyze API traffic using Dev Proxy's plugin-based proxy engine. WHEN: 'mock API responses', 'simulate API errors', 'test rate limiting', 'test error handling', 'mock OpenAI responses', 'test AI app', 'analyze API usage', 'configure Dev Proxy', 'install Dev Proxy', 'set up Dev Proxy', 'use Dev Proxy in CI/CD', 'chaos testing for APIs', 'run Dev Proxy in background', 'detached mode', 'run Dev Proxy detached'."
 ---
 
 # Dev Proxy
@@ -67,9 +67,9 @@ STOP — Read [references/ci-cd-integration.md](references/ci-cd-integration.md)
 
 ### Configuration & Plugin Reference
 
-Set up Dev Proxy, understand plugin architecture, URL matching, and proxy settings.
+Set up Dev Proxy, understand plugin architecture, URL matching, proxy settings, and detached (background) mode.
 
-STOP — Read [references/configuration.md](references/configuration.md) for config file structure, plugin types and ordering, URL matching rules, proxy settings, and process filtering. For the full plugin catalog, read [references/plugin-catalog.md](references/plugin-catalog.md).
+STOP — Read [references/configuration.md](references/configuration.md) for config file structure, plugin types and ordering, URL matching rules, proxy settings, detached mode, and process filtering. For the full plugin catalog, read [references/plugin-catalog.md](references/plugin-catalog.md).
 
 ## Configuration File Structure
 
