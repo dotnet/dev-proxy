@@ -64,6 +64,12 @@
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.7"
         }
       },
+      "Microsoft.OpenApi": {
+        "type": "Direct",
+        "requested": "[3.5.3, )",
+        "resolved": "3.5.3",
+        "contentHash": "V/PpjnjbnKsLTy0Bp3euE3l9vAJff/ZgaaOclKLZh6aGkmkWix008MidGVORHlbYfpu7pRMdvo5bGwbiDMFyxg=="
+      },
       "Microsoft.OpenApi.Readers": {
         "type": "Direct",
         "requested": "[1.6.29, )",
@@ -274,11 +280,6 @@
         "type": "Transitive",
         "resolved": "10.0.7",
         "contentHash": "D5M0Jr551iTgwkZMN9rm0pSkgNLj5quUWQUmQPMZh7k/bnvZTnXRGfE2KuvXf1EEjt/ofD9yw9IumpgdP9QCnw=="
-      },
-      "Microsoft.OpenApi": {
-        "type": "Transitive",
-        "resolved": "1.6.29",
-        "contentHash": "mLoYWWwRP3C7Iier4dDzepq0kw1Tpdlh+B6KZ1SNcgq/tWI8aC41WYvIsJpsAS4UG1IV4c0AAnZs8qCPobzBkQ=="
       },
       "Newtonsoft.Json": {
         "type": "Transitive",
