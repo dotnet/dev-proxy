@@ -54,9 +54,9 @@
       },
       "Microsoft.OpenApi": {
         "type": "Direct",
-        "requested": "[1.6.29, )",
-        "resolved": "1.6.29",
-        "contentHash": "mLoYWWwRP3C7Iier4dDzepq0kw1Tpdlh+B6KZ1SNcgq/tWI8aC41WYvIsJpsAS4UG1IV4c0AAnZs8qCPobzBkQ=="
+        "requested": "[3.5.3, )",
+        "resolved": "3.5.3",
+        "contentHash": "V/PpjnjbnKsLTy0Bp3euE3l9vAJff/ZgaaOclKLZh6aGkmkWix008MidGVORHlbYfpu7pRMdvo5bGwbiDMFyxg=="
       },
       "Newtonsoft.Json": {
         "type": "Direct",
@@ -527,6 +527,7 @@
           "Microsoft.Extensions.Configuration.Binder": "[10.0.7, )",
           "Microsoft.Extensions.Configuration.Json": "[10.0.7, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.7, )",
+          "Microsoft.OpenApi": "[3.5.3, )",
           "Microsoft.OpenApi.Readers": "[1.6.29, )",
           "Newtonsoft.Json.Schema": "[4.0.1, )",
           "Scriban": "[7.1.0, )",
