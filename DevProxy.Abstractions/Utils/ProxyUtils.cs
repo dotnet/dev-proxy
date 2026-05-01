@@ -10,6 +10,7 @@ using Newtonsoft.Json.Schema;
 using System.Collections.ObjectModel;
 using System.Reflection;
 using System.Text.Encodings.Web;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -42,6 +43,23 @@ public static class ProxyUtils
 
     // doesn't end with a path separator
     public static string? AppFolder => Path.GetDirectoryName(AppContext.BaseDirectory);
+
+    /// <summary>
+    /// Gets the path to the user data folder for Dev Proxy.
+    /// On macOS: ~/Library/Application Support/dev-proxy/
+    /// On Linux: ~/.config/dev-proxy/ (or $XDG_CONFIG_HOME/dev-proxy/)
+    /// On Windows: %LocalAppData%\dev-proxy\
+    /// </summary>
+    public static string DataFolder
+    {
+        get
+        {
+            var basePath = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                ? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
+                : Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            return Path.Combine(basePath, "dev-proxy");
+        }
+    }
     public static JsonSerializerOptions JsonSerializerOptions { get; } = new()
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -175,6 +193,7 @@ public static class ProxyUtils
             return path ?? string.Empty;
         }
 
+        path = path.Replace("~dataFolder", DataFolder, StringComparison.OrdinalIgnoreCase);
         return path.Replace("~appFolder", AppFolder, StringComparison.OrdinalIgnoreCase);
     }
 
