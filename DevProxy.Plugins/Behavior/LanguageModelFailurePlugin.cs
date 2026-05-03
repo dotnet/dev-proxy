@@ -73,7 +73,11 @@ public sealed class LanguageModelFailurePlugin(
             return;
         }
 
-        if (!OpenAIRequest.TryGetCompletionLikeRequest(request.BodyString, Logger, out var openAiRequest))
+        Logger.LogDebug("Request encoding: {Encoding}", request.Encoding?.EncodingName ?? "null");
+        var originalBody = System.Text.Encoding.UTF8.GetString(request.Body);
+        Logger.LogDebug("Original request body:\n{Body}", originalBody);
+
+        if (!OpenAIRequest.TryGetCompletionLikeRequest(originalBody, Logger, out var openAiRequest))
         {
             Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new LoggingContext(e.Session));
             return;
@@ -91,7 +95,9 @@ public sealed class LanguageModelFailurePlugin(
             completionRequest.Prompt += "\n\n" + faultPrompt;
             Logger.LogDebug("Modified completion request prompt: {Prompt}", completionRequest.Prompt);
             Logger.LogRequest($"Simulating fault {faultName}", MessageType.Chaos, new LoggingContext(e.Session));
-            e.Session.SetRequestBodyString(JsonSerializer.Serialize(completionRequest, ProxyUtils.JsonSerializerOptions));
+            var modifiedBody = JsonSerializer.Serialize(completionRequest, ProxyUtils.JsonSerializerOptions);
+            Logger.LogDebug("Modified request body:\n{Body}", modifiedBody);
+            e.Session.SetRequestBodyString(modifiedBody);
         }
         else if (openAiRequest is OpenAIChatCompletionRequest chatRequest)
         {
@@ -99,7 +105,7 @@ public sealed class LanguageModelFailurePlugin(
             {
                 new()
                 {
-                    Role = "user",
+                    Role = "system",
                     Content = faultPrompt
                 }
             };
@@ -114,7 +120,9 @@ public sealed class LanguageModelFailurePlugin(
 
             Logger.LogDebug("Added fault prompt to messages: {Prompt}", faultPrompt);
             Logger.LogRequest($"Simulating fault {faultName}", MessageType.Chaos, new LoggingContext(e.Session));
-            e.Session.SetRequestBodyString(JsonSerializer.Serialize(newRequest, ProxyUtils.JsonSerializerOptions));
+            var modifiedBody = JsonSerializer.Serialize(newRequest, ProxyUtils.JsonSerializerOptions);
+            Logger.LogDebug("Modified request body:\n{Body}", modifiedBody);
+            e.Session.SetRequestBodyString(modifiedBody);
         }
         else if (openAiRequest is OpenAIResponsesRequest responsesRequest)
         {
@@ -122,7 +130,7 @@ public sealed class LanguageModelFailurePlugin(
             {
                 new()
                 {
-                    Role = "user",
+                    Role = "system",
                     Content = faultPrompt
                 }
             };
@@ -144,7 +152,9 @@ public sealed class LanguageModelFailurePlugin(
 
             Logger.LogDebug("Added fault prompt to Responses API input: {Prompt}", faultPrompt);
             Logger.LogRequest($"Simulating fault {faultName}", MessageType.Chaos, new LoggingContext(e.Session));
-            e.Session.SetRequestBodyString(JsonSerializer.Serialize(newRequest, ProxyUtils.JsonSerializerOptions));
+            var modifiedBody = JsonSerializer.Serialize(newRequest, ProxyUtils.JsonSerializerOptions);
+            Logger.LogDebug("Modified request body:\n{Body}", modifiedBody);
+            e.Session.SetRequestBodyString(modifiedBody);
         }
         else
         {
