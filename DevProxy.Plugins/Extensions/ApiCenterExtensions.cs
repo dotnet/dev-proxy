@@ -5,7 +5,7 @@
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Plugins.ApiCenter;
 using Microsoft.Extensions.Logging;
-using Microsoft.OpenApi.Readers;
+using Microsoft.OpenApi;
 using System.Diagnostics;
 
 #pragma warning disable IDE0130
@@ -115,7 +115,7 @@ public static class ModelExtensions
                         continue;
                     }
 
-                    if (!definition.Definition.Servers.Any())
+                    if (definition.Definition.Servers is null || !definition.Definition.Servers.Any())
                     {
                         logger.LogDebug("No servers found for API definition {DefinitionId}", definition.Id);
                         continue;
@@ -123,7 +123,10 @@ public static class ModelExtensions
 
                     foreach (var server in definition.Definition.Servers)
                     {
-                        apiDefinitions[server.Url] = definition;
+                        if (server.Url is not null)
+                        {
+                            apiDefinitions[server.Url] = definition;
+                        }
                     }
                 }
             }
@@ -153,7 +156,7 @@ public static class ModelExtensions
             d.Properties?.Server?.RuntimeUri ?? []) ?? [];
         var urlsFromVersions = api.Versions?.SelectMany(v =>
             v.Definitions?.SelectMany(d =>
-                d.Definition?.Servers.Select(s => s.Url) ?? []) ?? []) ?? [];
+                d.Definition?.Servers?.Select(s => s.Url).Where(u => u is not null).Cast<string>() ?? []) ?? []) ?? [];
 
         return new HashSet<string>([.. urlsFromDeployments, .. urlsFromVersions]);
     }
@@ -282,7 +285,8 @@ public static class ModelExtensions
 
         try
         {
-            apiDefinition.Definition = new OpenApiStringReader().Read(exportResult.Value, out _);
+            var readResult = OpenApiDocument.Parse(exportResult.Value ?? "", null);
+            apiDefinition.Definition = readResult.Document;
         }
         catch (Exception ex)
         {

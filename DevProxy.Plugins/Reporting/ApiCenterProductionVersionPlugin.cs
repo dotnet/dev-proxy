@@ -152,7 +152,7 @@ public sealed class ApiCenterProductionVersionPlugin(
                         continue;
                     }
 
-                    if (!definitionFromApiCenter.Definition.Servers.Any())
+                    if (definitionFromApiCenter.Definition.Servers is null || !definitionFromApiCenter.Definition.Servers.Any())
                     {
                         Logger.LogDebug("No servers found for API definition {DefinitionId}", definitionFromApiCenter.Id);
                         continue;
