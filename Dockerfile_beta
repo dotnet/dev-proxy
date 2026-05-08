@@ -1,4 +1,4 @@
-FROM ubuntu:24.04
+FROM ubuntu:26.04
 
 ARG DEVPROXY_VERSION=2.4.0
 ARG USERNAME=devproxy
