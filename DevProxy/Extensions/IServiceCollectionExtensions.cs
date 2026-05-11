@@ -34,6 +34,7 @@ static class IServiceCollectionExtensions
         _ = services
             .AddApplicationServices(configuration, options)
             .AddHostedService<ProxyEngine>()
+            .AddOpenApi()
             .Configure<RouteOptions>(options => options.LowercaseUrls = true);
 
         return services;

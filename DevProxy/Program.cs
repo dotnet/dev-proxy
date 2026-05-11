@@ -6,6 +6,7 @@ using DevProxy;
 using DevProxy.Commands;
 using DevProxy.Proxy;
 using DevProxy.State;
+using Scalar.AspNetCore;
 using System.Diagnostics;
 using System.Globalization;
 using System.Net;
@@ -358,6 +359,8 @@ static WebApplication BuildApplication(DevProxyConfigOptions options)
     var app = builder.Build();
 
     _ = app.UseCors();
+    _ = app.MapOpenApi();
+    _ = app.MapScalarApiReference();
     _ = app.MapControllers();
 
     return app;
