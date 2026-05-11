@@ -58,6 +58,16 @@
         "resolved": "3.5.3",
         "contentHash": "V/PpjnjbnKsLTy0Bp3euE3l9vAJff/ZgaaOclKLZh6aGkmkWix008MidGVORHlbYfpu7pRMdvo5bGwbiDMFyxg=="
       },
+      "Microsoft.OpenApi.YamlReader": {
+        "type": "Direct",
+        "requested": "[3.5.3, )",
+        "resolved": "3.5.3",
+        "contentHash": "BF+XvzuyyL4An8wZCrAisAEz78ezNL5ocYZYGaMh9y1RwYUndioMtwErtqFYfMEw3VnPLQwgUzqVT7Px7vAYCQ==",
+        "dependencies": {
+          "Microsoft.OpenApi": "3.5.3",
+          "SharpYaml": "2.1.4"
+        }
+      },
       "Newtonsoft.Json": {
         "type": "Direct",
         "requested": "[13.0.4, )",
@@ -451,6 +461,11 @@
         "resolved": "7.1.0",
         "contentHash": "8paijHmWYO7zxSRNLlbDzzaFT7By827wIgdOrAg9q64+XasUYK8RCT3Y4mbISxeQ3iNdaK7wGeDmT2GWRtqRBQ=="
       },
+      "SharpYaml": {
+        "type": "Transitive",
+        "resolved": "2.1.4",
+        "contentHash": "/iwULhVBpTjD4wPZhLU+eUWBanDvri/2AGx5YbaAj5kp9kXzhqUfJEy56H5Yi+c+OXsdm/oKD1aTKB24BFp8cw=="
+      },
       "SQLitePCLRaw.bundle_e_sqlite3": {
         "type": "Transitive",
         "resolved": "2.1.11",
@@ -514,6 +529,7 @@
           "Microsoft.Extensions.Configuration.Json": "[10.0.7, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.7, )",
           "Microsoft.OpenApi": "[3.5.3, )",
+          "Microsoft.OpenApi.YamlReader": "[3.5.3, )",
           "Newtonsoft.Json.Schema": "[4.0.1, )",
           "Scriban": "[7.1.0, )",
           "System.CommandLine": "[2.0.7, )",

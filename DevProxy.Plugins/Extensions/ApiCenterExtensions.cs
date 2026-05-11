@@ -6,6 +6,7 @@ using DevProxy.Abstractions.Proxy;
 using DevProxy.Plugins.ApiCenter;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi;
+using Microsoft.OpenApi.Reader;
 using System.Diagnostics;
 
 #pragma warning disable IDE0130
@@ -285,7 +286,9 @@ public static class ModelExtensions
 
         try
         {
-            var readResult = OpenApiDocument.Parse(exportResult.Value ?? "", null);
+            var settings = new OpenApiReaderSettings();
+            settings.AddYamlReader();
+            var readResult = OpenApiDocument.Parse(exportResult.Value ?? "", null, settings);
             apiDefinition.Definition = readResult.Document;
         }
         catch (Exception ex)

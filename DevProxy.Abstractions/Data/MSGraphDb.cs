@@ -6,6 +6,7 @@ using DevProxy.Abstractions.Utils;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi;
+using Microsoft.OpenApi.Reader;
 using System.Net;
 using System.Net.Http.Headers;
 
@@ -274,7 +275,9 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
             try
             {
                 await using var fileStream = file.OpenRead();
-                var readResult = await OpenApiDocument.LoadAsync(fileStream, "yaml", cancellationToken: cancellationToken);
+                var settings = new OpenApiReaderSettings();
+                settings.AddYamlReader();
+                var readResult = await OpenApiDocument.LoadAsync(fileStream, "yaml", settings, cancellationToken);
                 _openApiDocuments[version] = readResult.Document!;
 
                 _logger.LogDebug("Added OpenAPI file {FilePath} for {Version}", filePath, version);

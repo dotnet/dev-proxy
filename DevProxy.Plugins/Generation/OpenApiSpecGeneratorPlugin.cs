@@ -229,7 +229,10 @@ public sealed class OpenApiSpecGeneratorPlugin(
         var response = session.HttpClient.Response;
 
         var resource = GetLastNonTokenSegment(request.RequestUri.Segments);
-        var path = new OpenApiPathItem();
+        var path = new OpenApiPathItem
+        {
+            Operations = []
+        };
 
         var method = request.Method?.ToUpperInvariant() switch
         {
@@ -627,13 +630,10 @@ public sealed class OpenApiSpecGeneratorPlugin(
         {
             Logger.LogDebug("    Adding request body to operation...");
 
-            if (operation.RequestBody is null)
+            operation.RequestBody ??= new OpenApiRequestBody
             {
-                operation.RequestBody = new OpenApiRequestBody
-                {
-                    Content = new Dictionary<string, IOpenApiMediaType>()
-                };
-            }
+                Content = new Dictionary<string, IOpenApiMediaType>()
+            };
             operation.RequestBody.Content!.Add(requestBody.Content.FirstOrDefault());
             // since we've just added the request body, we're done
             return;

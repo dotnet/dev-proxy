@@ -9,6 +9,7 @@ using DevProxy.Plugins.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi;
+using Microsoft.OpenApi.Reader;
 
 namespace DevProxy.Plugins.Reporting;
 
@@ -255,7 +256,9 @@ public sealed class MinimalPermissionsGuidancePlugin(
                 var fileContents = await File.ReadAllTextAsync(file, cancellationToken);
                 fileContents = ProxyUtils.ReplaceVariables(fileContents, ProxyConfiguration.Env, v => $"{{{v}}}");
 
-                var readResult = OpenApiDocument.Parse(fileContents, null);
+                var settings = new OpenApiReaderSettings();
+                settings.AddYamlReader();
+                var readResult = OpenApiDocument.Parse(fileContents, null, settings);
                 var apiDefinition = readResult.Document;
                 if (apiDefinition is null)
                 {

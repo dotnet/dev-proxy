@@ -40,6 +40,10 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
+    <PackageReference Include="Microsoft.OpenApi.YamlReader" Version="3.5.3">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4">
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>

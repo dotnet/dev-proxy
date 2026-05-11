@@ -34,8 +34,6 @@ static class IServiceCollectionExtensions
         _ = services
             .AddApplicationServices(configuration, options)
             .AddHostedService<ProxyEngine>()
-            .AddEndpointsApiExplorer()
-            .AddSwaggerGen()
             .Configure<RouteOptions>(options => options.LowercaseUrls = true);
 
         return services;
