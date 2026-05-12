@@ -168,11 +168,11 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
                 Uri? apiUri = null;
                 if (!string.IsNullOrWhiteSpace(state.ApiUrl))
                 {
-                    Uri.TryCreate(state.ApiUrl, UriKind.Absolute, out apiUri);
+                    _ = Uri.TryCreate(state.ApiUrl, UriKind.Absolute, out apiUri);
                 }
 
                 // Build proxy URL in a way that correctly handles IPv6 hosts.
-                string hostForProxy = apiUri?.Host ?? IPAddress.Loopback.ToString();
+                var hostForProxy = apiUri?.Host ?? IPAddress.Loopback.ToString();
                 var proxyUriBuilder = new UriBuilder(Uri.UriSchemeHttp, hostForProxy, state.Port);
                 var proxyUrl = proxyUriBuilder.Uri.ToString().TrimEnd('/');
 
@@ -358,8 +358,6 @@ static WebApplication BuildApplication(DevProxyConfigOptions options)
     var app = builder.Build();
 
     _ = app.UseCors();
-    _ = app.UseSwagger();
-    _ = app.UseSwaggerUI();
     _ = app.MapControllers();
 
     return app;

@@ -11,7 +11,7 @@ using DevProxy.Plugins.Models.ApiCenter;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using System.Diagnostics;
 
 namespace DevProxy.Plugins.Reporting;
@@ -253,7 +253,7 @@ public sealed class ApiCenterMinimalPermissionsPlugin(
     {
         if (Logger.IsEnabled(LogLevel.Information))
         {
-            Logger.LogInformation("Checking minimal permissions for API {ApiName}...", apiDefinition.Definition!.Servers.First().Url);
+            Logger.LogInformation("Checking minimal permissions for API {ApiName}...", apiDefinition.Definition!.Servers?.First().Url);
         }
 
         return apiDefinition.Definition!.CheckMinimalPermissions(requests, Logger, Configuration.SchemeName);

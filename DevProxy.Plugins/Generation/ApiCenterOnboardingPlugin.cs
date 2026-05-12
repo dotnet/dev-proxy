@@ -10,7 +10,7 @@ using DevProxy.Plugins.Models.ApiCenter;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using System.Diagnostics;
 
 namespace DevProxy.Plugins.Generation;
@@ -157,9 +157,9 @@ public sealed class ApiCenterOnboardingPlugin(
                 continue;
             }
 
-            var operation = pathItem.Value.Value.Operations.FirstOrDefault(x =>
-                x.Key.ToString().Equals(method, StringComparison.OrdinalIgnoreCase)).Value;
-            if (operation is null)
+            var operation = pathItem.Value.Value.Operations?.FirstOrDefault(x =>
+                x.Key.Method.Equals(method, StringComparison.OrdinalIgnoreCase));
+            if (operation is null || operation.Value.Value is null)
             {
                 Logger.LogDebug("No matching operation found for {Method} {Url}. Adding new API...", method, url);
                 newApis.Add(new(method, url));
@@ -170,7 +170,7 @@ public sealed class ApiCenterOnboardingPlugin(
             {
                 MethodAndUrl = $"{method} {url}",
                 ApiDefinitionId = apiDefinition.Id,
-                OperationId = operation.OperationId
+                OperationId = operation.Value.Value.OperationId ?? ""
             });
         }
 

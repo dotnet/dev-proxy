@@ -5,8 +5,8 @@
 using DevProxy.Abstractions.Utils;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
-using Microsoft.OpenApi.Models;
-using Microsoft.OpenApi.Readers;
+using Microsoft.OpenApi;
+using Microsoft.OpenApi.Reader;
 using System.Net;
 using System.Net.Http.Headers;
 
@@ -153,7 +153,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
                 _logger.LogTrace("Endpoint {GraphVersion}{Key}...", graphVersion, path.Key);
 
                 // Get the GET operation for this path
-                var getOperation = path.Value.Operations.FirstOrDefault(o => o.Key == OperationType.Get).Value;
+                var getOperation = path.Value.Operations?.FirstOrDefault(o => o.Key == HttpMethod.Get).Value;
                 if (getOperation == null)
                 {
                     _logger.LogTrace("No GET operation found for {GraphVersion}{Key}", graphVersion, path.Key);
@@ -161,7 +161,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
                 }
 
                 // Check if the GET operation has a $select parameter
-                var hasSelect = getOperation.Parameters.Any(p => p.Name == "$select");
+                var hasSelect = getOperation.Parameters?.Any(p => p.Name == "$select") == true;
 
                 _logger.LogTrace("Inserting endpoint {GraphVersion}{Key} with hasSelect={HasSelect}...", graphVersion, path.Key, hasSelect);
                 pathParam.Value = path.Key;
@@ -275,8 +275,10 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
             try
             {
                 await using var fileStream = file.OpenRead();
-                var openApiDocument = await new OpenApiStreamReader().ReadAsync(fileStream, cancellationToken);
-                _openApiDocuments[version] = openApiDocument.OpenApiDocument;
+                var settings = new OpenApiReaderSettings();
+                settings.AddYamlReader();
+                var readResult = await OpenApiDocument.LoadAsync(fileStream, "yaml", settings, cancellationToken);
+                _openApiDocuments[version] = readResult.Document!;
 
                 _logger.LogDebug("Added OpenAPI file {FilePath} for {Version}", filePath, version);
             }

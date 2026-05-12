@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 using System.Text.RegularExpressions;
 
 #pragma warning disable IDE0130
-namespace Microsoft.OpenApi.Models;
+namespace Microsoft.OpenApi;
 #pragma warning restore IDE0130
 
 static class OpenApiDocumentExtensions
@@ -20,7 +20,7 @@ static class OpenApiDocumentExtensions
     {
         if (logger.IsEnabled(LogLevel.Information))
         {
-            logger.LogInformation("Checking minimal permissions for API {ApiName}...", openApiDocument.Servers.First().Url);
+            logger.LogInformation("Checking minimal permissions for API {ApiName}...", openApiDocument.Servers?.First().Url);
         }
 
         var tokenPermissions = new List<string>();
@@ -62,7 +62,19 @@ static class OpenApiDocumentExtensions
             }
 
             // get allowed scopes for the operation
-            if (!Enum.TryParse<OperationType>(method, true, out var operationType))
+            var httpMethod = method.ToUpperInvariant() switch
+            {
+                "GET" => HttpMethod.Get,
+                "PUT" => HttpMethod.Put,
+                "POST" => HttpMethod.Post,
+                "DELETE" => HttpMethod.Delete,
+                "OPTIONS" => HttpMethod.Options,
+                "HEAD" => HttpMethod.Head,
+                "PATCH" => HttpMethod.Patch,
+                "TRACE" => HttpMethod.Trace,
+                _ => null
+            };
+            if (httpMethod is null)
             {
                 errors.Add(new()
                 {
@@ -83,7 +95,7 @@ static class OpenApiDocumentExtensions
                 continue;
             }
 
-            if (!pathItem.Value.Value.Operations.TryGetValue(operationType, out var operation))
+            if (pathItem.Value.Value.Operations?.TryGetValue(httpMethod, out var operation) != true)
             {
                 errors.Add(new()
                 {
@@ -93,7 +105,7 @@ static class OpenApiDocumentExtensions
                 continue;
             }
 
-            var scopes = operation.GetEffectiveScopes(openApiDocument, logger, schemeName);
+            var scopes = operation!.GetEffectiveScopes(openApiDocument, logger, schemeName);
             if (scopes.Length != 0)
             {
                 operationsAndScopes[$"{method} {pathItem.Value.Key}"] = scopes;
@@ -101,7 +113,7 @@ static class OpenApiDocumentExtensions
 
             operationsFromRequests.Add(new()
             {
-                Method = operationType.ToString().ToUpperInvariant(),
+                Method = httpMethod.Method.ToUpperInvariant(),
                 OriginalUrl = url,
                 TokenizedUrl = pathItem.Value.Key
             });
@@ -126,13 +138,13 @@ static class OpenApiDocumentExtensions
         return permissionsInfo;
     }
 
-    public static KeyValuePair<string, OpenApiPathItem>? FindMatchingPathItem(this OpenApiDocument openApiDocument, string requestUrl, ILogger logger)
+    public static KeyValuePair<string, IOpenApiPathItem>? FindMatchingPathItem(this OpenApiDocument openApiDocument, string requestUrl, ILogger logger)
     {
-        foreach (var server in openApiDocument.Servers)
+        foreach (var server in openApiDocument.Servers ?? [])
         {
             logger.LogDebug("Checking server URL {ServerUrl}...", server.Url);
 
-            if (!UrlMatchesServerUrl(requestUrl, server.Url))
+            if (server.Url is null || !UrlMatchesServerUrl(requestUrl, server.Url))
             {
                 logger.LogDebug("Request URL {RequestUrl} does not match server URL {ServerUrl}", requestUrl, server.Url);
                 continue;
@@ -193,8 +205,8 @@ static class OpenApiDocumentExtensions
 
     public static string[] GetEffectiveScopes(this OpenApiOperation operation, OpenApiDocument openApiDocument, ILogger logger, string? schemeName)
     {
-        var oauth2Scheme = openApiDocument.GetOAuth2Schemes(schemeName).FirstOrDefault();
-        if (oauth2Scheme is null)
+        var oauth2Entry = openApiDocument.GetOAuth2Schemes(schemeName).FirstOrDefault();
+        if (oauth2Entry.Value is null)
         {
             if (string.IsNullOrWhiteSpace(schemeName))
             {
@@ -207,12 +219,14 @@ static class OpenApiDocumentExtensions
             return [];
         }
 
+        var schemeRef = new OpenApiSecuritySchemeReference(oauth2Entry.Key, openApiDocument);
+
         var globalScopes = Array.Empty<string>();
-        var globalOAuth2Requirement = openApiDocument.SecurityRequirements
-            .FirstOrDefault(req => req.ContainsKey(oauth2Scheme));
+        var globalOAuth2Requirement = openApiDocument.Security?
+            .FirstOrDefault(req => req.ContainsKey(schemeRef));
         if (globalOAuth2Requirement is not null)
         {
-            globalScopes = [.. globalOAuth2Requirement[oauth2Scheme]];
+            globalScopes = [.. globalOAuth2Requirement[schemeRef]];
         }
 
         if (operation.Security is null)
@@ -222,8 +236,8 @@ static class OpenApiDocumentExtensions
         }
 
         var operationOAuth2Requirement = operation.Security
-            .Where(req => req.ContainsKey(oauth2Scheme))
-            .SelectMany(req => req[oauth2Scheme]);
+            .Where(req => req.ContainsKey(schemeRef))
+            .SelectMany(req => req[schemeRef]);
         if (operationOAuth2Requirement is not null)
         {
             return [.. operationOAuth2Requirement];
@@ -232,13 +246,13 @@ static class OpenApiDocumentExtensions
         return [];
     }
 
-    public static OpenApiSecurityScheme[] GetOAuth2Schemes(this OpenApiDocument openApiDocument, string? schemeName)
+    public static KeyValuePair<string, IOpenApiSecurityScheme>[] GetOAuth2Schemes(this OpenApiDocument openApiDocument, string? schemeName)
     {
-        var schemes = openApiDocument.Components.SecuritySchemes
+        var schemes = openApiDocument.Components?.SecuritySchemes?
             .Where(s => s.Value.Type == SecuritySchemeType.OAuth2
                 && (string.IsNullOrWhiteSpace(schemeName) || string.Equals(schemeName, s.Key, StringComparison.Ordinal)));
 
-        return [.. schemes.Select(s => s.Value)];
+        return [.. schemes ?? []];
     }
 
     private static bool UrlMatchesServerUrl(string absoluteUrl, string serverUrl)
