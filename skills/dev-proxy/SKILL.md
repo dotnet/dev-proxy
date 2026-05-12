@@ -1,5 +1,7 @@
 ---
 name: dev-proxy
+metadata:
+  version: 1.0.0
 description: "Simulate API failures, mock responses, test rate limiting, and analyze API traffic using Dev Proxy's plugin-based proxy engine. WHEN: 'mock API responses', 'simulate API errors', 'test rate limiting', 'test error handling', 'mock OpenAI responses', 'test AI app', 'analyze API usage', 'configure Dev Proxy', 'install Dev Proxy', 'set up Dev Proxy', 'use Dev Proxy in CI/CD', 'chaos testing for APIs', 'run Dev Proxy in background', 'detached mode', 'run Dev Proxy detached'."
 ---
 
