@@ -17,6 +17,7 @@
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AnalysisMode>AllEnabledByDefault</AnalysisMode>
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
