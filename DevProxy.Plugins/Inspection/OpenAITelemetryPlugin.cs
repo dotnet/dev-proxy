@@ -848,6 +848,11 @@ public sealed class OpenAITelemetryPlugin(
     {
         Logger.LogTrace("AddCommonRequestTags() called");
 
+        if (!string.IsNullOrEmpty(openAiRequest.Model))
+        {
+            _ = activity.SetTag(SemanticConvention.GEN_AI_REQUEST_MODEL, openAiRequest.Model);
+        }
+
         if (openAiRequest.Temperature.HasValue)
         {
             _ = activity.SetTag(SemanticConvention.GEN_AI_REQUEST_TEMPERATURE,
@@ -914,6 +919,11 @@ public sealed class OpenAITelemetryPlugin(
             new(SemanticConvention.GEN_AI_REQUEST_MODEL, request.Model),
             new(SemanticConvention.GEN_AI_RESPONSE_MODEL, response.Model)
         ]);
+
+        if (!string.IsNullOrEmpty(response.Model))
+        {
+            _ = activity.SetTag(SemanticConvention.GEN_AI_RESPONSE_MODEL, response.Model);
+        }
 
         _ = activity.SetTag(SemanticConvention.GEN_AI_USAGE_INPUT_TOKENS, usage.PromptTokens)
             .SetTag(SemanticConvention.GEN_AI_USAGE_OUTPUT_TOKENS, usage.CompletionTokens)

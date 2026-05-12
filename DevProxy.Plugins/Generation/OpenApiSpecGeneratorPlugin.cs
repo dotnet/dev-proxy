@@ -9,11 +9,7 @@ using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi;
-using Microsoft.OpenApi.Any;
-using Microsoft.OpenApi.Extensions;
-using Microsoft.OpenApi.Interfaces;
-using Microsoft.OpenApi.Models;
-using Microsoft.OpenApi.Writers;
+using System.Text.Json.Nodes;
 using System.Collections.Specialized;
 using System.Globalization;
 using System.Text.Json;
@@ -40,7 +36,9 @@ public enum SpecVersion
 {
 #pragma warning disable CA1707
     v2_0,
-    v3_0
+    v3_0,
+    v3_1,
+    v3_2
 #pragma warning restore CA1707
 }
 
@@ -120,6 +118,11 @@ public sealed class OpenApiSpecGeneratorPlugin(
             {
                 var pathItem = GetOpenApiPathItem(request.Context.Session);
                 var parametrizedPath = ParametrizePath(pathItem, request.Context.Session.HttpClient.Request.RequestUri);
+                if (pathItem.Operations is null)
+                {
+                    Logger.LogDebug("No operations found for request {MethodAndUrlString}. Skipping...", methodAndUrlString);
+                    continue;
+                }
                 var operationInfo = pathItem.Operations.First();
                 operationInfo.Value.OperationId = await GetOperationIdAsync(
                     operationInfo.Key.ToString(),
@@ -145,21 +148,33 @@ public sealed class OpenApiSpecGeneratorPlugin(
         var generatedOpenApiSpecs = new Dictionary<string, string>();
         foreach (var openApiDoc in openApiDocs)
         {
+            if (openApiDoc.Servers is null || !openApiDoc.Servers.Any())
+            {
+                Logger.LogDebug("OpenAPI doc has no servers. Skipping...");
+                continue;
+            }
             var server = openApiDoc.Servers.First();
+            if (string.IsNullOrEmpty(server.Url))
+            {
+                Logger.LogDebug("Server URL is null or empty. Skipping...");
+                continue;
+            }
             var fileName = GetFileNameFromServerUrl(server.Url, Configuration.SpecFormat);
 
             var openApiSpecVersion = Configuration.SpecVersion switch
             {
                 SpecVersion.v2_0 => OpenApiSpecVersion.OpenApi2_0,
                 SpecVersion.v3_0 => OpenApiSpecVersion.OpenApi3_0,
+                SpecVersion.v3_1 => OpenApiSpecVersion.OpenApi3_1,
+                SpecVersion.v3_2 => OpenApiSpecVersion.OpenApi3_2,
                 _ => OpenApiSpecVersion.OpenApi3_0
             };
 
             var docString = Configuration.SpecFormat switch
             {
-                SpecFormat.Json => openApiDoc.SerializeAsJson(openApiSpecVersion),
-                SpecFormat.Yaml => openApiDoc.SerializeAsYaml(openApiSpecVersion),
-                _ => openApiDoc.SerializeAsJson(openApiSpecVersion)
+                SpecFormat.Json => await openApiDoc.SerializeAsJsonAsync(openApiSpecVersion, cancellationToken),
+                SpecFormat.Yaml => await openApiDoc.SerializeAsYamlAsync(openApiSpecVersion, cancellationToken),
+                _ => await openApiDoc.SerializeAsJsonAsync(openApiSpecVersion, cancellationToken)
             };
 
             Logger.LogDebug("  Writing OpenAPI spec to {FileName}...", fileName);
@@ -214,18 +229,21 @@ public sealed class OpenApiSpecGeneratorPlugin(
         var response = session.HttpClient.Response;
 
         var resource = GetLastNonTokenSegment(request.RequestUri.Segments);
-        var path = new OpenApiPathItem();
+        var path = new OpenApiPathItem
+        {
+            Operations = []
+        };
 
         var method = request.Method?.ToUpperInvariant() switch
         {
-            "DELETE" => OperationType.Delete,
-            "GET" => OperationType.Get,
-            "HEAD" => OperationType.Head,
-            "OPTIONS" => OperationType.Options,
-            "PATCH" => OperationType.Patch,
-            "POST" => OperationType.Post,
-            "PUT" => OperationType.Put,
-            "TRACE" => OperationType.Trace,
+            "DELETE" => HttpMethod.Delete,
+            "GET" => HttpMethod.Get,
+            "HEAD" => HttpMethod.Head,
+            "OPTIONS" => HttpMethod.Options,
+            "PATCH" => HttpMethod.Patch,
+            "POST" => HttpMethod.Post,
+            "PUT" => HttpMethod.Put,
+            "TRACE" => HttpMethod.Trace,
             _ => throw new NotSupportedException($"Method {request.Method} is not supported")
         };
         var operation = new OpenApiOperation
@@ -240,7 +258,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
         SetRequestBody(operation, request);
         SetResponseFromSession(operation, response);
 
-        path.Operations.Add(method, operation);
+        path.Operations?.Add(method, operation);
 
         return path;
     }
@@ -260,13 +278,13 @@ public sealed class OpenApiSpecGeneratorPlugin(
         }
 
         Logger.LogDebug("  Processing request body...");
-        operation.RequestBody = new()
+        operation.RequestBody = new OpenApiRequestBody
         {
-            Content = new Dictionary<string, OpenApiMediaType>
+            Content = new Dictionary<string, IOpenApiMediaType>
             {
                 {
                     GetMediaType(request.ContentType),
-                    new()
+                    new OpenApiMediaType
                     {
                         Schema = GetSchemaFromBody(GetMediaType(request.ContentType), request.BodyString)
                     }
@@ -300,12 +318,12 @@ public sealed class OpenApiSpecGeneratorPlugin(
                 continue;
             }
 
-            operation.Parameters.Add(new()
+            operation.Parameters?.Add(new OpenApiParameter()
             {
                 Name = header.Name,
                 In = ParameterLocation.Header,
                 Required = false,
-                Schema = new() { Type = "string" }
+                Schema = new OpenApiSchema() { Type = JsonSchemaType.String }
             });
             Logger.LogDebug("    Added header {HeaderName}", header.Name);
         }
@@ -334,11 +352,11 @@ public sealed class OpenApiSpecGeneratorPlugin(
                 Name = key,
                 In = ParameterLocation.Query,
                 Required = isRequired,
-                Schema = new() { Type = "string" }
+                Schema = new OpenApiSchema() { Type = JsonSchemaType.String }
             };
             SetParameterDefault(parameter, value);
 
-            operation.Parameters.Add(parameter);
+            operation.Parameters?.Add(parameter);
             Logger.LogDebug("    Added query string parameter {ParameterKey}", key);
         }
     }
@@ -349,7 +367,10 @@ public sealed class OpenApiSpecGeneratorPlugin(
         {
             return;
         }
-        parameter.Schema.Default = new OpenApiString(value.ToString());
+        if (parameter.Schema is OpenApiSchema schema)
+        {
+            schema.Default = JsonValue.Create(value.ToString());
+        }
     }
 
     private void SetResponseFromSession(OpenApiOperation operation, Response response)
@@ -371,7 +392,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
         {
             Logger.LogDebug("    Response has body");
 
-            openApiResponse.Content.Add(GetMediaType(response.ContentType), new()
+            openApiResponse.Content?.Add(GetMediaType(response.ContentType), new OpenApiMediaType()
             {
                 Schema = GetSchemaFromBody(GetMediaType(response.ContentType), response.BodyString)
             });
@@ -400,15 +421,15 @@ public sealed class OpenApiSpecGeneratorPlugin(
                     continue;
                 }
 
-                if (openApiResponse.Headers.ContainsKey(header.Name))
+                if (openApiResponse.Headers?.ContainsKey(header.Name) == true)
                 {
                     Logger.LogDebug("    Header {HeaderName} already exists in response", header.Name);
                     continue;
                 }
 
-                openApiResponse.Headers.Add(header.Name, new()
+                openApiResponse.Headers?.Add(header.Name, new OpenApiHeader()
                 {
-                    Schema = new() { Type = "string" }
+                    Schema = new OpenApiSchema() { Type = JsonSchemaType.String }
                 });
                 Logger.LogDebug("    Added header {HeaderName}", header.Name);
             }
@@ -418,7 +439,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
             Logger.LogDebug("    Response doesn't have headers");
         }
 
-        operation.Responses.Add(responseCode, openApiResponse);
+        operation.Responses?.Add(responseCode, openApiResponse);
     }
 
     private OpenApiSchema? GetSchemaFromBody(string? contentType, string body)
@@ -437,7 +458,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
                 Logger.LogDebug("      Ignoring response types");
                 return new()
                 {
-                    Type = "string"
+                    Type = JsonSchemaType.String
                 };
             }
 
@@ -450,7 +471,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
     private void AddOrMergePathItem(List<OpenApiDocument> openApiDocs, OpenApiPathItem pathItem, Uri requestUri, string parametrizedPath)
     {
         var serverUrl = requestUri.GetLeftPart(UriPartial.Authority);
-        var openApiDoc = openApiDocs.FirstOrDefault(d => d.Servers.Any(s => s.Url == serverUrl));
+        var openApiDoc = openApiDocs.FirstOrDefault(d => d.Servers?.Any(s => s.Url == serverUrl) == true);
 
         if (openApiDoc is null)
         {
@@ -491,31 +512,34 @@ public sealed class OpenApiSpecGeneratorPlugin(
         }
 
         Logger.LogDebug("  Merging path {ParametrizedPath} into OpenAPI spec...", parametrizedPath);
-        var operation = pathItem.Operations.First();
-        AddOrMergeOperation(value, operation.Key, operation.Value);
+        var operation = pathItem.Operations?.First();
+        if (operation is not null)
+        {
+            AddOrMergeOperation((OpenApiPathItem)value, operation.Value.Key, operation.Value.Value);
+        }
     }
 
-    private void AddOrMergeOperation(OpenApiPathItem pathItem, OperationType operationType, OpenApiOperation apiOperation)
+    private void AddOrMergeOperation(OpenApiPathItem pathItem, HttpMethod httpMethod, OpenApiOperation apiOperation)
     {
-        if (!pathItem.Operations.TryGetValue(operationType, out var value))
+        if (pathItem.Operations?.TryGetValue(httpMethod, out var value) != true)
         {
-            Logger.LogDebug("    Adding operation {OperationType} to path...", operationType);
+            Logger.LogDebug("    Adding operation {OperationType} to path...", httpMethod);
 
-            pathItem.AddOperation(operationType, apiOperation);
+            pathItem.AddOperation(httpMethod, apiOperation);
             // since we've just added the operation, we're done
             return;
         }
 
-        Logger.LogDebug("    Merging operation {OperationType} into path...", operationType);
+        Logger.LogDebug("    Merging operation {OperationType} into path...", httpMethod);
 
-        var operation = value;
+        var operation = value!;
 
         AddOrMergeParameters(operation, apiOperation.Parameters);
-        AddOrMergeRequestBody(operation, apiOperation.RequestBody);
+        AddOrMergeRequestBody(operation, (OpenApiRequestBody?)apiOperation.RequestBody);
         AddOrMergeResponse(operation, apiOperation.Responses);
     }
 
-    private void AddOrMergeParameters(OpenApiOperation operation, IList<OpenApiParameter> parameters)
+    private void AddOrMergeParameters(OpenApiOperation operation, IList<IOpenApiParameter>? parameters)
     {
         if (parameters is null || !parameters.Any())
         {
@@ -527,11 +551,11 @@ public sealed class OpenApiSpecGeneratorPlugin(
 
         foreach (var parameter in parameters)
         {
-            var paramFromOperation = operation.Parameters.FirstOrDefault(p => p.Name == parameter.Name && p.In == parameter.In);
+            var paramFromOperation = operation.Parameters?.FirstOrDefault(p => p.Name == parameter.Name && p.In == parameter.In);
             if (paramFromOperation is null)
             {
                 Logger.LogDebug("      Adding parameter {ParameterName} to operation...", parameter.Name);
-                operation.Parameters.Add(parameter);
+                operation.Parameters?.Add(parameter);
                 continue;
             }
 
@@ -540,7 +564,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
         }
     }
 
-    private void MergeSchema(OpenApiSchema? source, OpenApiSchema? target)
+    private void MergeSchema(IOpenApiSchema? source, IOpenApiSchema? target)
     {
         if (source is null || target is null)
         {
@@ -548,7 +572,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
             return;
         }
 
-        if (source.Type != "object" || target.Type != "object")
+        if (source.Type != JsonSchemaType.Object || target.Type != JsonSchemaType.Object)
         {
             Logger.LogDebug("        Source or target schema is not an object. Skipping...");
             return;
@@ -576,7 +600,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
                 continue;
             }
 
-            if (property.Value.Type != "object")
+            if (property.Value.Type != JsonSchemaType.Object)
             {
                 Logger.LogDebug("        Property already found but is not an object. Skipping...");
                 continue;
@@ -587,22 +611,30 @@ public sealed class OpenApiSpecGeneratorPlugin(
         }
     }
 
-    private void AddOrMergeRequestBody(OpenApiOperation operation, OpenApiRequestBody requestBody)
+    private void AddOrMergeRequestBody(OpenApiOperation operation, OpenApiRequestBody? requestBody)
     {
-        if (requestBody is null || !requestBody.Content.Any())
+        if (requestBody is null || requestBody.Content is null || !requestBody.Content.Any())
         {
             Logger.LogDebug("    No request body to process");
             return;
         }
 
         var requestBodyType = requestBody.Content.FirstOrDefault().Key;
-        _ = operation.RequestBody.Content.TryGetValue(requestBodyType, out var bodyFromOperation);
+        IOpenApiMediaType? bodyFromOperation = null;
+        if (operation.RequestBody?.Content is not null)
+        {
+            _ = operation.RequestBody.Content.TryGetValue(requestBodyType, out bodyFromOperation);
+        }
 
         if (bodyFromOperation is null)
         {
             Logger.LogDebug("    Adding request body to operation...");
 
-            operation.RequestBody.Content.Add(requestBody.Content.FirstOrDefault());
+            operation.RequestBody ??= new OpenApiRequestBody
+            {
+                Content = new Dictionary<string, IOpenApiMediaType>()
+            };
+            operation.RequestBody.Content!.Add(requestBody.Content.FirstOrDefault());
             // since we've just added the request body, we're done
             return;
         }
@@ -611,7 +643,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
         MergeSchema(bodyFromOperation.Schema, requestBody.Content.FirstOrDefault().Value.Schema);
     }
 
-    private void AddOrMergeResponse(OpenApiOperation operation, OpenApiResponses apiResponses)
+    private void AddOrMergeResponse(OpenApiOperation operation, OpenApiResponses? apiResponses)
     {
         if (apiResponses is null)
         {
@@ -622,31 +654,39 @@ public sealed class OpenApiSpecGeneratorPlugin(
         var apiResponseInfo = apiResponses.FirstOrDefault();
         var apiResponseStatusCode = apiResponseInfo.Key;
         var apiResponse = apiResponseInfo.Value;
-        _ = operation.Responses.TryGetValue(apiResponseStatusCode, out var responseFromOperation);
+        IOpenApiResponse? responseFromOperation = null;
+        if (operation.Responses is not null)
+        {
+            _ = operation.Responses.TryGetValue(apiResponseStatusCode, out responseFromOperation);
+        }
 
         if (responseFromOperation is null)
         {
             Logger.LogDebug("    Adding response {ApiResponseStatusCode} to operation...", apiResponseStatusCode);
 
-            operation.Responses.Add(apiResponseStatusCode, apiResponse);
+            operation.Responses?.Add(apiResponseStatusCode, apiResponse);
             // since we've just added the response, we're done
             return;
         }
 
-        if (!apiResponse.Content.Any())
+        if (apiResponse.Content is null || !apiResponse.Content.Any())
         {
             Logger.LogDebug("    No response content to process");
             return;
         }
 
         var apiResponseContentType = apiResponse.Content.First().Key;
-        _ = responseFromOperation.Content.TryGetValue(apiResponseContentType, out var contentFromOperation);
+        IOpenApiMediaType? contentFromOperation = null;
+        if (responseFromOperation.Content is not null)
+        {
+            _ = responseFromOperation.Content.TryGetValue(apiResponseContentType, out contentFromOperation);
+        }
 
         if (contentFromOperation is null)
         {
             Logger.LogDebug("    Adding response {ApiResponseContentType} to {ApiResponseStatusCode} to response...", apiResponseContentType, apiResponseStatusCode);
 
-            responseFromOperation.Content.Add(apiResponse.Content.First());
+            responseFromOperation.Content?.Add(apiResponse.Content.First());
             // since we've just added the content, we're done
             return;
         }
@@ -680,12 +720,12 @@ public sealed class OpenApiSpecGeneratorPlugin(
                 var parameterName = $"{previousSegment}-id";
                 segments[i] = $"{{{parameterName}}}{(requestUri.Segments[i].EndsWith('/') ? "/" : "")}";
 
-                pathItem.Parameters.Add(new()
+                pathItem.Parameters?.Add(new OpenApiParameter
                 {
                     Name = parameterName,
                     In = ParameterLocation.Path,
                     Required = true,
-                    Schema = new() { Type = "string" }
+                    Schema = new OpenApiSchema { Type = JsonSchemaType.String }
                 });
             }
             else
@@ -759,7 +799,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
         {
             return new()
             {
-                Type = "object"
+                Type = JsonSchemaType.Object
             };
         }
     }
@@ -773,26 +813,26 @@ public sealed class OpenApiSpecGeneratorPlugin(
 #pragma warning restore IDE0010
         {
             case JsonValueKind.String:
-                schema.Type = "string";
+                schema.Type = JsonSchemaType.String;
                 break;
             case JsonValueKind.Number:
-                schema.Type = "number";
+                schema.Type = JsonSchemaType.Number;
                 break;
             case JsonValueKind.True:
             case JsonValueKind.False:
-                schema.Type = "boolean";
+                schema.Type = JsonSchemaType.Boolean;
                 break;
             case JsonValueKind.Object:
-                schema.Type = "object";
+                schema.Type = JsonSchemaType.Object;
                 schema.Properties = jsonElement.EnumerateObject()
-                  .ToDictionary(p => p.Name, p => GetSchemaFromJsonElement(p.Value));
+                  .ToDictionary(p => p.Name, p => (IOpenApiSchema)GetSchemaFromJsonElement(p.Value));
                 break;
             case JsonValueKind.Array:
-                schema.Type = "array";
+                schema.Type = JsonSchemaType.Array;
                 schema.Items = GetSchemaFromJsonElement(jsonElement.EnumerateArray().FirstOrDefault());
                 break;
             default:
-                schema.Type = "object";
+                schema.Type = JsonSchemaType.Object;
                 break;
         }
 
