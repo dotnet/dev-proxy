@@ -11,15 +11,6 @@
           "Azure.Core": "1.53.0"
         }
       },
-      "Microsoft.AspNetCore.OpenApi": {
-        "type": "Direct",
-        "requested": "[10.0.7, )",
-        "resolved": "10.0.7",
-        "contentHash": "vKiAcGXG0BwNVw3bOjjWRLnp9tR18dR7MiwpvC94h0yFS+zfnzGHzS/JmmgwUdRixrGxrlIMRAWrVc+2DfAGlg==",
-        "dependencies": {
-          "Microsoft.OpenApi": "2.0.0"
-        }
-      },
       "Microsoft.EntityFrameworkCore.Sqlite": {
         "type": "Direct",
         "requested": "[10.0.7, )",
@@ -76,12 +67,6 @@
         "dependencies": {
           "OpenTelemetry": "1.15.3"
         }
-      },
-      "Scalar.AspNetCore": {
-        "type": "Direct",
-        "requested": "[2.14.11, )",
-        "resolved": "2.14.11",
-        "contentHash": "EthfC0++GjWX5JB84OUTsNlzRMr8v6zGinx8i2msKWitAkvGbvjBz7ET9XoUis4Z3M+iH6jIJ66uUGzZqmrSGg=="
       },
       "System.CommandLine": {
         "type": "Direct",
