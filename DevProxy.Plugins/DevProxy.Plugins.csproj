@@ -25,11 +25,11 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.7">
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.8">
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Extensions.FileSystemGlobbing" Version="10.0.7">
+    <PackageReference Include="Microsoft.Extensions.FileSystemGlobbing" Version="10.0.8">
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
@@ -57,7 +57,7 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="System.CommandLine" Version="2.0.7">
+    <PackageReference Include="System.CommandLine" Version="2.0.8">
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
