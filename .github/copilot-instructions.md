@@ -34,7 +34,7 @@ To create a new plugin:
 
 - **Commit messages:** Clear, succinct, and reference the issue they close when applicable
 - **Versioning:** We follow semver. Use the `upgrade-devproxy-version` skill for version bumps
-- **Release:** After release builds, homebrew and winget are updated manually
+- **Release:** After release builds, homebrew is updated manually. Use the `publish-to-winget` skill for winget submissions
 
 ## Testing Code Changes
 
