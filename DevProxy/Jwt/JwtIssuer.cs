@@ -37,19 +37,24 @@ internal sealed class JwtIssuer(string issuer, byte[] signingKeyMaterial)
 
         if (options.Claims is { Count: > 0 } claimsToAdd)
         {
-            // filter out registered claims
-            // https://www.rfc-editor.org/rfc/rfc7519#section-4.1            
-            _ = claimsToAdd.Remove(JwtRegisteredClaimNames.Iss);
-            _ = claimsToAdd.Remove(JwtRegisteredClaimNames.Sub);
-            _ = claimsToAdd.Remove(JwtRegisteredClaimNames.Aud);
-            _ = claimsToAdd.Remove(JwtRegisteredClaimNames.Exp);
-            _ = claimsToAdd.Remove(JwtRegisteredClaimNames.Nbf);
-            _ = claimsToAdd.Remove(JwtRegisteredClaimNames.Iat);
-            _ = claimsToAdd.Remove(JwtRegisteredClaimNames.Jti);
-            _ = claimsToAdd.Remove("scp");
-            _ = claimsToAdd.Remove("roles");
+            // filter out registered claims using case-insensitive comparison
+            // https://www.rfc-editor.org/rfc/rfc7519#section-4.1
+            var restrictedClaims = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                JwtRegisteredClaimNames.Iss,
+                JwtRegisteredClaimNames.Sub,
+                JwtRegisteredClaimNames.Aud,
+                JwtRegisteredClaimNames.Exp,
+                JwtRegisteredClaimNames.Nbf,
+                JwtRegisteredClaimNames.Iat,
+                JwtRegisteredClaimNames.Jti,
+                "scp",
+                "roles"
+            };
 
-            identity.AddClaims(claimsToAdd.Select(kvp => new Claim(kvp.Key, kvp.Value)));
+            identity.AddClaims(claimsToAdd
+                .Where(kvp => !restrictedClaims.Contains(kvp.Key))
+                .Select(kvp => new Claim(kvp.Key, kvp.Value)));
         }
 
         // Although the JwtPayload supports having multiple audiences registered, the
