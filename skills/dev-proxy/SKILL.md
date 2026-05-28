@@ -1,7 +1,7 @@
 ---
 name: dev-proxy
 metadata:
-  version: 1.0.0
+  version: 1.1.0
 description: "Simulate API failures, mock responses, test rate limiting, and analyze API traffic using Dev Proxy's plugin-based proxy engine. WHEN: 'mock API responses', 'simulate API errors', 'test rate limiting', 'test error handling', 'mock OpenAI responses', 'test AI app', 'analyze API usage', 'configure Dev Proxy', 'install Dev Proxy', 'set up Dev Proxy', 'use Dev Proxy in CI/CD', 'chaos testing for APIs', 'run Dev Proxy in background', 'detached mode', 'run Dev Proxy detached'."
 ---
 
@@ -79,7 +79,7 @@ A quick reference. All configuration details are in [references/configuration.md
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v3.0.0/rc.schema.json",
   "plugins": [
     {
       "name": "PluginName",
@@ -90,7 +90,7 @@ A quick reference. All configuration details are in [references/configuration.md
   ],
   "urlsToWatch": ["https://api.contoso.com/*"],
   "pluginConfig": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/pluginname.schema.json"
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v3.0.0/pluginname.schema.json"
   }
 }
 ```

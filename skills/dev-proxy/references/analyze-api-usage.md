@@ -40,7 +40,7 @@ Use `OpenApiSpecGeneratorPlugin` to reverse-engineer OpenAPI specs from intercep
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v3.0.0/rc.schema.json",
   "plugins": [
     {
       "name": "OpenApiSpecGeneratorPlugin",
@@ -56,7 +56,7 @@ Use `OpenApiSpecGeneratorPlugin` to reverse-engineer OpenAPI specs from intercep
   ],
   "urlsToWatch": ["https://api.contoso.com/*"],
   "openApiSpecGeneratorPlugin": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/openapispecgeneratorplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v3.0.0/openapispecgeneratorplugin.schema.json",
     "specVersion": "v3_0",
     "specFormat": "Json",
     "includeOptionsRequests": false,
@@ -349,7 +349,7 @@ Reporter plugins format report output. Always place them AFTER reporting plugins
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v3.0.0/rc.schema.json",
   "plugins": [
     { "name": "ExecutionSummaryPlugin", "enabled": true, "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll", "configSection": "executionSummaryPlugin" },
     { "name": "GraphMinimalPermissionsPlugin", "enabled": true, "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll", "configSection": "graphMinimalPermissionsPlugin" },
@@ -369,7 +369,7 @@ Reporter plugins format report output. Always place them AFTER reporting plugins
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v3.0.0/rc.schema.json",
   "plugins": [
     { "name": "ApiCenterOnboardingPlugin", "enabled": true, "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll", "configSection": "apiCenterOnboardingPlugin" },
     { "name": "ApiCenterProductionVersionPlugin", "enabled": true, "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll", "configSection": "apiCenterProductionVersionPlugin" },
@@ -385,7 +385,7 @@ Reporter plugins format report output. Always place them AFTER reporting plugins
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v3.0.0/rc.schema.json",
   "plugins": [
     { "name": "UrlDiscoveryPlugin", "enabled": true, "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll" },
     { "name": "OpenApiSpecGeneratorPlugin", "enabled": true, "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll", "configSection": "openApiSpecGeneratorPlugin" },

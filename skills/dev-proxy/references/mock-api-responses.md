@@ -20,7 +20,7 @@ The most common mocking plugin. Returns predefined responses matched by URL, HTT
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v3.0.0/rc.schema.json",
   "plugins": [
     {
       "name": "MockResponsePlugin",
@@ -31,7 +31,7 @@ The most common mocking plugin. Returns predefined responses matched by URL, HTT
   ],
   "urlsToWatch": ["https://api.contoso.com/*"],
   "mocksPlugin": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/mockresponseplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v3.0.0/mockresponseplugin.schema.json",
     "mocksFile": "mocks.json",
     "blockUnmockedRequests": false
   }
@@ -46,7 +46,7 @@ CLI overrides: `--no-mocks` to disable, `--mocks-file <path>` to change mock fil
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/mockresponseplugin.mocksfile.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v3.0.0/mockresponseplugin.mocksfile.schema.json",
   "mocks": [
     {
       "request": {
@@ -174,7 +174,7 @@ Creates a fully functional CRUD API backed by an in-memory JSON data store. Supp
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v3.0.0/rc.schema.json",
   "plugins": [
     {
       "name": "CrudApiPlugin",
@@ -184,7 +184,7 @@ Creates a fully functional CRUD API backed by an in-memory JSON data store. Supp
     }
   ],
   "customersApi": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/crudapiplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v3.0.0/crudapiplugin.schema.json",
     "apiFile": "customers-api.json"
   }
 }
@@ -194,7 +194,7 @@ Creates a fully functional CRUD API backed by an in-memory JSON data store. Supp
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/crudapiplugin.apifile.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v3.0.0/crudapiplugin.apifile.schema.json",
   "baseUrl": "https://api.contoso.com/v1/customers",
   "dataFile": "customers-data.json",
   "actions": [
@@ -226,9 +226,44 @@ Creates a fully functional CRUD API backed by an in-memory JSON data store. Supp
 - The data file must be a JSON array (can be empty: `[]`).
 - Data persists in memory during the Dev Proxy session.
 
-### Entra Auth for CRUD APIs
+### Auth for CRUD APIs
 
-Set `"auth": "entra"` in the API file:
+CRUD APIs support two built-in authentication modes: API Key and Entra. Set the `auth` property in the API definition file to `"apiKey"` or `"entra"`.
+
+#### API Key Auth
+
+Set `"auth": "apiKey"` and provide `apiKeyAuthConfig`:
+
+```json
+{
+  "baseUrl": "https://api.contoso.com/v1/customers",
+  "dataFile": "customers-data.json",
+  "auth": "apiKey",
+  "apiKeyAuthConfig": {
+    "apiKey": "my-secret-key",
+    "headerName": "X-API-Key",
+    "queryParameterName": "code"
+  },
+  "actions": [
+    { "action": "getAll" },
+    { "action": "create" }
+  ]
+}
+```
+
+Dev Proxy checks the header first, then the query parameter. If either matches, the request is authorized.
+
+| Property | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `apiKey` | Yes | — | The valid API key that must be present in the request |
+| `headerName` | No | — | HTTP header name to read the API key from |
+| `queryParameterName` | No | — | Query parameter name to read the API key from |
+
+At least one of `headerName` or `queryParameterName` must be specified — omitting both means no request can be authorized. API Key auth applies to all actions and cannot be configured per-action.
+
+#### Entra Auth
+
+Set `"auth": "entra"` and provide `entraAuthConfig`:
 
 ```json
 {
@@ -266,7 +301,7 @@ Mocks STDIO communication for MCP servers and STDIO-based apps. Use with `devpro
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v3.0.0/rc.schema.json",
   "plugins": [
     {
       "name": "MockStdioResponsePlugin",
@@ -276,7 +311,7 @@ Mocks STDIO communication for MCP servers and STDIO-based apps. Use with `devpro
     }
   ],
   "mockStdioResponsePlugin": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/mockstdioresponseplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v3.0.0/mockstdioresponseplugin.schema.json",
     "mocksFile": "stdio-mocks.json",
     "blockUnmockedRequests": false
   }
@@ -287,7 +322,7 @@ Mocks STDIO communication for MCP servers and STDIO-based apps. Use with `devpro
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v2.4.0/mockstdioresponseplugin.mocksfile.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v3.0.0/mockstdioresponseplugin.mocksfile.schema.json",
   "mocks": [
     {
       "request": { "bodyFragment": "initialize" },
