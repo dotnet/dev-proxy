@@ -91,9 +91,9 @@
       },
       "Scriban": {
         "type": "Direct",
-        "requested": "[7.2.0, )",
-        "resolved": "7.2.0",
-        "contentHash": "GiAuu6bCPVWJeMMK8AkJMCNX+wyqt2qgiKjVAPLvRWxzBwpDJjLhJltVP034tsZUHOkBtdfA/Otrny+n3NelBw=="
+        "requested": "[7.2.1, )",
+        "resolved": "7.2.1",
+        "contentHash": "5Jw6PyOiY6RBhC5XgtZbOO6ZbZOXlqUDS35IVhLdAPRZHclf3iW35Tdh4FCw1/gNCJ9ia1CGVQabypGPYVThbw=="
       },
       "System.CommandLine": {
         "type": "Direct",
