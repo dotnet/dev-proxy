@@ -41,7 +41,7 @@
     <PackageReference Include="Microsoft.OpenApi" Version="3.5.3" />
     <PackageReference Include="Microsoft.OpenApi.YamlReader" Version="3.5.3" />
     <PackageReference Include="Newtonsoft.Json.Schema" Version="4.0.1" />
-    <PackageReference Include="Scriban" Version="7.2.0" />
+    <PackageReference Include="Scriban" Version="7.2.1" />
     <PackageReference Include="System.CommandLine" Version="2.0.8" />
     <PackageReference Include="Unobtanium.Web.Proxy" Version="0.1.5" />
     <PackageReference Include="YamlDotNet" Version="18.0.0" />
