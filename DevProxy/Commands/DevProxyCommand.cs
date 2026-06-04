@@ -606,7 +606,18 @@ sealed class DevProxyCommand : RootCommand
             ActivatorUtilities.CreateInstance<StopCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<LogsCommand>(_serviceProvider)
         };
-        commands.AddRange(_plugins.SelectMany(p => p.GetCommands()));
+        var pluginCommands = _plugins.SelectMany(p => p.GetCommands());
+        foreach (var group in pluginCommands.GroupBy(c => c.Name))
+        {
+            var command = group.First();
+            commands.Add(command);
+            if (group.Count() > 1)
+            {
+                _logger.LogWarning(
+                    "Multiple plugins register the '{CommandName}' command. Only the first registration will be used",
+                    command.Name);
+            }
+        }
         this.AddCommands(commands.OrderByName());
 
         HelpExamples.Add(this, [
