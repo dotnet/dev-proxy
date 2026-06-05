@@ -18,7 +18,7 @@
     "subscriptionId": {
       "type": "string"
     },
-    "workspace": {
+    "workspaceName": {
       "type": "string"
     }
   },

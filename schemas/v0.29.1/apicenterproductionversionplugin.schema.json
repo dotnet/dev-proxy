@@ -19,7 +19,7 @@
       "type": "string",
       "description": "ID of the Azure subscription where the Azure API Center instance is located."
     },
-    "workspace": {
+    "workspaceName": {
       "type": "string",
       "description": "Name of the Azure API Center workspace to use. Default is 'default'."
     }
