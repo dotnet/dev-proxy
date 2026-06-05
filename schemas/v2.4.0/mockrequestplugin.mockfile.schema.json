@@ -33,7 +33,7 @@
           "description": "HTTP method to use (default: POST)."
         },
         "body": {
-          "type": "object",
+          "type": ["object", "string"],
           "description": "Body of the request (object or string)."
         },
         "headers": {

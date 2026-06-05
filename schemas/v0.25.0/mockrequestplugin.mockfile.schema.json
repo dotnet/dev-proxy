@@ -29,7 +29,7 @@
           ]
         },
         "body": {
-          "type": "object"
+          "type": ["object", "string"]
         },
         "headers": {
           "type": "array",
