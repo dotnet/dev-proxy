@@ -3,12 +3,40 @@
 // See the LICENSE file in the project root for more information.
 
 using Microsoft.Extensions.Logging;
+using System.Text;
 using Titanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Utils;
 
 internal sealed class HttpUtils
 {
+    // Decodes an HTTP message body (request or response) to a string.
+    // If the Content-Type header specifies a charset, that encoding is used.
+    // Otherwise, the body is decoded as UTF-8. The underlying proxy library
+    // defaults to ISO-8859-1 per the obsolete RFC 2616, but modern standards
+    // (RFC 7231, RFC 8259) treat UTF-8 as the default for JSON and most web content.
+    public static string GetBodyString(string? contentType, byte[] body)
+    {
+        if (contentType is not null)
+        {
+            try
+            {
+                var ct = new System.Net.Mime.ContentType(contentType);
+                if (!string.IsNullOrEmpty(ct.CharSet))
+                {
+                    return Encoding.GetEncoding(ct.CharSet).GetString(body);
+                }
+            }
+            catch
+            {
+                // Malformed Content-Type or unsupported charset; fall through
+                // to UTF-8 default
+            }
+        }
+
+        return Encoding.UTF8.GetString(body);
+    }
+
     public static string GetBodyFromStreamingResponse(Response response, ILogger logger)
     {
         logger.LogTrace("{Method} called", nameof(GetBodyFromStreamingResponse));
