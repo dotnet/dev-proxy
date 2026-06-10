@@ -25,12 +25,12 @@
       },
       "Microsoft.IdentityModel.Protocols.OpenIdConnect": {
         "type": "Direct",
-        "requested": "[8.19.0, )",
-        "resolved": "8.19.0",
-        "contentHash": "BbUgZqFu8fV8IGR3lg3ObMQaOHWiCm8VbpZRPsl43jHUtdDM+lFU/uTmcazAndzVo/5+BP8t/plbj7KtrjvtXA==",
+        "requested": "[8.19.1, )",
+        "resolved": "8.19.1",
+        "contentHash": "+PL2cgXLdYTEi0y1jnz0DfnNjU8Ncwp8+QZnDKuF5hWXqd9oNKHwR27MgZjOw9F2lUigA58BqaMkuO1orvnpgw==",
         "dependencies": {
-          "Microsoft.IdentityModel.Protocols": "8.19.0",
-          "System.IdentityModel.Tokens.Jwt": "8.19.0"
+          "Microsoft.IdentityModel.Protocols": "8.19.1",
+          "System.IdentityModel.Tokens.Jwt": "8.19.1"
         }
       },
       "Microsoft.VisualStudio.Threading": {
@@ -76,12 +76,12 @@
       },
       "System.IdentityModel.Tokens.Jwt": {
         "type": "Direct",
-        "requested": "[8.19.0, )",
-        "resolved": "8.19.0",
-        "contentHash": "7vzW2pkd7+yv7SMp3oI3ThqFTCPLgwViUQ+tObMUz9zFSLCOlu2qfLDKClpAkG7FTqc1+CUcs2IpoUsu1dEAnQ==",
+        "requested": "[8.19.1, )",
+        "resolved": "8.19.1",
+        "contentHash": "2VHcRtT95GAcW1E3aVBLvL2rAAMxKHXKMXKXFyWzwgkdFXZPMMvP8tVOfnRydL4vTr1RirNuGC6T8VSEF2YsPQ==",
         "dependencies": {
-          "Microsoft.IdentityModel.JsonWebTokens": "8.19.0",
-          "Microsoft.IdentityModel.Tokens": "8.19.0"
+          "Microsoft.IdentityModel.JsonWebTokens": "8.19.1",
+          "Microsoft.IdentityModel.Tokens": "8.19.1"
         }
       },
       "Unobtanium.Web.Proxy": {
@@ -195,40 +195,40 @@
       },
       "Microsoft.IdentityModel.Abstractions": {
         "type": "Transitive",
-        "resolved": "8.19.0",
-        "contentHash": "DqbQeeyVPXjcSs08En6xCF+gm8T3dsLBURU4VdDTSYi+zs9A15/jNiiGbU49T/6OBq1kR0ooReFUe1AX9UXr+Q=="
+        "resolved": "8.19.1",
+        "contentHash": "gFA8THIk23uNF/vMdOHnjIdXD1LyA2g12cHzMJ+Xag6WpgWLw6E/6uCXxvA0gp9d2yAvkRt3xzFzMUiO/hofnQ=="
       },
       "Microsoft.IdentityModel.JsonWebTokens": {
         "type": "Transitive",
-        "resolved": "8.19.0",
-        "contentHash": "KLAHgOLyhA30sneeaFhIYvh+X8pb/XZdtcFe3gsCDXTLOFEfP+bMw6rEHyCVzsfj9fqZuIx9fumc0D3cd+To4g==",
+        "resolved": "8.19.1",
+        "contentHash": "6eeY+y2QFyjj3XnCz/8gJdoP5smYHTS9ow1bw2nsZzDIPjPhBZlackYTIduSMipVpxnoT/B62LkrXX2jPggOXg==",
         "dependencies": {
-          "Microsoft.IdentityModel.Tokens": "8.19.0"
+          "Microsoft.IdentityModel.Tokens": "8.19.1"
         }
       },
       "Microsoft.IdentityModel.Logging": {
         "type": "Transitive",
-        "resolved": "8.19.0",
-        "contentHash": "aXsEiyfzu4nW0SN1E/G4/dXZ+S4AGOsgKlKWDudCjHFqoGA7BBob3ohxo/Ysn9lelSHB5J8syRKReQoPwIvokg==",
+        "resolved": "8.19.1",
+        "contentHash": "H+sMrMpdbWnwkQnpb/ESkQovtOgdefmj0ecGCcP40mDKzE5i4dUYkH6599M9mWYFNGNJnTp92l/9wLubYXWimw==",
         "dependencies": {
-          "Microsoft.IdentityModel.Abstractions": "8.19.0"
+          "Microsoft.IdentityModel.Abstractions": "8.19.1"
         }
       },
       "Microsoft.IdentityModel.Protocols": {
         "type": "Transitive",
-        "resolved": "8.19.0",
-        "contentHash": "N5lHl1E3LCS0d/AU+rCAD6FKGlXkJDzISFmB2ok2gnPfCymH8JfDiXhFeX/I0IU/bC+Jgqu/mAUiCRdMs86b2A==",
+        "resolved": "8.19.1",
+        "contentHash": "7jtpdKFIncGCmob3y3LnSHihCYtmw8mlPFI+DV5rdx4YFOfCVlNQ9RhtLAQnjC9kges1+w/8BCnAN3QhqOc0ng==",
         "dependencies": {
-          "Microsoft.IdentityModel.Tokens": "8.19.0"
+          "Microsoft.IdentityModel.Tokens": "8.19.1"
         }
       },
       "Microsoft.IdentityModel.Tokens": {
         "type": "Transitive",
-        "resolved": "8.19.0",
-        "contentHash": "mfGpkjc448G0JfJsPdgT3WMKiyk6QvlQLuNEnOrohgQMcVkCwyUtlfzVDIdliMxN2tOcu1Et81DQQ/+3RMiwfw==",
+        "resolved": "8.19.1",
+        "contentHash": "KDiuSLXud2AFVNAOottd8ztVysfPeHyr4r8gofU3/VKUXlI7oytzGTnPsNJ/B3nui17rgz8wAdWNJOtzPjkUxw==",
         "dependencies": {
           "Microsoft.Bcl.Cryptography": "10.0.2",
-          "Microsoft.IdentityModel.Logging": "8.19.0"
+          "Microsoft.IdentityModel.Logging": "8.19.1"
         }
       },
       "Microsoft.OpenApi": {
