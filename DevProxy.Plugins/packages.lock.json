@@ -230,19 +230,19 @@
       },
       "Microsoft.Extensions.Configuration.Abstractions": {
         "type": "Transitive",
-        "resolved": "10.0.9",
-        "contentHash": "qGhRPd3VxfLV9UqatVOiD9mAeUbj2KiMwGFYC5uXlzExiZQoe4X/hdmzGIU7BQjNLTqCnnbTHVyBglG3668/HA==",
+        "resolved": "10.0.8",
+        "contentHash": "I63esIFbL3h5pSt7gXpXOlmcwDmYBUoYNEglKfDPFUqtYvSV84f2l28hO2lfVXsV0wdlplgAM7IVz16matapSg==",
         "dependencies": {
-          "Microsoft.Extensions.Primitives": "10.0.9"
+          "Microsoft.Extensions.Primitives": "10.0.8"
         }
       },
       "Microsoft.Extensions.Configuration.Binder": {
         "type": "Transitive",
-        "resolved": "10.0.9",
-        "contentHash": "Tp/+LPb70RyjjtLg9m5C959eP4KrUpJHThZfAegZVpsfmGvzfuNkuYbI/ft+LvXhMSyUcAeOPaN6rzTccwnZAg==",
+        "resolved": "10.0.8",
+        "contentHash": "R3NN1X+kVu14uoxLEW6sBSQyhogDSbaOQzILnCtuXxBN4hx22AgjWPwZX6v/suERFkEDgU1lk12AglHTrUxhlw==",
         "dependencies": {
-          "Microsoft.Extensions.Configuration": "10.0.9",
-          "Microsoft.Extensions.Configuration.Abstractions": "10.0.9"
+          "Microsoft.Extensions.Configuration": "10.0.8",
+          "Microsoft.Extensions.Configuration.Abstractions": "10.0.8"
         }
       },
       "Microsoft.Extensions.Configuration.FileExtensions": {
@@ -381,8 +381,8 @@
       },
       "Microsoft.Extensions.Primitives": {
         "type": "Transitive",
-        "resolved": "10.0.9",
-        "contentHash": "fmEbAUFsaIKirgLt/lYhuFRBwhcSJN31jjHgCdbQxJiWOum6EdLjkbgGuukSP9z/a+9LibaxII/kF+GwOXgC4g=="
+        "resolved": "10.0.8",
+        "contentHash": "OBPo4nYhMyIbtueoC10CBm6AGAbo/A9IV8QQ/6ryZS7VvmqpGT7hunazeHLxFawRzn3oLOq4jhqhpBX4tfswWQ=="
       },
       "Microsoft.Identity.Client": {
         "type": "Transitive",
@@ -464,8 +464,8 @@
       },
       "Scriban": {
         "type": "Transitive",
-        "resolved": "7.2.3",
-        "contentHash": "WXafb3eoQBoQHednoIxrzGRfwswyR8nb9VSErRO9ax5+xj5a3bKGrqKrp8gbfhndRJgTU/Cr5iOQxsyJ+VSSXQ=="
+        "resolved": "7.2.4",
+        "contentHash": "hx7WeBo0aObZ3v9ZzicZYQtu7fH+I1pRRnzQbv8r0blUhiH9Ay+60/GwkAJZJ7133dr3ZWkzqUqnSloczOf+jw=="
       },
       "SharpYaml": {
         "type": "Transitive",
@@ -530,14 +530,14 @@
         "dependencies": {
           "Markdig": "[1.2.0, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.8, )",
-          "Microsoft.Extensions.Configuration": "[10.0.9, )",
-          "Microsoft.Extensions.Configuration.Binder": "[10.0.9, )",
+          "Microsoft.Extensions.Configuration": "[10.0.8, )",
+          "Microsoft.Extensions.Configuration.Binder": "[10.0.8, )",
           "Microsoft.Extensions.Configuration.Json": "[10.0.8, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.8, )",
           "Microsoft.OpenApi": "[3.6.0, )",
           "Microsoft.OpenApi.YamlReader": "[3.6.0, )",
           "Newtonsoft.Json.Schema": "[4.0.1, )",
-          "Scriban": "[7.2.3, )",
+          "Scriban": "[7.2.4, )",
           "System.CommandLine": "[2.0.8, )",
           "Unobtanium.Web.Proxy": "[0.1.5, )",
           "YamlDotNet": "[18.0.0, )"
