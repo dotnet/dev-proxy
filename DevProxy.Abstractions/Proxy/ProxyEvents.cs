@@ -45,6 +45,13 @@ public class ProxyResponseArgs(SessionEventArgs session, ResponseState responseS
 public class InitArgs
 {
     public required IServiceProvider ServiceProvider { get; init; }
+    /// <summary>
+    /// Indicates whether the proxy command (root command) is being invoked.
+    /// When false, a CLI subcommand is being executed and plugins should
+    /// skip initialization that is only relevant for proxy operation
+    /// (e.g., opening browsers, starting listeners).
+    /// </summary>
+    public bool IsProxyCommand { get; init; } = true;
 }
 
 public class OptionsLoadedArgs(ParseResult parseResult)

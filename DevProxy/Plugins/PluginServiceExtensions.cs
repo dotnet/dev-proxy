@@ -181,7 +181,7 @@ static class PluginServiceExtensions
                 // stage is synchronous, but if the implementation changes
                 // in the future then we won't need to change the interface
 #pragma warning disable VSTHRD002
-                plugin.InitializeAsync(new() { ServiceProvider = sp }, CancellationToken.None).Wait();
+                plugin.InitializeAsync(new() { ServiceProvider = sp, IsProxyCommand = DevProxyCommand.IsRootCommand }, CancellationToken.None).Wait();
 #pragma warning restore VSTHRD002
                 return plugin;
             });
@@ -200,7 +200,7 @@ static class PluginServiceExtensions
             // stage is synchronous, but if the implementation changes
             // in the future then we won't need to change the interface
 #pragma warning disable VSTHRD002
-            plugin.InitializeAsync(new() { ServiceProvider = sp }, CancellationToken.None).Wait();
+            plugin.InitializeAsync(new() { ServiceProvider = sp, IsProxyCommand = DevProxyCommand.IsRootCommand }, CancellationToken.None).Wait();
 #pragma warning restore VSTHRD002
             return plugin;
         });

@@ -79,9 +79,16 @@ public sealed class DevToolsPlugin(
 
     public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(e);
+
         _cancellationToken = cancellationToken;
 
         await base.InitializeAsync(e, cancellationToken);
+
+        if (!e.IsProxyCommand)
+        {
+            return;
+        }
 
         InitInspector();
     }

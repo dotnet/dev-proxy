@@ -76,6 +76,11 @@ public sealed class OpenAITelemetryPlugin(
 
         await base.InitializeAsync(e, cancellationToken);
 
+        if (!e.IsProxyCommand)
+        {
+            return;
+        }
+
         if (Configuration.IncludeCosts)
         {
             Configuration.PricesFile = ProxyUtils.GetFullPath(Configuration.PricesFile, ProxyConfiguration.ConfigFile);
