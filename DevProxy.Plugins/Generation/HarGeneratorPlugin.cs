@@ -6,6 +6,7 @@ using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Models;
+using DevProxy.Plugins.Utils;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
@@ -128,11 +129,11 @@ public sealed class HarGeneratorPlugin(
                         return new HarCookie { Name = parts[0].Trim(), Value = parts.Length > 1 ? parts[1].Trim() : "" };
                     })],
                 HeadersSize = request.Headers?.ToString()?.Length ?? 0,
-                BodySize = request.HasBody ? (request.BodyString?.Length ?? 0) : 0,
+                BodySize = request.HasBody ? (request.Body?.Length ?? 0) : 0,
                 PostData = request.HasBody ? new HarPostData
                 {
                     MimeType = request.ContentType,
-                    Text = request.BodyString ?? ""
+                    Text = request.Body is not null ? HttpUtils.GetBodyString(request.ContentType, request.Body) : ""
                 }
                     : null
             },
@@ -152,12 +153,12 @@ public sealed class HarGeneratorPlugin(
                     })],
                 Content = new HarContent
                 {
-                    Size = response.HasBody ? (response.BodyString?.Length ?? 0) : 0,
+                    Size = response.HasBody ? (response.Body?.Length ?? 0) : 0,
                     MimeType = response.ContentType ?? "",
-                    Text = Configuration.IncludeResponse && response.HasBody ? response.BodyString : null
+                    Text = Configuration.IncludeResponse && response.HasBody && response.Body is not null ? HttpUtils.GetBodyString(response.ContentType, response.Body) : null
                 },
                 HeadersSize = response.Headers?.ToString()?.Length ?? 0,
-                BodySize = response.HasBody ? (response.BodyString?.Length ?? 0) : 0
+                BodySize = response.HasBody ? (response.Body?.Length ?? 0) : 0
             } : null
         };
 
