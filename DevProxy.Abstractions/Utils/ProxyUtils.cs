@@ -4,6 +4,7 @@
 
 using DevProxy.Abstractions.Models;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Schema;
@@ -111,6 +112,13 @@ public static class ProxyUtils
         return IsGraphUrl(request.RequestUri);
     }
 
+    public static bool IsGraphRequest(IHttpRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        return IsGraphUrl(request.RequestUri);
+    }
+
     public static bool IsGraphUrl(Uri uri)
     {
         ArgumentNullException.ThrowIfNull(uri);
@@ -143,9 +151,24 @@ public static class ProxyUtils
         return request.Headers.HeaderExists("SdkVersion");
     }
 
+    public static bool IsSdkRequest(IHttpRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        return request.Headers.Contains("SdkVersion");
+    }
+
     public static bool IsGraphBetaRequest(Request request) =>
         IsGraphRequest(request) &&
         IsGraphBetaUrl(request.RequestUri);
+
+    public static bool IsGraphBetaRequest(IHttpRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        return IsGraphRequest(request) &&
+            IsGraphBetaUrl(request.RequestUri);
+    }
 
     public static bool IsGraphBetaUrl(Uri uri)
     {
@@ -168,6 +191,32 @@ public static class ProxyUtils
             return [];
         }
 
+        var hasOrigin = request.Headers.FirstOrDefault((h) => h.Name.Equals("Origin", StringComparison.OrdinalIgnoreCase)) is not null;
+        return BuildGraphResponseHeadersCore(hasOrigin, requestId, requestDate);
+    }
+
+    /// <summary>
+    /// Utility to build HTTP response headers consistent with Microsoft Graph
+    /// </summary>
+    /// <param name="request">The http request for which response headers are being constructed</param>
+    /// <param name="requestId">string a guid representing the a unique identifier for the request</param>
+    /// <param name="requestDate">string representation of the date and time the request was made</param>
+    /// <returns>IList<MockResponseHeader> with defaults consistent with Microsoft Graph. Automatically adds CORS headers when the Origin header is present</returns>
+    public static IList<MockResponseHeader> BuildGraphResponseHeaders(IHttpRequest request, string requestId, string requestDate)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (!IsGraphRequest(request))
+        {
+            return [];
+        }
+
+        var hasOrigin = request.Headers.FirstOrDefault((h) => h.Name.Equals("Origin", StringComparison.OrdinalIgnoreCase)) is not null;
+        return BuildGraphResponseHeadersCore(hasOrigin, requestId, requestDate);
+    }
+
+    private static List<MockResponseHeader> BuildGraphResponseHeadersCore(bool hasOriginHeader, string requestId, string requestDate)
+    {
         var headers = new List<MockResponseHeader>
             {
                 new ("Cache-Control", "no-store"),
@@ -178,7 +227,7 @@ public static class ProxyUtils
                 new ("Date", requestDate),
                 new ("Content-Type", "application/json")
             };
-        if (request.Headers.FirstOrDefault((h) => h.Name.Equals("Origin", StringComparison.OrdinalIgnoreCase)) is not null)
+        if (hasOriginHeader)
         {
             headers.Add(new("Access-Control-Allow-Origin", "*"));
             headers.Add(new("Access-Control-Expose-Headers", "ETag, Location, Preference-Applied, Content-Range, request-id, client-request-id, ReadWriteConsistencyToken, SdkVersion, WWW-Authenticate, x-ms-client-gcc-tenant, Retry-After"));
