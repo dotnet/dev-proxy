@@ -4,6 +4,7 @@
 
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Models;
 using Microsoft.Extensions.Configuration;
@@ -15,8 +16,6 @@ using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Titanium.Web.Proxy.Http;
-using Titanium.Web.Proxy.Models;
 
 namespace DevProxy.Plugins.Behavior;
 
@@ -143,7 +142,7 @@ public sealed class GenericRandomErrorPlugin(
 
     private void FailResponse(ProxyRequestArgs e)
     {
-        var matchingResponse = GetMatchingErrorResponse(e.Session.HttpClient.Request);
+        var matchingResponse = GetMatchingErrorResponse(e.ProxySession.Request);
         if (matchingResponse is not null &&
             matchingResponse.Responses is not null)
         {
@@ -157,13 +156,13 @@ public sealed class GenericRandomErrorPlugin(
         }
     }
 
-    private static ThrottlingInfo ShouldThrottle(Request request, string throttlingKey, int retryAfterInSeconds)
+    private static ThrottlingInfo ShouldThrottle(IHttpRequest request, string throttlingKey, int retryAfterInSeconds)
     {
         var throttleKeyForRequest = BuildThrottleKey(request);
         return new(throttleKeyForRequest == throttlingKey ? retryAfterInSeconds : 0, "Retry-After");
     }
 
-    private GenericErrorResponse? GetMatchingErrorResponse(Request request)
+    private GenericErrorResponse? GetMatchingErrorResponse(IHttpRequest request)
     {
         if (Configuration.Errors is null ||
             !Configuration.Errors.Any())
@@ -213,8 +212,7 @@ public sealed class GenericRandomErrorPlugin(
 
     private void UpdateProxyResponse(ProxyRequestArgs e, GenericErrorResponseResponse error)
     {
-        var session = e.Session;
-        var request = session.HttpClient.Request;
+        var request = e.ProxySession.Request;
         var headers = new List<GenericErrorResponseHeader>();
         if (error.Headers is not null)
         {
@@ -279,17 +277,17 @@ public sealed class GenericRandomErrorPlugin(
             if (!File.Exists(filePath))
             {
                 Logger.LogError("File {FilePath} not found. Serving file path in the mock response", (string?)filePath);
-                session.GenericResponse(body, statusCode, headers.Select(h => new HttpHeader(h.Name, h.Value)));
+                e.ProxySession.Respond(body, statusCode, headers.Select(h => new HttpHeader(h.Name, h.Value)));
             }
             else
             {
                 var bodyBytes = File.ReadAllBytes(filePath);
-                session.GenericResponse(bodyBytes, statusCode, headers.Select(h => new HttpHeader(h.Name, h.Value)));
+                e.ProxySession.Respond(bodyBytes, statusCode, headers.Select(h => new HttpHeader(h.Name, h.Value)));
             }
         }
         else
         {
-            session.GenericResponse(body, statusCode, headers.Select(h => new HttpHeader(h.Name, h.Value)));
+            e.ProxySession.Respond(body, statusCode, headers.Select(h => new HttpHeader(h.Name, h.Value)));
         }
         e.ResponseState.HasBeenSet = true;
         Logger.LogRequest($"{error.StatusCode} {statusCode}", MessageType.Chaos, new LoggingContext(e.Session));
@@ -346,7 +344,7 @@ public sealed class GenericRandomErrorPlugin(
         }
     }
 
-    private static bool HasMatchingBody(GenericErrorResponse errorResponse, Request request)
+    private static bool HasMatchingBody(GenericErrorResponse errorResponse, IHttpRequest request)
     {
         if (request.Method == "GET")
         {
@@ -371,7 +369,7 @@ public sealed class GenericRandomErrorPlugin(
     }
 
     // throttle requests per host
-    private static string BuildThrottleKey(Request r) => r.RequestUri.Host;
+    private static string BuildThrottleKey(IHttpRequest r) => r.RequestUri.Host;
 
     protected override void Dispose(bool disposing)
     {

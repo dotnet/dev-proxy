@@ -5,6 +5,7 @@
 using DevProxy.Abstractions.Models;
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Models;
 using DevProxy.Plugins.Utils;
@@ -13,8 +14,6 @@ using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Titanium.Web.Proxy.Http;
-using Titanium.Web.Proxy.Models;
 
 namespace DevProxy.Plugins.Behavior;
 
@@ -42,7 +41,7 @@ public sealed class RetryAfterPlugin(
             Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
-        if (string.Equals(e.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(e.ProxySession.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
         {
             Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
@@ -56,7 +55,7 @@ public sealed class RetryAfterPlugin(
 
     private void ThrottleIfNecessary(ProxyRequestArgs e)
     {
-        var request = e.Session.HttpClient.Request;
+        var request = e.ProxySession.Request;
         if (!e.GlobalData.TryGetValue(ThrottledRequestsKey, out var value))
         {
             Logger.LogRequest("Request not throttled", MessageType.Skipped, new LoggingContext(e.Session));
@@ -102,7 +101,7 @@ public sealed class RetryAfterPlugin(
     {
         var headers = new List<MockResponseHeader>();
         var body = string.Empty;
-        var request = e.Session.HttpClient.Request;
+        var request = e.ProxySession.Request;
 
         // override the response body and headers for the error response
         if (ProxyUtils.IsGraphRequest(request))
@@ -139,9 +138,9 @@ public sealed class RetryAfterPlugin(
 
         headers.Add(new(throttlingInfo.RetryAfterHeaderName, throttlingInfo.ThrottleForSeconds.ToString(CultureInfo.InvariantCulture)));
 
-        e.Session.GenericResponse(body ?? string.Empty, HttpStatusCode.TooManyRequests, headers.Select(h => new HttpHeader(h.Name, h.Value)));
+        e.ProxySession.Respond(body ?? string.Empty, HttpStatusCode.TooManyRequests, headers.Select(h => new HttpHeader(h.Name, h.Value)));
         e.ResponseState.HasBeenSet = true;
     }
 
-    private static string BuildApiErrorMessage(Request r, string message) => $"{message} {(ProxyUtils.IsGraphRequest(r) ? ProxyUtils.IsSdkRequest(r) ? "" : string.Join(' ', MessageUtils.BuildUseSdkForErrorsMessage()) : "")}";
+    private static string BuildApiErrorMessage(IHttpRequest r, string message) => $"{message} {(ProxyUtils.IsGraphRequest(r) ? ProxyUtils.IsSdkRequest(r) ? "" : string.Join(' ', MessageUtils.BuildUseSdkForErrorsMessage()) : "")}";
 }
