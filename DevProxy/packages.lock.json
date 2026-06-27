@@ -354,8 +354,13 @@
           "Newtonsoft.Json.Schema": "[4.0.1, )",
           "Scriban": "[7.2.4, )",
           "System.CommandLine": "[2.0.9, )",
-          "Unobtanium.Web.Proxy": "[0.1.5, )",
           "YamlDotNet": "[18.0.0, )"
+        }
+      },
+      "devproxy.proxy.kestrel": {
+        "type": "Project",
+        "dependencies": {
+          "DevProxy.Abstractions": "[3.1.0, )"
         }
       },
       "devproxy.proxy.titanium": {

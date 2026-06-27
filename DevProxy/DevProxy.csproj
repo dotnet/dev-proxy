@@ -48,6 +48,7 @@
   <ItemGroup>
     <ProjectReference Include="..\DevProxy.Abstractions\DevProxy.Abstractions.csproj" />
     <ProjectReference Include="..\DevProxy.Proxy.Titanium\DevProxy.Proxy.Titanium.csproj" />
+    <ProjectReference Include="..\DevProxy.Proxy.Kestrel\DevProxy.Proxy.Kestrel.csproj" />
   </ItemGroup>
 
   <ItemGroup>
