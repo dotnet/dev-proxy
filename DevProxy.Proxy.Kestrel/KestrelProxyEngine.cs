@@ -33,7 +33,8 @@ public sealed class KestrelProxyEngine(
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration configuration,
     Dictionary<string, object> globalData,
-    ILoggerFactory loggerFactory) : BackgroundService
+    ILoggerFactory loggerFactory,
+    IRootCertificateTrust? rootCertificateTrust = null) : BackgroundService
 {
     private readonly ILogger _logger = loggerFactory.CreateLogger<KestrelProxyEngine>();
 
@@ -45,6 +46,7 @@ public sealed class KestrelProxyEngine(
         var port = configuration.Port;
 
         using var ca = CertificateAuthority.CreateDefault(_logger);
+        rootCertificateTrust?.EnsureTrusted(ca.RootCertificate);
         using var httpHandler = new SocketsHttpHandler
         {
             UseProxy = false,

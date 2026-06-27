@@ -51,12 +51,14 @@ static class IServiceCollectionExtensions
         var engine = Environment.GetEnvironmentVariable("DEV_PROXY_ENGINE");
         if (string.Equals(engine, "kestrel", StringComparison.OrdinalIgnoreCase))
         {
+            _ = services.AddSingleton<IRootCertificateTrust, RootCertificateTrust>();
             _ = services.AddHostedService(sp => new KestrelProxyEngine(
                 sp.GetServices<IPlugin>(),
                 sp.GetRequiredService<ISet<UrlToWatch>>(),
                 sp.GetRequiredService<IProxyConfiguration>(),
                 sp.GetRequiredService<IProxyState>().GlobalData,
-                sp.GetRequiredService<ILoggerFactory>()));
+                sp.GetRequiredService<ILoggerFactory>(),
+                sp.GetRequiredService<IRootCertificateTrust>()));
         }
         else
         {
