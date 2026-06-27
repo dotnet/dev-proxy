@@ -4,6 +4,7 @@
 
 using DevProxy.Abstractions.Models;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Behavior;
 using Microsoft.Extensions.Configuration;
@@ -12,7 +13,6 @@ using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Titanium.Web.Proxy.Models;
 
 namespace DevProxy.Plugins.Mocking;
 
@@ -43,14 +43,14 @@ public class GraphMockResponsePlugin(
             return;
         }
 
-        if (!ProxyUtils.IsGraphBatchUrl(e.Session.HttpClient.Request.RequestUri))
+        if (!ProxyUtils.IsGraphBatchUrl(e.ProxySession.Request.RequestUri))
         {
             // not a batch request, use the basic mock functionality
             await base.BeforeRequestAsync(e, cancellationToken);
             return;
         }
 
-        var batch = JsonSerializer.Deserialize<GraphBatchRequestPayload>(e.Session.HttpClient.Request.BodyString, ProxyUtils.JsonSerializerOptions);
+        var batch = JsonSerializer.Deserialize<GraphBatchRequestPayload>(e.ProxySession.Request.BodyString, ProxyUtils.JsonSerializerOptions);
         if (batch is null)
         {
             await base.BeforeRequestAsync(e, cancellationToken);
@@ -64,7 +64,7 @@ public class GraphMockResponsePlugin(
             var requestId = Guid.NewGuid().ToString();
             var requestDate = DateTime.Now.ToString("r", CultureInfo.InvariantCulture);
             var headers = ProxyUtils
-                .BuildGraphResponseHeaders(e.Session.HttpClient.Request, requestId, requestDate);
+                .BuildGraphResponseHeaders(e.ProxySession.Request, requestId, requestDate);
 
             if (e.SessionData.TryGetValue(nameof(RateLimitingPlugin), out var pluginData) &&
                 pluginData is List<MockResponseHeader> rateLimitingHeaders)
@@ -72,7 +72,7 @@ public class GraphMockResponsePlugin(
                 ProxyUtils.MergeHeaders(headers, rateLimitingHeaders);
             }
 
-            var mockResponse = GetMatchingMockResponse(request, e.Session.HttpClient.Request.RequestUri);
+            var mockResponse = GetMatchingMockResponse(request, e.ProxySession.Request.RequestUri);
             if (mockResponse == null)
             {
                 response = new()
@@ -156,15 +156,15 @@ public class GraphMockResponsePlugin(
 
         var batchRequestId = Guid.NewGuid().ToString();
         var batchRequestDate = DateTime.Now.ToString("r", CultureInfo.InvariantCulture);
-        var batchHeaders = ProxyUtils.BuildGraphResponseHeaders(e.Session.HttpClient.Request, batchRequestId, batchRequestDate);
+        var batchHeaders = ProxyUtils.BuildGraphResponseHeaders(e.ProxySession.Request, batchRequestId, batchRequestDate);
         var batchResponse = new GraphBatchResponsePayload
         {
             Responses = [.. responses]
         };
         var batchResponseString = JsonSerializer.Serialize(batchResponse, ProxyUtils.JsonSerializerOptions);
         ProcessMockResponse(ref batchResponseString, batchHeaders, e, null);
-        e.Session.GenericResponse(batchResponseString ?? string.Empty, HttpStatusCode.OK, batchHeaders.Select(h => new HttpHeader(h.Name, h.Value)));
-        Logger.LogRequest($"200 {e.Session.HttpClient.Request.RequestUri}", MessageType.Mocked, new LoggingContext(e.Session));
+        e.ProxySession.Respond(batchResponseString ?? string.Empty, HttpStatusCode.OK, batchHeaders.Select(h => new HttpHeader(h.Name, h.Value)));
+        Logger.LogRequest($"200 {e.ProxySession.Request.RequestUri}", MessageType.Mocked, new LoggingContext(e.Session));
         e.ResponseState.HasBeenSet = true;
 
         Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));

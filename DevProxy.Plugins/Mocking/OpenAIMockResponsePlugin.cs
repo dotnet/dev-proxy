@@ -5,11 +5,11 @@
 using DevProxy.Abstractions.LanguageModel;
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Text.Json;
-using Titanium.Web.Proxy.Models;
 
 namespace DevProxy.Plugins.Mocking;
 
@@ -51,7 +51,7 @@ public sealed class OpenAIMockResponsePlugin(
             return;
         }
 
-        var request = e.Session.HttpClient.Request;
+        var request = e.ProxySession.Request;
         if (request.Method is null ||
             !request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase) ||
             !request.HasBody)
@@ -172,7 +172,7 @@ public sealed class OpenAIMockResponsePlugin(
 
     private void SendMockResponse<TResponse>(OpenAIResponse response, string localLmUrl, ProxyRequestArgs e) where TResponse : OpenAIResponse
     {
-        e.Session.GenericResponse(
+        e.ProxySession.Respond(
             // we need this cast or else the JsonSerializer drops derived properties
             JsonSerializer.Serialize((TResponse)response, ProxyUtils.JsonSerializerOptions),
             HttpStatusCode.OK,
