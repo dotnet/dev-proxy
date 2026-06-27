@@ -4,10 +4,10 @@
 
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Utils;
 using Microsoft.Extensions.Logging;
-using Titanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Guidance;
 
@@ -23,20 +23,20 @@ public sealed class GraphSdkGuidancePlugin(
 
         ArgumentNullException.ThrowIfNull(e);
 
-        var request = e.Session.HttpClient.Request;
+        var request = e.ProxySession.Request;
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
             Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
-        if (string.Equals(e.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(e.ProxySession.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
         {
             Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
 
         // only show the message if there is an error.
-        if (e.Session.HttpClient.Response.StatusCode >= 400)
+        if ((int)e.ProxySession.Response!.StatusCode >= 400)
         {
             if (WarnNoSdk(request))
             {
@@ -56,6 +56,6 @@ public sealed class GraphSdkGuidancePlugin(
         return Task.CompletedTask;
     }
 
-    private static bool WarnNoSdk(Request request) =>
+    private static bool WarnNoSdk(IHttpRequest request) =>
         ProxyUtils.IsGraphRequest(request) && !ProxyUtils.IsSdkRequest(request);
 }

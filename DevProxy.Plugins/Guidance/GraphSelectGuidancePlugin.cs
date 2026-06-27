@@ -8,7 +8,6 @@ using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
-using Titanium.Web.Proxy.EventArguments;
 
 namespace DevProxy.Plugins.Guidance;
 
@@ -42,13 +41,13 @@ public sealed class GraphSelectGuidancePlugin(
             Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
-        if (string.Equals(e.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(e.ProxySession.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
         {
             Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
 
-        if (WarnNoSelect(e.Session))
+        if (WarnNoSelect(e))
         {
             Logger.LogRequest(BuildUseSelectMessage(), MessageType.Warning, new LoggingContext(e.Session));
         }
@@ -57,13 +56,13 @@ public sealed class GraphSelectGuidancePlugin(
         return Task.CompletedTask;
     }
 
-    private bool WarnNoSelect(SessionEventArgs session)
+    private bool WarnNoSelect(ProxyResponseArgs e)
     {
-        var request = session.HttpClient.Request;
+        var request = e.ProxySession.Request;
         if (!ProxyUtils.IsGraphRequest(request) ||
             request.Method != "GET")
         {
-            Logger.LogRequest("Not a Microsoft Graph GET request", MessageType.Skipped, new LoggingContext(session));
+            Logger.LogRequest("Not a Microsoft Graph GET request", MessageType.Skipped, new LoggingContext(e.Session));
             return false;
         }
 
@@ -77,7 +76,7 @@ public sealed class GraphSelectGuidancePlugin(
         }
         else
         {
-            Logger.LogRequest("Endpoint does not support $select", MessageType.Skipped, new LoggingContext(session));
+            Logger.LogRequest("Endpoint does not support $select", MessageType.Skipped, new LoggingContext(e.Session));
             return false;
         }
     }

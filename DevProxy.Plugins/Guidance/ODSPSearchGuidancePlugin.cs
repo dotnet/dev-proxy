@@ -6,7 +6,6 @@ using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Logging;
-using Titanium.Web.Proxy.EventArguments;
 
 namespace DevProxy.Plugins.Guidance;
 
@@ -27,13 +26,13 @@ public sealed class ODSPSearchGuidancePlugin(
             Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
-        if (string.Equals(e.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(e.ProxySession.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
         {
             Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
 
-        if (WarnDeprecatedSearch(e.Session))
+        if (WarnDeprecatedSearch(e))
         {
             Logger.LogRequest(BuildUseGraphSearchMessage(), MessageType.Warning, new LoggingContext(e.Session));
         }
@@ -42,13 +41,13 @@ public sealed class ODSPSearchGuidancePlugin(
         return Task.CompletedTask;
     }
 
-    private bool WarnDeprecatedSearch(SessionEventArgs session)
+    private bool WarnDeprecatedSearch(ProxyRequestArgs e)
     {
-        var request = session.HttpClient.Request;
+        var request = e.ProxySession.Request;
         if (!ProxyUtils.IsGraphRequest(request) ||
             request.Method != "GET")
         {
-            Logger.LogRequest("Not a Microsoft Graph GET request", MessageType.Skipped, new LoggingContext(session));
+            Logger.LogRequest("Not a Microsoft Graph GET request", MessageType.Skipped, new LoggingContext(e.Session));
             return false;
         }
 
@@ -66,7 +65,7 @@ public sealed class ODSPSearchGuidancePlugin(
         }
         else
         {
-            Logger.LogRequest("Not a SharePoint search request", MessageType.Skipped, new LoggingContext(session));
+            Logger.LogRequest("Not a SharePoint search request", MessageType.Skipped, new LoggingContext(e.Session));
             return false;
         }
     }

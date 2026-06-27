@@ -4,10 +4,10 @@
 
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Utils;
 using Microsoft.Extensions.Logging;
-using Titanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Guidance;
 
@@ -23,13 +23,13 @@ public sealed class GraphClientRequestIdGuidancePlugin(
 
         ArgumentNullException.ThrowIfNull(e);
 
-        var request = e.Session.HttpClient.Request;
+        var request = e.ProxySession.Request;
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
             Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
-        if (string.Equals(e.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(e.ProxySession.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
         {
             Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
@@ -53,9 +53,9 @@ public sealed class GraphClientRequestIdGuidancePlugin(
         return Task.CompletedTask;
     }
 
-    private static bool WarnNoClientRequestId(Request request) =>
+    private static bool WarnNoClientRequestId(IHttpRequest request) =>
         ProxyUtils.IsGraphRequest(request) &&
-        !request.Headers.HeaderExists("client-request-id");
+        !request.Headers.Contains("client-request-id");
 
     private static string GetClientRequestIdGuidanceUrl() => "https://aka.ms/devproxy/guidance/client-request-id";
     private static string BuildAddClientRequestIdMessage() =>
