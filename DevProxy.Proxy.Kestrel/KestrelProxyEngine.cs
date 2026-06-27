@@ -34,7 +34,8 @@ public sealed class KestrelProxyEngine(
     IProxyConfiguration configuration,
     Dictionary<string, object> globalData,
     ILoggerFactory loggerFactory,
-    IRootCertificateTrust? rootCertificateTrust = null) : BackgroundService
+    IRootCertificateTrust? rootCertificateTrust = null,
+    ISystemProxyManager? systemProxyManager = null) : BackgroundService
 {
     private readonly ILogger _logger = loggerFactory.CreateLogger<KestrelProxyEngine>();
 
@@ -88,6 +89,14 @@ public sealed class KestrelProxyEngine(
             ipAddress.ToString(),
             boundPort.ToString(CultureInfo.InvariantCulture));
 
+        var systemProxyEnabled = false;
+        if (configuration.AsSystemProxy && systemProxyManager is not null)
+        {
+            // Register with the OS using the actually-bound port (matters for --port 0).
+            systemProxyManager.Enable(configuration.IPAddress, boundPort);
+            systemProxyEnabled = true;
+        }
+
         try
         {
             await Task.Delay(Timeout.Infinite, stoppingToken).ConfigureAwait(false);
@@ -98,6 +107,11 @@ public sealed class KestrelProxyEngine(
         }
         finally
         {
+            if (systemProxyEnabled)
+            {
+                systemProxyManager!.Disable();
+            }
+
             await app.StopAsync(CancellationToken.None).ConfigureAwait(false);
         }
     }

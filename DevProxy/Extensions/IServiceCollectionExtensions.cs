@@ -52,13 +52,15 @@ static class IServiceCollectionExtensions
         if (string.Equals(engine, "kestrel", StringComparison.OrdinalIgnoreCase))
         {
             _ = services.AddSingleton<IRootCertificateTrust, RootCertificateTrust>();
+            _ = services.AddSingleton<ISystemProxyManager, SystemProxyManager>();
             _ = services.AddHostedService(sp => new KestrelProxyEngine(
                 sp.GetServices<IPlugin>(),
                 sp.GetRequiredService<ISet<UrlToWatch>>(),
                 sp.GetRequiredService<IProxyConfiguration>(),
                 sp.GetRequiredService<IProxyState>().GlobalData,
                 sp.GetRequiredService<ILoggerFactory>(),
-                sp.GetRequiredService<IRootCertificateTrust>()));
+                sp.GetRequiredService<IRootCertificateTrust>(),
+                sp.GetRequiredService<ISystemProxyManager>()));
         }
         else
         {
