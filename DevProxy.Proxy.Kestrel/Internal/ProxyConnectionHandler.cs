@@ -38,10 +38,11 @@ namespace DevProxy.Proxy.Kestrel.Internal;
 /// </para>
 ///
 /// <para>
-/// Slice scope: one request per intercepted connection (<c>Connection: close</c>),
+/// Scope: keep-alive HTTP/1.1 (multiple requests per intercepted connection) for
 /// plain HTTP + HTTPS-via-CONNECT, mocking short-circuit, selective decrypt + ALPN
-/// blind-tunnel. Deferred hardening (tracked): keep-alive, WebSocket relay + inspection,
-/// chunked/trailers, body-mode streaming.
+/// blind-tunnel. Deferred hardening (tracked): WebSocket relay + inspection,
+/// chunked/trailers + <c>Expect: 100-continue</c> (such requests fall back to
+/// <c>Connection: close</c>), body-mode streaming.
 /// </para>
 /// </summary>
 internal sealed class ProxyConnectionHandler(
@@ -57,10 +58,11 @@ internal sealed class ProxyConnectionHandler(
     {
         var ct = connection.ConnectionClosed;
         await using var clientStream = new DuplexPipeStream(connection.Transport);
+        var reader = new Http1ConnectionReader(clientStream);
 
         try
         {
-            var head = await Http1RequestReader.ReadHeadAsync(clientStream, ct).ConfigureAwait(false);
+            var head = await reader.ReadHeadAsync(ct).ConfigureAwait(false);
             if (head is null)
             {
                 return;
@@ -72,8 +74,10 @@ internal sealed class ProxyConnectionHandler(
             }
             else
             {
-                // Plain HTTP proxy request: the target is an absolute URL.
-                await ExchangeAsync(clientStream, head, head.Target, ct).ConfigureAwait(false);
+                // Plain HTTP proxy request: the target is an absolute URL. Serve this
+                // and any subsequent keep-alive requests on the same connection.
+                await ServeConnectionAsync(reader, clientStream, head, httpsHost: null, httpsPort: 0, ct)
+                    .ConfigureAwait(false);
             }
         }
         catch (Exception ex) when (ex is OperationCanceledException or IOException or ConnectionResetException)
@@ -127,17 +131,48 @@ internal sealed class ProxyConnectionHandler(
                 ApplicationProtocols = [SslApplicationProtocol.Http11],
             }, ct).ConfigureAwait(false);
 
-        var head = await Http1RequestReader.ReadHeadAsync(tls, ct).ConfigureAwait(false);
+        var tlsReader = new Http1ConnectionReader(tls);
+        var head = await tlsReader.ReadHeadAsync(ct).ConfigureAwait(false);
         if (head is null)
         {
             return;
         }
 
-        var url = port == 443
-            ? $"https://{host}{head.Target}"
-            : $"https://{host}:{port.ToString(CultureInfo.InvariantCulture)}{head.Target}";
+        await ServeConnectionAsync(tlsReader, tls, head, host, port, ct).ConfigureAwait(false);
+    }
 
-        await ExchangeAsync(tls, head, url, ct).ConfigureAwait(false);
+    /// <summary>
+    /// Serves the first request and then every subsequent keep-alive request on the
+    /// same (plain or decrypted) connection. Each iteration gets a fresh request id
+    /// and a fresh <see cref="CanonicalProxySession"/>, so no per-request plugin state
+    /// leaks between pipelined/keep-alive requests on the connection.
+    /// </summary>
+    /// <param name="httpsHost">Non-null for a decrypted CONNECT tunnel; null for plain HTTP.</param>
+    private async Task ServeConnectionAsync(
+        Http1ConnectionReader reader,
+        Stream clientStream,
+        ParsedRequestHead firstHead,
+        string? httpsHost,
+        int httpsPort,
+        CancellationToken ct)
+    {
+        var head = firstHead;
+        while (head is not null)
+        {
+            var url = httpsHost is null
+                ? head.Target // plain HTTP proxy request: absolute-form target
+                : httpsPort == 443
+                    ? $"https://{httpsHost}{head.Target}"
+                    : $"https://{httpsHost}:{httpsPort.ToString(CultureInfo.InvariantCulture)}{head.Target}";
+
+            var keepAlive = await ExchangeAsync(reader, clientStream, head, url, ct).ConfigureAwait(false);
+            if (!keepAlive)
+            {
+                break;
+            }
+
+            head = await reader.ReadHeadAsync(ct).ConfigureAwait(false);
+        }
     }
 
     /// <summary>
@@ -220,16 +255,24 @@ internal sealed class ProxyConnectionHandler(
         }
     }
 
-    private async Task ExchangeAsync(Stream clientStream, ParsedRequestHead head, string absoluteUrl, CancellationToken ct)
+    /// <summary>
+    /// Runs one request/response exchange and returns whether the connection may be
+    /// kept alive for a following request. Always consumes the request body (even on
+    /// mock/error) so the reader is positioned at the next request when keep-alive
+    /// continues.
+    /// </summary>
+    private async Task<bool> ExchangeAsync(
+        Http1ConnectionReader reader, Stream clientStream, ParsedRequestHead head, string absoluteUrl, CancellationToken ct)
     {
         if (!Uri.TryCreate(absoluteUrl, UriKind.Absolute, out var requestUri))
         {
             await WriteErrorAsync(clientStream, HttpStatusCode.BadRequest, "Malformed request target", ct).ConfigureAwait(false);
-            return;
+            return false;
         }
 
         var contentLength = Http1RequestReader.GetContentLength(head.Headers);
-        var body = await Http1RequestReader.ReadBodyAsync(clientStream, head.Leftover, contentLength, ct).ConfigureAwait(false);
+        var body = await reader.ReadBodyAsync(contentLength, ct).ConfigureAwait(false);
+        var keepAlive = ShouldKeepAlive(head);
 
         var headers = new HeaderCollection();
         foreach (var (name, value) in head.Headers)
@@ -255,7 +298,7 @@ internal sealed class ProxyConnectionHandler(
             pipeline.Forget(session.SessionId);
             logger.LogError(ex, "Error running request pipeline");
             await WriteErrorAsync(clientStream, HttpStatusCode.BadGateway, "Plugin pipeline error", ct).ConfigureAwait(false);
-            return;
+            return false;
         }
 
         // Mocked: a plugin produced the response during the request phase. Skip the
@@ -264,8 +307,8 @@ internal sealed class ProxyConnectionHandler(
         if (phase == RequestPhase.Mocked)
         {
             await pipeline.RunResponseAsync(session, ct).ConfigureAwait(false);
-            await ResponseWriter.WriteAsync(clientStream, session.MutableResponse!, ct).ConfigureAwait(false);
-            return;
+            await ResponseWriter.WriteAsync(clientStream, session.MutableResponse!, keepAlive, ct).ConfigureAwait(false);
+            return keepAlive;
         }
 
         MutableHttpResponse response;
@@ -278,20 +321,67 @@ internal sealed class ProxyConnectionHandler(
             pipeline.Forget(session.SessionId);
             logger.LogError(ex, "Error forwarding to origin {Url}", absoluteUrl);
             await WriteErrorAsync(clientStream, HttpStatusCode.BadGateway, "Upstream request failed", ct).ConfigureAwait(false);
-            return;
+            return false;
         }
 
         if (phase == RequestPhase.Watched)
         {
             session.SetOriginResponse(response);
             await pipeline.RunResponseAsync(session, ct).ConfigureAwait(false);
-            await ResponseWriter.WriteAsync(clientStream, session.MutableResponse!, ct).ConfigureAwait(false);
+            await ResponseWriter.WriteAsync(clientStream, session.MutableResponse!, keepAlive, ct).ConfigureAwait(false);
         }
         else
         {
             // NotWatched: pure passthrough, no response-phase plugins.
-            await ResponseWriter.WriteAsync(clientStream, response, ct).ConfigureAwait(false);
+            await ResponseWriter.WriteAsync(clientStream, response, keepAlive, ct).ConfigureAwait(false);
         }
+
+        return keepAlive;
+    }
+
+    /// <summary>
+    /// Decides whether the connection may serve another request after this one.
+    /// Persistent by default on HTTP/1.1 (RFC 9112 §9.3), opt-in on HTTP/1.0. We
+    /// refuse keep-alive for requests whose body we cannot yet frame for the next
+    /// message — a chunked (<c>Transfer-Encoding</c>) body or <c>Expect: 100-continue</c>
+    /// — so an unread/misframed body never corrupts a subsequent request.
+    /// </summary>
+    internal static bool ShouldKeepAlive(ParsedRequestHead head)
+    {
+        string? connection = null;
+        var hasUnframableBody = false;
+        foreach (var (name, value) in head.Headers)
+        {
+            if (string.Equals(name, "Connection", StringComparison.OrdinalIgnoreCase))
+            {
+                connection = value;
+            }
+            else if (string.Equals(name, "Transfer-Encoding", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "Expect", StringComparison.OrdinalIgnoreCase))
+            {
+                hasUnframableBody = true;
+            }
+        }
+
+        if (hasUnframableBody)
+        {
+            return false;
+        }
+
+        var isHttp10 = head.Version.EndsWith("1.0", StringComparison.Ordinal);
+        if (connection is not null)
+        {
+            if (connection.Contains("close", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+            if (isHttp10 && connection.Contains("keep-alive", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return !isHttp10;
     }
 
     private static Version ParseHttpVersion(string token)

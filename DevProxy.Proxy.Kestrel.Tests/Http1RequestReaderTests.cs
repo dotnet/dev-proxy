@@ -12,19 +12,16 @@ namespace DevProxy.Proxy.Kestrel.Tests;
 public class Http1RequestReaderTests
 {
     [Fact]
-    public async Task ReadHeadAsync_ParsesRequestLineAndHeaders()
+    public void ParseHead_ParsesRequestLineAndHeaders()
     {
-        const string raw =
+        const string headerText =
             "GET /posts/1 HTTP/1.1\r\n" +
             "Host: example.com\r\n" +
-            "Accept: application/json\r\n" +
-            "\r\n";
-        using var stream = new MemoryStream(Encoding.ASCII.GetBytes(raw));
+            "Accept: application/json";
 
-        var head = await Http1RequestReader.ReadHeadAsync(stream, CancellationToken.None);
+        var head = Http1RequestReader.ParseHead(headerText);
 
-        Assert.NotNull(head);
-        Assert.Equal("GET", head!.Method);
+        Assert.Equal("GET", head.Method);
         Assert.Equal("/posts/1", head.Target);
         Assert.Equal("HTTP/1.1", head.Version);
         Assert.Contains(head.Headers, h => h.Name == "Host" && h.Value == "example.com");
@@ -32,22 +29,9 @@ public class Http1RequestReaderTests
     }
 
     [Fact]
-    public async Task ReadHeadAsync_ReturnsNull_OnCleanEofBeforeAnyBytes()
+    public void ParseHead_Throws_OnMalformedRequestLine()
     {
-        using var stream = new MemoryStream([]);
-
-        var head = await Http1RequestReader.ReadHeadAsync(stream, CancellationToken.None);
-
-        Assert.Null(head);
-    }
-
-    [Fact]
-    public async Task ReadHeadAsync_Throws_OnMalformedRequestLine()
-    {
-        using var stream = new MemoryStream(Encoding.ASCII.GetBytes("GARBAGE\r\n\r\n"));
-
-        _ = await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await Http1RequestReader.ReadHeadAsync(stream, CancellationToken.None));
+        _ = Assert.Throws<InvalidOperationException>(() => Http1RequestReader.ParseHead("GARBAGE"));
     }
 
     [Fact]
@@ -71,43 +55,18 @@ public class Http1RequestReaderTests
     }
 
     [Fact]
-    public async Task ReadBodyAsync_UsesLeftoverThenStream()
+    public void IndexOfDoubleCrlf_FindsTerminator()
     {
-        // The header read consumed "AB" past the terminator; the rest comes from the stream.
-        var leftover = Encoding.ASCII.GetBytes("AB");
-        using var stream = new MemoryStream(Encoding.ASCII.GetBytes("CDE"));
+        var data = Encoding.ASCII.GetBytes("ab\r\n\r\ncd");
 
-        var body = await Http1RequestReader.ReadBodyAsync(stream, leftover, contentLength: 5, CancellationToken.None);
-
-        Assert.Equal("ABCDE", Encoding.ASCII.GetString(body));
+        Assert.Equal(2, Http1RequestReader.IndexOfDoubleCrlf(data));
     }
 
     [Fact]
-    public async Task ReadBodyAsync_ReturnsEmpty_WhenContentLengthZero()
+    public void IndexOfDoubleCrlf_ReturnsMinusOne_WhenAbsent()
     {
-        using var stream = new MemoryStream(Encoding.ASCII.GetBytes("ignored"));
+        var data = Encoding.ASCII.GetBytes("no terminator here");
 
-        var body = await Http1RequestReader.ReadBodyAsync(stream, [], contentLength: 0, CancellationToken.None);
-
-        Assert.Empty(body);
-    }
-
-    [Fact]
-    public async Task ReadHeadAsync_LeftoverContainsBodyBytesReadWithHeaderBlock()
-    {
-        const string raw =
-            "POST /posts HTTP/1.1\r\n" +
-            "Content-Length: 3\r\n" +
-            "\r\n" +
-            "abc";
-        using var stream = new MemoryStream(Encoding.ASCII.GetBytes(raw));
-
-        var head = await Http1RequestReader.ReadHeadAsync(stream, CancellationToken.None);
-        Assert.NotNull(head);
-
-        var length = Http1RequestReader.GetContentLength(head!.Headers);
-        var body = await Http1RequestReader.ReadBodyAsync(stream, head.Leftover, length, CancellationToken.None);
-
-        Assert.Equal("abc", Encoding.ASCII.GetString(body));
+        Assert.Equal(-1, Http1RequestReader.IndexOfDoubleCrlf(data));
     }
 }

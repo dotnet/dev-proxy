@@ -15,12 +15,14 @@ namespace DevProxy.Proxy.Kestrel.Internal;
 /// framing / encoding headers so the client always receives a valid message
 /// (<see cref="ForwardingInvariants"/>).
 ///
-/// <para>Slice-1 scope: writes <c>Connection: close</c> and one body buffer.
-/// Keep-alive + chunked write-back are tracked hardening.</para>
+/// <para>Because the engine always buffers the full body and recomputes
+/// <c>Content-Length</c>, the client can frame the response unambiguously, so the
+/// connection may be kept alive when the request allows it. Chunked write-back is
+/// tracked hardening.</para>
 /// </summary>
 internal static class ResponseWriter
 {
-    public static async Task WriteAsync(Stream clientStream, IHttpResponse response, CancellationToken ct)
+    public static async Task WriteAsync(Stream clientStream, IHttpResponse response, bool keepAlive, CancellationToken ct)
     {
         var head = new StringBuilder();
         var statusCode = (int)response.StatusCode;
@@ -43,7 +45,7 @@ internal static class ResponseWriter
 
         var body = response.Body;
         _ = head.Append(CultureInfo.InvariantCulture, $"Content-Length: {body.Length}\r\n");
-        _ = head.Append("Connection: close\r\n\r\n");
+        _ = head.Append(keepAlive ? "Connection: keep-alive\r\n\r\n" : "Connection: close\r\n\r\n");
 
         await clientStream.WriteAsync(Encoding.ASCII.GetBytes(head.ToString()), ct).ConfigureAwait(false);
         if (!body.IsEmpty)

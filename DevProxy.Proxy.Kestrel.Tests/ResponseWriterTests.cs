@@ -14,10 +14,10 @@ namespace DevProxy.Proxy.Kestrel.Tests;
 
 public class ResponseWriterTests
 {
-    private static async Task<string> WriteAsync(MutableHttpResponse response)
+    private static async Task<string> WriteAsync(MutableHttpResponse response, bool keepAlive = false)
     {
         using var stream = new MemoryStream();
-        await ResponseWriter.WriteAsync(stream, response, CancellationToken.None);
+        await ResponseWriter.WriteAsync(stream, response, keepAlive, CancellationToken.None);
         return Encoding.ASCII.GetString(stream.ToArray());
     }
 
@@ -68,8 +68,33 @@ public class ResponseWriterTests
         Assert.DoesNotContain("Transfer-Encoding", output, StringComparison.Ordinal);
         Assert.DoesNotContain("keep-alive", output, StringComparison.Ordinal);
         Assert.Contains("X-Custom: keep-me\r\n", output, StringComparison.Ordinal);
-        // The engine always closes the connection in slice 1.
+        // The incoming hop-by-hop Connection header is stripped; the writer emits its
+        // own based on the keepAlive flag (false here).
         Assert.Contains("Connection: close\r\n", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WriteAsync_WritesConnectionClose_WhenNotKeepAlive()
+    {
+        var response = new MutableHttpResponse(
+            HttpStatusCode.OK, HttpVersion.Version11, new HeaderCollection(), Encoding.ASCII.GetBytes("x"));
+
+        var output = await WriteAsync(response, keepAlive: false);
+
+        Assert.Contains("Connection: close\r\n", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("Connection: keep-alive", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WriteAsync_WritesConnectionKeepAlive_WhenKeepAlive()
+    {
+        var response = new MutableHttpResponse(
+            HttpStatusCode.OK, HttpVersion.Version11, new HeaderCollection(), Encoding.ASCII.GetBytes("x"));
+
+        var output = await WriteAsync(response, keepAlive: true);
+
+        Assert.Contains("Connection: keep-alive\r\n", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("Connection: close", output, StringComparison.Ordinal);
     }
 
     [Fact]
