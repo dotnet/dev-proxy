@@ -98,8 +98,17 @@ internal sealed class ProxyConnectionHandler(
     private async Task HandleConnectAsync(
         ConnectionContext connection, Stream clientStream, ParsedRequestHead connect, CancellationToken ct)
     {
-        var (host, portPart) = SplitHostPort(connect.Target);
-        var port = portPart ?? 443;
+        // Parse + validate the authority BEFORE acknowledging the tunnel, so a malformed
+        // target (bad port, unbracketed IPv6, junk) is refused with a 400 rather than
+        // establishing a tunnel we can't actually use.
+        if (!ConnectAuthorityParser.TryParse(connect.Target, defaultPort: 443, out var authority))
+        {
+            await WriteErrorAsync(clientStream, HttpStatusCode.BadRequest, "Malformed CONNECT target", ct).ConfigureAwait(false);
+            return;
+        }
+
+        var host = authority.Host;
+        var port = authority.Port;
 
         // Acknowledge the tunnel so the client begins its TLS handshake.
         await WriteAsciiAsync(clientStream, "HTTP/1.1 200 Connection Established\r\n\r\n", ct).ConfigureAwait(false);
@@ -153,7 +162,7 @@ internal sealed class ProxyConnectionHandler(
             return;
         }
 
-        await ServeConnectionAsync(tlsReader, tls, head, host, port, ct).ConfigureAwait(false);
+        await ServeConnectionAsync(tlsReader, tls, head, authority.UrlHost, port, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -545,16 +554,6 @@ internal sealed class ProxyConnectionHandler(
         HttpStatusCode.BadGateway => "Bad Gateway",
         _ => status.ToString(),
     };
-
-    private static (string Host, int? Port) SplitHostPort(string authority)
-    {
-        var separator = authority.LastIndexOf(':');
-        if (separator > 0 && int.TryParse(authority[(separator + 1)..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var port))
-        {
-            return (authority[..separator], port);
-        }
-        return (authority, null);
-    }
 
     // The client's source port — the remote end of the connection the proxy accepted.
     // Used to resolve the owning process for the --watch-pids/--watch-process-names filter.
