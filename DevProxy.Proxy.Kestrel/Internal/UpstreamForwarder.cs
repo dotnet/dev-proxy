@@ -11,9 +11,9 @@ namespace DevProxy.Proxy.Kestrel.Internal;
 /// <summary>
 /// Forwards a canonical request to its origin with <see cref="HttpClient"/> and
 /// projects the origin response back onto the canonical model. Honors the
-/// <see cref="ForwardingInvariants"/>: hop-by-hop headers are stripped, the body
-/// is delivered to plugins decompressed, and framing headers are recomputed on
-/// write-back.
+/// <see cref="ForwardingInvariants"/>: hop-by-hop headers are stripped, <c>Expect</c>
+/// is dropped (already satisfied at the proxy), the body is delivered to plugins
+/// decompressed, and framing headers are recomputed on write-back.
 /// </summary>
 internal sealed class UpstreamForwarder(HttpClient httpClient)
 {
@@ -34,6 +34,7 @@ internal sealed class UpstreamForwarder(HttpClient httpClient)
         {
             if (IsHopByHop(header.Name)
                 || string.Equals(header.Name, "Host", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(header.Name, "Expect", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(header.Name, "Content-Length", StringComparison.OrdinalIgnoreCase))
             {
                 continue;

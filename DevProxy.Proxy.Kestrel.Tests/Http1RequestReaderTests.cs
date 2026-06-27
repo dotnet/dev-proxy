@@ -69,4 +69,59 @@ public class Http1RequestReaderTests
 
         Assert.Equal(-1, Http1RequestReader.IndexOfDoubleCrlf(data));
     }
+
+    [Fact]
+    public void DetectBodyFraming_None_WhenNoFramingHeaders()
+    {
+        var headers = new List<(string Name, string Value)> { ("Host", "example.com") };
+
+        Assert.Equal(RequestBodyFraming.None, Http1RequestReader.DetectBodyFraming(headers));
+    }
+
+    [Fact]
+    public void DetectBodyFraming_ContentLength_WhenOnlyContentLength()
+    {
+        var headers = new List<(string Name, string Value)> { ("Content-Length", "12") };
+
+        Assert.Equal(RequestBodyFraming.ContentLength, Http1RequestReader.DetectBodyFraming(headers));
+    }
+
+    [Theory]
+    [InlineData("chunked")]
+    [InlineData("Chunked")]
+    [InlineData("gzip, chunked")]
+    public void DetectBodyFraming_Chunked_WhenTransferEncodingChunked(string transferEncoding)
+    {
+        var headers = new List<(string Name, string Value)> { ("Transfer-Encoding", transferEncoding) };
+
+        Assert.Equal(RequestBodyFraming.Chunked, Http1RequestReader.DetectBodyFraming(headers));
+    }
+
+    [Fact]
+    public void DetectBodyFraming_Conflicting_WhenBothPresent()
+    {
+        // Smuggling vector: the two framings disagree on the body boundary.
+        var headers = new List<(string Name, string Value)>
+        {
+            ("Content-Length", "5"),
+            ("Transfer-Encoding", "chunked"),
+        };
+
+        Assert.Equal(RequestBodyFraming.Conflicting, Http1RequestReader.DetectBodyFraming(headers));
+    }
+
+    [Theory]
+    [InlineData("100-continue", true)]
+    [InlineData("100-Continue", true)]
+    [InlineData("", false)]
+    public void HasExpectContinue_DetectsHeader(string expect, bool present)
+    {
+        var headers = new List<(string Name, string Value)> { ("Host", "x") };
+        if (expect.Length > 0)
+        {
+            headers.Add(("Expect", expect));
+        }
+
+        Assert.Equal(present, Http1RequestReader.HasExpectContinue(headers));
+    }
 }

@@ -249,8 +249,39 @@ internal sealed class ProxyConnectionHandler(
             return false;
         }
 
-        var contentLength = Http1RequestReader.GetContentLength(head.Headers);
-        var body = await reader.ReadBodyAsync(contentLength, ct).ConfigureAwait(false);
+        var framing = Http1RequestReader.DetectBodyFraming(head.Headers);
+        if (framing == RequestBodyFraming.Conflicting)
+        {
+            // Content-Length and chunked Transfer-Encoding disagree on where the body
+            // ends — a request-smuggling vector (RFC 9112 §6.3.3). Refuse it.
+            await WriteErrorAsync(clientStream, HttpStatusCode.BadRequest,
+                "Conflicting Content-Length and Transfer-Encoding", ct).ConfigureAwait(false);
+            return false;
+        }
+
+        if (Http1RequestReader.HasExpectContinue(head.Headers))
+        {
+            // The client is waiting for a go-ahead before sending its body. We always
+            // buffer and forward the body, so answer the expectation ourselves.
+            await ResponseWriter.WriteContinueAsync(clientStream, ct).ConfigureAwait(false);
+        }
+
+        byte[] body;
+        try
+        {
+            body = framing == RequestBodyFraming.Chunked
+                ? await reader.ReadChunkedBodyAsync(ct).ConfigureAwait(false)
+                : await reader.ReadBodyAsync(Http1RequestReader.GetContentLength(head.Headers), ct).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException ex)
+        {
+            // Malformed chunked framing (bad chunk size, missing CRLF, truncated). The
+            // connection's byte stream is no longer framable, so close after replying.
+            logger.LogWarning(ex, "Malformed request body framing");
+            await WriteErrorAsync(clientStream, HttpStatusCode.BadRequest, "Malformed request body", ct).ConfigureAwait(false);
+            return false;
+        }
+
         var keepAlive = ShouldKeepAlive(head);
 
         var headers = new HeaderCollection();
@@ -367,31 +398,21 @@ internal sealed class ProxyConnectionHandler(
 
     /// <summary>
     /// Decides whether the connection may serve another request after this one.
-    /// Persistent by default on HTTP/1.1 (RFC 9112 §9.3), opt-in on HTTP/1.0. We
-    /// refuse keep-alive for requests whose body we cannot yet frame for the next
-    /// message — a chunked (<c>Transfer-Encoding</c>) body or <c>Expect: 100-continue</c>
-    /// — so an unread/misframed body never corrupts a subsequent request.
+    /// Persistent by default on HTTP/1.1 (RFC 9112 §9.3), opt-in on HTTP/1.0, and
+    /// forced closed by <c>Connection: close</c>. Chunked bodies and
+    /// <c>Expect: 100-continue</c> are now read/handled before this runs (the body is
+    /// re-framed with <c>Content-Length</c> on forward), so they no longer force a close.
     /// </summary>
     internal static bool ShouldKeepAlive(ParsedRequestHead head)
     {
         string? connection = null;
-        var hasUnframableBody = false;
         foreach (var (name, value) in head.Headers)
         {
             if (string.Equals(name, "Connection", StringComparison.OrdinalIgnoreCase))
             {
                 connection = value;
+                break;
             }
-            else if (string.Equals(name, "Transfer-Encoding", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(name, "Expect", StringComparison.OrdinalIgnoreCase))
-            {
-                hasUnframableBody = true;
-            }
-        }
-
-        if (hasUnframableBody)
-        {
-            return false;
         }
 
         var isHttp10 = head.Version.EndsWith("1.0", StringComparison.Ordinal);

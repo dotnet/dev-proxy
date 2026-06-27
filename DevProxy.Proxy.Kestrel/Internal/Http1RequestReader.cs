@@ -20,6 +20,35 @@ internal sealed record ParsedRequestHead(
     IReadOnlyList<(string Name, string Value)> Headers);
 
 /// <summary>
+/// How a request body is framed on the wire, resolved from the request headers.
+///
+/// <code>
+///   Transfer-Encoding: chunked  AND  Content-Length  ──► Conflicting (smuggling risk)
+///   Transfer-Encoding: chunked  (only)               ──► Chunked
+///   Content-Length              (only)               ──► ContentLength
+///   neither                                          ──► None
+/// </code>
+/// </summary>
+internal enum RequestBodyFraming
+{
+    /// <summary>No body framing headers — no request body to read.</summary>
+    None,
+
+    /// <summary>A <c>Content-Length</c>-delimited body.</summary>
+    ContentLength,
+
+    /// <summary>A <c>Transfer-Encoding: chunked</c> body.</summary>
+    Chunked,
+
+    /// <summary>
+    /// Both <c>Content-Length</c> and <c>Transfer-Encoding: chunked</c> are present.
+    /// The two disagree on where the body ends — a request-smuggling vector that a
+    /// proxy must refuse (RFC 9112 §6.3.3).
+    /// </summary>
+    Conflicting,
+}
+
+/// <summary>
 /// Stateless HTTP/1.x parsing helpers shared by <see cref="Http1ConnectionReader"/>.
 /// Kept separate so the byte-level framing rules have one implementation and one
 /// test surface, independent of any particular stream/connection.
@@ -69,6 +98,59 @@ internal static class Http1RequestReader
             }
         }
         return 0;
+    }
+
+    /// <summary>
+    /// Classifies how the request body is framed (see <see cref="RequestBodyFraming"/>).
+    /// A message that declares both <c>Content-Length</c> and chunked
+    /// <c>Transfer-Encoding</c> is <see cref="RequestBodyFraming.Conflicting"/> — the
+    /// caller must refuse it rather than guess a body boundary.
+    /// </summary>
+    public static RequestBodyFraming DetectBodyFraming(IReadOnlyList<(string Name, string Value)> headers)
+    {
+        ArgumentNullException.ThrowIfNull(headers);
+
+        var hasContentLength = false;
+        var hasChunked = false;
+        foreach (var (name, value) in headers)
+        {
+            if (string.Equals(name, "Content-Length", StringComparison.OrdinalIgnoreCase))
+            {
+                hasContentLength = true;
+            }
+            else if (string.Equals(name, "Transfer-Encoding", StringComparison.OrdinalIgnoreCase)
+                && value.Contains("chunked", StringComparison.OrdinalIgnoreCase))
+            {
+                hasChunked = true;
+            }
+        }
+
+        return (hasChunked, hasContentLength) switch
+        {
+            (true, true) => RequestBodyFraming.Conflicting,
+            (true, false) => RequestBodyFraming.Chunked,
+            (false, true) => RequestBodyFraming.ContentLength,
+            _ => RequestBodyFraming.None,
+        };
+    }
+
+    /// <summary>
+    /// Whether the request asks the proxy to acknowledge with <c>100 Continue</c>
+    /// before sending its body (<c>Expect: 100-continue</c>, RFC 9110 §10.1.1).
+    /// </summary>
+    public static bool HasExpectContinue(IReadOnlyList<(string Name, string Value)> headers)
+    {
+        ArgumentNullException.ThrowIfNull(headers);
+
+        foreach (var (name, value) in headers)
+        {
+            if (string.Equals(name, "Expect", StringComparison.OrdinalIgnoreCase)
+                && value.Contains("100-continue", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>Index of the first <c>CRLFCRLF</c> in <paramref name="data"/>, or -1.</summary>

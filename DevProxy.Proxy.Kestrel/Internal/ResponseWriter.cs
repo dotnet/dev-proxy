@@ -22,6 +22,20 @@ namespace DevProxy.Proxy.Kestrel.Internal;
 /// </summary>
 internal static class ResponseWriter
 {
+    private static readonly byte[] s_continue = Encoding.ASCII.GetBytes("HTTP/1.1 100 Continue\r\n\r\n");
+
+    /// <summary>
+    /// Writes an interim <c>100 Continue</c> so a client that sent
+    /// <c>Expect: 100-continue</c> proceeds to send its request body. The proxy always
+    /// intends to read the body (it buffers and forwards it), so it answers the
+    /// expectation itself rather than round-tripping to the origin first.
+    /// </summary>
+    public static async Task WriteContinueAsync(Stream clientStream, CancellationToken ct)
+    {
+        await clientStream.WriteAsync(s_continue, ct).ConfigureAwait(false);
+        await clientStream.FlushAsync(ct).ConfigureAwait(false);
+    }
+
     public static async Task WriteAsync(Stream clientStream, IHttpResponse response, bool keepAlive, CancellationToken ct)
     {
         var head = new StringBuilder();

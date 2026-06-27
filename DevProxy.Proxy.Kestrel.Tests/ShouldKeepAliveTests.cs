@@ -47,19 +47,27 @@ public class ShouldKeepAliveTests
     }
 
     [Fact]
-    public void TransferEncoding_ForcesClose()
+    public void TransferEncoding_KeepsAlive_NowThatChunkedIsReframed()
     {
-        // We cannot reframe a chunked body yet, so refuse keep-alive to avoid
-        // corrupting the next request on the connection.
-        Assert.False(ProxyConnectionHandler.ShouldKeepAlive(
+        // The chunked body is decoded and re-framed with Content-Length before this
+        // runs, so a chunked request no longer forces the connection closed.
+        Assert.True(ProxyConnectionHandler.ShouldKeepAlive(
             Head("HTTP/1.1", ("Transfer-Encoding", "chunked"))));
     }
 
     [Fact]
-    public void ExpectHeader_ForcesClose()
+    public void ExpectHeader_KeepsAlive_NowThat100ContinueIsHandled()
     {
-        // 100-continue is unsupported; close rather than mishandle the body.
-        Assert.False(ProxyConnectionHandler.ShouldKeepAlive(
+        // The proxy answers Expect: 100-continue and reads the body, so the connection
+        // stays framable and may be kept alive.
+        Assert.True(ProxyConnectionHandler.ShouldKeepAlive(
             Head("HTTP/1.1", ("Expect", "100-continue"))));
+    }
+
+    [Fact]
+    public void ConnectionClose_StillWins_OverChunked()
+    {
+        Assert.False(ProxyConnectionHandler.ShouldKeepAlive(
+            Head("HTTP/1.1", ("Transfer-Encoding", "chunked"), ("Connection", "close"))));
     }
 }

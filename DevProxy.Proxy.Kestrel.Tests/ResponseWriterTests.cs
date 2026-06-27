@@ -37,6 +37,16 @@ public class ResponseWriterTests
     }
 
     [Fact]
+    public async Task WriteContinueAsync_WritesInterim100()
+    {
+        using var stream = new MemoryStream();
+
+        await ResponseWriter.WriteContinueAsync(stream, CancellationToken.None);
+
+        Assert.Equal("HTTP/1.1 100 Continue\r\n\r\n", Encoding.ASCII.GetString(stream.ToArray()));
+    }
+
+    [Fact]
     public async Task WriteAsync_RecomputesContentLengthFromBody()
     {
         var headers = new HeaderCollection();

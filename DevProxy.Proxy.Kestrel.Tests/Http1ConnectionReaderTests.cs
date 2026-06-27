@@ -122,6 +122,106 @@ public class Http1ConnectionReaderTests
         Assert.Equal("/b", next!.Target);
     }
 
+    [Fact]
+    public async Task ReadChunkedBodyAsync_DecodesSingleChunk()
+    {
+        var reader = ReaderOver(
+            "POST /a HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n" +
+            "5\r\nhello\r\n0\r\n\r\n");
+
+        _ = await reader.ReadHeadAsync(CancellationToken.None);
+        var body = await reader.ReadChunkedBodyAsync(CancellationToken.None);
+
+        Assert.Equal("hello", Encoding.ASCII.GetString(body));
+    }
+
+    [Fact]
+    public async Task ReadChunkedBodyAsync_DecodesMultipleChunks()
+    {
+        var reader = ReaderOver(
+            "POST /a HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n" +
+            "5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n");
+
+        _ = await reader.ReadHeadAsync(CancellationToken.None);
+        var body = await reader.ReadChunkedBodyAsync(CancellationToken.None);
+
+        Assert.Equal("hello world", Encoding.ASCII.GetString(body));
+    }
+
+    [Fact]
+    public async Task ReadChunkedBodyAsync_IgnoresChunkExtensions()
+    {
+        var reader = ReaderOver(
+            "POST /a HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n" +
+            "5;name=value\r\nhello\r\n0\r\n\r\n");
+
+        _ = await reader.ReadHeadAsync(CancellationToken.None);
+        var body = await reader.ReadChunkedBodyAsync(CancellationToken.None);
+
+        Assert.Equal("hello", Encoding.ASCII.GetString(body));
+    }
+
+    [Fact]
+    public async Task ReadChunkedBodyAsync_ConsumesTrailers_AndRetainsSurplus()
+    {
+        // Trailers after the 0-length chunk are consumed (dropped), and a pipelined
+        // next request that arrives right after the terminating blank line survives.
+        var reader = ReaderOver(
+            "POST /a HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n" +
+            "4\r\ndata\r\n0\r\nX-Checksum: abc123\r\n\r\n" +
+            "GET /b HTTP/1.1\r\n\r\n");
+
+        _ = await reader.ReadHeadAsync(CancellationToken.None);
+        var body = await reader.ReadChunkedBodyAsync(CancellationToken.None);
+        Assert.Equal("data", Encoding.ASCII.GetString(body));
+
+        var next = await reader.ReadHeadAsync(CancellationToken.None);
+        Assert.Equal("/b", next!.Target);
+    }
+
+    [Fact]
+    public async Task ReadChunkedBodyAsync_DecodesUnderAggressiveFragmentation()
+    {
+        // One byte per read forces every CRLF and chunk boundary to straddle reads,
+        // exercising the cross-read line/exact accumulation.
+        var reader = ReaderOver(
+            "POST /a HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n" +
+            "5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n",
+            maxBytesPerRead: 1);
+
+        _ = await reader.ReadHeadAsync(CancellationToken.None);
+        var body = await reader.ReadChunkedBodyAsync(CancellationToken.None);
+
+        Assert.Equal("hello world", Encoding.ASCII.GetString(body));
+    }
+
+    [Fact]
+    public async Task ReadChunkedBodyAsync_Throws_OnMalformedChunkSize()
+    {
+        var reader = ReaderOver(
+            "POST /a HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n" +
+            "zz\r\nhello\r\n0\r\n\r\n");
+
+        _ = await reader.ReadHeadAsync(CancellationToken.None);
+
+        _ = await Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await reader.ReadChunkedBodyAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ReadChunkedBodyAsync_Throws_OnTruncatedBody()
+    {
+        // The stream ends before the declared 9 bytes (and terminating chunk) arrive.
+        var reader = ReaderOver(
+            "POST /a HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n" +
+            "9\r\nhello");
+
+        _ = await reader.ReadHeadAsync(CancellationToken.None);
+
+        _ = await Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await reader.ReadChunkedBodyAsync(CancellationToken.None));
+    }
+
     private static Http1ConnectionReader ReaderOver(string raw, int maxBytesPerRead = int.MaxValue) =>
         new(new ChunkedStream(Encoding.ASCII.GetBytes(raw), maxBytesPerRead));
 
