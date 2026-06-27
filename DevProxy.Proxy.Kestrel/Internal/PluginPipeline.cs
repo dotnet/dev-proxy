@@ -129,7 +129,27 @@ internal sealed class PluginPipeline
         return RequestPhase.Watched;
     }
 
-    public async Task RunResponseAsync(CanonicalProxySession session, CancellationToken ct)
+    public Task RunResponseAsync(CanonicalProxySession session, CancellationToken ct)
+        => RunResponseCoreAsync(session, betweenPhases: null, ct);
+
+    /// <summary>
+    /// Runs the response lifecycle for a streamed (chunked) response. Identical to
+    /// <see cref="RunResponseAsync"/> except <paramref name="betweenPhases"/> — which
+    /// writes the response head and pumps the body to the client — runs AFTER
+    /// <c>BeforeResponse</c> (so plugins can mutate status/headers before they go on the
+    /// wire) and BEFORE <c>AfterResponse</c> (so read-only inspectors see the accumulated
+    /// body, and observe the response only after it has been delivered — matching the
+    /// Titanium engine's "after the response is sent" semantics).
+    /// </summary>
+    public Task RunStreamingResponseAsync(
+        CanonicalProxySession session, Func<CancellationToken, Task> betweenPhases, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(betweenPhases);
+        return RunResponseCoreAsync(session, betweenPhases, ct);
+    }
+
+    private async Task RunResponseCoreAsync(
+        CanonicalProxySession session, Func<CancellationToken, Task>? betweenPhases, CancellationToken ct)
     {
         if (!_sessionData.TryGetValue(session.SessionId, out var sessionData))
         {
@@ -166,6 +186,12 @@ internal sealed class PluginPipeline
                 }
 
                 _logger.LogRequest(message, MessageType.InterceptedResponse, loggingContext);
+
+                if (betweenPhases is not null)
+                {
+                    // Streamed response: write the head + pump the body to the client now.
+                    await betweenPhases(ct).ConfigureAwait(false);
+                }
 
                 foreach (var plugin in _plugins.Where(p => p.Enabled))
                 {

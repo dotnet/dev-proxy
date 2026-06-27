@@ -41,10 +41,10 @@ namespace DevProxy.Proxy.Kestrel.Internal;
 /// Scope: keep-alive HTTP/1.1 (multiple requests per intercepted connection) for
 /// plain HTTP + HTTPS-via-CONNECT, mocking short-circuit, selective decrypt + ALPN
 /// blind-tunnel, and transparent WebSocket relay (handshake replayed, frames spliced
-/// opaque — see <see cref="WebSocketRelay"/>). Deferred hardening (tracked):
-/// WebSocket frame inspection/mocking (plan §7), chunked/trailers +
-/// <c>Expect: 100-continue</c> (such requests fall back to <c>Connection: close</c>),
-/// body-mode streaming.
+/// opaque — see <see cref="WebSocketRelay"/>). Streamed (<c>text/event-stream</c>)
+/// responses are forwarded incrementally (chunked) with a capped tee to inspectors —
+/// see <see cref="WriteStreamingResponseAsync"/>. Deferred hardening (tracked):
+/// WebSocket frame inspection/mocking (plan §7).
 /// </para>
 /// </summary>
 internal sealed class ProxyConnectionHandler(
@@ -368,10 +368,10 @@ internal sealed class ProxyConnectionHandler(
             return false;
         }
 
-        MutableHttpResponse response;
+        OriginResponse origin;
         try
         {
-            response = await forwarder.ForwardAsync(request, ct).ConfigureAwait(false);
+            origin = await forwarder.ForwardAsync(request, ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -381,16 +381,74 @@ internal sealed class ProxyConnectionHandler(
             return false;
         }
 
+        await using (origin.ConfigureAwait(false))
+        {
+            // text/event-stream: forward the body to the client piece-by-piece (chunked)
+            // instead of buffering it, so events arrive live and an unbounded stream never
+            // hangs the engine.
+            if (origin.IsStreaming)
+            {
+                return await WriteStreamingResponseAsync(clientStream, session, origin, phase, keepAlive, ct)
+                    .ConfigureAwait(false);
+            }
+
+            if (phase == RequestPhase.Watched)
+            {
+                session.SetOriginResponse(origin.Response);
+                await pipeline.RunResponseAsync(session, ct).ConfigureAwait(false);
+                await ResponseWriter.WriteAsync(clientStream, session.MutableResponse!, keepAlive, ct).ConfigureAwait(false);
+            }
+            else
+            {
+                // NotWatched: pure passthrough, no response-phase plugins.
+                await ResponseWriter.WriteAsync(clientStream, origin.Response, keepAlive, ct).ConfigureAwait(false);
+            }
+
+            return keepAlive;
+        }
+    }
+
+    /// <summary>
+    /// Forwards a streamed (<c>text/event-stream</c>) response to the client incrementally.
+    /// For a watched session the response head + body are written between the
+    /// <c>BeforeResponse</c> and <c>AfterResponse</c> plugin phases, and a capped copy of
+    /// the body is exposed to read-only <c>AfterResponse</c> inspectors (e.g. OpenAI
+    /// telemetry). <c>BeforeResponse</c> body replacement is not supported on streamed
+    /// responses — the live origin body is always forwarded.
+    /// </summary>
+    private async Task<bool> WriteStreamingResponseAsync(
+        Stream clientStream,
+        CanonicalProxySession session,
+        OriginResponse origin,
+        RequestPhase phase,
+        bool keepAlive,
+        CancellationToken ct)
+    {
+        const int accumulateCap = (int)BodyModeResolver.DefaultInMemoryLimitBytes;
+
         if (phase == RequestPhase.Watched)
         {
-            session.SetOriginResponse(response);
-            await pipeline.RunResponseAsync(session, ct).ConfigureAwait(false);
-            await ResponseWriter.WriteAsync(clientStream, session.MutableResponse!, keepAlive, ct).ConfigureAwait(false);
+            session.SetOriginResponse(origin.Response);
+            await pipeline.RunStreamingResponseAsync(session, async innerCt =>
+            {
+                var accumulated = await StreamingResponseWriter.WriteAsync(
+                    clientStream, session.MutableResponse!, origin.BodyStream!, keepAlive, accumulateCap, innerCt)
+                    .ConfigureAwait(false);
+
+                // Hand the captured stream to AfterResponse inspectors. Empty when the
+                // stream exceeded the cap — those plugins then simply see no body.
+                if (!accumulated.IsEmpty)
+                {
+                    session.MutableResponse!.SetBody(accumulated);
+                }
+            }, ct).ConfigureAwait(false);
         }
         else
         {
-            // NotWatched: pure passthrough, no response-phase plugins.
-            await ResponseWriter.WriteAsync(clientStream, response, keepAlive, ct).ConfigureAwait(false);
+            // NotWatched: incremental passthrough, no plugins, no need to accumulate.
+            await StreamingResponseWriter.WriteAsync(
+                clientStream, origin.Response, origin.BodyStream!, keepAlive, accumulateCap: 0, ct)
+                .ConfigureAwait(false);
         }
 
         return keepAlive;

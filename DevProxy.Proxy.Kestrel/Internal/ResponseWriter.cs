@@ -15,10 +15,10 @@ namespace DevProxy.Proxy.Kestrel.Internal;
 /// framing / encoding headers so the client always receives a valid message
 /// (<see cref="ForwardingInvariants"/>).
 ///
-/// <para>Because the engine always buffers the full body and recomputes
-/// <c>Content-Length</c>, the client can frame the response unambiguously, so the
-/// connection may be kept alive when the request allows it. Chunked write-back is
-/// tracked hardening.</para>
+/// <para>Non-streaming responses are buffered, so <c>Content-Length</c> is recomputed
+/// and the client can frame the response unambiguously, allowing keep-alive when the
+/// request permits. Streamed (<c>text/event-stream</c>) responses are re-framed as
+/// chunked transfer by <see cref="StreamingResponseWriter"/> instead.</para>
 /// </summary>
 internal static class ResponseWriter
 {
