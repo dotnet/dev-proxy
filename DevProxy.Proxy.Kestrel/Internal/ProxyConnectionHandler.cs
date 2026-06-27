@@ -40,9 +40,11 @@ namespace DevProxy.Proxy.Kestrel.Internal;
 /// <para>
 /// Scope: keep-alive HTTP/1.1 (multiple requests per intercepted connection) for
 /// plain HTTP + HTTPS-via-CONNECT, mocking short-circuit, selective decrypt + ALPN
-/// blind-tunnel. Deferred hardening (tracked): WebSocket relay + inspection,
-/// chunked/trailers + <c>Expect: 100-continue</c> (such requests fall back to
-/// <c>Connection: close</c>), body-mode streaming.
+/// blind-tunnel, and transparent WebSocket relay (handshake replayed, frames spliced
+/// opaque — see <see cref="WebSocketRelay"/>). Deferred hardening (tracked):
+/// WebSocket frame inspection/mocking (plan §7), chunked/trailers +
+/// <c>Expect: 100-continue</c> (such requests fall back to <c>Connection: close</c>),
+/// body-mode streaming.
 /// </para>
 /// </summary>
 internal sealed class ProxyConnectionHandler(
@@ -53,6 +55,7 @@ internal sealed class ProxyConnectionHandler(
     ILogger logger) : ConnectionHandler
 {
     private static int _requestCounter;
+    private readonly WebSocketRelay _webSocketRelay = new(logger);
 
     public override async Task OnConnectedAsync(ConnectionContext connection)
     {
@@ -196,32 +199,8 @@ internal sealed class ProxyConnectionHandler(
 
         await using var origin = tcp.GetStream();
 
-        // Relay both directions until either side closes. When the first direction
-        // finishes, cancel the other so it stops touching the streams. The finally
-        // awaits both tasks before `origin`/`tcp` are disposed (CA2025: no task may
-        // outlive the IDisposable it uses).
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
-#pragma warning disable CA2025 // The finally below awaits both copies before origin/clientStream are disposed.
-        var clientToOrigin = clientStream.CopyToAsync(origin, linked.Token);
-        var originToClient = origin.CopyToAsync(clientStream, linked.Token);
-
-        try
-        {
-            _ = await Task.WhenAny(clientToOrigin, originToClient).ConfigureAwait(false);
-            await linked.CancelAsync().ConfigureAwait(false);
-        }
-        finally
-        {
-            try
-            {
-                await Task.WhenAll(clientToOrigin, originToClient).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is IOException or OperationCanceledException or SocketException)
-            {
-                // Either peer closed the connection — normal tunnel teardown.
-            }
-        }
-#pragma warning restore CA2025
+        // Relay both directions (still-encrypted bytes) until either side closes.
+        await StreamRelay.RelayBidirectionalAsync(clientStream, origin, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -309,6 +288,53 @@ internal sealed class ProxyConnectionHandler(
             await pipeline.RunResponseAsync(session, ct).ConfigureAwait(false);
             await ResponseWriter.WriteAsync(clientStream, session.MutableResponse!, keepAlive, ct).ConfigureAwait(false);
             return keepAlive;
+        }
+
+        // WebSocket upgrade: HttpClient can't carry a 101, so replay the handshake on a
+        // raw socket and splice frames. The relay BLOCKS in the splice until the socket
+        // closes, so the response pipeline runs inside the handshake callback (before the
+        // splice) — that way a watched request is logged and reporters observe it
+        // immediately, not when the WebSocket eventually closes. Either way the
+        // connection is consumed (no keep-alive after an upgrade).
+        if (request.IsWebSocketRequest)
+        {
+            var handshakeObserved = false;
+            async Task OnHandshakeAsync(MutableHttpResponse handshakeResponse)
+            {
+                handshakeObserved = true;
+                if (phase == RequestPhase.Watched)
+                {
+                    session.SetOriginResponse(handshakeResponse);
+                    await pipeline.RunResponseAsync(session, ct).ConfigureAwait(false);
+                }
+            }
+
+            try
+            {
+                await _webSocketRelay.RelayAsync(clientStream, request, requestUri, OnHandshakeAsync, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogError(ex, "Error relaying WebSocket to {Url}", absoluteUrl);
+            }
+
+            // The relay never reached a handshake response (origin connect failed or it
+            // closed early). Flush the buffered request log for a watched session so its
+            // lines don't linger in the console formatter; otherwise just drop state.
+            if (!handshakeObserved)
+            {
+                if (phase == RequestPhase.Watched)
+                {
+                    session.SetOriginResponse(new MutableHttpResponse(
+                        HttpStatusCode.BadGateway, HttpVersion.Version11, new HeaderCollection(), ReadOnlyMemory<byte>.Empty));
+                    await pipeline.RunResponseAsync(session, ct).ConfigureAwait(false);
+                }
+                else
+                {
+                    pipeline.Forget(session.SessionId);
+                }
+            }
+            return false;
         }
 
         MutableHttpResponse response;
