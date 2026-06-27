@@ -2,7 +2,6 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Text.RegularExpressions;
 using DevProxy.Abstractions.Proxy;
 
 namespace DevProxy.Proxy.Kestrel.Internal;
@@ -10,13 +9,8 @@ namespace DevProxy.Proxy.Kestrel.Internal;
 /// <summary>
 /// Host-level view of the watched-URL set, used to decide at CONNECT time whether
 /// to terminate TLS (watched → MITM) or blind-tunnel (non-watched → relay bytes).
-///
-/// <para>
-/// TODO (DRY, cut-over): this host-extraction logic is duplicated from
-/// <c>ProxyEngine.LoadHostNamesFromUrls</c>. Consolidate into a single shared
-/// helper in <c>DevProxy.Abstractions</c> when the Titanium engine is removed,
-/// so there is one implementation with one test suite.
-/// </para>
+/// Host derivation is shared with the Titanium engine via
+/// <see cref="WatchedHostExtractor"/> so the two engines match identically.
 /// </summary>
 internal sealed class HostWatchList
 {
@@ -31,30 +25,7 @@ internal sealed class HostWatchList
         var hosts = new List<UrlToWatch>();
         foreach (var urlToWatch in urlsToWatch)
         {
-            var pattern = Regex.Unescape(urlToWatch.Url.ToString())
-                .Trim('^', '$')
-                .Replace(".*", "*", StringComparison.OrdinalIgnoreCase);
-
-            string host;
-            if (pattern.Contains("://", StringComparison.OrdinalIgnoreCase))
-            {
-                var chunks = pattern.Split("://");
-                var slash = chunks[1].IndexOf('/', StringComparison.OrdinalIgnoreCase);
-                host = slash < 0 ? chunks[1] : chunks[1][..slash];
-            }
-            else
-            {
-                host = pattern;
-            }
-
-            var portPos = host.IndexOf(':', StringComparison.OrdinalIgnoreCase);
-            if (portPos > 0)
-            {
-                host = host[..portPos];
-            }
-
-            var regexString = Regex.Escape(host).Replace("\\*", ".*", StringComparison.OrdinalIgnoreCase);
-            var regex = new Regex($"^{regexString}$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+            var regex = WatchedHostExtractor.ToHostRegex(urlToWatch.Url);
 
             if (!hosts.Exists(h => h.Url.ToString() == regex.ToString()))
             {

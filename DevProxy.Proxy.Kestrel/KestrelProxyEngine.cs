@@ -68,16 +68,25 @@ public sealed class KestrelProxyEngine(
         var builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions());
         _ = builder.WebHost.UseKestrelCore();
         _ = builder.Services.AddSingleton(handler);
+        Microsoft.AspNetCore.Server.Kestrel.Core.ListenOptions? listenOptions = null;
         builder.WebHost.ConfigureKestrel(options =>
-            options.Listen(ipAddress, port, listen => listen.UseConnectionHandler<ProxyConnectionHandler>()));
+            options.Listen(ipAddress, port, listen =>
+            {
+                listen.UseConnectionHandler<ProxyConnectionHandler>();
+                listenOptions = listen;
+            }));
 
         await using var app = builder.Build();
 
         await app.StartAsync(stoppingToken).ConfigureAwait(false);
+        // When --port 0 is used the OS assigns a free port; Kestrel rewrites the
+        // ListenOptions endpoint to the bound port after StartAsync, so log THAT
+        // (not the configured 0) so the user can actually connect.
+        var boundPort = listenOptions?.IPEndPoint?.Port ?? port;
         _logger.LogInformation(
             "Dev Proxy (Kestrel engine) listening on {Address}:{Port}",
             ipAddress.ToString(),
-            port.ToString(CultureInfo.InvariantCulture));
+            boundPort.ToString(CultureInfo.InvariantCulture));
 
         try
         {

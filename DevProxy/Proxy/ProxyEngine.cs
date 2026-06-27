@@ -358,34 +358,7 @@ sealed class ProxyEngine(
     {
         foreach (var urlToWatch in _urlsToWatch)
         {
-            // extract host from the URL
-            var urlToWatchPattern = Regex.Unescape(urlToWatch.Url.ToString())
-                .Trim('^', '$')
-                .Replace(".*", "*", StringComparison.OrdinalIgnoreCase);
-            string hostToWatch;
-            if (urlToWatchPattern.Contains("://", StringComparison.OrdinalIgnoreCase))
-            {
-                // if the URL contains a protocol, extract the host from the URL
-                var urlChunks = urlToWatchPattern.Split("://");
-                var slashPos = urlChunks[1].IndexOf('/', StringComparison.OrdinalIgnoreCase);
-                hostToWatch = slashPos < 0 ? urlChunks[1] : urlChunks[1][..slashPos];
-            }
-            else
-            {
-                // if the URL doesn't contain a protocol,
-                // we assume the whole URL is a host name
-                hostToWatch = urlToWatchPattern;
-            }
-
-            // remove port number if present
-            var portPos = hostToWatch.IndexOf(':', StringComparison.OrdinalIgnoreCase);
-            if (portPos > 0)
-            {
-                hostToWatch = hostToWatch[..portPos];
-            }
-
-            var hostToWatchRegexString = Regex.Escape(hostToWatch).Replace("\\*", ".*", StringComparison.OrdinalIgnoreCase);
-            Regex hostRegex = new($"^{hostToWatchRegexString}$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+            var hostRegex = WatchedHostExtractor.ToHostRegex(urlToWatch.Url);
             // don't add the same host twice
             if (!_hostsToWatch.Any(h => h.Url.ToString() == hostRegex.ToString()))
             {
