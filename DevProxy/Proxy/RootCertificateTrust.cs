@@ -69,6 +69,46 @@ internal sealed class RootCertificateTrust(
         }
     }
 
+    public void Trust(X509Certificate2 rootCertificate)
+    {
+        ArgumentNullException.ThrowIfNull(rootCertificate);
+
+        if (OperatingSystem.IsMacOS())
+        {
+            MacCertificateHelper.TrustCertificate(rootCertificate, logger);
+            logger.LogInformation("Certificate trusted successfully.");
+        }
+        else if (OperatingSystem.IsWindows())
+        {
+            InstallIntoWindowsRootStore(rootCertificate);
+        }
+        else
+        {
+            logger.LogWarning(
+                "Trust the Dev Proxy root certificate manually so your tools accept intercepted HTTPS traffic.");
+        }
+    }
+
+    public void Untrust(X509Certificate2 rootCertificate)
+    {
+        ArgumentNullException.ThrowIfNull(rootCertificate);
+
+        if (OperatingSystem.IsMacOS())
+        {
+            MacCertificateHelper.RemoveTrustedCertificate(rootCertificate, logger);
+            HasRunFlag.Remove();
+        }
+        else if (OperatingSystem.IsWindows())
+        {
+            RemoveFromWindowsRootStore(rootCertificate);
+        }
+        else
+        {
+            logger.LogWarning(
+                "Remove the Dev Proxy root certificate from your trust store manually.");
+        }
+    }
+
     private static string? PromptForTrust()
     {
         Console.WriteLine();
@@ -111,6 +151,32 @@ internal sealed class RootCertificateTrust(
         catch (Exception ex) when (ex is System.Security.Cryptography.CryptographicException or IOException or UnauthorizedAccessException)
         {
             logger.LogError(ex, "Failed to install the root certificate into the Windows root store.");
+        }
+    }
+
+    private void RemoveFromWindowsRootStore(X509Certificate2 rootCertificate)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        try
+        {
+            using var publicCert = X509CertificateLoader.LoadCertificate(
+                rootCertificate.Export(X509ContentType.Cert));
+            using var store = new X509Store(StoreName.Root, StoreLocation.CurrentUser);
+            store.Open(OpenFlags.ReadWrite);
+
+            if (store.Certificates.Contains(publicCert))
+            {
+                store.Remove(publicCert);
+                logger.LogInformation("Certificate removed from the current user's root store.");
+            }
+        }
+        catch (Exception ex) when (ex is System.Security.Cryptography.CryptographicException or IOException or UnauthorizedAccessException)
+        {
+            logger.LogError(ex, "Failed to remove the root certificate from the Windows root store.");
         }
     }
 }

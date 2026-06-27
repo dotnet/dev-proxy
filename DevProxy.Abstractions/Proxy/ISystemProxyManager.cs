@@ -5,9 +5,9 @@
 namespace DevProxy.Abstractions.Proxy;
 
 /// <summary>
-/// Turns the operating-system HTTP/HTTPS proxy on and off. Engine-agnostic: both the
-/// Titanium and Kestrel engines (and the <c>stop</c> command's crash-cleanup path) drive
-/// the same implementation, so there is one place that owns the OS proxy state.
+/// Turns the operating-system HTTP/HTTPS proxy on and off. Engine-agnostic: the Kestrel
+/// engine and the <c>stop</c> command's crash-cleanup path drive the same implementation,
+/// so there is one place that owns the OS proxy state.
 ///
 /// <para>
 /// The implementation lives in the host (it needs platform I/O — the Windows registry +

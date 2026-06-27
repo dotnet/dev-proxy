@@ -17,18 +17,13 @@ using Microsoft.Extensions.Logging;
 namespace DevProxy.Proxy.Kestrel;
 
 /// <summary>
-/// A forward-proxy engine built on ASP.NET Core Kestrel — the replacement for the
-/// Titanium-based engine. Hosts a raw TCP endpoint (Kestrel's HTTP middleware is
+/// A forward-proxy engine built on ASP.NET Core Kestrel — Dev Proxy's HTTP(S)
+/// interception engine. Hosts a raw TCP endpoint (Kestrel's HTTP middleware is
 /// bypassed; a forward proxy speaks the CONNECT protocol and owns the byte stream)
 /// and runs the Dev Proxy plugin pipeline against the canonical HTTP model.
-///
-/// <para>
-/// Selected via the engine dev-toggle so it can run side-by-side with the Titanium
-/// engine during development for golden-output comparison. Not a shipped fallback —
-/// it becomes the only engine at cut-over.
-/// </para>
 /// </summary>
 public sealed class KestrelProxyEngine(
+    CertificateAuthority certificateAuthority,
     IEnumerable<IPlugin> plugins,
     ISet<UrlToWatch> urlsToWatch,
     IProxyConfiguration configuration,
@@ -46,7 +41,9 @@ public sealed class KestrelProxyEngine(
             : IPAddress.Parse(configuration.IPAddress);
         var port = configuration.Port;
 
-        using var ca = CertificateAuthority.CreateDefault(_logger);
+        // The certificate authority is owned by DI (shared with the cert command, the
+        // Entra mock plugin, and the cert-download API) — do NOT dispose it here.
+        var ca = certificateAuthority;
         rootCertificateTrust?.EnsureTrusted(ca.RootCertificate);
         using var httpHandler = new SocketsHttpHandler
         {

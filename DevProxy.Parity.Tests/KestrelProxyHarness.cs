@@ -9,6 +9,7 @@ using System.Text.RegularExpressions;
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Proxy.Kestrel;
+using DevProxy.Proxy.Kestrel.Internal;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace DevProxy.Parity.Tests;
@@ -60,6 +61,7 @@ internal sealed class KestrelProxyHarness : IAsyncDisposable
         };
 
         var engine = new KestrelProxyEngine(
+            CertificateAuthority.CreateDefault(),
             plugins ?? [],
             urlsToWatch,
             configuration,

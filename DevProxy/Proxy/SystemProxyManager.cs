@@ -12,7 +12,7 @@ namespace DevProxy.Proxy;
 
 /// <summary>
 /// Host-side <see cref="ISystemProxyManager"/>. Engine-agnostic OS proxy on/off, shared by
-/// the Titanium engine, the Kestrel engine, and the <c>stop --force</c> crash-cleanup path.
+/// the Kestrel engine and the <c>stop --force</c> crash-cleanup path.
 ///
 /// <code>
 ///   Enable(ip, port)                 Disable()
@@ -27,8 +27,8 @@ namespace DevProxy.Proxy;
 /// <para>
 /// The Windows path uses WinINET: it writes the per-user Internet Settings registry values
 /// and then broadcasts INTERNET_OPTION_SETTINGS_CHANGED + INTERNET_OPTION_REFRESH so running
-/// applications re-read the proxy without a restart. This is the standard mechanism Titanium
-/// used internally; it cannot be exercised on non-Windows hosts.
+/// applications re-read the proxy without a restart. This is the standard WinINET mechanism;
+/// it cannot be exercised on non-Windows hosts.
 /// </para>
 /// </summary>
 internal sealed class SystemProxyManager(ILogger<SystemProxyManager> logger) : ISystemProxyManager

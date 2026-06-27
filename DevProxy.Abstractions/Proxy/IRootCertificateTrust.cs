@@ -25,4 +25,18 @@ public interface IRootCertificateTrust
     /// host's install/first-run policy. Best-effort: failures are logged, not thrown.
     /// </summary>
     void EnsureTrusted(X509Certificate2 rootCertificate);
+
+    /// <summary>
+    /// Unconditionally installs <paramref name="rootCertificate"/> into the OS trust
+    /// store, bypassing the first-run/install policy. Used by the explicit
+    /// <c>cert ensure</c> command. Best-effort: failures are logged, not thrown.
+    /// </summary>
+    void Trust(X509Certificate2 rootCertificate);
+
+    /// <summary>
+    /// Removes <paramref name="rootCertificate"/> from the OS trust store (and clears the
+    /// first-run flag). Used by the explicit <c>cert remove</c> command. Best-effort:
+    /// failures are logged, not thrown.
+    /// </summary>
+    void Untrust(X509Certificate2 rootCertificate);
 }

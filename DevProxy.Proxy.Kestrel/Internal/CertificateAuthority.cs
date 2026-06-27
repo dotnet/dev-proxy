@@ -49,7 +49,7 @@ namespace DevProxy.Proxy.Kestrel.Internal;
 ///   └─ no ──► mint leaf signed by root ──► save (best-effort) ──► use
 /// </code>
 /// </summary>
-internal sealed class CertificateAuthority : IDisposable
+public sealed class CertificateAuthority : IDisposable
 {
     private const string RootCertCommonName = "Dev Proxy CA";
     private const string ConfigFolderName = "dev-proxy";

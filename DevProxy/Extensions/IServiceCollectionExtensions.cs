@@ -10,6 +10,7 @@ using DevProxy.Abstractions.Proxy;
 using DevProxy.Commands;
 using DevProxy.Proxy;
 using DevProxy.Proxy.Kestrel;
+using DevProxy.Proxy.Kestrel.Internal;
 using Microsoft.Extensions.Logging;
 
 #pragma warning disable IDE0130
@@ -42,30 +43,23 @@ static class IServiceCollectionExtensions
         return services;
     }
 
-    // Engine selection (dev-toggle). The Titanium engine is the default; setting
-    // DEV_PROXY_ENGINE=kestrel selects the new Kestrel engine so the two can run
-    // side-by-side during development for golden-output comparison. This toggle is
-    // NOT a shipped fallback — it is removed at the hard cut-over (decision #3).
+    // The Kestrel engine is the sole proxy engine. It receives the shared
+    // CertificateAuthority (registered via AddKestrelCertificateAuthority) plus the
+    // host's platform trust + system-proxy implementations.
     static IServiceCollection AddProxyEngine(this IServiceCollection services)
     {
-        var engine = Environment.GetEnvironmentVariable("DEV_PROXY_ENGINE");
-        if (string.Equals(engine, "kestrel", StringComparison.OrdinalIgnoreCase))
-        {
-            _ = services.AddSingleton<IRootCertificateTrust, RootCertificateTrust>();
-            _ = services.AddSingleton<ISystemProxyManager, SystemProxyManager>();
-            _ = services.AddHostedService(sp => new KestrelProxyEngine(
-                sp.GetServices<IPlugin>(),
-                sp.GetRequiredService<ISet<UrlToWatch>>(),
-                sp.GetRequiredService<IProxyConfiguration>(),
-                sp.GetRequiredService<IProxyState>().GlobalData,
-                sp.GetRequiredService<ILoggerFactory>(),
-                sp.GetRequiredService<IRootCertificateTrust>(),
-                sp.GetRequiredService<ISystemProxyManager>()));
-        }
-        else
-        {
-            _ = services.AddHostedService<ProxyEngine>();
-        }
+        _ = services.AddSingleton<IRootCertificateTrust, RootCertificateTrust>();
+        _ = services.AddSingleton<ISystemProxyManager, SystemProxyManager>();
+        _ = services.AddKestrelCertificateAuthority();
+        _ = services.AddHostedService(sp => new KestrelProxyEngine(
+            sp.GetRequiredService<CertificateAuthority>(),
+            sp.GetServices<IPlugin>(),
+            sp.GetRequiredService<ISet<UrlToWatch>>(),
+            sp.GetRequiredService<IProxyConfiguration>(),
+            sp.GetRequiredService<IProxyState>().GlobalData,
+            sp.GetRequiredService<ILoggerFactory>(),
+            sp.GetRequiredService<IRootCertificateTrust>(),
+            sp.GetRequiredService<ISystemProxyManager>()));
 
         return services;
     }
@@ -81,10 +75,8 @@ static class IServiceCollectionExtensions
             .AddSingleton<IProxyStateController, ProxyStateController>()
             .AddSingleton<IProxyState, ProxyState>()
             .AddHostedService<ConfigFileWatcher>()
-            .AddSingleton(sp => ProxyEngine.Certificate!)
             .AddSingleton(sp => LanguageModelClientFactory.Create(sp, configuration))
             .AddSingleton<UpdateNotification>()
-            .AddSingleton<ProxyEngine>()
             .AddSingleton<DevProxyCommand>()
             .AddSingleton<MSGraphDb>()
             .AddHttpClient();
