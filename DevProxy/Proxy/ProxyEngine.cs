@@ -19,7 +19,6 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text.RegularExpressions;
 using Titanium.Web.Proxy;
 using Titanium.Web.Proxy.EventArguments;
-using Titanium.Web.Proxy.Helpers;
 using Titanium.Web.Proxy.Http;
 using Titanium.Web.Proxy.Models;
 
@@ -90,7 +89,7 @@ sealed class ProxyEngine(
             // in the Root store via .NET's X509Store API — it requires admin
             // privileges and fails with "Access is denied".
             // On macOS, Dev Proxy handles trust via MacCertificateHelper instead.
-            ProxyServer = new(userTrustRootCertificate: RunTime.IsWindows, loggerFactory: loggerFactory);
+            ProxyServer = new(userTrustRootCertificate: OperatingSystem.IsWindows(), loggerFactory: loggerFactory);
             ProxyServer.CertificateManager.PfxFilePath = Environment.GetEnvironmentVariable("DEV_PROXY_CERT_PATH") ?? string.Empty;
             ProxyServer.CertificateManager.RootCertificateName = "Dev Proxy CA";
             ProxyServer.CertificateManager.CertificateStorage = new CertificateDiskCache();
@@ -163,12 +162,12 @@ sealed class ProxyEngine(
 
         if (_config.AsSystemProxy)
         {
-            if (RunTime.IsWindows)
+            if (OperatingSystem.IsWindows())
             {
                 ProxyServer.SetAsSystemHttpProxy(_explicitEndPoint);
                 ProxyServer.SetAsSystemHttpsProxy(_explicitEndPoint);
             }
-            else if (RunTime.IsMac)
+            else if (OperatingSystem.IsMacOS())
             {
                 ToggleSystemProxy(ToggleSystemProxyAction.On, _config.IPAddress, _config.Port);
             }
@@ -258,7 +257,7 @@ sealed class ProxyEngine(
 
     private void FirstRunSetup()
     {
-        if (!RunTime.IsMac ||
+        if (!OperatingSystem.IsMacOS() ||
             _config.NoFirstRun ||
             !HasRunFlag.CreateIfMissing() ||
             !_config.InstallCert)
@@ -395,7 +394,7 @@ sealed class ProxyEngine(
 
             _inactivityTimer?.Stop();
 
-            if (RunTime.IsMac && _config.AsSystemProxy)
+            if (OperatingSystem.IsMacOS() && _config.AsSystemProxy)
             {
                 ToggleSystemProxy(ToggleSystemProxyAction.Off);
             }
@@ -730,7 +729,7 @@ sealed class ProxyEngine(
 
     private static int GetProcessId(TunnelConnectSessionEventArgs e)
     {
-        if (RunTime.IsWindows)
+        if (OperatingSystem.IsWindows())
         {
             return e.HttpClient.ProcessId.Value;
         }

@@ -5,7 +5,6 @@
 using DevProxy.Proxy;
 using System.CommandLine;
 using System.CommandLine.Parsing;
-using Titanium.Web.Proxy.Helpers;
 
 namespace DevProxy.Commands;
 
@@ -60,7 +59,7 @@ sealed class CertCommand : Command
             _logger.LogInformation("Ensuring certificate exists and is trusted...");
             await ProxyEngine.ProxyServer.CertificateManager.EnsureRootCertificateAsync();
 
-            if (RunTime.IsMac)
+            if (OperatingSystem.IsMacOS())
             {
                 var certificate = ProxyEngine.ProxyServer.CertificateManager.RootCertificate;
                 if (certificate is not null)
@@ -107,7 +106,7 @@ sealed class CertCommand : Command
             // Ensure ProxyServer is initialized with LoggerFactory for Unobtanium logging
             ProxyEngine.EnsureProxyServerInitialized(_loggerFactory);
 
-            if (RunTime.IsMac)
+            if (OperatingSystem.IsMacOS())
             {
                 var certificate = ProxyEngine.ProxyServer.CertificateManager.RootCertificate;
                 if (certificate is not null)
