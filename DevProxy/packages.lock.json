@@ -357,6 +357,13 @@
           "Unobtanium.Web.Proxy": "[0.1.5, )",
           "YamlDotNet": "[18.0.0, )"
         }
+      },
+      "devproxy.proxy.titanium": {
+        "type": "Project",
+        "dependencies": {
+          "DevProxy.Abstractions": "[3.1.0, )",
+          "Unobtanium.Web.Proxy": "[0.1.5, )"
+        }
       }
     }
   }

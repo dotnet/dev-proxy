@@ -6,12 +6,14 @@ using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Commands;
+using DevProxy.Proxy.Titanium;
 using DevProxy.State;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.VisualStudio.Threading;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.RegularExpressions;
@@ -497,7 +499,7 @@ sealed class ProxyEngine(
                 throw new InvalidOperationException($"Unable to initialize the plugin data storage for hash key {e.GetHashCode()}");
             }
             var responseState = new ResponseState();
-            var proxyRequestArgs = new ProxyRequestArgs(e, responseState)
+            var proxyRequestArgs = new ProxyRequestArgs(e, CreateProxySession(e), responseState)
             {
                 SessionData = _pluginData[e.GetHashCode()],
                 GlobalData = _proxyController.ProxyState.GlobalData
@@ -526,6 +528,9 @@ sealed class ProxyEngine(
             await HandleRequestAsync(e, proxyRequestArgs);
         }
     }
+
+    private static TitaniumProxySession CreateProxySession(SessionEventArgs e) =>
+        new(e.GetHashCode().ToString(CultureInfo.InvariantCulture), e);
 
     private async Task HandleRequestAsync(SessionEventArgs e, ProxyRequestArgs proxyRequestArgs)
     {
@@ -604,7 +609,7 @@ sealed class ProxyEngine(
         // read response headers
         if (IsProxiedHost(e.HttpClient.Request.RequestUri.Host))
         {
-            var proxyResponseArgs = new ProxyResponseArgs(e, new())
+            var proxyResponseArgs = new ProxyResponseArgs(e, CreateProxySession(e), new())
             {
                 SessionData = _pluginData[e.GetHashCode()],
                 GlobalData = _proxyController.ProxyState.GlobalData
@@ -643,7 +648,7 @@ sealed class ProxyEngine(
         // read response headers
         if (IsProxiedHost(e.HttpClient.Request.RequestUri.Host))
         {
-            var proxyResponseArgs = new ProxyResponseArgs(e, new())
+            var proxyResponseArgs = new ProxyResponseArgs(e, CreateProxySession(e), new())
             {
                 SessionData = _pluginData[e.GetHashCode()],
                 GlobalData = _proxyController.ProxyState.GlobalData

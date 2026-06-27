@@ -47,6 +47,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DevProxy.Abstractions\DevProxy.Abstractions.csproj" />
+    <ProjectReference Include="..\DevProxy.Proxy.Titanium\DevProxy.Proxy.Titanium.csproj" />
   </ItemGroup>
 
   <ItemGroup>

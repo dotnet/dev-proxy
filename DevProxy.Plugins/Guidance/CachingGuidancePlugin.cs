@@ -3,10 +3,10 @@
 // See the LICENSE file in the project root for more information.
 
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Plugins;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Titanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Guidance;
 
@@ -43,13 +43,13 @@ public sealed class CachingGuidancePlugin(
             Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
-        if (string.Equals(e.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(e.ProxySession.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
         {
             Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new LoggingContext(e.Session));
             return Task.CompletedTask;
         }
 
-        var request = e.Session.HttpClient.Request;
+        var request = e.ProxySession.Request;
         var url = request.RequestUri.AbsoluteUri;
         var now = DateTime.Now;
 
@@ -78,6 +78,6 @@ public sealed class CachingGuidancePlugin(
         return Task.CompletedTask;
     }
 
-    private static string BuildCacheWarningMessage(Request r, int _warningSeconds, DateTime lastIntercepted) =>
+    private static string BuildCacheWarningMessage(IHttpRequest r, int _warningSeconds, DateTime lastIntercepted) =>
         $"Another request to {r.RequestUri.PathAndQuery} intercepted within {_warningSeconds} seconds. Last intercepted at {lastIntercepted}. Consider using cache to avoid calling the API too often.";
 }

@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using System.CommandLine;
 using System.Text.Json.Serialization;
@@ -15,17 +16,25 @@ public class ProxyEventArgsBase
     public Dictionary<string, object> GlobalData { get; init; } = [];
 }
 
-public class ProxyHttpEventArgsBase(SessionEventArgs session) : ProxyEventArgsBase
+public class ProxyHttpEventArgsBase(SessionEventArgs session, IProxySession proxySession) : ProxyEventArgsBase
 {
     public SessionEventArgs Session { get; } = session ??
         throw new ArgumentNullException(nameof(session));
 
+    /// <summary>
+    /// Engine-agnostic view of the session. Plugins should prefer this over
+    /// <see cref="Session"/>, which exposes the underlying Titanium engine type
+    /// and will be removed once all plugins are migrated to the canonical model.
+    /// </summary>
+    public IProxySession ProxySession { get; } = proxySession ??
+        throw new ArgumentNullException(nameof(proxySession));
+
     public bool HasRequestUrlMatch(ISet<UrlToWatch> watchedUrls) =>
-        ProxyUtils.MatchesUrlToWatch(watchedUrls, Session.HttpClient.Request.RequestUri.AbsoluteUri);
+        ProxyUtils.MatchesUrlToWatch(watchedUrls, ProxySession.Request.RequestUri.AbsoluteUri);
 }
 
-public class ProxyRequestArgs(SessionEventArgs session, ResponseState responseState) :
-    ProxyHttpEventArgsBase(session)
+public class ProxyRequestArgs(SessionEventArgs session, IProxySession proxySession, ResponseState responseState) :
+    ProxyHttpEventArgsBase(session, proxySession)
 {
     public ResponseState ResponseState { get; } = responseState ??
         throw new ArgumentNullException(nameof(responseState));
@@ -35,8 +44,8 @@ public class ProxyRequestArgs(SessionEventArgs session, ResponseState responseSt
         && HasRequestUrlMatch(watchedUrls);
 }
 
-public class ProxyResponseArgs(SessionEventArgs session, ResponseState responseState) :
-    ProxyHttpEventArgsBase(session)
+public class ProxyResponseArgs(SessionEventArgs session, IProxySession proxySession, ResponseState responseState) :
+    ProxyHttpEventArgsBase(session, proxySession)
 {
     public ResponseState ResponseState { get; } = responseState ??
         throw new ArgumentNullException(nameof(responseState));
