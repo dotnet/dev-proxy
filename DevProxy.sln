@@ -24,6 +24,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DevProxy.Proxy.Titanium.Tes
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DevProxy.Proxy.Kestrel", "DevProxy.Proxy.Kestrel\DevProxy.Proxy.Kestrel.csproj", "{E357B2FB-0A62-4DCF-AFA0-D258647EA664}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DevProxy.Proxy.Kestrel.Tests", "DevProxy.Proxy.Kestrel.Tests\DevProxy.Proxy.Kestrel.Tests.csproj", "{2154ED80-D4A3-4DDD-B5E0-919F6FBABF2E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -118,6 +120,18 @@ Global
 		{E357B2FB-0A62-4DCF-AFA0-D258647EA664}.Release|x64.Build.0 = Release|Any CPU
 		{E357B2FB-0A62-4DCF-AFA0-D258647EA664}.Release|x86.ActiveCfg = Release|Any CPU
 		{E357B2FB-0A62-4DCF-AFA0-D258647EA664}.Release|x86.Build.0 = Release|Any CPU
+		{2154ED80-D4A3-4DDD-B5E0-919F6FBABF2E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2154ED80-D4A3-4DDD-B5E0-919F6FBABF2E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2154ED80-D4A3-4DDD-B5E0-919F6FBABF2E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{2154ED80-D4A3-4DDD-B5E0-919F6FBABF2E}.Debug|x64.Build.0 = Debug|Any CPU
+		{2154ED80-D4A3-4DDD-B5E0-919F6FBABF2E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{2154ED80-D4A3-4DDD-B5E0-919F6FBABF2E}.Debug|x86.Build.0 = Debug|Any CPU
+		{2154ED80-D4A3-4DDD-B5E0-919F6FBABF2E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2154ED80-D4A3-4DDD-B5E0-919F6FBABF2E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2154ED80-D4A3-4DDD-B5E0-919F6FBABF2E}.Release|x64.ActiveCfg = Release|Any CPU
+		{2154ED80-D4A3-4DDD-B5E0-919F6FBABF2E}.Release|x64.Build.0 = Release|Any CPU
+		{2154ED80-D4A3-4DDD-B5E0-919F6FBABF2E}.Release|x86.ActiveCfg = Release|Any CPU
+		{2154ED80-D4A3-4DDD-B5E0-919F6FBABF2E}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

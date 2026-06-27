@@ -18,6 +18,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="DevProxy.Proxy.Kestrel.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\DevProxy.Abstractions\DevProxy.Abstractions.csproj" />
   </ItemGroup>
 
