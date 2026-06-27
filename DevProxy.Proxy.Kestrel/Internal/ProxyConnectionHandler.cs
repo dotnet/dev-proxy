@@ -33,6 +33,7 @@ namespace DevProxy.Proxy.Kestrel.Internal;
 ///        │
 ///        ├─ host not watched ............→ blind-tunnel (never decrypt)
 ///        ├─ ALPN is h2-only (gRPC) ......→ blind-tunnel (can't downgrade)
+///        ├─ process not watched ........→ blind-tunnel (--watch-pids/-process-names)
 ///        └─ otherwise ..................→ MITM, advertise http/1.1 so h2 clients downgrade
 /// </code>
 /// </para>
@@ -52,6 +53,7 @@ internal sealed class ProxyConnectionHandler(
     UpstreamForwarder forwarder,
     PluginPipeline pipeline,
     HostWatchList watchList,
+    ProcessFilter processFilter,
     ILogger logger) : ConnectionHandler
 {
     private static int _requestCounter;
@@ -118,6 +120,16 @@ internal sealed class ProxyConnectionHandler(
         if (isH2Only)
         {
             logger.LogDebug("CONNECT {Host}:{Port} → blind-tunnel (h2-only/gRPC, never MITM)", host, port);
+            await BlindTunnelAsync(clientStream, host, port, ct).ConfigureAwait(false);
+            return;
+        }
+
+        // Process filter (--watch-pids / --watch-process-names): like the Titanium engine,
+        // a watched host whose owning process isn't watched is blind-tunnelled, never
+        // decrypted. Resolving the PID shells out, so only do it when a filter is set.
+        if (!processFilter.IsEmpty && !processFilter.IsWatchedProcess(GetClientPort(connection)))
+        {
+            logger.LogDebug("CONNECT {Host}:{Port} → blind-tunnel (process not watched)", host, port);
             await BlindTunnelAsync(clientStream, host, port, ct).ConfigureAwait(false);
             return;
         }
@@ -538,6 +550,11 @@ internal sealed class ProxyConnectionHandler(
         }
         return (authority, null);
     }
+
+    // The client's source port — the remote end of the connection the proxy accepted.
+    // Used to resolve the owning process for the --watch-pids/--watch-process-names filter.
+    private static int GetClientPort(ConnectionContext connection) =>
+        connection.RemoteEndPoint is IPEndPoint endpoint ? endpoint.Port : 0;
 
     private static Task WriteAsciiAsync(Stream stream, string text, CancellationToken ct) =>
         stream.WriteAsync(Encoding.ASCII.GetBytes(text), ct).AsTask();
