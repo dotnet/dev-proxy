@@ -53,13 +53,14 @@ public sealed class KestrelProxyEngine(
         };
         using var httpClient = new HttpClient(httpHandler, disposeHandler: false);
         var forwarder = new UpstreamForwarder(httpClient);
+        var watchList = HostWatchList.FromUrls(urlsToWatch);
         var pipeline = new PluginPipeline(
             plugins,
             urlsToWatch,
             configuration,
             globalData,
             loggerFactory.CreateLogger<KestrelProxyEngine>());
-        var handler = new ProxyConnectionHandler(ca, forwarder, pipeline, _logger);
+        var handler = new ProxyConnectionHandler(ca, forwarder, pipeline, watchList, _logger);
 
         var builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions());
         _ = builder.WebHost.UseKestrelCore();
