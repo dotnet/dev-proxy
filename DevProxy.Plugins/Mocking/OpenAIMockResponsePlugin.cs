@@ -42,12 +42,12 @@ public sealed class OpenAIMockResponsePlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return;
         }
         if (e.ResponseState.HasBeenSet)
         {
-            Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return;
         }
 
@@ -56,13 +56,13 @@ public sealed class OpenAIMockResponsePlugin(
             !request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase) ||
             !request.HasBody)
         {
-            Logger.LogRequest("Request is not a POST request with a body", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Request is not a POST request with a body", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return;
         }
 
         if (!OpenAIRequest.TryGetCompletionLikeRequest(request.BodyString, Logger, out var openAiRequest))
         {
-            Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return;
         }
 
@@ -182,6 +182,6 @@ public sealed class OpenAIMockResponsePlugin(
             ]
         );
         e.ResponseState.HasBeenSet = true;
-        Logger.LogRequest($"200 {localLmUrl}", MessageType.Mocked, new LoggingContext(e.Session));
+        Logger.LogRequest($"200 {localLmUrl}", MessageType.Mocked, new LoggingContext(e.ProxySession));
     }
 }

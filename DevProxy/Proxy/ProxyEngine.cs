@@ -499,7 +499,7 @@ sealed class ProxyEngine(
                 throw new InvalidOperationException($"Unable to initialize the plugin data storage for hash key {e.GetHashCode()}");
             }
             var responseState = new ResponseState();
-            var proxyRequestArgs = new ProxyRequestArgs(e, CreateProxySession(e), responseState)
+            var proxyRequestArgs = new ProxyRequestArgs(CreateProxySession(e), responseState)
             {
                 SessionData = _pluginData[e.GetHashCode()],
                 GlobalData = _proxyController.ProxyState.GlobalData
@@ -521,7 +521,7 @@ sealed class ProxyEngine(
 
             e.UserData = e.HttpClient.Request;
 
-            var loggingContext = new LoggingContext(e);
+            var loggingContext = new LoggingContext(proxyRequestArgs.ProxySession);
             _logger.LogRequest($"{e.HttpClient.Request.Method} {e.HttpClient.Request.Url}", MessageType.InterceptedRequest, loggingContext);
             _logger.LogRequest($"{DateTimeOffset.UtcNow}", MessageType.Timestamp, loggingContext);
 
@@ -551,7 +551,7 @@ sealed class ProxyEngine(
         // We only need to set the proxy header if the proxy has not set a response and the request is going to be sent to the target.
         if (!proxyRequestArgs.ResponseState.HasBeenSet)
         {
-            _logger?.LogRequest("Passed through", MessageType.PassedThrough, new LoggingContext(e));
+            _logger?.LogRequest("Passed through", MessageType.PassedThrough, new LoggingContext(proxyRequestArgs.ProxySession));
             AddProxyHeader(e.HttpClient.Request);
         }
     }
@@ -609,7 +609,7 @@ sealed class ProxyEngine(
         // read response headers
         if (IsProxiedHost(e.HttpClient.Request.RequestUri.Host))
         {
-            var proxyResponseArgs = new ProxyResponseArgs(e, CreateProxySession(e), new())
+            var proxyResponseArgs = new ProxyResponseArgs(CreateProxySession(e), new())
             {
                 SessionData = _pluginData[e.GetHashCode()],
                 GlobalData = _proxyController.ProxyState.GlobalData
@@ -648,7 +648,7 @@ sealed class ProxyEngine(
         // read response headers
         if (IsProxiedHost(e.HttpClient.Request.RequestUri.Host))
         {
-            var proxyResponseArgs = new ProxyResponseArgs(e, CreateProxySession(e), new())
+            var proxyResponseArgs = new ProxyResponseArgs(CreateProxySession(e), new())
             {
                 SessionData = _pluginData[e.GetHashCode()],
                 GlobalData = _proxyController.ProxyState.GlobalData
@@ -667,7 +667,7 @@ sealed class ProxyEngine(
             using var scope = _logger.BeginScope(e.HttpClient.Request.Method ?? "", e.HttpClient.Request.Url, e.GetHashCode());
 
             var message = $"{e.HttpClient.Request.Method} {e.HttpClient.Request.Url}";
-            var loggingContext = new LoggingContext(e);
+            var loggingContext = new LoggingContext(proxyResponseArgs.ProxySession);
             _logger.LogRequest(message, MessageType.InterceptedResponse, loggingContext);
 
             foreach (var plugin in _plugins.Where(p => p.Enabled))

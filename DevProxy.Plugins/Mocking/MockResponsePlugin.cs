@@ -163,12 +163,12 @@ public class MockResponsePlugin(
         var state = e.ResponseState;
         if (Configuration.NoMocks)
         {
-            Logger.LogRequest("Mocks disabled", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Mocks disabled", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
         if (!e.ShouldExecute(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
 
@@ -205,7 +205,7 @@ public class MockResponsePlugin(
             return Task.CompletedTask;
         }
 
-        Logger.LogRequest("No matching mock response found", MessageType.Skipped, new LoggingContext(e.Session));
+        Logger.LogRequest("No matching mock response found", MessageType.Skipped, new LoggingContext(e.ProxySession));
 
         Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
         return Task.CompletedTask;
@@ -401,7 +401,7 @@ public class MockResponsePlugin(
                     var bodyBytes = File.ReadAllBytes(filePath);
                     ProcessMockResponse(ref bodyBytes, headers, e, matchingResponse);
                     e.ProxySession.Respond(bodyBytes, statusCode, headers.Select(h => new HttpHeader(h.Name, h.Value)));
-                    Logger.LogRequest($"{matchingResponse.Response.StatusCode ?? 200} {matchingResponse.Request?.Url}", MessageType.Mocked, new LoggingContext(e.Session));
+                    Logger.LogRequest($"{matchingResponse.Response.StatusCode ?? 200} {matchingResponse.Request?.Url}", MessageType.Mocked, new LoggingContext(e.ProxySession));
                     return;
                 }
             }
@@ -423,7 +423,7 @@ public class MockResponsePlugin(
         ProcessMockResponse(ref body, headers, e, matchingResponse);
         e.ProxySession.Respond(body ?? string.Empty, statusCode, headers.Select(h => new HttpHeader(h.Name, h.Value)));
 
-        Logger.LogRequest($"{matchingResponse.Response?.StatusCode ?? 200} {matchingResponse.Request?.Url}", MessageType.Mocked, new LoggingContext(e.Session));
+        Logger.LogRequest($"{matchingResponse.Response?.StatusCode ?? 200} {matchingResponse.Request?.Url}", MessageType.Mocked, new LoggingContext(e.ProxySession));
     }
 
     private async Task GenerateMocksFromHttpResponsesAsync(ParseResult parseResult)

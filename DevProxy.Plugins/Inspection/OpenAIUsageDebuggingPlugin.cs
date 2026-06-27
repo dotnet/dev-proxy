@@ -57,7 +57,7 @@ public sealed class OpenAIUsageDebuggingPlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return;
         }
 
@@ -66,13 +66,13 @@ public sealed class OpenAIUsageDebuggingPlugin(
             !request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase) ||
             !request.HasBody)
         {
-            Logger.LogRequest("Request is not a POST request with a body", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Request is not a POST request with a body", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return;
         }
 
         if (!OpenAIRequest.TryGetOpenAIRequest(request.BodyString, Logger, out var openAiRequest) || openAiRequest is null)
         {
-            Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return;
         }
 
@@ -114,7 +114,7 @@ public sealed class OpenAIUsageDebuggingPlugin(
         }
 
         await File.AppendAllLinesAsync(outputFileName, [usage.ToString()], cancellationToken);
-        Logger.LogRequest("Processed OpenAI request", MessageType.Processed, new LoggingContext(e.Session));
+        Logger.LogRequest("Processed OpenAI request", MessageType.Processed, new LoggingContext(e.ProxySession));
 
         Logger.LogTrace("Left {Name}", nameof(AfterResponseAsync));
     }

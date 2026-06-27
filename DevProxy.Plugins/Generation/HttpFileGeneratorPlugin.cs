@@ -142,15 +142,15 @@ public sealed class HttpFileGeneratorPlugin(
             if (request.MessageType != MessageType.InterceptedResponse ||
               request.Context is null ||
               request.Context.Session is null ||
-              !ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri))
+              !ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Context.Session.Request.RequestUri.AbsoluteUri))
             {
                 continue;
             }
 
             if (!Configuration.IncludeOptionsRequests &&
-                string.Equals(request.Context.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+                string.Equals(request.Context.Session.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
             {
-                Logger.LogDebug("Skipping OPTIONS request {Url}...", request.Context.Session.HttpClient.Request.RequestUri);
+                Logger.LogDebug("Skipping OPTIONS request {Url}...", request.Context.Session.Request.RequestUri);
                 continue;
             }
 
@@ -162,8 +162,8 @@ public sealed class HttpFileGeneratorPlugin(
             {
                 Method = methodAndUrl[0],
                 Url = methodAndUrl[1],
-                Body = request.Context.Session.HttpClient.Request.HasBody ? await request.Context.Session.GetRequestBodyAsString(cancellationToken) : null,
-                Headers = [.. request.Context.Session.HttpClient.Request.Headers.Select(h => new HttpFileRequestHeader { Name = h.Name, Value = h.Value })]
+                Body = request.Context.Session.Request.HasBody ? request.Context.Session.Request.BodyString : null,
+                Headers = [.. request.Context.Session.Request.Headers.Select(h => new HttpFileRequestHeader { Name = h.Name, Value = h.Value })]
             });
         }
 

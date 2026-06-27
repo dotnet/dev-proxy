@@ -15,7 +15,6 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using Titanium.Web.Proxy.Http;
 
 namespace DevProxy.Abstractions.Utils;
 
@@ -105,13 +104,6 @@ public static class ProxyUtils
         JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
     }
 
-    public static bool IsGraphRequest(Request request)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-
-        return IsGraphUrl(request.RequestUri);
-    }
-
     public static bool IsGraphRequest(IHttpRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -144,23 +136,12 @@ public static class ProxyUtils
         return absoluteRequestUrl;
     }
 
-    public static bool IsSdkRequest(Request request)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-
-        return request.Headers.HeaderExists("SdkVersion");
-    }
-
     public static bool IsSdkRequest(IHttpRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
 
         return request.Headers.Contains("SdkVersion");
     }
-
-    public static bool IsGraphBetaRequest(Request request) =>
-        IsGraphRequest(request) &&
-        IsGraphBetaUrl(request.RequestUri);
 
     public static bool IsGraphBetaRequest(IHttpRequest request)
     {
@@ -175,24 +156,6 @@ public static class ProxyUtils
         ArgumentNullException.ThrowIfNull(uri);
 
         return uri.AbsolutePath.Contains("/beta/", StringComparison.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
-    /// Utility to build HTTP response headers consistent with Microsoft Graph
-    /// </summary>
-    /// <param name="request">The http request for which response headers are being constructed</param>
-    /// <param name="requestId">string a guid representing the a unique identifier for the request</param>
-    /// <param name="requestDate">string representation of the date and time the request was made</param>
-    /// <returns>IList<MockResponseHeader> with defaults consistent with Microsoft Graph. Automatically adds CORS headers when the Origin header is present</returns>
-    public static IList<MockResponseHeader> BuildGraphResponseHeaders(Request request, string requestId, string requestDate)
-    {
-        if (!IsGraphRequest(request))
-        {
-            return [];
-        }
-
-        var hasOrigin = request.Headers.FirstOrDefault((h) => h.Name.Equals("Origin", StringComparison.OrdinalIgnoreCase)) is not null;
-        return BuildGraphResponseHeadersCore(hasOrigin, requestId, requestDate);
     }
 
     /// <summary>

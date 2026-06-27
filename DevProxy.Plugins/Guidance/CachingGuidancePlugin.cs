@@ -40,12 +40,12 @@ public sealed class CachingGuidancePlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
         if (string.Equals(e.ProxySession.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
         {
-            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
 
@@ -57,7 +57,7 @@ public sealed class CachingGuidancePlugin(
         {
             value = now;
             _interceptedRequests.Add(url, value);
-            Logger.LogRequest("First request", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("First request", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
 
@@ -65,11 +65,11 @@ public sealed class CachingGuidancePlugin(
         var secondsSinceLastIntercepted = (now - lastIntercepted).TotalSeconds;
         if (secondsSinceLastIntercepted <= Configuration.CacheThresholdSeconds)
         {
-            Logger.LogRequest(BuildCacheWarningMessage(request, Configuration.CacheThresholdSeconds, lastIntercepted), MessageType.Warning, new LoggingContext(e.Session));
+            Logger.LogRequest(BuildCacheWarningMessage(request, Configuration.CacheThresholdSeconds, lastIntercepted), MessageType.Warning, new LoggingContext(e.ProxySession));
         }
         else
         {
-            Logger.LogRequest("Request outside of cache window", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Request outside of cache window", MessageType.Skipped, new LoggingContext(e.ProxySession));
         }
 
         _interceptedRequests[url] = now;

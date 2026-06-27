@@ -41,4 +41,7 @@ public sealed class TitaniumResponseAdapter : TitaniumHttpMessageAdapter, IHttpR
         get => _response.StatusDescription;
         set => _response.StatusDescription = value ?? string.Empty;
     }
+
+    /// <inheritdoc />
+    public Version HttpVersion => _response.HttpVersion;
 }

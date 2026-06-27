@@ -23,18 +23,18 @@ public sealed class ODSPSearchGuidancePlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
         if (string.Equals(e.ProxySession.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
         {
-            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
 
         if (WarnDeprecatedSearch(e))
         {
-            Logger.LogRequest(BuildUseGraphSearchMessage(), MessageType.Warning, new LoggingContext(e.Session));
+            Logger.LogRequest(BuildUseGraphSearchMessage(), MessageType.Warning, new LoggingContext(e.ProxySession));
         }
 
         Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
@@ -47,7 +47,7 @@ public sealed class ODSPSearchGuidancePlugin(
         if (!ProxyUtils.IsGraphRequest(request) ||
             request.Method != "GET")
         {
-            Logger.LogRequest("Not a Microsoft Graph GET request", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Not a Microsoft Graph GET request", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return false;
         }
 
@@ -65,7 +65,7 @@ public sealed class ODSPSearchGuidancePlugin(
         }
         else
         {
-            Logger.LogRequest("Not a SharePoint search request", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Not a SharePoint search request", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return false;
         }
     }

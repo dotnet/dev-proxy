@@ -67,18 +67,18 @@ public sealed class RewritePlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
 
         if (Configuration.Rewrites is null ||
             !Configuration.Rewrites.Any())
         {
-            Logger.LogRequest("No rewrites configured", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("No rewrites configured", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
 
-        var request = e.Session.HttpClient.Request;
+        var request = e.ProxySession.Request;
 
         foreach (var rewrite in Configuration.Rewrites)
         {
@@ -92,11 +92,11 @@ public sealed class RewritePlugin(
 
             if (request.Url.Equals(newUrl, StringComparison.OrdinalIgnoreCase))
             {
-                Logger.LogRequest($"{rewrite.In?.Url}", MessageType.Skipped, new LoggingContext(e.Session));
+                Logger.LogRequest($"{rewrite.In?.Url}", MessageType.Skipped, new LoggingContext(e.ProxySession));
             }
             else
             {
-                Logger.LogRequest($"{rewrite.In?.Url} > {newUrl}", MessageType.Processed, new LoggingContext(e.Session));
+                Logger.LogRequest($"{rewrite.In?.Url} > {newUrl}", MessageType.Processed, new LoggingContext(e.ProxySession));
                 request.Url = newUrl;
             }
         }

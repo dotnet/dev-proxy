@@ -27,29 +27,29 @@ public sealed class ODataPagingGuidancePlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
-        if (!string.Equals(e.Session.HttpClient.Request.Method, "GET", StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(e.ProxySession.Request.Method, "GET", StringComparison.OrdinalIgnoreCase))
         {
-            Logger.LogRequest("Skipping non-GET request", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Skipping non-GET request", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
 
-        if (IsODataPagingUrl(e.Session.HttpClient.Request.RequestUri))
+        if (IsODataPagingUrl(e.ProxySession.Request.RequestUri))
         {
-            if (!pagingUrls.Contains(e.Session.HttpClient.Request.Url))
+            if (!pagingUrls.Contains(e.ProxySession.Request.Url))
             {
-                Logger.LogRequest(BuildIncorrectPagingUrlMessage(), MessageType.Warning, new LoggingContext(e.Session));
+                Logger.LogRequest(BuildIncorrectPagingUrlMessage(), MessageType.Warning, new LoggingContext(e.ProxySession));
             }
             else
             {
-                Logger.LogRequest("Paging URL is correct", MessageType.Skipped, new LoggingContext(e.Session));
+                Logger.LogRequest("Paging URL is correct", MessageType.Skipped, new LoggingContext(e.ProxySession));
             }
         }
         else
         {
-            Logger.LogRequest("Not an OData paging URL", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Not an OData paging URL", MessageType.Skipped, new LoggingContext(e.ProxySession));
         }
 
         Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
@@ -64,39 +64,37 @@ public sealed class ODataPagingGuidancePlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return;
         }
-        if (!string.Equals(e.Session.HttpClient.Request.Method, "GET", StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(e.ProxySession.Request.Method, "GET", StringComparison.OrdinalIgnoreCase))
         {
-            Logger.LogRequest("Skipping non-GET request", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Skipping non-GET request", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return;
         }
-        if (e.Session.HttpClient.Response.StatusCode >= 300)
+        if ((int)e.ProxySession.Response!.StatusCode >= 300)
         {
-            Logger.LogRequest("Skipping non-success response", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Skipping non-success response", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return;
         }
-        if (e.Session.HttpClient.Response.ContentType is null ||
-            (!e.Session.HttpClient.Response.ContentType.Contains("json", StringComparison.OrdinalIgnoreCase) &&
-            !e.Session.HttpClient.Response.ContentType.Contains("application/atom+xml", StringComparison.OrdinalIgnoreCase)) ||
-            !e.Session.HttpClient.Response.HasBody)
+        if (e.ProxySession.Response!.ContentType is null ||
+            (!e.ProxySession.Response!.ContentType.Contains("json", StringComparison.OrdinalIgnoreCase) &&
+            !e.ProxySession.Response!.ContentType.Contains("application/atom+xml", StringComparison.OrdinalIgnoreCase)) ||
+            !e.ProxySession.Response!.HasBody)
         {
-            Logger.LogRequest("Skipping response with unsupported body type", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Skipping response with unsupported body type", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return;
         }
-
-        e.Session.HttpClient.Response.KeepBody = true;
 
         var nextLink = string.Empty;
-        var bodyString = await e.Session.GetResponseBodyAsString(cancellationToken);
+        var bodyString = e.ProxySession.Response!.BodyString;
         if (string.IsNullOrEmpty(bodyString))
         {
-            Logger.LogRequest("Skipping empty response body", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Skipping empty response body", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return;
         }
 
-        var contentType = e.Session.HttpClient.Response.ContentType;
+        var contentType = e.ProxySession.Response!.ContentType;
         if (contentType.Contains("json", StringComparison.OrdinalIgnoreCase))
         {
             nextLink = GetNextLinkFromJson(bodyString);
@@ -112,7 +110,7 @@ public sealed class ODataPagingGuidancePlugin(
         }
         else
         {
-            Logger.LogRequest("No next link found in the response", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("No next link found in the response", MessageType.Skipped, new LoggingContext(e.ProxySession));
         }
 
         Logger.LogTrace("Left {Name}", nameof(BeforeResponseAsync));

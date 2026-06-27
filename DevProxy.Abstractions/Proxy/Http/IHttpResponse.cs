@@ -19,4 +19,7 @@ public interface IHttpResponse : IHttpMessage
     /// <see cref="StatusCode"/>.
     /// </summary>
     string? StatusDescription { get; set; }
+
+    /// <summary>Negotiated HTTP version for this response.</summary>
+    Version HttpVersion { get; }
 }

@@ -15,7 +15,7 @@ public interface IHttpRequest : IHttpMessage
     /// <summary>
     /// Convenience accessor equal to <see cref="RequestUri"/>.<c>AbsoluteUri</c>.
     /// </summary>
-    string Url { get; }
+    string Url { get; set; }
 
     /// <summary>HTTP method (e.g. <c>GET</c>, <c>POST</c>), upper-cased.</summary>
     string Method { get; }

@@ -38,18 +38,18 @@ public sealed class GraphSelectGuidancePlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
         if (string.Equals(e.ProxySession.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
         {
-            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
 
         if (WarnNoSelect(e))
         {
-            Logger.LogRequest(BuildUseSelectMessage(), MessageType.Warning, new LoggingContext(e.Session));
+            Logger.LogRequest(BuildUseSelectMessage(), MessageType.Warning, new LoggingContext(e.ProxySession));
         }
 
         Logger.LogTrace("Left {Name}", nameof(AfterResponseAsync));
@@ -62,7 +62,7 @@ public sealed class GraphSelectGuidancePlugin(
         if (!ProxyUtils.IsGraphRequest(request) ||
             request.Method != "GET")
         {
-            Logger.LogRequest("Not a Microsoft Graph GET request", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Not a Microsoft Graph GET request", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return false;
         }
 
@@ -76,7 +76,7 @@ public sealed class GraphSelectGuidancePlugin(
         }
         else
         {
-            Logger.LogRequest("Endpoint does not support $select", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Endpoint does not support $select", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return false;
         }
     }

@@ -26,12 +26,12 @@ public sealed class GraphSdkGuidancePlugin(
         var request = e.ProxySession.Request;
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
         if (string.Equals(e.ProxySession.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
         {
-            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Skipping OPTIONS request", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
 
@@ -40,16 +40,16 @@ public sealed class GraphSdkGuidancePlugin(
         {
             if (WarnNoSdk(request))
             {
-                Logger.LogRequest(MessageUtils.BuildUseSdkForErrorsMessage(), MessageType.Tip, new LoggingContext(e.Session));
+                Logger.LogRequest(MessageUtils.BuildUseSdkForErrorsMessage(), MessageType.Tip, new LoggingContext(e.ProxySession));
             }
             else
             {
-                Logger.LogRequest("Request issued using SDK", MessageType.Skipped, new LoggingContext(e.Session));
+                Logger.LogRequest("Request issued using SDK", MessageType.Skipped, new LoggingContext(e.ProxySession));
             }
         }
         else
         {
-            Logger.LogRequest("Skipping non-error response", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Skipping non-error response", MessageType.Skipped, new LoggingContext(e.ProxySession));
         }
 
         Logger.LogTrace("Left {Name}", nameof(AfterResponseAsync));

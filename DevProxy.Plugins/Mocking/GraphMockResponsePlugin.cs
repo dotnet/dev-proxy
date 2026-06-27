@@ -39,7 +39,7 @@ public class GraphMockResponsePlugin(
 
         if (Configuration.NoMocks)
         {
-            Logger.LogRequest("Mocks are disabled", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Mocks are disabled", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return;
         }
 
@@ -90,7 +90,7 @@ public class GraphMockResponsePlugin(
                     }
                 };
 
-                Logger.LogRequest($"502 {request.Url}", MessageType.Mocked, new LoggingContext(e.Session));
+                Logger.LogRequest($"502 {request.Url}", MessageType.Mocked, new LoggingContext(e.ProxySession));
             }
             else
             {
@@ -148,7 +148,7 @@ public class GraphMockResponsePlugin(
                     Body = body
                 };
 
-                Logger.LogRequest($"{mockResponse.Response?.StatusCode ?? 200} {mockResponse.Request?.Url}", MessageType.Mocked, new LoggingContext(e.Session));
+                Logger.LogRequest($"{mockResponse.Response?.StatusCode ?? 200} {mockResponse.Request?.Url}", MessageType.Mocked, new LoggingContext(e.ProxySession));
             }
 
             responses.Add(response);
@@ -164,7 +164,7 @@ public class GraphMockResponsePlugin(
         var batchResponseString = JsonSerializer.Serialize(batchResponse, ProxyUtils.JsonSerializerOptions);
         ProcessMockResponse(ref batchResponseString, batchHeaders, e, null);
         e.ProxySession.Respond(batchResponseString ?? string.Empty, HttpStatusCode.OK, batchHeaders.Select(h => new HttpHeader(h.Name, h.Value)));
-        Logger.LogRequest($"200 {e.ProxySession.Request.RequestUri}", MessageType.Mocked, new LoggingContext(e.Session));
+        Logger.LogRequest($"200 {e.ProxySession.Request.RequestUri}", MessageType.Mocked, new LoggingContext(e.ProxySession));
         e.ResponseState.HasBeenSet = true;
 
         Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));

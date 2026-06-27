@@ -30,7 +30,11 @@ public sealed class TitaniumRequestAdapter : TitaniumHttpMessageAdapter, IHttpRe
     public Uri RequestUri => _request.RequestUri!;
 
     /// <inheritdoc />
-    public string Url => _request.Url;
+    public string Url
+    {
+        get => _request.Url;
+        set => _request.Url = value;
+    }
 
     /// <inheritdoc />
     public string Method => _request.Method!;
