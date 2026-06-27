@@ -321,7 +321,7 @@ public sealed class OpenAITelemetryPlugin(
     {
         Logger.LogTrace("ProcessSuccessResponse() called");
 
-        var response = e.Session.HttpClient.Response;
+        var response = e.ProxySession.Response!;
 
         if (!response.HasBody || string.IsNullOrEmpty(response.BodyString))
         {

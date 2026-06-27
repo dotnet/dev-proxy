@@ -2,9 +2,9 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Abstractions.Proxy.Http;
 using Microsoft.Extensions.Logging;
 using System.Text;
-using Titanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Utils;
 
@@ -47,7 +47,7 @@ internal sealed class HttpUtils
         }
     }
 
-    public static string GetBodyFromStreamingResponse(Response response, ILogger logger)
+    public static string GetBodyFromStreamingResponse(IHttpResponse response, ILogger logger)
     {
         logger.LogTrace("{Method} called", nameof(GetBodyFromStreamingResponse));
 
@@ -89,7 +89,7 @@ internal sealed class HttpUtils
         return bodyString;
     }
 
-    public static bool IsStreamingResponse(Response response, ILogger logger)
+    public static bool IsStreamingResponse(IHttpResponse response, ILogger logger)
     {
         logger.LogTrace("{Method} called", nameof(IsStreamingResponse));
         var contentType = response.Headers.FirstOrDefault(h => h.Name.Equals("content-type", StringComparison.OrdinalIgnoreCase))?.Value;

@@ -5,12 +5,12 @@
 using DevProxy.Abstractions.LanguageModel;
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Utils;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
 using System.Text.Json;
-using Titanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Inspection;
 
@@ -61,7 +61,7 @@ public sealed class OpenAIUsageDebuggingPlugin(
             return;
         }
 
-        var request = e.Session.HttpClient.Request;
+        var request = e.ProxySession.Request;
         if (request.Method is null ||
             !request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase) ||
             !request.HasBody)
@@ -76,7 +76,7 @@ public sealed class OpenAIUsageDebuggingPlugin(
             return;
         }
 
-        var response = e.Session.HttpClient.Response;
+        var response = e.ProxySession.Response!;
         var bodyString = response.BodyString;
         if (HttpUtils.IsStreamingResponse(response, Logger))
         {
@@ -86,17 +86,17 @@ public sealed class OpenAIUsageDebuggingPlugin(
         var usage = new UsageRecord
         {
             Time = DateTime.TryParse(
-                e.Session.HttpClient.Response.Headers.FirstOrDefault(h => h.Name.Equals("date", StringComparison.OrdinalIgnoreCase))?.Value,
+                response.Headers.FirstOrDefault(h => h.Name.Equals("date", StringComparison.OrdinalIgnoreCase))?.Value,
                 CultureInfo.InvariantCulture,
                 DateTimeStyles.None,
                 out var parsedDate)
                 ? parsedDate
                 : DateTime.Now,
-            Status = e.Session.HttpClient.Response.StatusCode
+            Status = (int)response.StatusCode
         };
 
 #pragma warning disable IDE0010
-        switch (response.StatusCode)
+        switch ((int)response.StatusCode)
 #pragma warning restore IDE0010
         {
             case int code when code is >= 200 and < 300:
@@ -129,7 +129,7 @@ public sealed class OpenAIUsageDebuggingPlugin(
             return;
         }
 
-        var response = e.Session.HttpClient.Response;
+        var response = e.ProxySession.Response!;
 
         usage.PromptTokens = oaiResponse.Usage?.PromptTokens;
         usage.CompletionTokens = oaiResponse.Usage?.CompletionTokens;
@@ -144,7 +144,7 @@ public sealed class OpenAIUsageDebuggingPlugin(
     {
         Logger.LogTrace("{Method} called", nameof(ProcessErrorResponse));
 
-        var response = e.Session.HttpClient.Response;
+        var response = e.ProxySession.Response!;
 
         usage.RetryAfter = response.Headers.FirstOrDefault(h => h.Name.Equals("retry-after", StringComparison.OrdinalIgnoreCase))?.Value;
         usage.Policy = response.Headers.FirstOrDefault(h => h.Name.Equals("policy-id", StringComparison.OrdinalIgnoreCase))?.Value;
@@ -152,7 +152,7 @@ public sealed class OpenAIUsageDebuggingPlugin(
         Logger.LogTrace("Left {Name}", nameof(ProcessErrorResponse));
     }
 
-    private static bool TryParseHeaderAsLong(Response response, string headerName, out long? value)
+    private static bool TryParseHeaderAsLong(IHttpResponse response, string headerName, out long? value)
     {
         value = null;
         var header = response.Headers.FirstOrDefault(h => h.Name.Equals(headerName, StringComparison.OrdinalIgnoreCase))?.Value;
