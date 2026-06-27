@@ -85,7 +85,7 @@ internal sealed class ProxyConnectionHandler(
                     .ConfigureAwait(false);
             }
         }
-        catch (Exception ex) when (ex is OperationCanceledException or IOException or ConnectionResetException)
+        catch (Exception ex) when (ConnectionTeardown.IsExpected(ex))
         {
             // Client disconnect / cancellation — normal teardown, not an error.
         }
@@ -356,7 +356,12 @@ internal sealed class ProxyConnectionHandler(
             {
                 await _webSocketRelay.RelayAsync(clientStream, request, requestUri, OnHandshakeAsync, ct).ConfigureAwait(false);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (ConnectionTeardown.IsExpected(ex))
+            {
+                // Client or origin closed the WebSocket mid-handshake/relay — normal teardown.
+                logger.LogDebug(ex, "WebSocket relay to {Url} ended on connection close", absoluteUrl);
+            }
+            catch (Exception ex)
             {
                 logger.LogError(ex, "Error relaying WebSocket to {Url}", absoluteUrl);
             }
@@ -528,7 +533,7 @@ internal sealed class ProxyConnectionHandler(
             await clientStream.WriteAsync(body, ct).ConfigureAwait(false);
             await clientStream.FlushAsync(ct).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is IOException or OperationCanceledException)
+        catch (Exception ex) when (ConnectionTeardown.IsExpected(ex))
         {
             // Client already gone.
         }

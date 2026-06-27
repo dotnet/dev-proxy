@@ -2,8 +2,6 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Net.Sockets;
-
 namespace DevProxy.Proxy.Kestrel.Internal;
 
 /// <summary>
@@ -42,7 +40,7 @@ internal static class StreamRelay
             {
                 await Task.WhenAll(aToB, bToA).ConfigureAwait(false);
             }
-            catch (Exception ex) when (ex is IOException or OperationCanceledException or SocketException)
+            catch (Exception ex) when (ConnectionTeardown.IsExpected(ex))
             {
                 // Either peer closed the connection — normal relay teardown.
             }
