@@ -44,7 +44,7 @@ public sealed class KestrelProxyEngine(
             : IPAddress.Parse(configuration.IPAddress);
         var port = configuration.Port;
 
-        using var ca = new CertificateAuthority();
+        using var ca = CertificateAuthority.CreateDefault(_logger);
         using var httpHandler = new SocketsHttpHandler
         {
             UseProxy = false,
