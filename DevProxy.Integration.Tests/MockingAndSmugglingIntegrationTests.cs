@@ -10,12 +10,12 @@ using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using Xunit;
 
-namespace DevProxy.Parity.Tests;
+namespace DevProxy.Integration.Tests;
 
 /// <summary>
-/// Parity rows for the mocking short-circuit and the request-smuggling guard.
+/// Integration scenarios for the mocking short-circuit and the request-smuggling guard.
 /// </summary>
-public sealed class MockingAndSmugglingParityTests
+public sealed class MockingAndSmugglingIntegrationTests
 {
     [Fact]
     public async Task PluginRespond_ShortCircuits_OriginNeverContacted()

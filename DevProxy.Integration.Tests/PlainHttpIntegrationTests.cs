@@ -6,14 +6,14 @@ using System.Net;
 using System.Text;
 using Xunit;
 
-namespace DevProxy.Parity.Tests;
+namespace DevProxy.Integration.Tests;
 
 /// <summary>
-/// Parity rows that exercise the Kestrel engine over plain HTTP (absolute-form
+/// Integration scenarios that exercise the Kestrel engine over plain HTTP (absolute-form
 /// proxy requests — no CONNECT, no TLS). These assert the engine relays the origin's
 /// response faithfully: status, body, and request-body round-tripping.
 /// </summary>
-public sealed class PlainHttpParityTests
+public sealed class PlainHttpIntegrationTests
 {
     [Fact]
     public async Task Get_NoBody_RelaysStatusAndBody()

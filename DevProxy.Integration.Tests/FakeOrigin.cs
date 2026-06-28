@@ -12,10 +12,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace DevProxy.Parity.Tests;
+namespace DevProxy.Integration.Tests;
 
 /// <summary>
-/// A deterministic upstream origin server used as the parity target. Each scenario
+/// A deterministic upstream origin server used as the integration target. Each scenario
 /// asserts the proxy faithfully relays this origin's responses.
 ///
 /// <code>

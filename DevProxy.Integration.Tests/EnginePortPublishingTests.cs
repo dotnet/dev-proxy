@@ -9,7 +9,7 @@ using DevProxy.Proxy.Kestrel.Internal;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
-namespace DevProxy.Parity.Tests;
+namespace DevProxy.Integration.Tests;
 
 /// <summary>
 /// Regression coverage for the daemon-readiness contract: when started with

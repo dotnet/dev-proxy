@@ -12,7 +12,7 @@ using DevProxy.Proxy.Kestrel;
 using DevProxy.Proxy.Kestrel.Internal;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace DevProxy.Parity.Tests;
+namespace DevProxy.Integration.Tests;
 
 /// <summary>
 /// Boots a <see cref="KestrelProxyEngine"/> on a free localhost port, watching the

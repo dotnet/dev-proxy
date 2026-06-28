@@ -7,13 +7,13 @@ using System.Net.Http.Headers;
 using System.Text;
 using Xunit;
 
-namespace DevProxy.Parity.Tests;
+namespace DevProxy.Integration.Tests;
 
 /// <summary>
-/// Parity rows for streaming bodies, chunked request framing, and connection reuse —
+/// Integration scenarios for streaming bodies, chunked request framing, and connection reuse —
 /// all over plain HTTP so they need no TLS trust.
 /// </summary>
-public sealed class StreamingAndConnectionParityTests
+public sealed class StreamingAndConnectionIntegrationTests
 {
     [Fact]
     public async Task Sse_IsRelayedChunked_WithAllEvents()

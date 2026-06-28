@@ -4,7 +4,7 @@
 
 using System.Net.Sockets;
 
-namespace DevProxy.Parity.Tests;
+namespace DevProxy.Integration.Tests;
 
 /// <summary>
 /// Test networking helpers.

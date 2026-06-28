@@ -22,7 +22,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DevProxy.Proxy.Kestrel", "D
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DevProxy.Proxy.Kestrel.Tests", "DevProxy.Proxy.Kestrel.Tests\DevProxy.Proxy.Kestrel.Tests.csproj", "{2154ED80-D4A3-4DDD-B5E0-919F6FBABF2E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DevProxy.Parity.Tests", "DevProxy.Parity.Tests\DevProxy.Parity.Tests.csproj", "{90E10CFA-DEF0-456B-8641-102C7072931B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DevProxy.Integration.Tests", "DevProxy.Integration.Tests\DevProxy.Integration.Tests.csproj", "{90E10CFA-DEF0-456B-8641-102C7072931B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

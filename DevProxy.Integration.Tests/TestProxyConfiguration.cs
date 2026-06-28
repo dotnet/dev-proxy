@@ -6,10 +6,10 @@ using DevProxy.Abstractions.Models;
 using DevProxy.Abstractions.Proxy;
 using Microsoft.Extensions.Logging;
 
-namespace DevProxy.Parity.Tests;
+namespace DevProxy.Integration.Tests;
 
 /// <summary>
-/// Minimal <see cref="IProxyConfiguration"/> for the parity harness. Only the
+/// Minimal <see cref="IProxyConfiguration"/> for the integration harness. Only the
 /// members the Kestrel engine reads at boot (Port, IPAddress, AsSystemProxy,
 /// WatchPids/WatchProcessNames) actually matter; the rest carry inert defaults.
 /// </summary>

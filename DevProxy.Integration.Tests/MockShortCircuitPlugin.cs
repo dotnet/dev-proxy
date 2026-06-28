@@ -8,7 +8,7 @@ using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Proxy.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace DevProxy.Parity.Tests;
+namespace DevProxy.Integration.Tests;
 
 /// <summary>
 /// Minimal plugin that short-circuits every matched request with a canned response —
