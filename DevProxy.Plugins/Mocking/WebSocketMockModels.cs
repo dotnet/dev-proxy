@@ -9,23 +9,6 @@ using System.Text.RegularExpressions;
 
 namespace DevProxy.Plugins.Mocking;
 
-/// <summary>
-/// How a <see cref="WebSocketMessageMatch"/> compares an inbound client message against
-/// its configured <see cref="WebSocketMessageMatch.Body"/>.
-/// </summary>
-[JsonConverter(typeof(JsonStringEnumConverter<WebSocketMatchType>))]
-public enum WebSocketMatchType
-{
-    /// <summary>Ordinal, case-sensitive full-string equality.</summary>
-    Equals,
-    /// <summary>Case-insensitive substring containment.</summary>
-    Contains,
-    /// <summary>The body is a regular expression matched against the message.</summary>
-    Regex,
-    /// <summary>Both the body and the message are parsed as JSON and compared structurally.</summary>
-    Json,
-}
-
 /// <summary>Whether a scripted outbound message is text or (base64) binary.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<WebSocketMessageType>))]
 public enum WebSocketMessageType
@@ -50,16 +33,24 @@ public sealed class WebSocketMessageMock
 }
 
 /// <summary>
-/// Matches an inbound client message. A <c>null</c> match (or null <see cref="Body"/>)
-/// is a catch-all that matches any message.
+/// Matches an inbound client message. A <c>null</c> match — or a match with no criteria
+/// set — is a catch-all that matches any message. Mirrors the <c>bodyFragment</c> /
+/// <c>bodyRegex</c> vocabulary of the HTTP and stdio mock plugins, adding a structural
+/// <c>bodyJson</c> for JSON payloads.
 /// </summary>
 public sealed class WebSocketMessageMatch
 {
-    /// <summary>The value (or pattern) to compare against the inbound message text.</summary>
-    public string? Body { get; set; }
+    /// <summary>A case-insensitive substring matched against the inbound message text.</summary>
+    public string? BodyFragment { get; set; }
 
-    /// <summary>How <see cref="Body"/> is compared. Defaults to <see cref="WebSocketMatchType.Equals"/>.</summary>
-    public WebSocketMatchType MatchType { get; set; } = WebSocketMatchType.Equals;
+    /// <summary>A regular expression matched against the inbound message text.</summary>
+    public string? BodyRegex { get; set; }
+
+    /// <summary>
+    /// A JSON value compared structurally (key-order-independent) against the inbound
+    /// message parsed as JSON.
+    /// </summary>
+    public JsonNode? BodyJson { get; set; }
 }
 
 /// <summary>
@@ -109,14 +100,13 @@ public sealed class WebSocketMock : ICloneable
 
 /// <summary>
 /// Pure matching logic for <see cref="WebSocketMessageMatch"/>, factored out so the
-/// four match operators (equals / contains / regex / JSON) are unit-testable without a
-/// live socket.
+/// three match operators are unit-testable without a live socket.
 ///
 /// <code>
-///   inbound text ─┬─ Equals   → ordinal ==
-///                 ├─ Contains → OrdinalIgnoreCase substring
-///                 ├─ Regex    → Regex.IsMatch (1s timeout)
-///                 └─ Json     → JsonNode.DeepEquals
+///   inbound text ─┬─ bodyJson     → JsonNode.DeepEquals       (highest precedence)
+///                 ├─ bodyRegex    → Regex.IsMatch (1s timeout)
+///                 └─ bodyFragment → OrdinalIgnoreCase substring
+///   (no criteria set, or null match) → catch-all (matches any)
 /// </code>
 /// </summary>
 internal static class WebSocketMessageMatcher
@@ -125,20 +115,32 @@ internal static class WebSocketMessageMatcher
 
     public static bool Matches(WebSocketMessageMatch? match, string message)
     {
-        // A null match (or null body) is a catch-all.
-        if (match?.Body is not { } body)
+        // A null match is a catch-all.
+        if (match is null)
         {
             return true;
         }
 
-        return match.MatchType switch
+        // Precedence mirrors the stdio plugin (regex wins over fragment); bodyJson is the
+        // most specific, so it takes top precedence. Only the highest-precedence criterion
+        // that is set is evaluated.
+        if (match.BodyJson is { } expectedJson)
         {
-            WebSocketMatchType.Equals => string.Equals(message, body, StringComparison.Ordinal),
-            WebSocketMatchType.Contains => message.Contains(body, StringComparison.OrdinalIgnoreCase),
-            WebSocketMatchType.Regex => SafeRegexMatch(message, body),
-            WebSocketMatchType.Json => JsonEquals(message, body),
-            _ => false,
-        };
+            return JsonEquals(message, expectedJson);
+        }
+
+        if (match.BodyRegex is { } pattern)
+        {
+            return SafeRegexMatch(message, pattern);
+        }
+
+        if (match.BodyFragment is { } fragment)
+        {
+            return message.Contains(fragment, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // No criteria set — catch-all.
+        return true;
     }
 
     private static bool SafeRegexMatch(string message, string pattern)
@@ -158,13 +160,12 @@ internal static class WebSocketMessageMatcher
         }
     }
 
-    private static bool JsonEquals(string message, string body)
+    private static bool JsonEquals(string message, JsonNode expected)
     {
         try
         {
-            var left = JsonNode.Parse(message);
-            var right = JsonNode.Parse(body);
-            return JsonNode.DeepEquals(left, right);
+            var actual = JsonNode.Parse(message);
+            return JsonNode.DeepEquals(actual, expected);
         }
         catch (JsonException)
         {

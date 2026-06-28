@@ -33,21 +33,25 @@
               "properties": {
                 "match": {
                   "type": "object",
-                  "description": "How to match an inbound client message. Omit to match any message.",
+                  "description": "How to match an inbound client message. Omit (or leave empty) to match any message. When more than one is set, precedence is bodyJson > bodyRegex > bodyFragment.",
                   "properties": {
-                    "body": {
+                    "bodyFragment": {
                       "type": "string",
-                      "description": "The value or pattern to compare against the inbound message text."
+                      "description": "A case-insensitive substring matched against the inbound message text."
                     },
-                    "matchType": {
+                    "bodyRegex": {
                       "type": "string",
-                      "enum": [
-                        "equals",
-                        "contains",
-                        "regex",
-                        "json"
+                      "description": "A regular expression matched against the inbound message text."
+                    },
+                    "bodyJson": {
+                      "type": [
+                        "object",
+                        "array",
+                        "string",
+                        "number",
+                        "boolean"
                       ],
-                      "description": "How body is compared: equals (ordinal), contains (case-insensitive), regex, or json (structural). Default is equals."
+                      "description": "A JSON value compared structurally (key-order-independent) against the inbound message parsed as JSON."
                     }
                   },
                   "additionalProperties": false

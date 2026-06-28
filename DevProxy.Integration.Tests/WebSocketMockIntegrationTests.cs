@@ -52,9 +52,9 @@ public sealed class WebSocketMockIntegrationTests
               "url": "wss://{{Host}}/socket",
               "onConnect": [ { "body": "welcome" } ],
               "rules": [
-                { "match": { "body": "ping" }, "responses": [ { "body": "pong" } ] },
+                { "match": { "bodyRegex": "^ping$" }, "responses": [ { "body": "pong" } ] },
                 {
-                  "match": { "body": "bye", "matchType": "contains" },
+                  "match": { "bodyFragment": "bye" },
                   "responses": [ { "body": "goodbye" } ],
                   "closeAfter": true
                 }
