@@ -70,6 +70,7 @@ internal sealed class ProxyConnectionHandler(
 
     private static int _requestCounter;
     private readonly WebSocketRelay _webSocketRelay = new(logger);
+    private readonly WebSocketMockResponder _webSocketMockResponder = new(logger);
 
     public override async Task OnConnectedAsync(ConnectionContext connection)
     {
@@ -360,6 +361,9 @@ internal sealed class ProxyConnectionHandler(
         // splice) — that way a watched request is logged and reporters observe it
         // immediately, not when the WebSocket eventually closes. Either way the
         // connection is consumed (no keep-alive after an upgrade).
+        //
+        // If a plugin attached a WebSocket mock handler during BeforeRequest, the proxy
+        // becomes the WebSocket server (no origin is dialed) — see WebSocketMockResponder.
         if (request.IsWebSocketRequest)
         {
             var handshakeObserved = false;
@@ -375,7 +379,15 @@ internal sealed class ProxyConnectionHandler(
 
             try
             {
-                await _webSocketRelay.RelayAsync(clientStream, request, requestUri, OnHandshakeAsync, ct).ConfigureAwait(false);
+                if (session.WebSocketHandledByPlugin)
+                {
+                    await _webSocketMockResponder.RespondAsync(
+                        clientStream, request, session.WebSocketHandler!, OnHandshakeAsync, ct).ConfigureAwait(false);
+                }
+                else
+                {
+                    await _webSocketRelay.RelayAsync(clientStream, request, requestUri, OnHandshakeAsync, ct).ConfigureAwait(false);
+                }
             }
             catch (Exception ex) when (ConnectionTeardown.IsExpected(ex))
             {

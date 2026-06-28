@@ -540,6 +540,32 @@ public static class ProxyUtils
         return $"^{Regex.Escape(pattern).Replace("\\*", ".*", StringComparison.OrdinalIgnoreCase)}$";
     }
 
+    /// <summary>
+    /// Normalizes a WebSocket URL scheme to its HTTP equivalent (<c>wss://</c> →
+    /// <c>https://</c>, <c>ws://</c> → <c>http://</c>), leaving any other scheme untouched.
+    ///
+    /// <para>
+    /// The proxy engine reports an intercepted WebSocket upgrade with an <c>http(s)</c>
+    /// scheme (a <c>ws(s)</c> connection is an HTTP <c>Upgrade</c> on the wire). Authors,
+    /// however, naturally write <c>wss://host/*</c> in <c>urlsToWatch</c> and mock URLs.
+    /// Normalizing both sides to <c>http(s)</c> before matching lets either form work.
+    /// </para>
+    /// </summary>
+    public static string NormalizeWebSocketScheme(string url)
+    {
+        ArgumentNullException.ThrowIfNull(url);
+
+        if (url.StartsWith("wss://", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Concat("https://", url.AsSpan("wss://".Length));
+        }
+        if (url.StartsWith("ws://", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Concat("http://", url.AsSpan("ws://".Length));
+        }
+        return url;
+    }
+
     public static string RegexToPattern(Regex regex)
     {
         ArgumentNullException.ThrowIfNull(regex);

@@ -61,4 +61,14 @@ public interface IProxySession
     /// Produces a mocked binary response and short-circuits the exchange.
     /// </summary>
     void Respond(ReadOnlyMemory<byte> body, HttpStatusCode statusCode, IEnumerable<IHttpHeader> headers);
+
+    /// <summary>
+    /// Mocks a WebSocket exchange: when this request is a WebSocket upgrade
+    /// (<see cref="IHttpRequest.IsWebSocketRequest"/>), the engine completes the
+    /// handshake itself (no origin is contacted) and then runs <paramref name="handler"/>
+    /// over the live connection so the plugin can script the conversation. This is the
+    /// WebSocket analogue of <see cref="Respond(string, HttpStatusCode, IEnumerable{IHttpHeader})"/>:
+    /// the plugin declares intent here during <c>BeforeRequest</c> and the engine executes it.
+    /// </summary>
+    void HandleWebSocket(Func<IWebSocketConnection, CancellationToken, Task> handler);
 }

@@ -72,6 +72,9 @@
       <ExcludeAssets>runtime</ExcludeAssets>
     </ProjectReference>
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="DevProxy.Integration.Tests" />
+  </ItemGroup>
   <Target Name="CopyFiles" AfterTargets="PostBuildEvent">
     <ItemGroup>
       <!-- Because this ItemGroup is inside the target, this will enumerate

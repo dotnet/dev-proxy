@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy WebSocketMockResponsePlugin mocks",
+  "description": "Mocks for the Dev Proxy WebSocketMockResponsePlugin",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "The JSON schema reference for validation."
+    },
+    "mocks": {
+      "type": "array",
+      "description": "Array of WebSocket mock definitions.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "The WebSocket URL to match. Accepts ws://, wss://, http:// or https:// (schemes are normalized when matching) and supports * wildcards."
+          },
+          "onConnect": {
+            "type": "array",
+            "description": "Messages sent to the client immediately after the handshake, in order.",
+            "items": {
+              "$ref": "#/$defs/message"
+            }
+          },
+          "rules": {
+            "type": "array",
+            "description": "Reactive rules evaluated in order against each inbound client message.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "match": {
+                  "type": "object",
+                  "description": "How to match an inbound client message. Omit to match any message.",
+                  "properties": {
+                    "body": {
+                      "type": "string",
+                      "description": "The value or pattern to compare against the inbound message text."
+                    },
+                    "matchType": {
+                      "type": "string",
+                      "enum": [
+                        "equals",
+                        "contains",
+                        "regex",
+                        "json"
+                      ],
+                      "description": "How body is compared: equals (ordinal), contains (case-insensitive), regex, or json (structural). Default is equals."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "responses": {
+                  "type": "array",
+                  "description": "Messages to send to the client when this rule matches.",
+                  "items": {
+                    "$ref": "#/$defs/message"
+                  }
+                },
+                "closeAfter": {
+                  "type": "boolean",
+                  "description": "When true, the mock server closes the connection after replying. Default is false."
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "closeOnUnmatched": {
+            "type": "boolean",
+            "description": "When true, the mock server closes if an inbound message matches no rule. Default is false."
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "mocks"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "message": {
+      "type": "object",
+      "properties": {
+        "body": {
+          "type": "string",
+          "description": "The message payload. Sent verbatim for text, base64-decoded for binary."
+        },
+        "messageType": {
+          "type": "string",
+          "enum": [
+            "text",
+            "binary"
+          ],
+          "description": "Whether body is text or base64 binary. Default is text."
+        }
+      },
+      "required": [
+        "body"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -18,6 +18,7 @@ public sealed class CanonicalProxySession : IProxySession
     private static readonly Version DefaultHttpVersion = System.Net.HttpVersion.Version11;
 
     private MutableHttpResponse? _response;
+    private Func<IWebSocketConnection, CancellationToken, Task>? _webSocketHandler;
 
     public CanonicalProxySession(string sessionId, MutableHttpRequest request, int? processId)
         : this(sessionId, request, processId, requestId: 0)
@@ -68,6 +69,16 @@ public sealed class CanonicalProxySession : IProxySession
     public MutableHttpResponse? MutableResponse => _response;
 
     /// <summary>
+    /// True when a plugin attached a WebSocket mock handler (via
+    /// <see cref="HandleWebSocket"/>). The engine runs <see cref="WebSocketHandler"/>
+    /// instead of relaying the upgrade to the origin.
+    /// </summary>
+    public bool WebSocketHandledByPlugin => _webSocketHandler is not null;
+
+    /// <summary>The plugin-supplied WebSocket mock handler, or <c>null</c>.</summary>
+    public Func<IWebSocketConnection, CancellationToken, Task>? WebSocketHandler => _webSocketHandler;
+
+    /// <summary>
     /// Sets the response received from the origin. Does not flag the exchange as
     /// plugin-mocked.
     /// </summary>
@@ -98,5 +109,12 @@ public sealed class CanonicalProxySession : IProxySession
         response.SetBody(body);
         _response = response;
         RespondedByPlugin = true;
+    }
+
+    /// <inheritdoc />
+    public void HandleWebSocket(Func<IWebSocketConnection, CancellationToken, Task> handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        _webSocketHandler = handler;
     }
 }
