@@ -24,6 +24,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DevProxy.Proxy.Kestrel.Test
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DevProxy.Integration.Tests", "DevProxy.Integration.Tests\DevProxy.Integration.Tests.csproj", "{90E10CFA-DEF0-456B-8641-102C7072931B}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DevProxy.Tests", "DevProxy.Tests\DevProxy.Tests.csproj", "{C9A32664-0227-4F43-8980-CF9BB75052AD}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -118,6 +120,18 @@ Global
 		{90E10CFA-DEF0-456B-8641-102C7072931B}.Release|x64.Build.0 = Release|Any CPU
 		{90E10CFA-DEF0-456B-8641-102C7072931B}.Release|x86.ActiveCfg = Release|Any CPU
 		{90E10CFA-DEF0-456B-8641-102C7072931B}.Release|x86.Build.0 = Release|Any CPU
+		{C9A32664-0227-4F43-8980-CF9BB75052AD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C9A32664-0227-4F43-8980-CF9BB75052AD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C9A32664-0227-4F43-8980-CF9BB75052AD}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C9A32664-0227-4F43-8980-CF9BB75052AD}.Debug|x64.Build.0 = Debug|Any CPU
+		{C9A32664-0227-4F43-8980-CF9BB75052AD}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C9A32664-0227-4F43-8980-CF9BB75052AD}.Debug|x86.Build.0 = Debug|Any CPU
+		{C9A32664-0227-4F43-8980-CF9BB75052AD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C9A32664-0227-4F43-8980-CF9BB75052AD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C9A32664-0227-4F43-8980-CF9BB75052AD}.Release|x64.ActiveCfg = Release|Any CPU
+		{C9A32664-0227-4F43-8980-CF9BB75052AD}.Release|x64.Build.0 = Release|Any CPU
+		{C9A32664-0227-4F43-8980-CF9BB75052AD}.Release|x86.ActiveCfg = Release|Any CPU
+		{C9A32664-0227-4F43-8980-CF9BB75052AD}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
