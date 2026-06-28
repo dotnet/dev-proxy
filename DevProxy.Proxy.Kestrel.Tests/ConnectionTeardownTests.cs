@@ -41,9 +41,14 @@ public class ConnectionTeardownTests
     public void IsExpected_InvalidOperationException_False() =>
         Assert.False(ConnectionTeardown.IsExpected(new InvalidOperationException()));
 
+    // A NullReferenceException signals a latent bug, never a connection teardown — it must
+    // not be swallowed as "expected". CA2201 only objects to constructing the reserved type,
+    // which is precisely what this test needs to verify the classifier's behavior.
+#pragma warning disable CA2201 // Do not raise reserved exception types
     [Fact]
     public void IsExpected_NullReferenceException_False() =>
         Assert.False(ConnectionTeardown.IsExpected(new NullReferenceException()));
+#pragma warning restore CA2201
 
     [Fact]
     public void IsExpected_UnrelatedException_False() =>
