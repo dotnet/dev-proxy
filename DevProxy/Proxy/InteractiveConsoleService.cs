@@ -4,6 +4,8 @@
 
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Commands;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 
 namespace DevProxy.Proxy;
 
@@ -37,6 +39,7 @@ internal sealed class InteractiveConsoleService(
     IProxyStateController controller,
     IProxyConfiguration configuration,
     ISystemConsole console,
+    IServer server,
     IHostApplicationLifetime lifetime,
     ILogger<InteractiveConsoleService> logger) : BackgroundService
 {
@@ -62,6 +65,15 @@ internal sealed class InteractiveConsoleService(
         if (!await WaitForApplicationStartedAsync(stoppingToken))
         {
             return;
+        }
+
+        // When --api-port 0 is used, the OS assigns a random port. Resolve it from
+        // the bound server address now that the host has started, so the banner's
+        // curl commands reference the actual API port rather than the literal 0.
+        var apiAddress = server.Features.Get<IServerAddressesFeature>()?.Addresses.FirstOrDefault();
+        if (Uri.TryCreate(apiAddress, UriKind.Absolute, out var apiUri) && apiUri.Port > 0)
+        {
+            configuration.ApiPort = apiUri.Port;
         }
 
         if (configuration.Record)
