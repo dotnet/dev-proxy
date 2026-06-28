@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DevProxy.Abstractions\DevProxy.Abstractions.csproj" />
+    <ProjectReference Include="..\DevProxy.Plugins\DevProxy.Plugins.csproj" />
     <ProjectReference Include="..\DevProxy.Proxy.Kestrel\DevProxy.Proxy.Kestrel.csproj" />
   </ItemGroup>
 

@@ -10,6 +10,7 @@ using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Proxy.Kestrel;
 using DevProxy.Proxy.Kestrel.Internal;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace DevProxy.Integration.Tests;
@@ -39,9 +40,27 @@ internal sealed class KestrelProxyHarness : IAsyncDisposable
         Port = port;
     }
 
+    /// <summary>
+    /// Builds the <c>urlsToWatch</c> set the engine uses for a host — exposed so a test
+    /// can construct a plugin against the <em>same</em> set the engine matches on.
+    /// </summary>
+    public static HashSet<UrlToWatch> BuildUrlsToWatch(string watchedHost) =>
+        [
+            new(new Regex(
+                $"^https?://{Regex.Escape(watchedHost)}/.*$",
+                RegexOptions.Compiled | RegexOptions.IgnoreCase)),
+        ];
+
+    /// <param name="loggerFactory">
+    /// When supplied, the engine logs through it — pass a
+    /// <see cref="CapturingLoggerFactory"/> to assert the <see cref="RequestLog"/>
+    /// entries the pipeline emits (guidance tips, intercepted-response records that
+    /// reporters later consume). Defaults to a no-op factory.
+    /// </param>
     public static async Task<KestrelProxyHarness> StartAsync(
         string watchedHost,
-        IEnumerable<IPlugin>? plugins = null)
+        IEnumerable<IPlugin>? plugins = null,
+        ILoggerFactory? loggerFactory = null)
     {
         var port = NetUtil.GetFreePort();
         var configuration = new TestProxyConfiguration
@@ -52,13 +71,7 @@ internal sealed class KestrelProxyHarness : IAsyncDisposable
         };
 
         // Watch http(s)://<host>/* so the engine MITMs/inspects the origin.
-        var escapedHost = Regex.Escape(watchedHost);
-        var urlsToWatch = new HashSet<UrlToWatch>
-        {
-            new(new Regex(
-                $"^https?://{escapedHost}/.*$",
-                RegexOptions.Compiled | RegexOptions.IgnoreCase)),
-        };
+        var urlsToWatch = BuildUrlsToWatch(watchedHost);
 
         var engine = new KestrelProxyEngine(
             CertificateAuthority.CreateDefault(),
@@ -66,7 +79,7 @@ internal sealed class KestrelProxyHarness : IAsyncDisposable
             urlsToWatch,
             configuration,
             [],
-            NullLoggerFactory.Instance);
+            loggerFactory ?? NullLoggerFactory.Instance);
 
         var harness = new KestrelProxyHarness(engine, port);
         await engine.StartAsync(harness._cts.Token).ConfigureAwait(false);
