@@ -81,6 +81,11 @@ public sealed class KestrelProxyEngine(
         // ListenOptions endpoint to the bound port after StartAsync, so log THAT
         // (not the configured 0) so the user can actually connect.
         var boundPort = listenOptions?.IPEndPoint?.Port ?? port;
+        // Publish the actually-bound port back to the shared configuration so the
+        // host can persist it in the daemon state file (resolves --port 0 to the
+        // OS-assigned port). This is the channel the host's readiness check,
+        // `devproxy stop`, and `devproxy status` rely on.
+        configuration.Port = boundPort;
         _logger.LogInformation(
             "Dev Proxy (Kestrel engine) listening on {Address}:{Port}",
             ipAddress.ToString(),
@@ -109,7 +114,20 @@ public sealed class KestrelProxyEngine(
                 systemProxyManager!.Disable();
             }
 
-            await app.StopAsync(CancellationToken.None).ConfigureAwait(false);
+            // Bound the graceful drain so lingering client keep-alive connections (or an
+            // idle CONNECT tunnel) can't stall process shutdown — without this the proxy
+            // exits cleanly when idle but takes the full Kestrel drain after real traffic,
+            // which makes `devproxy stop` falsely report "did not stop in time". After the
+            // grace window Kestrel force-closes any remaining connections.
+            using var shutdownCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            try
+            {
+                await app.StopAsync(shutdownCts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Drain window elapsed; remaining connections were force-closed.
+            }
         }
     }
 }
