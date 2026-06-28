@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy LanguageModelRateLimitingPlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "The URL of the JSON schema used to validate this configuration file."
+    },
+    "headerRetryAfter": {
+      "type": "string",
+      "description": "Name of the response header that communicates the retry-after period (e.g., 'Retry-After')."
+    },
+    "resetTimeWindowSeconds": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "How long in seconds until the next token limit reset."
+    },
+    "promptTokenLimit": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of prompt tokens allowed per time window."
+    },
+    "completionTokenLimit": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of completion tokens allowed per time window."
+    },
+    "whenLimitExceeded": {
+      "type": "string",
+      "enum": [
+        "Throttle",
+        "Custom"
+      ],
+      "description": "Behavior when the token limit is exceeded: 'Throttle' (default throttling) or 'Custom' (custom response)."
+    },
+    "customResponseFile": {
+      "type": "string",
+      "description": "Path to a file containing a custom error response to use when the token limit is exceeded."
+    }
+  },
+  "additionalProperties": false
+}
