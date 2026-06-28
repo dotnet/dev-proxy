@@ -21,6 +21,21 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
   </ItemGroup>
 
+  <!-- DevProxy.Plugins compiles against these packages but excludes their runtime
+       assets (the host supplies the DLLs at runtime). To exercise plugins in-process
+       this test host must itself supply the runtime assemblies, mirroring DevProxy.csproj. -->
+  <ItemGroup>
+    <PackageReference Include="Azure.Identity" Version="1.21.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.9" />
+    <PackageReference Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="8.19.1" />
+    <PackageReference Include="Microsoft.OpenApi" Version="3.7.0" />
+    <PackageReference Include="Microsoft.OpenApi.YamlReader" Version="3.7.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="OpenTelemetry" Version="1.16.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.16.0" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.19.1" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\DevProxy.Abstractions\DevProxy.Abstractions.csproj" />
     <ProjectReference Include="..\DevProxy.Plugins\DevProxy.Plugins.csproj" />

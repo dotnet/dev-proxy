@@ -25,20 +25,26 @@ namespace DevProxy.Integration.Tests;
 ///   GET  /headers        → 200, reflects X-Probe request header in body
 ///   GET  /sse            → 200 text/event-stream, 5 events flushed ~50ms apart
 ///   GET  /big/{n}        → 200, n bytes of 'A' (large finite body)
+///   GET  /json           → 200 application/json, a 2-element array
 /// </code>
 /// </summary>
 internal sealed class FakeOrigin : IAsyncDisposable
 {
     private readonly WebApplication _app;
+    private readonly System.Collections.Concurrent.ConcurrentQueue<ReceivedRequest> _received;
 
     public int Port { get; }
 
     public string Host => $"127.0.0.1:{Port.ToString(CultureInfo.InvariantCulture)}";
 
-    private FakeOrigin(WebApplication app, int port)
+    /// <summary>Every request this origin actually received, in arrival order.</summary>
+    public IReadOnlyCollection<ReceivedRequest> ReceivedRequests => _received.ToArray();
+
+    private FakeOrigin(WebApplication app, int port, System.Collections.Concurrent.ConcurrentQueue<ReceivedRequest> received)
     {
         _app = app;
         Port = port;
+        _received = received;
     }
 
     public static async Task<FakeOrigin> StartAsync()
@@ -53,6 +59,13 @@ internal sealed class FakeOrigin : IAsyncDisposable
                 listen.Protocols = HttpProtocols.Http1));
 
         var app = builder.Build();
+
+        var received = new System.Collections.Concurrent.ConcurrentQueue<ReceivedRequest>();
+        app.Use(async (ctx, next) =>
+        {
+            received.Enqueue(new ReceivedRequest(ctx.Request.Method, ctx.Request.Path + ctx.Request.QueryString));
+            await next().ConfigureAwait(false);
+        });
 
         app.MapGet("/get", () => Results.Text("hello get"));
 
@@ -94,8 +107,14 @@ internal sealed class FakeOrigin : IAsyncDisposable
         app.MapGet("/big/{n:int}", (int n) =>
             Results.Text(new string('A', n)));
 
+        app.MapGet("/json", () => Results.Json(new[]
+        {
+            new { id = 1, name = "alpha" },
+            new { id = 2, name = "beta" },
+        }));
+
         await app.StartAsync().ConfigureAwait(false);
-        return new FakeOrigin(app, port);
+        return new FakeOrigin(app, port, received);
     }
 
     public async ValueTask DisposeAsync()
@@ -104,3 +123,5 @@ internal sealed class FakeOrigin : IAsyncDisposable
         await _app.DisposeAsync().ConfigureAwait(false);
     }
 }
+
+internal sealed record ReceivedRequest(string Method, string PathAndQuery);

@@ -17,7 +17,7 @@ internal sealed class TestProxyConfiguration : IProxyConfiguration
 {
     public int ApiPort { get; set; }
     public bool AsSystemProxy { get; set; }
-    public string ConfigFile => "devproxyrc.json";
+    public string ConfigFile { get; set; } = "devproxyrc.json";
     public Dictionary<string, string> Env { get; set; } = [];
     public IEnumerable<MockRequestHeader>? FilterByHeaders { get; }
     public bool InstallCert { get; set; }
