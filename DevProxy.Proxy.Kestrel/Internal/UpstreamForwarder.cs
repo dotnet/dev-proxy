@@ -64,14 +64,21 @@ internal sealed class UpstreamForwarder(HttpClient httpClient)
             CopyHeaders(originResponse.Headers, headers);
             CopyHeaders(originResponse.Content.Headers, headers);
 
-            var isStreaming = IsEventStream(headers);
+            // A HEAD response has no body but reports the Content-Length a GET would —
+            // keep it so the client sees the real resource size (RFC 9110 §9.3.2). It
+            // can never take the streaming path (there is nothing to stream).
+            var isHead = string.Equals(request.Method, "HEAD", StringComparison.OrdinalIgnoreCase);
+            var isStreaming = !isHead && IsEventStream(headers);
 
             // Body is (or will be) delivered decompressed; advertise nothing stale —
             // a buffered body gets a real Content-Length on write-back, a streamed one
-            // is re-framed as chunked.
+            // is re-framed as chunked. HEAD keeps the origin's Content-Length.
             _ = headers.Remove("Content-Encoding");
-            _ = headers.Remove("Content-Length");
             _ = headers.Remove("Transfer-Encoding");
+            if (!isHead)
+            {
+                _ = headers.Remove("Content-Length");
+            }
 
             if (isStreaming)
             {

@@ -14,10 +14,10 @@ namespace DevProxy.Proxy.Kestrel.Tests;
 
 public class ResponseWriterTests
 {
-    private static async Task<string> WriteAsync(MutableHttpResponse response, bool keepAlive = false)
+    private static async Task<string> WriteAsync(MutableHttpResponse response, bool keepAlive = false, string method = "GET")
     {
         using var stream = new MemoryStream();
-        await ResponseWriter.WriteAsync(stream, response, keepAlive, CancellationToken.None);
+        await ResponseWriter.WriteAsync(stream, response, keepAlive, method, CancellationToken.None);
         return Encoding.ASCII.GetString(stream.ToArray());
     }
 
@@ -129,5 +129,72 @@ public class ResponseWriterTests
         var output = await WriteAsync(response);
 
         Assert.StartsWith("HTTP/1.1 200 Totally Fine\r\n", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WriteAsync_Head_PreservesOriginContentLength_AndWritesNoBody()
+    {
+        // A HEAD response carries the Content-Length a GET would return but no body
+        // (RFC 9110 §9.3.2). The origin's declared length must survive, not be
+        // overwritten with the (empty) body length.
+        var headers = new HeaderCollection();
+        headers.Add("Content-Length", "1234");
+        headers.Add("Content-Type", "application/json");
+        var response = new MutableHttpResponse(
+            HttpStatusCode.OK, HttpVersion.Version11, headers, ReadOnlyMemory<byte>.Empty);
+
+        var output = await WriteAsync(response, method: "HEAD");
+
+        Assert.StartsWith("HTTP/1.1 200 OK\r\n", output, StringComparison.Ordinal);
+        Assert.Contains("Content-Length: 1234\r\n", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("Content-Length: 0\r\n", output, StringComparison.Ordinal);
+        // The head ends at the blank line and nothing follows it (no body).
+        Assert.EndsWith("\r\n\r\n", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WriteAsync_Head_SuppressesBody_EvenIfResponseCarriesOne()
+    {
+        // Defensive: if a plugin attaches a body to a HEAD response, the bytes must
+        // still not reach the client, but Content-Length reflects that body's size.
+        var headers = new HeaderCollection();
+        var response = new MutableHttpResponse(
+            HttpStatusCode.OK, HttpVersion.Version11, headers, Encoding.ASCII.GetBytes("hello"));
+
+        var output = await WriteAsync(response, method: "HEAD");
+
+        Assert.Contains("Content-Length: 5\r\n", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("hello", output, StringComparison.Ordinal);
+        Assert.EndsWith("\r\n\r\n", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WriteAsync_Head_FallsBackToBodyLength_WhenNoOriginContentLength()
+    {
+        // No Content-Length from the origin (e.g. it was chunked or compressed-then-
+        // stripped). Fall back to the body length rather than omitting the header.
+        var response = new MutableHttpResponse(
+            HttpStatusCode.OK, HttpVersion.Version11, new HeaderCollection(), ReadOnlyMemory<byte>.Empty);
+
+        var output = await WriteAsync(response, method: "HEAD");
+
+        Assert.Contains("Content-Length: 0\r\n", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WriteAsync_Get_RecomputesContentLength_IgnoringOrigin()
+    {
+        // The HEAD preservation must not leak into other methods: a GET still gets a
+        // recomputed Content-Length from the actual body.
+        var headers = new HeaderCollection();
+        headers.Add("Content-Length", "1234");
+        var response = new MutableHttpResponse(
+            HttpStatusCode.OK, HttpVersion.Version11, headers, Encoding.ASCII.GetBytes("abc"));
+
+        var output = await WriteAsync(response, method: "GET");
+
+        Assert.Contains("Content-Length: 3\r\n", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("Content-Length: 1234", output, StringComparison.Ordinal);
+        Assert.EndsWith("abc", output, StringComparison.Ordinal);
     }
 }

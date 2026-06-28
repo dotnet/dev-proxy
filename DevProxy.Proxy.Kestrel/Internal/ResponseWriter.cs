@@ -36,8 +36,15 @@ internal static class ResponseWriter
         await clientStream.FlushAsync(ct).ConfigureAwait(false);
     }
 
-    public static async Task WriteAsync(Stream clientStream, IHttpResponse response, bool keepAlive, CancellationToken ct)
+    public static async Task WriteAsync(
+        Stream clientStream, IHttpResponse response, bool keepAlive, string requestMethod, CancellationToken ct)
     {
+        // A response to HEAD carries the same headers a GET would — including the
+        // resource's Content-Length — but never a message body (RFC 9110 §9.3.2).
+        // For every other method the body IS the response, so Content-Length is
+        // recomputed from it and any stale origin value is dropped.
+        var isHead = string.Equals(requestMethod, "HEAD", StringComparison.OrdinalIgnoreCase);
+
         var head = new StringBuilder();
         var statusCode = (int)response.StatusCode;
         var reason = string.IsNullOrEmpty(response.StatusDescription)
@@ -46,23 +53,36 @@ internal static class ResponseWriter
 
         _ = head.Append(CultureInfo.InvariantCulture, $"HTTP/1.1 {statusCode} {reason}\r\n");
 
+        string? preservedContentLength = null;
         foreach (var header in response.Headers)
         {
             if (ForwardingInvariants.HopByHopHeaders.Contains(header.Name)
-                || string.Equals(header.Name, "Content-Length", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(header.Name, "Content-Encoding", StringComparison.OrdinalIgnoreCase))
             {
+                continue;
+            }
+            if (string.Equals(header.Name, "Content-Length", StringComparison.OrdinalIgnoreCase))
+            {
+                // For HEAD, keep the origin's declared length (the size a GET would
+                // return); otherwise it is recomputed below from the actual body.
+                if (isHead)
+                {
+                    preservedContentLength ??= header.Value;
+                }
                 continue;
             }
             _ = head.Append(CultureInfo.InvariantCulture, $"{header.Name}: {header.Value}\r\n");
         }
 
         var body = response.Body;
-        _ = head.Append(CultureInfo.InvariantCulture, $"Content-Length: {body.Length}\r\n");
+        var contentLength = isHead
+            ? preservedContentLength ?? body.Length.ToString(CultureInfo.InvariantCulture)
+            : body.Length.ToString(CultureInfo.InvariantCulture);
+        _ = head.Append(CultureInfo.InvariantCulture, $"Content-Length: {contentLength}\r\n");
         _ = head.Append(keepAlive ? "Connection: keep-alive\r\n\r\n" : "Connection: close\r\n\r\n");
 
         await clientStream.WriteAsync(Encoding.ASCII.GetBytes(head.ToString()), ct).ConfigureAwait(false);
-        if (!body.IsEmpty)
+        if (!isHead && !body.IsEmpty)
         {
             await clientStream.WriteAsync(body, ct).ConfigureAwait(false);
         }

@@ -351,7 +351,7 @@ internal sealed class ProxyConnectionHandler(
         if (phase == RequestPhase.Mocked)
         {
             await pipeline.RunResponseAsync(session, ct).ConfigureAwait(false);
-            await ResponseWriter.WriteAsync(clientStream, session.MutableResponse!, keepAlive, ct).ConfigureAwait(false);
+            await ResponseWriter.WriteAsync(clientStream, session.MutableResponse!, keepAlive, head.Method, ct).ConfigureAwait(false);
             return keepAlive;
         }
 
@@ -446,12 +446,12 @@ internal sealed class ProxyConnectionHandler(
             {
                 session.SetOriginResponse(origin.Response);
                 await pipeline.RunResponseAsync(session, ct).ConfigureAwait(false);
-                await ResponseWriter.WriteAsync(clientStream, session.MutableResponse!, keepAlive, ct).ConfigureAwait(false);
+                await ResponseWriter.WriteAsync(clientStream, session.MutableResponse!, keepAlive, head.Method, ct).ConfigureAwait(false);
             }
             else
             {
                 // NotWatched: pure passthrough, no response-phase plugins.
-                await ResponseWriter.WriteAsync(clientStream, origin.Response, keepAlive, ct).ConfigureAwait(false);
+                await ResponseWriter.WriteAsync(clientStream, origin.Response, keepAlive, head.Method, ct).ConfigureAwait(false);
             }
 
             return keepAlive;
