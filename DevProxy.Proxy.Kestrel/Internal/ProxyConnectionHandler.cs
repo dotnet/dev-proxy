@@ -423,11 +423,21 @@ internal sealed class ProxyConnectionHandler(
         {
             origin = await forwarder.ForwardAsync(request, ct).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
         {
             pipeline.Forget(session.SessionId);
+
+            // An HttpClient timeout throws TaskCanceledException (an OperationCanceledException),
+            // the same type a client disconnect produces — UpstreamFailure tells them apart by
+            // the connection token so a stalled origin returns 504 instead of silently dropping.
+            var outcome = UpstreamFailure.Classify(ex, ct.IsCancellationRequested);
+            if (outcome is null)
+            {
+                return false;
+            }
+
             logger.LogError(ex, "Error forwarding to origin {Url}", absoluteUrl);
-            await WriteErrorAsync(clientStream, HttpStatusCode.BadGateway, "Upstream request failed", ct).ConfigureAwait(false);
+            await WriteErrorAsync(clientStream, outcome.Value.Status, outcome.Value.Message, ct).ConfigureAwait(false);
             return false;
         }
 
@@ -576,6 +586,7 @@ internal sealed class ProxyConnectionHandler(
     {
         HttpStatusCode.BadRequest => "Bad Request",
         HttpStatusCode.BadGateway => "Bad Gateway",
+        HttpStatusCode.GatewayTimeout => "Gateway Timeout",
         _ => status.ToString(),
     };
 
