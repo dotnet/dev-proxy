@@ -4,6 +4,7 @@
 
 using System.Net;
 using System.Text;
+using DevProxy.Abstractions.Models;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Proxy.Kestrel.Http;
@@ -88,4 +89,12 @@ internal sealed class TestExchange
             bodyBytes));
         return this;
     }
+
+    /// <summary>
+    /// Projects this exchange into a <see cref="RequestLog"/> exactly as the engine pipeline
+    /// emits one (method/url derived from the session request), for feeding reporter and
+    /// generator plugins' <c>AfterRecordingStopAsync</c>.
+    /// </summary>
+    public RequestLog AsRequestLog(MessageType messageType = MessageType.InterceptedRequest) =>
+        new($"{Session.Request.Method} {Session.Request.Url}", messageType, new LoggingContext(Session));
 }
