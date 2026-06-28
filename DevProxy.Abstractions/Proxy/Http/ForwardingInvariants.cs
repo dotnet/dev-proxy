@@ -7,8 +7,8 @@ using System.Collections.Frozen;
 namespace DevProxy.Abstractions.Proxy.Http;
 
 /// <summary>
-/// The forwarding contract every engine adapter must honor so that plugins see a
-/// consistent model regardless of the underlying proxy engine. These are the
+/// The forwarding contract the proxy engine must honor so that plugins see a
+/// consistent model. These are the
 /// rules that, if violated, silently corrupt traffic — documented here as the
 /// single source of truth and partially enforced via the shared
 /// <see cref="HopByHopHeaders"/> set.

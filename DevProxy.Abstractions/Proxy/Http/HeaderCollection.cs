@@ -8,7 +8,7 @@ namespace DevProxy.Abstractions.Proxy.Http;
 
 /// <summary>
 /// Default in-memory <see cref="IHeaderCollection"/>. Preserves insertion (wire)
-/// order and matches names case-insensitively. Used by adapters, mocked
+/// order and matches names case-insensitively. Used by the proxy engine, mocked
 /// responses, and tests.
 /// </summary>
 public sealed class HeaderCollection : IHeaderCollection

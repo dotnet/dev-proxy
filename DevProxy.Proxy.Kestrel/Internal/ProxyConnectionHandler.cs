@@ -56,6 +56,18 @@ internal sealed class ProxyConnectionHandler(
     ProcessFilter processFilter,
     ILogger logger) : ConnectionHandler
 {
+    // Largest streamed-response body retained in memory for read-only AfterResponse
+    // inspectors (e.g. OpenAI telemetry). Beyond this, inspectors simply see no body;
+    // the full body is still forwarded to the client. 4 MiB.
+    //
+    // NOTE (memory): non-streaming watched responses are currently buffered in full by
+    // UpstreamForwarder before plugins run, with no upper bound — a large watched download
+    // can spike RAM. A capability-driven body-handling design (stream/spool large bodies,
+    // per-plugin BodyCapabilities) was prototyped but never wired; it lives at git
+    // a2afac1 (DevProxy.Abstractions/Proxy/Http/BodyModeResolver.cs + BodyHandling.cs) and
+    // can be restored with `git show a2afac1:<path>`. See plan.md follow-ups.
+    private const int InMemoryInspectionCapBytes = 4 * 1024 * 1024;
+
     private static int _requestCounter;
     private readonly WebSocketRelay _webSocketRelay = new(logger);
 
@@ -450,7 +462,7 @@ internal sealed class ProxyConnectionHandler(
         bool keepAlive,
         CancellationToken ct)
     {
-        const int accumulateCap = (int)BodyModeResolver.DefaultInMemoryLimitBytes;
+        const int accumulateCap = InMemoryInspectionCapBytes;
 
         if (phase == RequestPhase.Watched)
         {

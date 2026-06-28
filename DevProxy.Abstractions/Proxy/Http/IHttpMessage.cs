@@ -18,11 +18,13 @@ namespace DevProxy.Abstractions.Proxy.Http;
 /// </para>
 ///
 /// <para>
-/// The body is only materialized when the active <see cref="BodyMode"/> for
-/// the exchange buffers it (driven by plugin <see cref="BodyCapabilities"/>).
-/// In a streaming pass-through exchange the body is not retained; accessing
-/// <see cref="Body"/> then yields an empty buffer and <see cref="HasBody"/> may
-/// be true while the bytes are not available to inspect.
+/// The body is only materialized when the engine buffers it for the exchange. For
+/// ordinary (non-streamed) responses the full body is buffered and is readable and
+/// mutable. For streamed responses (<c>text/event-stream</c>) the body is forwarded
+/// live and only a capped copy is retained for read-only inspection; a streaming
+/// pass-through exchange retains nothing, so accessing <see cref="Body"/> then yields
+/// an empty buffer and <see cref="HasBody"/> may be true while the bytes are not
+/// available to inspect.
 /// </para>
 /// </summary>
 public interface IHttpMessage
