@@ -2,27 +2,33 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Abstractions.Proxy;
 using DevProxy.Proxy;
 using System.CommandLine;
 using System.CommandLine.Parsing;
-using Titanium.Web.Proxy.Helpers;
+using System.Security.Cryptography.X509Certificates;
 
 namespace DevProxy.Commands;
 
 sealed class CertCommand : Command
 {
     private readonly ILogger _logger;
-    private readonly ILoggerFactory _loggerFactory;
+    private readonly X509Certificate2 _rootCertificate;
+    private readonly IRootCertificateTrust _rootCertificateTrust;
     private readonly Option<bool> _forceOption = new("--force", "-f")
     {
         Description = "Don't prompt for confirmation when removing the certificate. Required for non-interactive use (CI, piped stdin, automation)."
     };
 
-    public CertCommand(ILogger<CertCommand> logger, ILoggerFactory loggerFactory) :
+    public CertCommand(
+        ILogger<CertCommand> logger,
+        X509Certificate2 rootCertificate,
+        IRootCertificateTrust rootCertificateTrust) :
         base("cert", "Manage the Dev Proxy certificate")
     {
         _logger = logger;
-        _loggerFactory = loggerFactory;
+        _rootCertificate = rootCertificate;
+        _rootCertificateTrust = rootCertificateTrust;
 
         ConfigureCommand();
     }
@@ -48,27 +54,15 @@ sealed class CertCommand : Command
         ]);
     }
 
-    private async Task EnsureCertAsync()
+    private Task EnsureCertAsync()
     {
         _logger.LogTrace("EnsureCertAsync() called");
 
         try
         {
-            // Ensure ProxyServer is initialized with LoggerFactory for Unobtanium logging
-            ProxyEngine.EnsureProxyServerInitialized(_loggerFactory);
-
+            // Resolving the shared root certificate creates + persists it on first run.
             _logger.LogInformation("Ensuring certificate exists and is trusted...");
-            await ProxyEngine.ProxyServer.CertificateManager.EnsureRootCertificateAsync();
-
-            if (RunTime.IsMac)
-            {
-                var certificate = ProxyEngine.ProxyServer.CertificateManager.RootCertificate;
-                if (certificate is not null)
-                {
-                    MacCertificateHelper.TrustCertificate(certificate, _logger);
-                }
-            }
-
+            _rootCertificateTrust.Trust(_rootCertificate);
             _logger.LogInformation("DONE");
         }
         catch (Exception ex)
@@ -77,6 +71,7 @@ sealed class CertCommand : Command
         }
 
         _logger.LogTrace("EnsureCertAsync() finished");
+        return Task.CompletedTask;
     }
 
     public int RemoveCert(ParseResult parseResult)
@@ -104,23 +99,7 @@ sealed class CertCommand : Command
 
             _logger.LogInformation("Uninstalling the root certificate...");
 
-            // Ensure ProxyServer is initialized with LoggerFactory for Unobtanium logging
-            ProxyEngine.EnsureProxyServerInitialized(_loggerFactory);
-
-            if (RunTime.IsMac)
-            {
-                var certificate = ProxyEngine.ProxyServer.CertificateManager.RootCertificate;
-                if (certificate is not null)
-                {
-                    MacCertificateHelper.RemoveTrustedCertificate(certificate, _logger);
-                }
-
-                HasRunFlag.Remove();
-            }
-            else
-            {
-                ProxyEngine.ProxyServer.CertificateManager.RemoveTrustedRootCertificate(machineTrusted: false);
-            }
+            _rootCertificateTrust.Untrust(_rootCertificate);
 
             _logger.LogInformation("DONE");
             return 0;

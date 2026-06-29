@@ -92,7 +92,7 @@ public sealed class GraphMinimalPermissionsPlugin(
             if (ProxyUtils.IsGraphBatchUrl(uri))
             {
                 var graphVersion = ProxyUtils.IsGraphBetaUrl(uri) ? "beta" : "v1.0";
-                var requestsFromBatch = GraphUtils.GetRequestsFromBatch(request.Context?.Session.HttpClient.Request.BodyString!, graphVersion, uri.Host);
+                var requestsFromBatch = GraphUtils.GetRequestsFromBatch(request.Context?.Session.Request.BodyString!, graphVersion, uri.Host);
                 endpoints.AddRange(requestsFromBatch);
             }
             else

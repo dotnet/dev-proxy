@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy DevToolsPlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "The JSON schema reference for validation."
+    },
+    "preferredBrowser": {
+      "type": "string",
+      "enum": [
+        "Edge",
+        "EdgeDev",
+        "Chrome"
+      ],
+      "description": "Which browser to use to launch Dev Tools. Supported values: Edge, EdgeDev, Chrome. Default: Edge."
+    }
+  },
+  "additionalProperties": false
+}

@@ -68,7 +68,7 @@ public sealed class HarGeneratorPlugin(
                     r is not null &&
                     r.Context is not null &&
                     r.Context.Session is not null &&
-                    ProxyUtils.MatchesUrlToWatch(UrlsToWatch, r.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri)).Select(CreateHarEntry)]
+                    ProxyUtils.MatchesUrlToWatch(UrlsToWatch, r.Context.Session.Request.RequestUri.AbsoluteUri)).Select(CreateHarEntry)]
             }
         };
 
@@ -102,8 +102,8 @@ public sealed class HarGeneratorPlugin(
         Debug.Assert(log is not null);
         Debug.Assert(log.Context is not null);
 
-        var request = log.Context.Session.HttpClient.Request;
-        var response = log.Context.Session.HttpClient.Response;
+        var request = log.Context.Session.Request;
+        var response = log.Context.Session.Response!;
 
         var entry = new HarEntry
         {
@@ -129,17 +129,17 @@ public sealed class HarGeneratorPlugin(
                         return new HarCookie { Name = parts[0].Trim(), Value = parts.Length > 1 ? parts[1].Trim() : "" };
                     })],
                 HeadersSize = request.Headers?.ToString()?.Length ?? 0,
-                BodySize = request.HasBody ? (request.Body?.Length ?? 0) : 0,
+                BodySize = request.HasBody ? request.Body.Length : 0,
                 PostData = request.HasBody ? new HarPostData
                 {
                     MimeType = request.ContentType,
-                    Text = request.Body is not null ? HttpUtils.GetBodyString(request.ContentType, request.Body) : ""
+                    Text = HttpUtils.GetBodyString(request.ContentType, request.Body.ToArray())
                 }
                     : null
             },
             Response = response is not null ? new HarResponse
             {
-                Status = response.StatusCode,
+                Status = (int)response.StatusCode,
                 StatusText = response.StatusDescription,
                 HttpVersion = $"HTTP/{response.HttpVersion}",
                 Headers = [.. response.Headers.Select(h => new HarHeader { Name = h.Name, Value = GetHeaderValue(h.Name, string.Join(", ", h.Value)) })],
@@ -153,12 +153,12 @@ public sealed class HarGeneratorPlugin(
                     })],
                 Content = new HarContent
                 {
-                    Size = response.HasBody ? (response.Body?.Length ?? 0) : 0,
+                    Size = response.HasBody ? response.Body.Length : 0,
                     MimeType = response.ContentType ?? "",
-                    Text = Configuration.IncludeResponse && response.HasBody && response.Body is not null ? HttpUtils.GetBodyString(response.ContentType, response.Body) : null
+                    Text = Configuration.IncludeResponse && response.HasBody ? HttpUtils.GetBodyString(response.ContentType, response.Body.ToArray()) : null
                 },
                 HeadersSize = response.Headers?.ToString()?.Length ?? 0,
-                BodySize = response.HasBody ? (response.Body?.Length ?? 0) : 0
+                BodySize = response.HasBody ? response.Body.Length : 0
             } : null
         };
 

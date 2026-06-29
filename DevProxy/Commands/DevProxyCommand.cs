@@ -316,11 +316,12 @@ sealed class DevProxyCommand : RootCommand
                 var address = serverAddresses?.Addresses.FirstOrDefault() ?? $"http://{_proxyConfiguration.IPAddress}:{_proxyConfiguration.ApiPort}";
                 _logger.LogInformation("Dev Proxy API listening on {Address}...", address);
 
-                // Update state file with the actual Kestrel API address
-                // (resolves port 0 to OS-assigned port)
+                // Persist the daemon state so the parent process's readiness check,
+                // `devproxy stop`, and `devproxy status` can find this instance
+                // (resolves port 0 to the OS-assigned ports for both proxy and API).
                 if (IsInternalDaemon)
                 {
-                    _ = UpdateStateWithApiUrlAsync(address);
+                    _ = WriteDaemonStateAsync(address);
                 }
             });
             await _app.RunAsync(cancellationToken);
@@ -736,13 +737,29 @@ sealed class DevProxyCommand : RootCommand
         }
     }
 
-    private static async Task UpdateStateWithApiUrlAsync(string apiUrl)
+    private async Task WriteDaemonStateAsync(string apiUrl)
     {
-        var state = await StateManager.LoadStateByPidAsync(Environment.ProcessId);
-        if (state is not null)
+        // The proxy engine publishes its actually-bound port back to the shared
+        // configuration once it binds. Wait briefly for it so the persisted state
+        // carries the real proxy port (matters for --port 0); the parent's readiness
+        // poll requires Port > 0 before it reports the daemon as started.
+        var deadline = Environment.TickCount64 + 10_000;
+        while (_proxyConfiguration.Port <= 0 && Environment.TickCount64 < deadline)
         {
-            state.ApiUrl = apiUrl;
-            await StateManager.SaveStateAsync(state);
+            await Task.Delay(50);
         }
+
+        var state = new ProxyInstanceState
+        {
+            Pid = Environment.ProcessId,
+            ApiUrl = apiUrl,
+            LogFile = DetachedLogFilePath,
+            StartedAt = DateTimeOffset.UtcNow,
+            ConfigFile = _proxyConfiguration.ConfigFile,
+            Port = _proxyConfiguration.Port,
+            AsSystemProxy = _proxyConfiguration.AsSystemProxy
+        };
+
+        await StateManager.SaveStateAsync(state);
     }
 }

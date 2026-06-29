@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy TypeSpecGeneratorPlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "The URL of the JSON schema used to validate this configuration file."
+    },
+    "ignoreResponseTypes": {
+      "type": "boolean",
+      "description": "Determines whether to generate types for API responses (false) or to set them to 'string' (true)."
+    }
+  },
+  "additionalProperties": false
+}

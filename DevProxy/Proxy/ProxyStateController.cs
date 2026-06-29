@@ -5,7 +5,6 @@
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Commands;
-using Titanium.Web.Proxy;
 
 namespace DevProxy.Proxy;
 
@@ -22,7 +21,7 @@ sealed class ProxyStateController(
     private readonly IEnumerable<IPlugin> _plugins = plugins;
     private readonly IHostApplicationLifetime _hostApplicationLifetime = hostApplicationLifetime;
     private readonly ILogger _logger = logger;
-    private ExceptionHandler ExceptionHandler => ex => _logger.LogError(ex, "An error occurred in a plugin");
+    private Action<Exception> ExceptionHandler => ex => _logger.LogError(ex, "An error occurred in a plugin");
 
     public void StartRecording()
     {

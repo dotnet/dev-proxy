@@ -15,12 +15,12 @@ namespace DevProxy.ApiControllers;
 [ApiController]
 [Route("[controller]")]
 #pragma warning disable CA1515 // required for the API controller
-public sealed class ProxyController(IProxyStateController proxyStateController, IProxyConfiguration proxyConfiguration, ILoggerFactory loggerFactory) : ControllerBase
+public sealed class ProxyController(IProxyStateController proxyStateController, IProxyConfiguration proxyConfiguration, X509Certificate2 rootCertificate) : ControllerBase
 #pragma warning restore CA1515
 {
     private readonly IProxyStateController _proxyStateController = proxyStateController;
     private readonly IProxyConfiguration _proxyConfiguration = proxyConfiguration;
-    private readonly ILoggerFactory _loggerFactory = loggerFactory;
+    private readonly X509Certificate2 _rootCertificate = rootCertificate;
 
     [HttpGet]
     public ProxyInfo Get() => ProxyInfo.From(_proxyStateController.ProxyState, _proxyConfiguration);
@@ -116,20 +116,7 @@ public sealed class ProxyController(IProxyStateController proxyStateController, 
             return ValidationProblem(ModelState);
         }
 
-        // Ensure ProxyServer is initialized with LoggerFactory for Unobtanium logging
-        ProxyEngine.EnsureProxyServerInitialized(_loggerFactory);
-
-        var certificate = ProxyEngine.ProxyServer.CertificateManager.RootCertificate;
-        if (certificate == null)
-        {
-            var problemDetails = new ProblemDetails
-            {
-                Title = "Certificate Not Found",
-                Detail = "No root certificate found.",
-                Status = StatusCodes.Status404NotFound
-            };
-            return NotFound(problemDetails);
-        }
+        var certificate = _rootCertificate;
 
         var certBytes = certificate.Export(X509ContentType.Cert);
         var base64Cert = Convert.ToBase64String(certBytes, Base64FormattingOptions.InsertLineBreaks);

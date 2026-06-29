@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Inspection.CDP;
@@ -106,12 +107,12 @@ public sealed class DevToolsPlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return;
         }
 
-        var requestId = GetRequestId(e.Session.HttpClient.Request);
-        var headers = e.Session.HttpClient.Request.Headers
+        var requestId = GetRequestId(e.ProxySession);
+        var headers = e.ProxySession.Request.Headers
             .GroupBy(h => h.Name)
             .ToDictionary(g => g.Key, g => string.Join(", ", g.Select(h => h.Value)));
 
@@ -121,13 +122,13 @@ public sealed class DevToolsPlugin(
             {
                 RequestId = requestId,
                 LoaderId = "1",
-                DocumentUrl = e.Session.HttpClient.Request.Url,
+                DocumentUrl = e.ProxySession.Request.Url,
                 Request = new()
                 {
-                    Url = e.Session.HttpClient.Request.Url,
-                    Method = e.Session.HttpClient.Request.Method,
+                    Url = e.ProxySession.Request.Url,
+                    Method = e.ProxySession.Request.Method,
                     Headers = headers,
-                    PostData = e.Session.HttpClient.Request.HasBody ? HttpUtils.GetBodyString(e.Session.HttpClient.Request.ContentType, e.Session.HttpClient.Request.Body) : null
+                    PostData = e.ProxySession.Request.HasBody ? HttpUtils.GetBodyString(e.ProxySession.Request.ContentType, e.ProxySession.Request.Body.ToArray()) : null
                 },
                 Timestamp = (double)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000,
                 WallTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
@@ -168,7 +169,7 @@ public sealed class DevToolsPlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return;
         }
 
@@ -177,22 +178,22 @@ public sealed class DevToolsPlugin(
             Body = string.Empty,
             Base64Encoded = false
         };
-        if (e.Session.HttpClient.Response.HasBody)
+        if (e.ProxySession.Response!.HasBody)
         {
-            if (IsTextResponse(e.Session.HttpClient.Response.ContentType))
+            if (IsTextResponse(e.ProxySession.Response!.ContentType))
             {
-                body.Body = HttpUtils.GetBodyString(e.Session.HttpClient.Response.ContentType, e.Session.HttpClient.Response.Body);
+                body.Body = HttpUtils.GetBodyString(e.ProxySession.Response!.ContentType, e.ProxySession.Response!.Body.ToArray());
                 body.Base64Encoded = false;
             }
             else
             {
-                body.Body = Convert.ToBase64String(e.Session.HttpClient.Response.Body);
+                body.Body = Convert.ToBase64String(e.ProxySession.Response!.Body.ToArray());
                 body.Base64Encoded = true;
             }
         }
-        _responseBody[e.Session.HttpClient.Request.GetHashCode().ToString(CultureInfo.InvariantCulture)] = body;
+        _responseBody[e.ProxySession.SessionId] = body;
 
-        var requestId = GetRequestId(e.Session.HttpClient.Request);
+        var requestId = GetRequestId(e.ProxySession);
 
         var responseReceivedMessage = new ResponseReceivedMessage
         {
@@ -204,13 +205,13 @@ public sealed class DevToolsPlugin(
                 Type = "XHR",
                 Response = new()
                 {
-                    Url = e.Session.HttpClient.Request.Url,
-                    Status = e.Session.HttpClient.Response.StatusCode,
-                    StatusText = e.Session.HttpClient.Response.StatusDescription,
-                    Headers = e.Session.HttpClient.Response.Headers
+                    Url = e.ProxySession.Request.Url,
+                    Status = (int)e.ProxySession.Response!.StatusCode,
+                    StatusText = e.ProxySession.Response!.StatusDescription,
+                    Headers = e.ProxySession.Response!.Headers
                         .GroupBy(h => h.Name)
                         .ToDictionary(g => g.Key, g => string.Join(", ", g.Select(h => h.Value))),
-                    MimeType = e.Session.HttpClient.Response.ContentType
+                    MimeType = e.ProxySession.Response!.ContentType
                 },
                 HasExtraInfo = true
             }
@@ -218,7 +219,7 @@ public sealed class DevToolsPlugin(
 
         await _webSocket.SendAsync(responseReceivedMessage, cancellationToken);
 
-        if (e.Session.HttpClient.Response.ContentType == "text/event-stream")
+        if (e.ProxySession.Response!.ContentType == "text/event-stream")
         {
             await SendBodyAsDataReceivedAsync(requestId, body.Body, cancellationToken);
         }
@@ -229,7 +230,7 @@ public sealed class DevToolsPlugin(
             {
                 RequestId = requestId,
                 Timestamp = (double)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000,
-                EncodedDataLength = e.Session.HttpClient.Response.HasBody ? e.Session.HttpClient.Response.Body.Length : 0
+                EncodedDataLength = e.ProxySession.Response!.HasBody ? e.ProxySession.Response!.Body.Length : 0
             }
         };
         await _webSocket.SendAsync(loadingFinishedMessage, cancellationToken);
@@ -258,8 +259,8 @@ public sealed class DevToolsPlugin(
                     Text = string.Join(" ", e.RequestLog.Message),
                     Level = Entry.GetLevel(e.RequestLog.MessageType),
                     Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                    Url = e.RequestLog.Context?.Session.HttpClient.Request.Url,
-                    NetworkRequestId = GetRequestId(e.RequestLog.Context?.Session.HttpClient.Request)
+                    Url = e.RequestLog.Context?.Session.Request.Url,
+                    NetworkRequestId = GetRequestId(e.RequestLog.Context?.Session)
                 }
             }
         };
@@ -1046,14 +1047,14 @@ public sealed class DevToolsPlugin(
         return port;
     }
 
-    private static string GetRequestId(Titanium.Web.Proxy.Http.Request? request)
+    private static string GetRequestId(IProxySession? session)
     {
-        if (request is null)
+        if (session is null)
         {
             return string.Empty;
         }
 
-        return request.GetHashCode().ToString(CultureInfo.InvariantCulture);
+        return session.SessionId;
     }
 
     private static bool IsTextResponse(string? contentType)

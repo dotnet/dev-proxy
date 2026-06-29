@@ -66,7 +66,7 @@ public sealed class MinimalPermissionsPlugin(
                 l.MessageType == MessageType.InterceptedRequest &&
                 !l.Message.StartsWith("OPTIONS", StringComparison.OrdinalIgnoreCase) &&
                 l.Context?.Session is not null &&
-                ProxyUtils.MatchesUrlToWatch(UrlsToWatch, l.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri)
+                ProxyUtils.MatchesUrlToWatch(UrlsToWatch, l.Context.Session.Request.RequestUri.AbsoluteUri)
             );
         if (!interceptedRequests.Any())
         {

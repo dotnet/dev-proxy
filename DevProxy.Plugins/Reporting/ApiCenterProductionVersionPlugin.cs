@@ -90,7 +90,7 @@ public sealed class ApiCenterProductionVersionPlugin(
             .Where(
                 l => l.MessageType == MessageType.InterceptedRequest &&
                 l.Context?.Session is not null &&
-                ProxyUtils.MatchesUrlToWatch(UrlsToWatch, l.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri)
+                ProxyUtils.MatchesUrlToWatch(UrlsToWatch, l.Context.Session.Request.RequestUri.AbsoluteUri)
             );
         if (!interceptedRequests.Any())
         {

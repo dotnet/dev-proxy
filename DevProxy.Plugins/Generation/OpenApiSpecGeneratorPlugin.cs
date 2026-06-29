@@ -5,6 +5,7 @@
 using DevProxy.Abstractions.LanguageModel;
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -15,8 +16,6 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Web;
-using Titanium.Web.Proxy.EventArguments;
-using Titanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Generation;
 
@@ -99,15 +98,15 @@ public sealed class OpenApiSpecGeneratorPlugin(
             if (request.MessageType != MessageType.InterceptedResponse ||
               request.Context is null ||
               request.Context.Session is null ||
-              !ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri))
+              !ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Context.Session.Request.RequestUri.AbsoluteUri))
             {
                 continue;
             }
 
             if (!Configuration.IncludeOptionsRequests &&
-                string.Equals(request.Context.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+                string.Equals(request.Context.Session.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
             {
-                Logger.LogDebug("Skipping OPTIONS request {Url}...", request.Context.Session.HttpClient.Request.RequestUri);
+                Logger.LogDebug("Skipping OPTIONS request {Url}...", request.Context.Session.Request.RequestUri);
                 continue;
             }
 
@@ -117,7 +116,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
             try
             {
                 var pathItem = GetOpenApiPathItem(request.Context.Session);
-                var parametrizedPath = ParametrizePath(pathItem, request.Context.Session.HttpClient.Request.RequestUri);
+                var parametrizedPath = ParametrizePath(pathItem, request.Context.Session.Request.RequestUri);
                 if (pathItem.Operations is null)
                 {
                     Logger.LogDebug("No operations found for request {MethodAndUrlString}. Skipping...", methodAndUrlString);
@@ -126,17 +125,17 @@ public sealed class OpenApiSpecGeneratorPlugin(
                 var operationInfo = pathItem.Operations.First();
                 operationInfo.Value.OperationId = await GetOperationIdAsync(
                     operationInfo.Key.ToString(),
-                    request.Context.Session.HttpClient.Request.RequestUri.GetLeftPart(UriPartial.Authority),
+                    request.Context.Session.Request.RequestUri.GetLeftPart(UriPartial.Authority),
                     parametrizedPath,
                     cancellationToken
                 );
                 operationInfo.Value.Description = await GetOperationDescriptionAsync(
                     operationInfo.Key.ToString(),
-                    request.Context.Session.HttpClient.Request.RequestUri.GetLeftPart(UriPartial.Authority),
+                    request.Context.Session.Request.RequestUri.GetLeftPart(UriPartial.Authority),
                     parametrizedPath,
                     cancellationToken
                 );
-                AddOrMergePathItem(openApiDocs, pathItem, request.Context.Session.HttpClient.Request.RequestUri, parametrizedPath);
+                AddOrMergePathItem(openApiDocs, pathItem, request.Context.Session.Request.RequestUri, parametrizedPath);
             }
             catch (Exception ex)
             {
@@ -223,10 +222,10 @@ public sealed class OpenApiSpecGeneratorPlugin(
      * Creates an OpenAPI PathItem from an intercepted request and response pair.
      * @param session The intercepted session.
      */
-    private OpenApiPathItem GetOpenApiPathItem(SessionEventArgs session)
+    private OpenApiPathItem GetOpenApiPathItem(IProxySession session)
     {
-        var request = session.HttpClient.Request;
-        var response = session.HttpClient.Response;
+        var request = session.Request;
+        var response = session.Response!;
 
         var resource = GetLastNonTokenSegment(request.RequestUri.Segments);
         var path = new OpenApiPathItem
@@ -264,7 +263,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
         return path;
     }
 
-    private void SetRequestBody(OpenApiOperation operation, Request request)
+    private void SetRequestBody(OpenApiOperation operation, IHttpRequest request)
     {
         if (!request.HasBody)
         {
@@ -294,10 +293,10 @@ public sealed class OpenApiSpecGeneratorPlugin(
         };
     }
 
-    private void SetParametersFromRequestHeaders(OpenApiOperation operation, HeaderCollection headers)
+    private void SetParametersFromRequestHeaders(OpenApiOperation operation, IHeaderCollection headers)
     {
         if (headers is null ||
-            !headers.Any())
+            headers.Count == 0)
         {
             Logger.LogDebug("  Request has no headers");
             return;
@@ -374,7 +373,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
         }
     }
 
-    private void SetResponseFromSession(OpenApiOperation operation, Response response)
+    private void SetResponseFromSession(OpenApiOperation operation, IHttpResponse response)
     {
         if (response is null)
         {
@@ -388,7 +387,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
         {
             Description = response.StatusDescription
         };
-        var responseCode = response.StatusCode.ToString(CultureInfo.InvariantCulture);
+        var responseCode = ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture);
         if (response.HasBody)
         {
             Logger.LogDebug("    Response has body");
@@ -403,7 +402,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
             Logger.LogDebug("    Response doesn't have body");
         }
 
-        if (response.Headers is not null && response.Headers.Any())
+        if (response.Headers is not null && response.Headers.Count > 0)
         {
             Logger.LogDebug("    Response has headers");
 
