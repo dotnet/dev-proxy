@@ -4,6 +4,7 @@
 
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Proxy;
+using DevProxy.Proxy.Kestrel;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Console;
 using Microsoft.Extensions.Options;
@@ -247,7 +248,7 @@ sealed class ProxyConsoleFormatter : ConsoleFormatter
         }
 
         var pluginName = categoryOrPluginName[(categoryOrPluginName.LastIndexOf('.') + 1)..];
-        if (pluginName != nameof(ProxyEngine))
+        if (pluginName != nameof(KestrelProxyEngine))
         {
             textWriter.Write($"{pluginName}: ");
         }

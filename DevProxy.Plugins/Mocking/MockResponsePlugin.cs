@@ -5,6 +5,7 @@
 using DevProxy.Abstractions.Models;
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Behavior;
 using DevProxy.Plugins.Models;
@@ -21,8 +22,6 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using Titanium.Web.Proxy.Http;
-using Titanium.Web.Proxy.Models;
 
 namespace DevProxy.Plugins.Mocking;
 
@@ -36,7 +35,7 @@ public sealed class MockResponseConfiguration
     [JsonIgnore]
     public bool NoMocks { get; set; }
     [JsonPropertyName("$schema")]
-    public string Schema { get; set; } = "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v3.1.0/mockresponseplugin.mocksfile.schema.json";
+    public string Schema { get; set; } = "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v4.0.0/mockresponseplugin.mocksfile.schema.json";
 }
 
 public class MockResponsePlugin(
@@ -160,16 +159,16 @@ public class MockResponsePlugin(
 
         ArgumentNullException.ThrowIfNull(e);
 
-        var request = e.Session.HttpClient.Request;
+        var request = e.ProxySession.Request;
         var state = e.ResponseState;
         if (Configuration.NoMocks)
         {
-            Logger.LogRequest("Mocks disabled", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Mocks disabled", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
         if (!e.ShouldExecute(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
 
@@ -206,7 +205,7 @@ public class MockResponsePlugin(
             return Task.CompletedTask;
         }
 
-        Logger.LogRequest("No matching mock response found", MessageType.Skipped, new LoggingContext(e.Session));
+        Logger.LogRequest("No matching mock response found", MessageType.Skipped, new LoggingContext(e.ProxySession));
 
         Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
         return Task.CompletedTask;
@@ -284,7 +283,7 @@ public class MockResponsePlugin(
         }
     }
 
-    private MockResponse? GetMatchingMockResponse(Request request)
+    private MockResponse? GetMatchingMockResponse(IHttpRequest request)
     {
         if (Configuration.NoMocks ||
             Configuration.Mocks is null ||
@@ -352,7 +351,7 @@ public class MockResponsePlugin(
         string? body = null;
         var requestId = Guid.NewGuid().ToString();
         var requestDate = DateTime.Now.ToString("r", CultureInfo.InvariantCulture);
-        var headers = ProxyUtils.BuildGraphResponseHeaders(e.Session.HttpClient.Request, requestId, requestDate);
+        var headers = ProxyUtils.BuildGraphResponseHeaders(e.ProxySession.Request, requestId, requestDate);
         var statusCode = HttpStatusCode.OK;
         if (matchingResponse.Response?.StatusCode is not null)
         {
@@ -377,7 +376,7 @@ public class MockResponsePlugin(
             ProxyUtils.MergeHeaders(headers, rateLimitingHeaders);
         }
 
-        ReplacePlaceholders(matchingResponse.Response, e.Session.HttpClient.Request, Logger);
+        ReplacePlaceholders(matchingResponse.Response, e.ProxySession.Request, Logger);
 
         if (matchingResponse.Response?.Body is not null)
         {
@@ -401,8 +400,8 @@ public class MockResponsePlugin(
                 {
                     var bodyBytes = File.ReadAllBytes(filePath);
                     ProcessMockResponse(ref bodyBytes, headers, e, matchingResponse);
-                    e.Session.GenericResponse(bodyBytes, statusCode, headers.Select(h => new HttpHeader(h.Name, h.Value)));
-                    Logger.LogRequest($"{matchingResponse.Response.StatusCode ?? 200} {matchingResponse.Request?.Url}", MessageType.Mocked, new LoggingContext(e.Session));
+                    e.ProxySession.Respond(bodyBytes, statusCode, headers.Select(h => new HttpHeader(h.Name, h.Value)));
+                    Logger.LogRequest($"{matchingResponse.Response.StatusCode ?? 200} {matchingResponse.Request?.Url}", MessageType.Mocked, new LoggingContext(e.ProxySession));
                     return;
                 }
             }
@@ -422,9 +421,9 @@ public class MockResponsePlugin(
             }
         }
         ProcessMockResponse(ref body, headers, e, matchingResponse);
-        e.Session.GenericResponse(body ?? string.Empty, statusCode, headers.Select(h => new HttpHeader(h.Name, h.Value)));
+        e.ProxySession.Respond(body ?? string.Empty, statusCode, headers.Select(h => new HttpHeader(h.Name, h.Value)));
 
-        Logger.LogRequest($"{matchingResponse.Response?.StatusCode ?? 200} {matchingResponse.Request?.Url}", MessageType.Mocked, new LoggingContext(e.Session));
+        Logger.LogRequest($"{matchingResponse.Response?.StatusCode ?? 200} {matchingResponse.Request?.Url}", MessageType.Mocked, new LoggingContext(e.ProxySession));
     }
 
     private async Task GenerateMocksFromHttpResponsesAsync(ParseResult parseResult)
@@ -502,7 +501,7 @@ public class MockResponsePlugin(
         Logger.LogTrace("Left {Method}", nameof(GenerateMocksFromHttpResponsesAsync));
     }
 
-    private static bool HasMatchingBody(MockResponse mockResponse, Request request)
+    private static bool HasMatchingBody(MockResponse mockResponse, IHttpRequest request)
     {
         if (request.Method == "GET")
         {
@@ -526,7 +525,7 @@ public class MockResponsePlugin(
         return request.BodyString.Contains(mockResponse.Request.BodyFragment, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static void ReplacePlaceholders(MockResponseResponse? response, Request request, ILogger logger)
+    private static void ReplacePlaceholders(MockResponseResponse? response, IHttpRequest request, ILogger logger)
     {
         logger.LogTrace("{Method} called", nameof(ReplacePlaceholders));
 

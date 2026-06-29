@@ -250,7 +250,7 @@ static class PluginServiceExtensions
         }
 
         return new UrlToWatch(
-            new Regex($"^{Regex.Escape(stringMatcher).Replace("\\*", ".*", StringComparison.OrdinalIgnoreCase)}$", RegexOptions.Compiled | RegexOptions.IgnoreCase),
+            new Regex($"^{Regex.Escape(ProxyUtils.NormalizeWebSocketScheme(stringMatcher)).Replace("\\*", ".*", StringComparison.OrdinalIgnoreCase)}$", RegexOptions.Compiled | RegexOptions.IgnoreCase),
             exclude
         );
     }

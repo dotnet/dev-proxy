@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <RunPostBuildEvent>OnOutputUpdated</RunPostBuildEvent>
-    <Version>3.1.0</Version>
+    <Version>4.0.0</Version>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
@@ -65,16 +65,15 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Unobtanium.Web.Proxy" Version="0.1.5">
-      <Private>false</Private>
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </PackageReference>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\DevProxy.Abstractions\DevProxy.Abstractions.csproj">
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="DevProxy.Integration.Tests" />
   </ItemGroup>
   <Target Name="CopyFiles" AfterTargets="PostBuildEvent">
     <ItemGroup>

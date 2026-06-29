@@ -55,31 +55,30 @@ public sealed class LanguageModelFailurePlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return;
         }
         if (e.ResponseState.HasBeenSet)
         {
-            Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return;
         }
 
-        var request = e.Session.HttpClient.Request;
+        var request = e.ProxySession.Request;
         if (request.Method is null ||
             !request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase) ||
             !request.HasBody)
         {
-            Logger.LogRequest("Request is not a POST request with a body", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Request is not a POST request with a body", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return;
         }
 
-        Logger.LogDebug("Request encoding: {Encoding}", request.Encoding?.EncodingName ?? "null");
-        var originalBody = System.Text.Encoding.UTF8.GetString(request.Body);
+        var originalBody = request.BodyString;
         Logger.LogDebug("Original request body:\n{Body}", originalBody);
 
         if (!OpenAIRequest.TryGetCompletionLikeRequest(originalBody, Logger, out var openAiRequest))
         {
-            Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return;
         }
 
@@ -94,10 +93,10 @@ public sealed class LanguageModelFailurePlugin(
         {
             completionRequest.Prompt += "\n\n" + faultPrompt;
             Logger.LogDebug("Modified completion request prompt: {Prompt}", completionRequest.Prompt);
-            Logger.LogRequest($"Simulating fault {faultName}", MessageType.Chaos, new LoggingContext(e.Session));
+            Logger.LogRequest($"Simulating fault {faultName}", MessageType.Chaos, new LoggingContext(e.ProxySession));
             var modifiedBody = JsonSerializer.Serialize(completionRequest, ProxyUtils.JsonSerializerOptions);
             Logger.LogDebug("Modified request body:\n{Body}", modifiedBody);
-            e.Session.SetRequestBodyString(modifiedBody);
+            e.ProxySession.Request.SetBodyString(modifiedBody);
         }
         else if (openAiRequest is OpenAIChatCompletionRequest chatRequest)
         {
@@ -119,10 +118,10 @@ public sealed class LanguageModelFailurePlugin(
             };
 
             Logger.LogDebug("Added fault prompt to messages: {Prompt}", faultPrompt);
-            Logger.LogRequest($"Simulating fault {faultName}", MessageType.Chaos, new LoggingContext(e.Session));
+            Logger.LogRequest($"Simulating fault {faultName}", MessageType.Chaos, new LoggingContext(e.ProxySession));
             var modifiedBody = JsonSerializer.Serialize(newRequest, ProxyUtils.JsonSerializerOptions);
             Logger.LogDebug("Modified request body:\n{Body}", modifiedBody);
-            e.Session.SetRequestBodyString(modifiedBody);
+            e.ProxySession.Request.SetBodyString(modifiedBody);
         }
         else if (openAiRequest is OpenAIResponsesRequest responsesRequest)
         {
@@ -151,10 +150,10 @@ public sealed class LanguageModelFailurePlugin(
             };
 
             Logger.LogDebug("Added fault prompt to Responses API input: {Prompt}", faultPrompt);
-            Logger.LogRequest($"Simulating fault {faultName}", MessageType.Chaos, new LoggingContext(e.Session));
+            Logger.LogRequest($"Simulating fault {faultName}", MessageType.Chaos, new LoggingContext(e.ProxySession));
             var modifiedBody = JsonSerializer.Serialize(newRequest, ProxyUtils.JsonSerializerOptions);
             Logger.LogDebug("Modified request body:\n{Body}", modifiedBody);
-            e.Session.SetRequestBodyString(modifiedBody);
+            e.ProxySession.Request.SetBodyString(modifiedBody);
         }
         else
         {

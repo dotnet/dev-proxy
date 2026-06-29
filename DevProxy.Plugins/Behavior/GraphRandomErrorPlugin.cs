@@ -2,9 +2,10 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Models;
+using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Utils;
 using Microsoft.Extensions.Configuration;
@@ -15,8 +16,6 @@ using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Titanium.Web.Proxy.Http;
-using Titanium.Web.Proxy.Models;
 using DevProxy.Plugins.Models;
 
 namespace DevProxy.Plugins.Behavior;
@@ -177,22 +176,22 @@ public sealed class GraphRandomErrorPlugin(
         var state = e.ResponseState;
         if (state.HasBeenSet)
         {
-            Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
 
         var failMode = ShouldFail();
         if (failMode == GraphRandomErrorFailMode.PassThru && Configuration.Rate != 100)
         {
-            Logger.LogRequest("Pass through", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Pass through", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
-        if (ProxyUtils.IsGraphBatchUrl(e.Session.HttpClient.Request.RequestUri))
+        if (ProxyUtils.IsGraphBatchUrl(e.ProxySession.Request.RequestUri))
         {
             FailBatch(e);
         }
@@ -212,7 +211,7 @@ public sealed class GraphRandomErrorPlugin(
     private void FailResponse(ProxyRequestArgs e)
     {
         // pick a random error response for the current request method
-        var methodStatusCodes = _methodStatusCode[e.Session.HttpClient.Request.Method ?? "GET"];
+        var methodStatusCodes = _methodStatusCode[e.ProxySession.Request.Method];
         var errorStatus = methodStatusCodes[_random.Next(0, methodStatusCodes.Length)];
         UpdateProxyResponse(e, errorStatus);
     }
@@ -221,7 +220,7 @@ public sealed class GraphRandomErrorPlugin(
     {
         var batchResponse = new GraphBatchResponsePayload();
 
-        var batch = JsonSerializer.Deserialize<GraphBatchRequestPayload>(e.Session.HttpClient.Request.BodyString, ProxyUtils.JsonSerializerOptions);
+        var batch = JsonSerializer.Deserialize<GraphBatchRequestPayload>(e.ProxySession.Request.BodyString, ProxyUtils.JsonSerializerOptions);
         if (batch == null)
         {
             UpdateProxyBatchResponse(e, batchResponse);
@@ -258,7 +257,7 @@ public sealed class GraphRandomErrorPlugin(
                 if (errorStatus == HttpStatusCode.TooManyRequests)
                 {
                     var retryAfterDate = DateTime.Now.AddSeconds(Configuration.RetryAfterInSeconds);
-                    var requestUrl = ProxyUtils.GetAbsoluteRequestUrlFromBatch(e.Session.HttpClient.Request.RequestUri, request.Url);
+                    var requestUrl = ProxyUtils.GetAbsoluteRequestUrlFromBatch(e.ProxySession.Request.RequestUri, request.Url);
 
                     if (!e.GlobalData.TryGetValue(RetryAfterPlugin.ThrottledRequestsKey, out var value))
                     {
@@ -279,7 +278,7 @@ public sealed class GraphRandomErrorPlugin(
         UpdateProxyBatchResponse(e, batchResponse);
     }
 
-    private ThrottlingInfo ShouldThrottle(Request request, string throttlingKey)
+    private ThrottlingInfo ShouldThrottle(IHttpRequest request, string throttlingKey)
     {
         var throttleKeyForRequest = GraphUtils.BuildThrottleKey(request);
         return new(throttleKeyForRequest == throttlingKey ? Configuration.RetryAfterInSeconds : 0, "Retry-After");
@@ -287,12 +286,11 @@ public sealed class GraphRandomErrorPlugin(
 
     private void UpdateProxyResponse(ProxyRequestArgs e, HttpStatusCode errorStatus)
     {
-        var session = e.Session;
         var requestId = Guid.NewGuid().ToString();
         var now = DateTime.Now;
         var requestDateHeader = now.ToString("r", CultureInfo.InvariantCulture);
         var requestDateInnerError = now.ToString("s", CultureInfo.InvariantCulture);
-        var request = session.HttpClient.Request;
+        var request = e.ProxySession.Request;
         var headers = ProxyUtils.BuildGraphResponseHeaders(request, requestId, requestDateHeader);
         if (errorStatus == HttpStatusCode.TooManyRequests)
         {
@@ -321,8 +319,8 @@ public sealed class GraphRandomErrorPlugin(
             }),
             ProxyUtils.JsonSerializerOptions
         );
-        Logger.LogRequest($"{(int)errorStatus} {errorStatus}", MessageType.Chaos, new LoggingContext(e.Session));
-        session.GenericResponse(body ?? string.Empty, errorStatus, headers.Select(h => new HttpHeader(h.Name, h.Value)));
+        Logger.LogRequest($"{(int)errorStatus} {errorStatus}", MessageType.Chaos, new LoggingContext(e.ProxySession));
+        e.ProxySession.Respond(body ?? string.Empty, errorStatus, headers.Select(h => new HttpHeader(h.Name, h.Value)));
     }
 
     private void UpdateProxyBatchResponse(ProxyRequestArgs ev, GraphBatchResponsePayload response)
@@ -330,16 +328,15 @@ public sealed class GraphRandomErrorPlugin(
         // failed batch uses 200 OK status code
         var errorStatus = HttpStatusCode.OK;
 
-        var session = ev.Session;
         var requestId = Guid.NewGuid().ToString();
         var requestDate = DateTime.Now.ToString("r", CultureInfo.InvariantCulture);
-        var request = session.HttpClient.Request;
+        var request = ev.ProxySession.Request;
         var headers = ProxyUtils.BuildGraphResponseHeaders(request, requestId, requestDate);
 
         var body = JsonSerializer.Serialize(response, ProxyUtils.JsonSerializerOptions);
-        Logger.LogRequest($"{(int)errorStatus} {errorStatus}", MessageType.Chaos, new LoggingContext(ev.Session));
-        session.GenericResponse(body, errorStatus, headers.Select(h => new HttpHeader(h.Name, h.Value)));
+        Logger.LogRequest($"{(int)errorStatus} {errorStatus}", MessageType.Chaos, new LoggingContext(ev.ProxySession));
+        ev.ProxySession.Respond(body, errorStatus, headers.Select(h => new HttpHeader(h.Name, h.Value)));
     }
 
-    private static string BuildApiErrorMessage(Request r) => $"Some error was generated by the proxy. {(ProxyUtils.IsGraphRequest(r) ? ProxyUtils.IsSdkRequest(r) ? "" : string.Join(' ', MessageUtils.BuildUseSdkForErrorsMessage()) : "")}";
+    private static string BuildApiErrorMessage(IHttpRequest r) => $"Some error was generated by the proxy. {(ProxyUtils.IsGraphRequest(r) ? ProxyUtils.IsSdkRequest(r) ? "" : string.Join(' ', MessageUtils.BuildUseSdkForErrorsMessage()) : "")}";
 }

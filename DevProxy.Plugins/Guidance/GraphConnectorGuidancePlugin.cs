@@ -42,28 +42,28 @@ public sealed class GraphConnectorGuidancePlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
-        if (!string.Equals(e.Session.HttpClient.Request.Method, "PATCH", StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(e.ProxySession.Request.Method, "PATCH", StringComparison.OrdinalIgnoreCase))
         {
-            Logger.LogRequest("Skipping non-PATCH request", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Skipping non-PATCH request", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
 
         try
         {
-            var schemaString = e.Session.HttpClient.Request.BodyString;
+            var schemaString = e.ProxySession.Request.BodyString;
             if (string.IsNullOrEmpty(schemaString))
             {
-                Logger.LogRequest("No schema found in the request body.", MessageType.Failed, new LoggingContext(e.Session));
+                Logger.LogRequest("No schema found in the request body.", MessageType.Failed, new LoggingContext(e.ProxySession));
                 return Task.CompletedTask;
             }
 
             var schema = JsonSerializer.Deserialize<ExternalConnectionSchema>(schemaString, ProxyUtils.JsonSerializerOptions);
             if (schema is null || schema.Properties is null)
             {
-                Logger.LogRequest("Invalid schema found in the request body.", MessageType.Failed, new LoggingContext(e.Session));
+                Logger.LogRequest("Invalid schema found in the request body.", MessageType.Failed, new LoggingContext(e.ProxySession));
                 return Task.CompletedTask;
             }
 
@@ -99,12 +99,12 @@ public sealed class GraphConnectorGuidancePlugin(
 
                 Logger.LogRequest(
                     $"The schema is missing the following semantic labels: {string.Join(", ", missingLabels.Where(s => !string.IsNullOrEmpty(s)))}. Ingested content might not show up in Microsoft Copilot for Microsoft 365. More information: https://aka.ms/devproxy/guidance/gc/ux",
-                    MessageType.Failed, new LoggingContext(e.Session)
+                    MessageType.Failed, new LoggingContext(e.ProxySession)
                 );
             }
             else
             {
-                Logger.LogRequest("The schema contains all the required semantic labels.", MessageType.Skipped, new LoggingContext(e.Session));
+                Logger.LogRequest("The schema contains all the required semantic labels.", MessageType.Skipped, new LoggingContext(e.ProxySession));
             }
         }
         catch (Exception ex)

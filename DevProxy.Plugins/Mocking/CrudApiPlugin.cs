@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Configuration;
@@ -19,9 +20,6 @@ using System.Net;
 using System.Security.Claims;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using Titanium.Web.Proxy.EventArguments;
-using Titanium.Web.Proxy.Http;
-using Titanium.Web.Proxy.Models;
 
 namespace DevProxy.Plugins.Mocking;
 
@@ -167,30 +165,30 @@ public sealed class CrudApiPlugin(
 
         ArgumentNullException.ThrowIfNull(e);
 
-        var request = e.Session.HttpClient.Request;
+        var request = e.ProxySession.Request;
         var state = e.ResponseState;
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
         if (e.ResponseState.HasBeenSet)
         {
-            Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
 
         if (IsCORSPreflightRequest(request) && Configuration.EnableCORS)
         {
-            SendEmptyResponse(HttpStatusCode.NoContent, e.Session);
-            Logger.LogRequest("CORS preflight request", MessageType.Mocked, new LoggingContext(e.Session));
+            SendEmptyResponse(HttpStatusCode.NoContent, e.ProxySession);
+            Logger.LogRequest("CORS preflight request", MessageType.Mocked, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
 
         if (!AuthorizeRequest(e))
         {
-            SendUnauthorizedResponse(e.Session);
+            SendUnauthorizedResponse(e.ProxySession);
             state.HasBeenSet = true;
             return Task.CompletedTask;
         }
@@ -200,17 +198,17 @@ public sealed class CrudApiPlugin(
         {
             if (!AuthorizeRequest(e, actionAndParams.Value.action))
             {
-                SendUnauthorizedResponse(e.Session);
+                SendUnauthorizedResponse(e.ProxySession);
                 state.HasBeenSet = true;
                 return Task.CompletedTask;
             }
 
-            actionAndParams.Value.handler(e.Session, actionAndParams.Value.action, actionAndParams.Value.parameters);
+            actionAndParams.Value.handler(e, actionAndParams.Value.action, actionAndParams.Value.parameters);
             state.HasBeenSet = true;
         }
         else
         {
-            Logger.LogRequest("Did not match any action", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Did not match any action", MessageType.Skipped, new LoggingContext(e.ProxySession));
         }
 
         Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
@@ -231,7 +229,7 @@ public sealed class CrudApiPlugin(
         }
     }
 
-    private (Action<SessionEventArgs, CrudApiAction, IDictionary<string, string>> handler, CrudApiAction action, IDictionary<string, string> parameters)? GetMatchingActionHandler(Request request)
+    private (Action<ProxyRequestArgs, CrudApiAction, IDictionary<string, string>> handler, CrudApiAction action, IDictionary<string, string> parameters)? GetMatchingActionHandler(IHttpRequest request)
     {
         if (Configuration.Actions is null ||
             !Configuration.Actions.Any())
@@ -305,7 +303,7 @@ public sealed class CrudApiPlugin(
         }, action, parameters);
     }
 
-    private void AddCORSHeaders(Request request, List<HttpHeader> headers)
+    private void AddCORSHeaders(IHttpRequest request, List<HttpHeader> headers)
     {
         var origin = request.Headers.FirstOrDefault(h => h.Name.Equals("Origin", StringComparison.OrdinalIgnoreCase))?.Value;
         if (string.IsNullOrEmpty(origin))
@@ -372,7 +370,7 @@ public sealed class CrudApiPlugin(
         // Check header
         if (!string.IsNullOrEmpty(apiKeyAuthConfig.HeaderName))
         {
-            var headerValue = e.Session.HttpClient.Request.Headers
+            var headerValue = e.ProxySession.Request.Headers
                 .FirstOrDefault(h => h.Name.Equals(apiKeyAuthConfig.HeaderName, StringComparison.OrdinalIgnoreCase))?.Value;
 
             if (!string.IsNullOrEmpty(headerValue) && headerValue == apiKeyAuthConfig.ApiKey)
@@ -384,7 +382,7 @@ public sealed class CrudApiPlugin(
         // Check query parameter
         if (!string.IsNullOrEmpty(apiKeyAuthConfig.QueryParameterName))
         {
-            var requestUrl = e.Session.HttpClient.Request.RequestUri;
+            var requestUrl = e.ProxySession.Request.RequestUri;
             var queryString = requestUrl.Query;
             if (!string.IsNullOrEmpty(queryString))
             {
@@ -397,7 +395,7 @@ public sealed class CrudApiPlugin(
             }
         }
 
-        Logger.LogRequest("401 Unauthorized. The specified API key is not valid.", MessageType.Failed, new LoggingContext(e.Session));
+        Logger.LogRequest("401 Unauthorized. The specified API key is not valid.", MessageType.Failed, new LoggingContext(e.ProxySession));
         return false;
     }
 
@@ -407,11 +405,11 @@ public sealed class CrudApiPlugin(
 
         Debug.Assert(authConfig is not null, "EntraAuthConfig is null when auth is required.");
 
-        var token = e.Session.HttpClient.Request.Headers.FirstOrDefault(h => h.Name.Equals("Authorization", StringComparison.OrdinalIgnoreCase))?.Value;
+        var token = e.ProxySession.Request.Headers.FirstOrDefault(h => h.Name.Equals("Authorization", StringComparison.OrdinalIgnoreCase))?.Value;
         // is there a token
         if (string.IsNullOrEmpty(token))
         {
-            Logger.LogRequest("401 Unauthorized. No token found on the request.", MessageType.Failed, new LoggingContext(e.Session));
+            Logger.LogRequest("401 Unauthorized. No token found on the request.", MessageType.Failed, new LoggingContext(e.ProxySession));
             return false;
         }
 
@@ -419,7 +417,7 @@ public sealed class CrudApiPlugin(
         var tokenHeaderParts = token.Split(' ');
         if (tokenHeaderParts.Length != 2 || tokenHeaderParts[0] != "Bearer")
         {
-            Logger.LogRequest("401 Unauthorized. The specified token is not a valid Bearer token.", MessageType.Failed, new LoggingContext(e.Session));
+            Logger.LogRequest("401 Unauthorized. The specified token is not a valid Bearer token.", MessageType.Failed, new LoggingContext(e.ProxySession));
             return false;
         }
 
@@ -459,7 +457,7 @@ public sealed class CrudApiPlugin(
                 {
                     var rolesRequired = string.Join(", ", authConfig.Roles);
 
-                    Logger.LogRequest($"401 Unauthorized. The specified token does not have the necessary role(s). Required one of: {rolesRequired}, found: {rolesFromTheToken}", MessageType.Failed, new LoggingContext(e.Session));
+                    Logger.LogRequest($"401 Unauthorized. The specified token does not have the necessary role(s). Required one of: {rolesRequired}, found: {rolesFromTheToken}", MessageType.Failed, new LoggingContext(e.ProxySession));
                     return false;
                 }
 
@@ -475,7 +473,7 @@ public sealed class CrudApiPlugin(
                 {
                     var scopesRequired = string.Join(", ", authConfig.Scopes);
 
-                    Logger.LogRequest($"401 Unauthorized. The specified token does not have the necessary scope(s). Required one of: {scopesRequired}, found: {scopesFromTheToken}", MessageType.Failed, new LoggingContext(e.Session));
+                    Logger.LogRequest($"401 Unauthorized. The specified token does not have the necessary scope(s). Required one of: {scopesRequired}, found: {scopesFromTheToken}", MessageType.Failed, new LoggingContext(e.ProxySession));
                     return false;
                 }
 
@@ -484,14 +482,14 @@ public sealed class CrudApiPlugin(
         }
         catch (Exception ex)
         {
-            Logger.LogRequest($"401 Unauthorized. The specified token is not valid: {ex.Message}", MessageType.Failed, new LoggingContext(e.Session));
+            Logger.LogRequest($"401 Unauthorized. The specified token is not valid: {ex.Message}", MessageType.Failed, new LoggingContext(e.ProxySession));
             return false;
         }
 
         return true;
     }
 
-    private void SendUnauthorizedResponse(SessionEventArgs e)
+    private void SendUnauthorizedResponse(IProxySession session)
     {
         var body = new
         {
@@ -500,10 +498,10 @@ public sealed class CrudApiPlugin(
                 message = "Unauthorized"
             }
         };
-        SendJsonResponse(System.Text.Json.JsonSerializer.Serialize(body, ProxyUtils.JsonSerializerOptions), HttpStatusCode.Unauthorized, e);
+        SendJsonResponse(System.Text.Json.JsonSerializer.Serialize(body, ProxyUtils.JsonSerializerOptions), HttpStatusCode.Unauthorized, session);
     }
 
-    private void SendNotFoundResponse(SessionEventArgs e)
+    private void SendNotFoundResponse(IProxySession session)
     {
         var body = new
         {
@@ -512,154 +510,154 @@ public sealed class CrudApiPlugin(
                 message = "Not found"
             }
         };
-        SendJsonResponse(System.Text.Json.JsonSerializer.Serialize(body, ProxyUtils.JsonSerializerOptions), HttpStatusCode.NotFound, e);
+        SendJsonResponse(System.Text.Json.JsonSerializer.Serialize(body, ProxyUtils.JsonSerializerOptions), HttpStatusCode.NotFound, session);
     }
 
-    private void SendEmptyResponse(HttpStatusCode statusCode, SessionEventArgs e)
+    private void SendEmptyResponse(HttpStatusCode statusCode, IProxySession session)
     {
         var headers = new List<HttpHeader>();
-        AddCORSHeaders(e.HttpClient.Request, headers);
-        e.GenericResponse("", statusCode, headers);
+        AddCORSHeaders(session.Request, headers);
+        session.Respond("", statusCode, headers);
     }
 
-    private void SendJsonResponse(string body, HttpStatusCode statusCode, SessionEventArgs e)
+    private void SendJsonResponse(string body, HttpStatusCode statusCode, IProxySession session)
     {
         var headers = new List<HttpHeader> {
             new("content-type", "application/json; charset=utf-8")
         };
-        AddCORSHeaders(e.HttpClient.Request, headers);
-        e.GenericResponse(body, statusCode, headers);
+        AddCORSHeaders(session.Request, headers);
+        session.Respond(body, statusCode, headers);
     }
 
-    private void GetAll(SessionEventArgs e, CrudApiAction action, IDictionary<string, string> parameters)
+    private void GetAll(ProxyRequestArgs e, CrudApiAction action, IDictionary<string, string> parameters)
     {
-        SendJsonResponse(JsonConvert.SerializeObject(_data, Formatting.Indented), HttpStatusCode.OK, e);
-        Logger.LogRequest($"200 {action.Url}", MessageType.Mocked, new LoggingContext(e));
+        SendJsonResponse(JsonConvert.SerializeObject(_data, Formatting.Indented), HttpStatusCode.OK, e.ProxySession);
+        Logger.LogRequest($"200 {action.Url}", MessageType.Mocked, new LoggingContext(e.ProxySession));
     }
 
-    private void GetOne(SessionEventArgs e, CrudApiAction action, IDictionary<string, string> parameters)
+    private void GetOne(ProxyRequestArgs e, CrudApiAction action, IDictionary<string, string> parameters)
     {
         try
         {
             var item = _data?.SelectToken(ReplaceParams(action.Query, parameters));
             if (item is null)
             {
-                SendNotFoundResponse(e);
-                Logger.LogRequest($"404 {action.Url}", MessageType.Mocked, new LoggingContext(e));
+                SendNotFoundResponse(e.ProxySession);
+                Logger.LogRequest($"404 {action.Url}", MessageType.Mocked, new LoggingContext(e.ProxySession));
                 return;
             }
 
-            SendJsonResponse(JsonConvert.SerializeObject(item, Formatting.Indented), HttpStatusCode.OK, e);
-            Logger.LogRequest($"200 {action.Url}", MessageType.Mocked, new LoggingContext(e));
+            SendJsonResponse(JsonConvert.SerializeObject(item, Formatting.Indented), HttpStatusCode.OK, e.ProxySession);
+            Logger.LogRequest($"200 {action.Url}", MessageType.Mocked, new LoggingContext(e.ProxySession));
         }
         catch (Exception ex)
         {
-            SendJsonResponse(JsonConvert.SerializeObject(ex, Formatting.Indented), HttpStatusCode.InternalServerError, e);
-            Logger.LogRequest($"500 {action.Url}", MessageType.Failed, new LoggingContext(e));
+            SendJsonResponse(JsonConvert.SerializeObject(ex, Formatting.Indented), HttpStatusCode.InternalServerError, e.ProxySession);
+            Logger.LogRequest($"500 {action.Url}", MessageType.Failed, new LoggingContext(e.ProxySession));
         }
     }
 
-    private void GetMany(SessionEventArgs e, CrudApiAction action, IDictionary<string, string> parameters)
+    private void GetMany(ProxyRequestArgs e, CrudApiAction action, IDictionary<string, string> parameters)
     {
         try
         {
             var items = (_data?.SelectTokens(ReplaceParams(action.Query, parameters))) ?? [];
-            SendJsonResponse(JsonConvert.SerializeObject(items, Formatting.Indented), HttpStatusCode.OK, e);
-            Logger.LogRequest($"200 {action.Url}", MessageType.Mocked, new LoggingContext(e));
+            SendJsonResponse(JsonConvert.SerializeObject(items, Formatting.Indented), HttpStatusCode.OK, e.ProxySession);
+            Logger.LogRequest($"200 {action.Url}", MessageType.Mocked, new LoggingContext(e.ProxySession));
         }
         catch (Exception ex)
         {
-            SendJsonResponse(JsonConvert.SerializeObject(ex, Formatting.Indented), HttpStatusCode.InternalServerError, e);
-            Logger.LogRequest($"500 {action.Url}", MessageType.Failed, new LoggingContext(e));
+            SendJsonResponse(JsonConvert.SerializeObject(ex, Formatting.Indented), HttpStatusCode.InternalServerError, e.ProxySession);
+            Logger.LogRequest($"500 {action.Url}", MessageType.Failed, new LoggingContext(e.ProxySession));
         }
     }
 
-    private void Create(SessionEventArgs e, CrudApiAction action, IDictionary<string, string> parameters)
+    private void Create(ProxyRequestArgs e, CrudApiAction action, IDictionary<string, string> parameters)
     {
         try
         {
-            var data = JObject.Parse(e.HttpClient.Request.BodyString);
+            var data = JObject.Parse(e.ProxySession.Request.BodyString);
             _data?.Add(data);
-            SendJsonResponse(JsonConvert.SerializeObject(data, Formatting.Indented), HttpStatusCode.Created, e);
-            Logger.LogRequest($"201 {action.Url}", MessageType.Mocked, new LoggingContext(e));
+            SendJsonResponse(JsonConvert.SerializeObject(data, Formatting.Indented), HttpStatusCode.Created, e.ProxySession);
+            Logger.LogRequest($"201 {action.Url}", MessageType.Mocked, new LoggingContext(e.ProxySession));
         }
         catch (Exception ex)
         {
-            SendJsonResponse(JsonConvert.SerializeObject(ex, Formatting.Indented), HttpStatusCode.InternalServerError, e);
-            Logger.LogRequest($"500 {action.Url}", MessageType.Failed, new LoggingContext(e));
+            SendJsonResponse(JsonConvert.SerializeObject(ex, Formatting.Indented), HttpStatusCode.InternalServerError, e.ProxySession);
+            Logger.LogRequest($"500 {action.Url}", MessageType.Failed, new LoggingContext(e.ProxySession));
         }
     }
 
-    private void Merge(SessionEventArgs e, CrudApiAction action, IDictionary<string, string> parameters)
+    private void Merge(ProxyRequestArgs e, CrudApiAction action, IDictionary<string, string> parameters)
     {
         try
         {
             var item = _data?.SelectToken(ReplaceParams(action.Query, parameters));
             if (item is null)
             {
-                SendNotFoundResponse(e);
-                Logger.LogRequest($"404 {action.Url}", MessageType.Mocked, new LoggingContext(e));
+                SendNotFoundResponse(e.ProxySession);
+                Logger.LogRequest($"404 {action.Url}", MessageType.Mocked, new LoggingContext(e.ProxySession));
                 return;
             }
-            var update = JObject.Parse(e.HttpClient.Request.BodyString);
+            var update = JObject.Parse(e.ProxySession.Request.BodyString);
             ((JContainer)item).Merge(update);
-            SendEmptyResponse(HttpStatusCode.NoContent, e);
-            Logger.LogRequest($"204 {action.Url}", MessageType.Mocked, new LoggingContext(e));
+            SendEmptyResponse(HttpStatusCode.NoContent, e.ProxySession);
+            Logger.LogRequest($"204 {action.Url}", MessageType.Mocked, new LoggingContext(e.ProxySession));
         }
         catch (Exception ex)
         {
-            SendJsonResponse(JsonConvert.SerializeObject(ex, Formatting.Indented), HttpStatusCode.InternalServerError, e);
-            Logger.LogRequest($"500 {action.Url}", MessageType.Failed, new LoggingContext(e));
+            SendJsonResponse(JsonConvert.SerializeObject(ex, Formatting.Indented), HttpStatusCode.InternalServerError, e.ProxySession);
+            Logger.LogRequest($"500 {action.Url}", MessageType.Failed, new LoggingContext(e.ProxySession));
         }
     }
 
-    private void Update(SessionEventArgs e, CrudApiAction action, IDictionary<string, string> parameters)
+    private void Update(ProxyRequestArgs e, CrudApiAction action, IDictionary<string, string> parameters)
     {
         try
         {
             var item = _data?.SelectToken(ReplaceParams(action.Query, parameters));
             if (item is null)
             {
-                SendNotFoundResponse(e);
-                Logger.LogRequest($"404 {action.Url}", MessageType.Mocked, new LoggingContext(e));
+                SendNotFoundResponse(e.ProxySession);
+                Logger.LogRequest($"404 {action.Url}", MessageType.Mocked, new LoggingContext(e.ProxySession));
                 return;
             }
-            var update = JObject.Parse(e.HttpClient.Request.BodyString);
+            var update = JObject.Parse(e.ProxySession.Request.BodyString);
             ((JContainer)item).Replace(update);
-            SendEmptyResponse(HttpStatusCode.NoContent, e);
-            Logger.LogRequest($"204 {action.Url}", MessageType.Mocked, new LoggingContext(e));
+            SendEmptyResponse(HttpStatusCode.NoContent, e.ProxySession);
+            Logger.LogRequest($"204 {action.Url}", MessageType.Mocked, new LoggingContext(e.ProxySession));
         }
         catch (Exception ex)
         {
-            SendJsonResponse(JsonConvert.SerializeObject(ex, Formatting.Indented), HttpStatusCode.InternalServerError, e);
-            Logger.LogRequest($"500 {action.Url}", MessageType.Failed, new LoggingContext(e));
+            SendJsonResponse(JsonConvert.SerializeObject(ex, Formatting.Indented), HttpStatusCode.InternalServerError, e.ProxySession);
+            Logger.LogRequest($"500 {action.Url}", MessageType.Failed, new LoggingContext(e.ProxySession));
         }
     }
 
-    private void Delete(SessionEventArgs e, CrudApiAction action, IDictionary<string, string> parameters)
+    private void Delete(ProxyRequestArgs e, CrudApiAction action, IDictionary<string, string> parameters)
     {
         try
         {
             var item = _data?.SelectToken(ReplaceParams(action.Query, parameters));
             if (item is null)
             {
-                SendNotFoundResponse(e);
-                Logger.LogRequest($"404 {action.Url}", MessageType.Mocked, new LoggingContext(e));
+                SendNotFoundResponse(e.ProxySession);
+                Logger.LogRequest($"404 {action.Url}", MessageType.Mocked, new LoggingContext(e.ProxySession));
                 return;
             }
 
             item.Remove();
-            SendEmptyResponse(HttpStatusCode.NoContent, e);
-            Logger.LogRequest($"204 {action.Url}", MessageType.Mocked, new LoggingContext(e));
+            SendEmptyResponse(HttpStatusCode.NoContent, e.ProxySession);
+            Logger.LogRequest($"204 {action.Url}", MessageType.Mocked, new LoggingContext(e.ProxySession));
         }
         catch (Exception ex)
         {
-            SendJsonResponse(JsonConvert.SerializeObject(ex, Formatting.Indented), HttpStatusCode.InternalServerError, e);
-            Logger.LogRequest($"500 {action.Url}", MessageType.Failed, new LoggingContext(e));
+            SendJsonResponse(JsonConvert.SerializeObject(ex, Formatting.Indented), HttpStatusCode.InternalServerError, e.ProxySession);
+            Logger.LogRequest($"500 {action.Url}", MessageType.Failed, new LoggingContext(e.ProxySession));
         }
     }
 
-    private static bool IsCORSPreflightRequest(Request request)
+    private static bool IsCORSPreflightRequest(IHttpRequest request)
     {
         return request.Method == "OPTIONS" &&
                request.Headers.Any(h => h.Name.Equals("Origin", StringComparison.OrdinalIgnoreCase));
