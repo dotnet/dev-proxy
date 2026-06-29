@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OpenAI Telemetry Plugin",
+  "description": "Settings for the OpenAI Telemetry plugin which captures OpenAI API calls and emits OpenTelemetry information.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "The JSON schema reference for validation."
+    },
+    "application": {
+      "type": "string",
+      "description": "The name of the application using the OpenTelemetry plugin.",
+      "default": "default"
+    },
+    "currency": {
+      "type": "string",
+      "description": "The currency used for cost calculations.",
+      "default": "USD"
+    },
+    "environment": {
+      "type": "string",
+      "description": "The environment in which the application is running (e.g., production, staging, development).",
+      "default": "development"
+    },
+    "exporterEndpoint": {
+      "type": "string",
+      "description": "The endpoint of the OpenTelemetry collector to send information to.",
+      "default": "http://localhost:4318"
+    },
+    "includeCompletion": {
+      "type": "boolean",
+      "description": "Whether to include the completion in the OpenTelemetry span. Disable for privacy or security concerns.",
+      "default": true
+    },
+    "includeCosts": {
+      "type": "boolean",
+      "description": "Whether to calculate and include cost information in the spans. Requires prices data.",
+      "default": true
+    },
+    "includePrompt": {
+      "type": "boolean",
+      "description": "Whether to include the prompt in the OpenTelemetry span. Disable for privacy or security concerns.",
+      "default": true
+    },
+    "pricesFile": {
+      "type": "string",
+      "description": "Path to the JSON file containing prices data for language models."
+    }
+  },
+  "additionalProperties": false
+}

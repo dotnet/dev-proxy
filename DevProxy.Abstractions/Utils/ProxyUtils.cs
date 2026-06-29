@@ -4,6 +4,7 @@
 
 using DevProxy.Abstractions.Models;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Schema;
@@ -14,7 +15,6 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using Titanium.Web.Proxy.Http;
 
 namespace DevProxy.Abstractions.Utils;
 
@@ -104,7 +104,7 @@ public static class ProxyUtils
         JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
     }
 
-    public static bool IsGraphRequest(Request request)
+    public static bool IsGraphRequest(IHttpRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -136,16 +136,20 @@ public static class ProxyUtils
         return absoluteRequestUrl;
     }
 
-    public static bool IsSdkRequest(Request request)
+    public static bool IsSdkRequest(IHttpRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        return request.Headers.HeaderExists("SdkVersion");
+        return request.Headers.Contains("SdkVersion");
     }
 
-    public static bool IsGraphBetaRequest(Request request) =>
-        IsGraphRequest(request) &&
-        IsGraphBetaUrl(request.RequestUri);
+    public static bool IsGraphBetaRequest(IHttpRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        return IsGraphRequest(request) &&
+            IsGraphBetaUrl(request.RequestUri);
+    }
 
     public static bool IsGraphBetaUrl(Uri uri)
     {
@@ -161,13 +165,21 @@ public static class ProxyUtils
     /// <param name="requestId">string a guid representing the a unique identifier for the request</param>
     /// <param name="requestDate">string representation of the date and time the request was made</param>
     /// <returns>IList<MockResponseHeader> with defaults consistent with Microsoft Graph. Automatically adds CORS headers when the Origin header is present</returns>
-    public static IList<MockResponseHeader> BuildGraphResponseHeaders(Request request, string requestId, string requestDate)
+    public static IList<MockResponseHeader> BuildGraphResponseHeaders(IHttpRequest request, string requestId, string requestDate)
     {
+        ArgumentNullException.ThrowIfNull(request);
+
         if (!IsGraphRequest(request))
         {
             return [];
         }
 
+        var hasOrigin = request.Headers.FirstOrDefault((h) => h.Name.Equals("Origin", StringComparison.OrdinalIgnoreCase)) is not null;
+        return BuildGraphResponseHeadersCore(hasOrigin, requestId, requestDate);
+    }
+
+    private static List<MockResponseHeader> BuildGraphResponseHeadersCore(bool hasOriginHeader, string requestId, string requestDate)
+    {
         var headers = new List<MockResponseHeader>
             {
                 new ("Cache-Control", "no-store"),
@@ -178,7 +190,7 @@ public static class ProxyUtils
                 new ("Date", requestDate),
                 new ("Content-Type", "application/json")
             };
-        if (request.Headers.FirstOrDefault((h) => h.Name.Equals("Origin", StringComparison.OrdinalIgnoreCase)) is not null)
+        if (hasOriginHeader)
         {
             headers.Add(new("Access-Control-Allow-Origin", "*"));
             headers.Add(new("Access-Control-Expose-Headers", "ETag, Location, Preference-Applied, Content-Range, request-id, client-request-id, ReadWriteConsistencyToken, SdkVersion, WWW-Authenticate, x-ms-client-gcc-tenant, Retry-After"));
@@ -526,6 +538,32 @@ public static class ProxyUtils
     public static string PatternToRegex(string pattern)
     {
         return $"^{Regex.Escape(pattern).Replace("\\*", ".*", StringComparison.OrdinalIgnoreCase)}$";
+    }
+
+    /// <summary>
+    /// Normalizes a WebSocket URL scheme to its HTTP equivalent (<c>wss://</c> →
+    /// <c>https://</c>, <c>ws://</c> → <c>http://</c>), leaving any other scheme untouched.
+    ///
+    /// <para>
+    /// The proxy engine reports an intercepted WebSocket upgrade with an <c>http(s)</c>
+    /// scheme (a <c>ws(s)</c> connection is an HTTP <c>Upgrade</c> on the wire). Authors,
+    /// however, naturally write <c>wss://host/*</c> in <c>urlsToWatch</c> and mock URLs.
+    /// Normalizing both sides to <c>http(s)</c> before matching lets either form work.
+    /// </para>
+    /// </summary>
+    public static string NormalizeWebSocketScheme(string url)
+    {
+        ArgumentNullException.ThrowIfNull(url);
+
+        if (url.StartsWith("wss://", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Concat("https://", url.AsSpan("wss://".Length));
+        }
+        if (url.StartsWith("ws://", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Concat("http://", url.AsSpan("ws://".Length));
+        }
+        return url;
     }
 
     public static string RegexToPattern(Regex regex)
