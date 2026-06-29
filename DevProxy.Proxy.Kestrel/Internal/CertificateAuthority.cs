@@ -117,7 +117,7 @@ public sealed class CertificateAuthority : IDisposable
             var existing = TryLoadRoot(_rootPfxPath);
             if (existing is not null)
             {
-                _logger.LogInformation("Loaded persisted root certificate from {Path}", _rootPfxPath);
+                _logger.LogDebug("Loaded persisted root certificate from {Path}", _rootPfxPath);
                 return existing;
             }
 
