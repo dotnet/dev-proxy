@@ -35,16 +35,16 @@ jobs:
         uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5.3.0
         with:
           dotnet-version: 10.0.x
-      - name: Rename executable for beta
-        if: contains(github.ref_name, '-beta')
+      - name: Rename executable for prerelease
+        if: contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha')
         run: |
           pushd
           cd ./DevProxy
           $content = Get-Content DevProxy.csproj
           $content -replace '<AssemblyName>devproxy</AssemblyName>', '<AssemblyName>devproxy-beta</AssemblyName>' | Set-Content DevProxy.csproj
           popd
-      - name: Set newVersionNotification for beta
-        if: contains(github.ref_name, '-beta')
+      - name: Set newVersionNotification for prerelease
+        if: contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha')
         run: |
           pushd
           cd ./DevProxy
@@ -138,13 +138,13 @@ jobs:
       - name: Add installer icon
         if: contains(matrix.architecture, 'win-')
         run: |
-          if ('${{ github.ref_name }}'.Contains('beta')) {
+          if ('${{ github.ref_name }}'.Contains('beta') -or '${{ github.ref_name }}'.Contains('alpha')) {
             cp ./media/icon-beta.ico ./${{ env.release }}
           } else {
             cp ./media/icon.ico ./${{ env.release }}
           }
-      - name: Update version in beta installer
-        if: contains(matrix.architecture, 'win-') && contains(github.ref_name, '-beta')
+      - name: Update version in prerelease installer
+        if: contains(matrix.architecture, 'win-') && (contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha'))
         run: |
           $content = Get-Content ./install-beta.iss
           $content -replace '#define MyAppVersion .*', "#define MyAppVersion `"$("${{ github.ref_name }}".Substring(1))`"" | Set-Content ./install-beta.iss
@@ -152,7 +152,7 @@ jobs:
         id: installer
         if: contains(matrix.architecture, 'win-')
         run: |
-          if ('${{ github.ref_name }}'.Contains('beta')) {
+          if ('${{ github.ref_name }}'.Contains('beta') -or '${{ github.ref_name }}'.Contains('alpha')) {
               Write-Output "filename=install-beta.iss" >> $env:GITHUB_OUTPUT
           } else {
               Write-Output "filename=install.iss" >> $env:GITHUB_OUTPUT
@@ -247,7 +247,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DRAFT_RELEASE: "false"
-          PRE_RELEASE: "false"
+          PRE_RELEASE: "${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}"
           CHANGELOG_FILE: "CHANGELOG.md"
           ALLOW_EMPTY_CHANGELOG: "true"
         with:
@@ -289,14 +289,15 @@ jobs:
             latest=false
           tags: |
             type=semver,pattern={{version}}
-            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-beta') }}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-beta') && !contains(github.ref_name, '-alpha') }}
             type=raw,value=beta,enable=${{ contains(github.ref_name, '-beta') }}
+            type=raw,value=alpha,enable=${{ contains(github.ref_name, '-alpha') }}
           labels: |
             org.opencontainers.image.description=${{ env.APP_DESCRIPTION }}
           annotations: |
             org.opencontainers.image.description=${{ env.APP_DESCRIPTION }}
       - name: Build and push Docker image
-        if: "!contains(github.ref_name, '-beta')"
+        if: ${{ !contains(github.ref_name, '-beta') && !contains(github.ref_name, '-alpha') }}
         id: push
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
@@ -308,8 +309,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           build-args: |
             DEVPROXY_VERSION=${{ steps.meta.outputs.version }}
-      - name: Build and push beta Docker image
-        if: contains(github.ref_name, '-beta')
+      - name: Build and push prerelease Docker image
+        if: contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha')
         id: push_beta
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
