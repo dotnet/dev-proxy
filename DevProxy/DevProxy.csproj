@@ -8,7 +8,7 @@
     <Nullable>enable</Nullable>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <Title>Dev Proxy</Title>
-    <Version>3.2.0</Version>
+    <Version>4.0.0</Version>
     <Company>.NET Foundation</Company>
     <Product>Dev Proxy</Product>
     <AssemblyName>devproxy</AssemblyName>
@@ -42,11 +42,15 @@
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.16.0" />
     <PackageReference Include="System.CommandLine" Version="2.0.9" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.19.1" />
-    <PackageReference Include="Unobtanium.Web.Proxy" Version="0.1.5" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\DevProxy.Abstractions\DevProxy.Abstractions.csproj" />
+    <ProjectReference Include="..\DevProxy.Proxy.Kestrel\DevProxy.Proxy.Kestrel.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DevProxy.Tests" />
   </ItemGroup>
 
   <ItemGroup>

@@ -5,6 +5,7 @@
 using DevProxy.Abstractions.LanguageModel;
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Models.TypeSpec;
 using Microsoft.Extensions.Configuration;
@@ -14,7 +15,6 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Web;
-using Titanium.Web.Proxy.Http;
 
 namespace DevProxy.Plugins.Generation;
 
@@ -80,10 +80,10 @@ public sealed class TypeSpecGeneratorPlugin(
               request.Url is null ||
               request.Method is null ||
               // TypeSpec does not support OPTIONS requests
-              string.Equals(request.Context.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase) ||
+              string.Equals(request.Context.Session.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase) ||
               // TypeSpec's @http library has no verb decorator for QUERY, so it can't be represented
-              string.Equals(request.Context.Session.HttpClient.Request.Method, "QUERY", StringComparison.OrdinalIgnoreCase) ||
-              !ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri))
+              string.Equals(request.Context.Session.Request.Method, "QUERY", StringComparison.OrdinalIgnoreCase) ||
+              !ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Context.Session.Request.RequestUri.AbsoluteUri))
             {
                 continue;
             }
@@ -147,8 +147,8 @@ public sealed class TypeSpecGeneratorPlugin(
         Debug.Assert(request.Url is not null, "request.Url is null");
 
         var url = new Uri(request.Url);
-        var httpRequest = request.Context.Session.HttpClient.Request;
-        var httpResponse = request.Context.Session.HttpClient.Response;
+        var httpRequest = request.Context.Session.Request;
+        var httpResponse = request.Context.Session.Response!;
 
         var (route, parameters) = await GetRouteAndParametersAsync(url);
         var op = new Operation
@@ -172,7 +172,7 @@ public sealed class TypeSpecGeneratorPlugin(
         return op;
     }
 
-    private void ProcessAuth(Request httpRequest, TypeSpecFile doc, Operation op)
+    private void ProcessAuth(IHttpRequest httpRequest, TypeSpecFile doc, Operation op)
     {
         Logger.LogTrace("Entered {Name}", nameof(ProcessAuth));
 
@@ -329,7 +329,7 @@ public sealed class TypeSpecGeneratorPlugin(
         return false;
     }
 
-    private async Task ProcessRequestBodyAsync(Request httpRequest, TypeSpecFile doc, Operation op, string lastSegment)
+    private async Task ProcessRequestBodyAsync(IHttpRequest httpRequest, TypeSpecFile doc, Operation op, string lastSegment)
     {
         Logger.LogTrace("Entered {Name}", nameof(ProcessRequestBodyAsync));
 
@@ -359,7 +359,7 @@ public sealed class TypeSpecGeneratorPlugin(
         Logger.LogTrace("Left {Name}", nameof(ProcessRequestBodyAsync));
     }
 
-    private void ProcessRequestHeaders(Request httpRequest, Operation op)
+    private void ProcessRequestHeaders(IHttpRequest httpRequest, Operation op)
     {
         Logger.LogTrace("Entered {Name}", nameof(ProcessRequestHeaders));
 
@@ -382,7 +382,7 @@ public sealed class TypeSpecGeneratorPlugin(
         Logger.LogTrace("Left {Name}", nameof(ProcessRequestHeaders));
     }
 
-    private async Task ProcessResponseAsync(Response? httpResponse, TypeSpecFile doc, Operation op, string lastSegment, Uri url)
+    private async Task ProcessResponseAsync(IHttpResponse? httpResponse, TypeSpecFile doc, Operation op, string lastSegment, Uri url)
     {
         Logger.LogTrace("Entered {Name}", nameof(ProcessResponseAsync));
 
@@ -398,7 +398,7 @@ public sealed class TypeSpecGeneratorPlugin(
         {
             res = new()
             {
-                StatusCode = httpResponse.StatusCode,
+                StatusCode = (int)httpResponse.StatusCode,
                 BodyType = "string"
             };
         }
@@ -406,7 +406,7 @@ public sealed class TypeSpecGeneratorPlugin(
         {
             res = new()
             {
-                StatusCode = httpResponse.StatusCode,
+                StatusCode = (int)httpResponse.StatusCode,
                 Headers = httpResponse.Headers
                     .Where(h => !Models.Http.StandardHeaders.Contains(h.Name.ToLowerInvariant()) &&
                                 !Models.Http.AuthHeaders.Contains(h.Name.ToLowerInvariant()))
@@ -415,7 +415,7 @@ public sealed class TypeSpecGeneratorPlugin(
 
             if (httpResponse.HasBody)
             {
-                var models = await GetModelsFromStringAsync(httpResponse.BodyString, lastSegment.ToPascalCase(), httpResponse.StatusCode >= 400);
+                var models = await GetModelsFromStringAsync(httpResponse.BodyString, lastSegment.ToPascalCase(), (int)httpResponse.StatusCode >= 400);
                 if (models.Length > 0)
                 {
                     foreach (var model in models)

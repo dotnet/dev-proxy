@@ -5,11 +5,11 @@
 using DevProxy.Abstractions.Models;
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Mocking;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
-using Titanium.Web.Proxy.EventArguments;
 
 namespace DevProxy.Plugins.Generation;
 
@@ -42,7 +42,7 @@ public sealed class MockGeneratorPlugin(
             if (request.MessageType != MessageType.InterceptedResponse ||
               request.Context is null ||
               request.Context.Session is null ||
-              !ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri))
+              !ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Context.Session.Request.RequestUri.AbsoluteUri))
             {
                 continue;
             }
@@ -51,7 +51,7 @@ public sealed class MockGeneratorPlugin(
             Logger.LogDebug("Processing request {MethodAndUrlString}...", methodAndUrlString);
 
             var (method, url) = GetMethodAndUrl(methodAndUrlString);
-            var response = request.Context.Session.HttpClient.Response;
+            var response = request.Context.Session.Response!;
 
             var newHeaders = new List<MockResponseHeader>();
             newHeaders.AddRange(response.Headers.Select(h => new MockResponseHeader(h.Name, h.Value)));
@@ -64,7 +64,7 @@ public sealed class MockGeneratorPlugin(
                 },
                 Response = new()
                 {
-                    StatusCode = response.StatusCode,
+                    StatusCode = (int)response.StatusCode,
                     Headers = newHeaders,
                     Body = await GetResponseBodyAsync(request.Context.Session, cancellationToken)
                 }
@@ -109,11 +109,11 @@ public sealed class MockGeneratorPlugin(
     /// </summary>
     /// <param name="session">Request session</param>
     /// <returns>Response body or @filename for binary responses</returns>
-    private async Task<dynamic?> GetResponseBodyAsync(SessionEventArgs session, CancellationToken cancellationToken)
+    private async Task<dynamic?> GetResponseBodyAsync(IProxySession session, CancellationToken cancellationToken)
     {
         Logger.LogDebug("Getting response body...");
 
-        var response = session.HttpClient.Response;
+        var response = session.Response!;
         if (response.ContentType is null || !response.HasBody)
         {
             Logger.LogDebug("Response has no content-type set or has no body. Skipping");
@@ -127,7 +127,7 @@ public sealed class MockGeneratorPlugin(
             try
             {
                 Logger.LogDebug("Reading response body as string...");
-                var body = response.IsBodyRead ? response.BodyString : await session.GetResponseBodyAsString(cancellationToken);
+                var body = response.BodyString;
                 Logger.LogDebug("Body: {Body}", body);
                 Logger.LogDebug("Deserializing response body...");
                 return JsonSerializer.Deserialize<dynamic>(body, ProxyUtils.JsonSerializerOptions);
@@ -145,7 +145,7 @@ public sealed class MockGeneratorPlugin(
         {
             var filename = $"response-{Guid.NewGuid()}.bin";
             Logger.LogDebug("Reading response body as bytes...");
-            var body = await session.GetResponseBody(cancellationToken);
+            var body = response.Body.ToArray();
             Logger.LogDebug("Writing response body to {Filename}...", filename);
             await File.WriteAllBytesAsync(filename, body, cancellationToken);
             return $"@{filename}";

@@ -110,16 +110,6 @@
           "Microsoft.IdentityModel.Tokens": "8.19.1"
         }
       },
-      "Unobtanium.Web.Proxy": {
-        "type": "Direct",
-        "requested": "[0.1.5, )",
-        "resolved": "0.1.5",
-        "contentHash": "HiICGm0e44+i4aVHpLn+aphmSC2eQnDvlTttw1rE0hntOZKoLGRy37sydqqbRP1ZokMf3Mt0GEgSWxDwnucKGg==",
-        "dependencies": {
-          "BouncyCastle.Cryptography": "2.4.0",
-          "Microsoft.Extensions.Logging.Abstractions": "8.0.1"
-        }
-      },
       "Azure.Core": {
         "type": "Transitive",
         "resolved": "1.53.0",
@@ -133,11 +123,6 @@
           "System.ClientModel": "1.10.0",
           "System.Memory.Data": "10.0.3"
         }
-      },
-      "BouncyCastle.Cryptography": {
-        "type": "Transitive",
-        "resolved": "2.4.0",
-        "contentHash": "SwXsAV3sMvAU/Nn31pbjhWurYSjJ+/giI/0n6tCrYoupEK34iIHCuk3STAd9fx8yudM85KkLSVdn951vTng/vQ=="
       },
       "Markdig": {
         "type": "Transitive",
@@ -540,7 +525,6 @@
           "Newtonsoft.Json.Schema": "[4.0.1, )",
           "Scriban": "[7.2.5, )",
           "System.CommandLine": "[2.0.9, )",
-          "Unobtanium.Web.Proxy": "[0.1.5, )",
           "YamlDotNet": "[18.0.0, )"
         }
       }

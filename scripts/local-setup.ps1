@@ -2,7 +2,7 @@
 # The .NET Foundation licenses this file to you under the MIT license.
 # See the LICENSE file in the project root for more information.
 
-$versionString = "v3.2.0-beta.1"
+$versionString = "v4.0.0-beta.1"
 $version = $versionString.Substring(1)
 $isBeta = $version.Contains("-beta")
 

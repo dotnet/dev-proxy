@@ -5,11 +5,11 @@
 using DevProxy.Abstractions.LanguageModel;
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Text.Json;
-using Titanium.Web.Proxy.Models;
 
 namespace DevProxy.Plugins.Mocking;
 
@@ -42,27 +42,27 @@ public sealed class OpenAIMockResponsePlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return;
         }
         if (e.ResponseState.HasBeenSet)
         {
-            Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return;
         }
 
-        var request = e.Session.HttpClient.Request;
+        var request = e.ProxySession.Request;
         if (request.Method is null ||
             !request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase) ||
             !request.HasBody)
         {
-            Logger.LogRequest("Request is not a POST request with a body", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Request is not a POST request with a body", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return;
         }
 
         if (!OpenAIRequest.TryGetCompletionLikeRequest(request.BodyString, Logger, out var openAiRequest))
         {
-            Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return;
         }
 
@@ -172,7 +172,7 @@ public sealed class OpenAIMockResponsePlugin(
 
     private void SendMockResponse<TResponse>(OpenAIResponse response, string localLmUrl, ProxyRequestArgs e) where TResponse : OpenAIResponse
     {
-        e.Session.GenericResponse(
+        e.ProxySession.Respond(
             // we need this cast or else the JsonSerializer drops derived properties
             JsonSerializer.Serialize((TResponse)response, ProxyUtils.JsonSerializerOptions),
             HttpStatusCode.OK,
@@ -182,6 +182,6 @@ public sealed class OpenAIMockResponsePlugin(
             ]
         );
         e.ResponseState.HasBeenSet = true;
-        Logger.LogRequest($"200 {localLmUrl}", MessageType.Mocked, new LoggingContext(e.Session));
+        Logger.LogRequest($"200 {localLmUrl}", MessageType.Mocked, new LoggingContext(e.ProxySession));
     }
 }
