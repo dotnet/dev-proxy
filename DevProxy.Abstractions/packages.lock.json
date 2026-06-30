@@ -4,9 +4,9 @@
     "net10.0": {
       "Markdig": {
         "type": "Direct",
-        "requested": "[1.3.0, )",
-        "resolved": "1.3.0",
-        "contentHash": "1cWDY3Rhd24SVe66p2ekhEPhaSAXuH3WgGn6EPNjqXL0Y4ycK7GXtq0UE5oeBYircNlqJIEQk9W2vz60hRaezA=="
+        "requested": "[1.3.2, )",
+        "resolved": "1.3.2",
+        "contentHash": "fZgOC/3CswUrndjDTac70aQpYdtxbW5+5bRumR7vzvI2HJbkmgKisB1c9oT+GA6v0jB/JDR9BLa9FiPzQmaK6A=="
       },
       "Microsoft.EntityFrameworkCore.Sqlite": {
         "type": "Direct",
@@ -97,9 +97,9 @@
       },
       "Scriban": {
         "type": "Direct",
-        "requested": "[7.2.4, )",
-        "resolved": "7.2.4",
-        "contentHash": "hx7WeBo0aObZ3v9ZzicZYQtu7fH+I1pRRnzQbv8r0blUhiH9Ay+60/GwkAJZJ7133dr3ZWkzqUqnSloczOf+jw=="
+        "requested": "[7.2.5, )",
+        "resolved": "7.2.5",
+        "contentHash": "6HDyv0P6PVdx/prWM3Aw0QHAT/DCpkBxOovZ2iPIH4L4ZvJ13JNYJgyUI+xJ5K2agXreYTBe23AL5ZQNTqJQvA=="
       },
       "System.CommandLine": {
         "type": "Direct",
