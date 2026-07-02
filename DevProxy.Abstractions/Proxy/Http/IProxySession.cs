@@ -63,10 +63,12 @@ public interface IProxySession
     void Respond(ReadOnlyMemory<byte> body, HttpStatusCode statusCode, IEnumerable<IHttpHeader> headers);
 
     /// <summary>
-    /// WebSocket messages captured during the relay (pass-through) phase of a
-    /// WebSocket connection. Empty for non-WebSocket exchanges or when the
-    /// connection was mocked (no origin relay). Populated by the proxy engine
-    /// after the upgrade handshake completes.
+    /// WebSocket messages captured for a WebSocket connection. Populated by the proxy
+    /// engine after the upgrade handshake, for both relayed (pass-through) traffic and
+    /// per-message interception — including the mock-only fallback when the origin is
+    /// unreachable. Empty for non-WebSocket exchanges, for connections mocked via
+    /// <see cref="HandleWebSocket"/>, and for connections the engine chose not to
+    /// capture (e.g.\ requests that aren't being watched).
     /// </summary>
     IReadOnlyList<WebSocketMessageRecord> WebSocketMessages { get; }
 

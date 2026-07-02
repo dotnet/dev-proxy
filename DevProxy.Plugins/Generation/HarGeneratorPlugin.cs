@@ -176,7 +176,7 @@ public sealed class HarGeneratorPlugin(
                 {
                     Type = m.Direction == WebSocketMessageDirection.Send ? "send" : "receive",
                     Time = m.Timestamp.ToUnixTimeMilliseconds() / 1000.0,
-                    Opcode = (int)m.Type,
+                    Opcode = ToRfc6455Opcode(m.Type),
                     Data = isText ? m.Text : Convert.ToBase64String(m.Data.Span)
                 };
             })];
@@ -184,6 +184,17 @@ public sealed class HarGeneratorPlugin(
 
         return entry;
     }
+
+    // Maps the framework WebSocketMessageType to the RFC 6455 opcode used by the
+    // Chrome DevTools / mitmproxy _webSocketMessages convention (1=text, 2=binary,
+    // 8=close). WebSocketMessageType values (0/1/2) are NOT the wire opcodes.
+    private static int ToRfc6455Opcode(WebSocketMessageType type) => type switch
+    {
+        WebSocketMessageType.Text => 1,
+        WebSocketMessageType.Binary => 2,
+        WebSocketMessageType.Close => 8,
+        _ => 1
+    };
 
     private static string UnescapeSurrogatePairs(string json)
     {

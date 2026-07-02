@@ -596,6 +596,39 @@ internal sealed class InterceptorClientConnection(
 }
 
 /// <summary>
+/// Decorates an <see cref="IWebSocketConnection"/> so that messages sent to the client
+/// (by an interceptor or onConnected callback) are captured as <c>Receive</c> records
+/// for HAR / reporting. Used by the interceptor-only fallback where there is no origin
+/// relay to observe the scripted responses. Receives are delegated unchanged.
+/// </summary>
+internal sealed class CapturingWebSocketConnection(
+    IWebSocketConnection inner,
+    Action<WebSocketMessageRecord> onMessage) : IWebSocketConnection
+{
+    public async Task SendTextAsync(string message, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        await inner.SendTextAsync(message, cancellationToken).ConfigureAwait(false);
+        onMessage(new WebSocketMessageRecord(
+            WebSocketMessageDirection.Receive, WebSocketMessageType.Text,
+            Encoding.UTF8.GetBytes(message), DateTimeOffset.UtcNow));
+    }
+
+    public async Task SendBinaryAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken)
+    {
+        await inner.SendBinaryAsync(message, cancellationToken).ConfigureAwait(false);
+        onMessage(new WebSocketMessageRecord(
+            WebSocketMessageDirection.Receive, WebSocketMessageType.Binary, message, DateTimeOffset.UtcNow));
+    }
+
+    public Task<WebSocketMessage?> ReceiveAsync(CancellationToken cancellationToken) =>
+        inner.ReceiveAsync(cancellationToken);
+
+    public Task CloseAsync(CancellationToken cancellationToken) =>
+        inner.CloseAsync(cancellationToken);
+}
+
+/// <summary>
 /// A read-only stream wrapper that prepends a byte prefix to an inner stream.
 /// Used to replay leftover bytes read past the HTTP response head before the
 /// inner stream is wrapped as a WebSocket.

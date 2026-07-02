@@ -380,6 +380,13 @@ internal sealed class ProxyConnectionHandler(
 
             try
             {
+                // Only capture messages when the request is watched — nothing consumes
+                // IProxySession.WebSocketMessages otherwise, and capturing every frame on
+                // long-lived/high-volume sockets would grow memory unbounded.
+                Action<WebSocketMessageRecord>? onMessage = phase == RequestPhase.Watched
+                    ? session.RecordWebSocketMessage
+                    : null;
+
                 if (session.WebSocketHandledByPlugin)
                 {
                     await _webSocketMockResponder.RespondAsync(
@@ -388,7 +395,7 @@ internal sealed class ProxyConnectionHandler(
                 else
                 {
                     var relayed = await _webSocketRelay.RelayAsync(clientStream, request, requestUri, OnHandshakeAsync,
-                        msg => session.RecordWebSocketMessage(msg),
+                        onMessage,
                         session.WebSocketMessageInterceptor,
                         session.WebSocketOnConnected,
                         ct).ConfigureAwait(false);
@@ -406,7 +413,7 @@ internal sealed class ProxyConnectionHandler(
                                 session.WebSocketMessageInterceptor!,
                                 session.WebSocketOnConnected,
                                 connection,
-                                msg => session.RecordWebSocketMessage(msg),
+                                onMessage,
                                 innerCt),
                             OnHandshakeAsync, ct).ConfigureAwait(false);
                     }
@@ -627,6 +634,8 @@ internal sealed class ProxyConnectionHandler(
     /// The proxy becomes the WebSocket server (via <see cref="WebSocketMockResponder"/>)
     /// and dispatches each client message through the interceptor; unmatched messages
     /// are silently dropped since there is no origin to forward them to.
+    /// When <paramref name="onMessage"/> is set, both incoming client messages and
+    /// interceptor/onConnected responses are captured so HAR output is complete.
     /// </summary>
     private static async Task RunInterceptorOnlyAsync(
         Func<WebSocketMessage, IWebSocketConnection, CancellationToken, Task<bool>> interceptor,
@@ -635,9 +644,14 @@ internal sealed class ProxyConnectionHandler(
         Action<WebSocketMessageRecord>? onMessage,
         CancellationToken ct)
     {
+        // Wrap so interceptor/onConnected sends to the client are captured as "receive".
+        var scriptedConnection = onMessage is not null
+            ? new CapturingWebSocketConnection(connection, onMessage)
+            : connection;
+
         if (onConnected is not null)
         {
-            await onConnected(connection, ct).ConfigureAwait(false);
+            await onConnected(scriptedConnection, ct).ConfigureAwait(false);
         }
 
         while (!ct.IsCancellationRequested)
@@ -656,7 +670,7 @@ internal sealed class ProxyConnectionHandler(
                 DateTimeOffset.UtcNow));
 
             // Offer to the interceptor. If not handled, drop — no origin to forward to.
-            _ = await interceptor(msg, connection, ct).ConfigureAwait(false);
+            _ = await interceptor(msg, scriptedConnection, ct).ConfigureAwait(false);
         }
     }
 }
