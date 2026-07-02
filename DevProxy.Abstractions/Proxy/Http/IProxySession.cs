@@ -79,4 +79,24 @@ public interface IProxySession
     /// the plugin declares intent here during <c>BeforeRequest</c> and the engine executes it.
     /// </summary>
     void HandleWebSocket(Func<IWebSocketConnection, CancellationToken, Task> handler);
+
+    /// <summary>
+    /// Registers a per-message WebSocket interceptor. Unlike <see cref="HandleWebSocket"/>,
+    /// the engine still connects to the origin and relays traffic, but each client→origin
+    /// message is passed through <paramref name="interceptor"/> first. When the interceptor
+    /// returns <c>true</c>, the message is considered handled (not forwarded to the origin);
+    /// when it returns <c>false</c>, the message is forwarded normally. This mirrors how HTTP
+    /// mock plugins selectively mock matched requests while passing through the rest.
+    /// </summary>
+    /// <param name="interceptor">
+    /// Called for each client→origin message. Receives the message, a connection to send
+    /// responses back to the client, and a cancellation token. Returns <c>true</c> if handled.
+    /// </param>
+    /// <param name="onConnected">
+    /// Optional callback invoked once after the WebSocket handshake completes. Can be used
+    /// to send initial messages (e.g.\ <c>OnConnect</c> mock messages) to the client.
+    /// </param>
+    void InterceptWebSocketMessages(
+        Func<WebSocketMessage, IWebSocketConnection, CancellationToken, Task<bool>> interceptor,
+        Func<IWebSocketConnection, CancellationToken, Task>? onConnected);
 }

@@ -20,6 +20,8 @@ public sealed class CanonicalProxySession : IProxySession
 
     private MutableHttpResponse? _response;
     private Func<IWebSocketConnection, CancellationToken, Task>? _webSocketHandler;
+    private Func<WebSocketMessage, IWebSocketConnection, CancellationToken, Task<bool>>? _wsInterceptor;
+    private Func<IWebSocketConnection, CancellationToken, Task>? _wsOnConnected;
     private readonly ConcurrentQueue<WebSocketMessageRecord> _webSocketMessages = new();
 
     public CanonicalProxySession(string sessionId, MutableHttpRequest request, int? processId)
@@ -80,6 +82,15 @@ public sealed class CanonicalProxySession : IProxySession
     /// <summary>The plugin-supplied WebSocket mock handler, or <c>null</c>.</summary>
     public Func<IWebSocketConnection, CancellationToken, Task>? WebSocketHandler => _webSocketHandler;
 
+    /// <summary>True when a plugin registered a per-message WebSocket interceptor.</summary>
+    public bool HasWebSocketInterceptor => _wsInterceptor is not null;
+
+    /// <summary>The per-message interceptor, or <c>null</c>.</summary>
+    public Func<WebSocketMessage, IWebSocketConnection, CancellationToken, Task<bool>>? WebSocketMessageInterceptor => _wsInterceptor;
+
+    /// <summary>Callback to run after the WebSocket handshake completes, or <c>null</c>.</summary>
+    public Func<IWebSocketConnection, CancellationToken, Task>? WebSocketOnConnected => _wsOnConnected;
+
     /// <inheritdoc />
     public IReadOnlyList<WebSocketMessageRecord> WebSocketMessages => [.. _webSocketMessages];
 
@@ -127,5 +138,15 @@ public sealed class CanonicalProxySession : IProxySession
     {
         ArgumentNullException.ThrowIfNull(handler);
         _webSocketHandler = handler;
+    }
+
+    /// <inheritdoc />
+    public void InterceptWebSocketMessages(
+        Func<WebSocketMessage, IWebSocketConnection, CancellationToken, Task<bool>> interceptor,
+        Func<IWebSocketConnection, CancellationToken, Task>? onConnected)
+    {
+        ArgumentNullException.ThrowIfNull(interceptor);
+        _wsInterceptor = interceptor;
+        _wsOnConnected = onConnected;
     }
 }

@@ -8,6 +8,7 @@ using System.IO.Pipelines;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
+using System.Net.WebSockets;
 using System.Text;
 using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Proxy.Kestrel.Http;
@@ -386,8 +387,29 @@ internal sealed class ProxyConnectionHandler(
                 }
                 else
                 {
-                    await _webSocketRelay.RelayAsync(clientStream, request, requestUri, OnHandshakeAsync,
-                        msg => session.RecordWebSocketMessage(msg), ct).ConfigureAwait(false);
+                    var relayed = await _webSocketRelay.RelayAsync(clientStream, request, requestUri, OnHandshakeAsync,
+                        msg => session.RecordWebSocketMessage(msg),
+                        session.WebSocketMessageInterceptor,
+                        session.WebSocketOnConnected,
+                        ct).ConfigureAwait(false);
+
+                    // Origin unreachable but a per-message interceptor is registered →
+                    // fall back to mock-only mode: the proxy becomes the WebSocket server
+                    // and runs the interceptor loop without an origin, exactly like
+                    // HandleWebSocket but driven by the interceptor callbacks.
+                    if (!relayed && session.HasWebSocketInterceptor)
+                    {
+                        logger.LogDebug("Origin unreachable for {Url}; falling back to interceptor-only WebSocket mode", absoluteUrl);
+                        await _webSocketMockResponder.RespondAsync(
+                            clientStream, request,
+                            (connection, innerCt) => RunInterceptorOnlyAsync(
+                                session.WebSocketMessageInterceptor!,
+                                session.WebSocketOnConnected,
+                                connection,
+                                msg => session.RecordWebSocketMessage(msg),
+                                innerCt),
+                            OnHandshakeAsync, ct).ConfigureAwait(false);
+                    }
                 }
             }
             catch (Exception ex) when (ConnectionTeardown.IsExpected(ex))
@@ -598,4 +620,43 @@ internal sealed class ProxyConnectionHandler(
 
     private static Task WriteAsciiAsync(Stream stream, string text, CancellationToken ct) =>
         stream.WriteAsync(Encoding.ASCII.GetBytes(text), ct).AsTask();
+
+    /// <summary>
+    /// Runs a per-message interceptor loop without an origin connection. Used as a
+    /// fallback when the origin is unreachable but a plugin registered an interceptor.
+    /// The proxy becomes the WebSocket server (via <see cref="WebSocketMockResponder"/>)
+    /// and dispatches each client message through the interceptor; unmatched messages
+    /// are silently dropped since there is no origin to forward them to.
+    /// </summary>
+    private static async Task RunInterceptorOnlyAsync(
+        Func<WebSocketMessage, IWebSocketConnection, CancellationToken, Task<bool>> interceptor,
+        Func<IWebSocketConnection, CancellationToken, Task>? onConnected,
+        IWebSocketConnection connection,
+        Action<WebSocketMessageRecord>? onMessage,
+        CancellationToken ct)
+    {
+        if (onConnected is not null)
+        {
+            await onConnected(connection, ct).ConfigureAwait(false);
+        }
+
+        while (!ct.IsCancellationRequested)
+        {
+            var msg = await connection.ReceiveAsync(ct).ConfigureAwait(false);
+            if (msg is null || msg.Type == WebSocketMessageType.Close)
+            {
+                break;
+            }
+
+            // Record the incoming client message.
+            onMessage?.Invoke(new WebSocketMessageRecord(
+                WebSocketMessageDirection.Send,
+                msg.Type,
+                msg.Data,
+                DateTimeOffset.UtcNow));
+
+            // Offer to the interceptor. If not handled, drop — no origin to forward to.
+            _ = await interceptor(msg, connection, ct).ConfigureAwait(false);
+        }
+    }
 }

@@ -83,7 +83,8 @@ public class WebSocketRelayTests
         var relayTask = relay.RelayAsync(
             proxySide, request, request.RequestUri,
             r => { observed = r; return Task.CompletedTask; },
-            msg => capturedMessages.Enqueue(msg), cts.Token);
+            msg => capturedMessages.Enqueue(msg),
+            messageInterceptor: null, onConnected: null, cts.Token);
 
         // Client reads the 101 handshake the proxy wrote back.
         var handshakeBack = await ReadUntilDoubleCrlfAsync(clientSide, cts.Token);

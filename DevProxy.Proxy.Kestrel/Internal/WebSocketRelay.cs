@@ -54,13 +54,22 @@ internal sealed class WebSocketRelay(ILogger logger)
     /// client verbatim, and — on <c>101</c> — relays WebSocket messages in both directions
     /// until either peer closes. Each relayed message is reported via
     /// <paramref name="onMessage"/> (when non-null) for HAR / reporting capture.
+    /// When <paramref name="messageInterceptor"/> is provided, each client→origin message
+    /// is offered to the interceptor first; if it returns <c>true</c>, the message is not
+    /// forwarded to the origin (per-message mocking).
     /// </summary>
-    public async Task RelayAsync(
+    /// <returns>
+    /// <c>true</c> if the origin was reachable and the relay ran (or completed);
+    /// <c>false</c> if the origin could not be reached (caller can fall back).
+    /// </returns>
+    public async Task<bool> RelayAsync(
         Stream clientStream,
         IHttpRequest request,
         Uri origin,
         Func<MutableHttpResponse, Task> onHandshakeResponse,
         Action<WebSocketMessageRecord>? onMessage,
+        Func<WebSocketMessage, IWebSocketConnection, CancellationToken, Task<bool>>? messageInterceptor,
+        Func<IWebSocketConnection, CancellationToken, Task>? onConnected,
         CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(clientStream);
@@ -79,7 +88,7 @@ internal sealed class WebSocketRelay(ILogger logger)
         catch (SocketException ex)
         {
             logger.LogDebug(ex, "WebSocket connect to {Host}:{Port} failed", origin.Host, origin.Port);
-            return;
+            return false;
         }
 
         // leaveInnerStreamOpen: false on the SslStream disposes the NetworkStream; the
@@ -93,7 +102,7 @@ internal sealed class WebSocketRelay(ILogger logger)
         if (head is null)
         {
             logger.LogDebug("WebSocket origin {Host} closed before sending a handshake response", origin.Host);
-            return;
+            return true; // origin was reachable, just closed early
         }
 
         var (statusCode, reason, headers, rawHead, leftover) = head.Value;
@@ -111,7 +120,7 @@ internal sealed class WebSocketRelay(ILogger logger)
             // Origin declined the upgrade. We've relayed its response; there's no
             // tunnel to splice. Close (a non-101 may carry a body we don't frame yet).
             logger.LogDebug("WebSocket origin {Host} declined upgrade with {Status}", origin.Host, statusCode);
-            return;
+            return true;
         }
 
         // Extract sub-protocol from handshake response for WebSocket creation.
@@ -133,7 +142,29 @@ internal sealed class WebSocketRelay(ILogger logger)
         using var originWs = WebSocket.CreateFromStream(
             effectiveOriginStream, new WebSocketCreationOptions { IsServer = false, SubProtocol = subProtocol, KeepAliveInterval = KeepAliveInterval });
 
-        await RelayWebSocketAsync(clientWs, originWs, onMessage, ct).ConfigureAwait(false);
+        // When an interceptor is present, we need a send-serialized client connection
+        // wrapper and a semaphore — the interceptor and the origin→client relay task both
+        // send to the client WebSocket and must not overlap.
+        SemaphoreSlim? clientSendLock = messageInterceptor is not null ? new SemaphoreSlim(1, 1) : null;
+        InterceptorClientConnection? clientConnection = messageInterceptor is not null
+            ? new InterceptorClientConnection(clientWs, clientSendLock!, onMessage)
+            : null;
+
+        try
+        {
+            if (onConnected is not null && clientConnection is not null)
+            {
+                await onConnected(clientConnection, ct).ConfigureAwait(false);
+            }
+
+            await RelayWebSocketAsync(clientWs, originWs, onMessage, messageInterceptor, clientConnection, clientSendLock, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            clientSendLock?.Dispose();
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -288,20 +319,25 @@ internal sealed class WebSocketRelay(ILogger logger)
     /// <summary>
     /// Relays complete WebSocket messages between <paramref name="client"/> and
     /// <paramref name="origin"/> in both directions, capturing each message via
-    /// <paramref name="onMessage"/>. Runs until either peer closes or the token fires.
+    /// <paramref name="onMessage"/>. When <paramref name="interceptor"/> is set,
+    /// client→origin messages are offered to it first; handled messages are not
+    /// forwarded. Runs until either peer closes or the token fires.
     /// </summary>
     private static async Task RelayWebSocketAsync(
         WebSocket client,
         WebSocket origin,
         Action<WebSocketMessageRecord>? onMessage,
+        Func<WebSocketMessage, IWebSocketConnection, CancellationToken, Task<bool>>? interceptor,
+        InterceptorClientConnection? clientConnection,
+        SemaphoreSlim? clientSendLock,
         CancellationToken ct)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
-        var clientToOrigin = RelayOneDirectionAsync(
-            client, origin, WebSocketMessageDirection.Send, onMessage, linked.Token);
-        var originToClient = RelayOneDirectionAsync(
-            origin, client, WebSocketMessageDirection.Receive, onMessage, linked.Token);
+        var clientToOrigin = RelayClientToOriginAsync(
+            client, origin, onMessage, interceptor, clientConnection, linked.Token);
+        var originToClient = RelayOriginToClientAsync(
+            origin, client, onMessage, clientSendLock, linked.Token);
 
         try
         {
@@ -322,56 +358,239 @@ internal sealed class WebSocketRelay(ILogger logger)
     }
 
     /// <summary>
-    /// Receives complete messages from <paramref name="source"/> (reassembling
-    /// fragments) and forwards them to <paramref name="destination"/>, recording
-    /// each message via <paramref name="onMessage"/>.
+    /// Relays client→origin messages, optionally intercepting them. When the
+    /// interceptor handles a message, it is not forwarded to the origin.
     /// </summary>
-    private static async Task RelayOneDirectionAsync(
-        WebSocket source,
-        WebSocket destination,
-        WebSocketMessageDirection direction,
+    private static async Task RelayClientToOriginAsync(
+        WebSocket client,
+        WebSocket origin,
         Action<WebSocketMessageRecord>? onMessage,
+        Func<WebSocketMessage, IWebSocketConnection, CancellationToken, Task<bool>>? interceptor,
+        InterceptorClientConnection? clientConnection,
         CancellationToken ct)
     {
         var buffer = new byte[ReceiveChunkSize];
 
-        while (source.State is WebSocketState.Open or WebSocketState.CloseSent)
+        while (client.State is WebSocketState.Open or WebSocketState.CloseSent)
         {
-            // Reassemble fragments into a complete message.
-            var assembled = new List<byte>(ReceiveChunkSize);
-            WebSocketReceiveResult result;
-            do
+            var (message, result) = await ReceiveFullMessageAsync(client, buffer, ct).ConfigureAwait(false);
+            if (message is null || result is null)
             {
-                result = await source.ReceiveAsync(buffer, ct).ConfigureAwait(false);
+                return;
+            }
 
-                if (result.MessageType == WebSocketMessageType.Close)
+            if (result.MessageType == WebSocketMessageType.Close)
+            {
+                if (origin.State is WebSocketState.Open or WebSocketState.CloseReceived)
                 {
-                    // Propagate close to the other side.
-                    if (destination.State is WebSocketState.Open or WebSocketState.CloseReceived)
-                    {
-                        await destination.CloseOutputAsync(
-                            result.CloseStatus ?? WebSocketCloseStatus.NormalClosure,
-                            result.CloseStatusDescription,
-                            ct).ConfigureAwait(false);
-                    }
+                    await origin.CloseOutputAsync(
+                        result.CloseStatus ?? WebSocketCloseStatus.NormalClosure,
+                        result.CloseStatusDescription, ct).ConfigureAwait(false);
+                }
+                onMessage?.Invoke(new WebSocketMessageRecord(
+                    WebSocketMessageDirection.Send, WebSocketMessageType.Close, ReadOnlyMemory<byte>.Empty, DateTimeOffset.UtcNow));
+                return;
+            }
 
-                    onMessage?.Invoke(new WebSocketMessageRecord(
-                        direction, WebSocketMessageType.Close, ReadOnlyMemory<byte>.Empty, DateTimeOffset.UtcNow));
-                    return;
+            var data = message.Value;
+
+            // Offer to interceptor before forwarding.
+            if (interceptor is not null && clientConnection is not null)
+            {
+                var wsMessage = new WebSocketMessage(result.MessageType, data);
+                var handled = await interceptor(wsMessage, clientConnection, ct).ConfigureAwait(false);
+                onMessage?.Invoke(new WebSocketMessageRecord(
+                    WebSocketMessageDirection.Send, result.MessageType, data, DateTimeOffset.UtcNow));
+                if (handled)
+                {
+                    continue; // don't forward to origin
+                }
+            }
+            else
+            {
+                onMessage?.Invoke(new WebSocketMessageRecord(
+                    WebSocketMessageDirection.Send, result.MessageType, data, DateTimeOffset.UtcNow));
+            }
+
+            await origin.SendAsync(data, result.MessageType, endOfMessage: true, ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Relays origin→client messages. When a <paramref name="clientSendLock"/> is
+    /// provided (because an interceptor is active), sends are serialized to avoid
+    /// overlapping with interceptor-initiated sends.
+    /// </summary>
+    private static async Task RelayOriginToClientAsync(
+        WebSocket origin,
+        WebSocket client,
+        Action<WebSocketMessageRecord>? onMessage,
+        SemaphoreSlim? clientSendLock,
+        CancellationToken ct)
+    {
+        var buffer = new byte[ReceiveChunkSize];
+
+        while (origin.State is WebSocketState.Open or WebSocketState.CloseSent)
+        {
+            var (message, result) = await ReceiveFullMessageAsync(origin, buffer, ct).ConfigureAwait(false);
+            if (message is null || result is null)
+            {
+                return;
+            }
+
+            if (result.MessageType == WebSocketMessageType.Close)
+            {
+                if (clientSendLock is not null)
+                {
+                    await clientSendLock.WaitAsync(ct).ConfigureAwait(false);
+                    try
+                    {
+                        if (client.State is WebSocketState.Open or WebSocketState.CloseReceived)
+                        {
+                            await client.CloseOutputAsync(
+                                result.CloseStatus ?? WebSocketCloseStatus.NormalClosure,
+                                result.CloseStatusDescription, ct).ConfigureAwait(false);
+                        }
+                    }
+                    finally
+                    {
+                        clientSendLock.Release();
+                    }
+                }
+                else if (client.State is WebSocketState.Open or WebSocketState.CloseReceived)
+                {
+                    await client.CloseOutputAsync(
+                        result.CloseStatus ?? WebSocketCloseStatus.NormalClosure,
+                        result.CloseStatusDescription, ct).ConfigureAwait(false);
                 }
 
-                assembled.AddRange(buffer.AsSpan(0, result.Count));
+                onMessage?.Invoke(new WebSocketMessageRecord(
+                    WebSocketMessageDirection.Receive, WebSocketMessageType.Close, ReadOnlyMemory<byte>.Empty, DateTimeOffset.UtcNow));
+                return;
             }
-            while (!result.EndOfMessage);
 
-            var data = assembled.ToArray();
+            var data = message.Value;
 
-            // Forward the complete message to the other side.
-            await destination.SendAsync(
-                data, result.MessageType, endOfMessage: true, ct).ConfigureAwait(false);
+            if (clientSendLock is not null)
+            {
+                await clientSendLock.WaitAsync(ct).ConfigureAwait(false);
+                try
+                {
+                    await client.SendAsync(data, result.MessageType, endOfMessage: true, ct).ConfigureAwait(false);
+                }
+                finally
+                {
+                    clientSendLock.Release();
+                }
+            }
+            else
+            {
+                await client.SendAsync(data, result.MessageType, endOfMessage: true, ct).ConfigureAwait(false);
+            }
 
             onMessage?.Invoke(new WebSocketMessageRecord(
-                direction, result.MessageType, data, DateTimeOffset.UtcNow));
+                WebSocketMessageDirection.Receive, result.MessageType, data, DateTimeOffset.UtcNow));
+        }
+    }
+
+    /// <summary>
+    /// Receives a complete WebSocket message (reassembling fragments). Returns
+    /// <c>(null, null)</c> on abrupt connection end and a close-typed result on
+    /// clean close.
+    /// </summary>
+    private static async Task<(ReadOnlyMemory<byte>? Data, WebSocketReceiveResult? Result)> ReceiveFullMessageAsync(
+        WebSocket ws, byte[] buffer, CancellationToken ct)
+    {
+        var assembled = new List<byte>(ReceiveChunkSize);
+        WebSocketReceiveResult result;
+        do
+        {
+            try
+            {
+                result = await ws.ReceiveAsync(buffer, ct).ConfigureAwait(false);
+            }
+            catch (WebSocketException)
+            {
+                return (null, null);
+            }
+
+            if (result.MessageType == WebSocketMessageType.Close)
+            {
+                return (ReadOnlyMemory<byte>.Empty, result);
+            }
+
+            assembled.AddRange(buffer.AsSpan(0, result.Count));
+        }
+        while (!result.EndOfMessage);
+
+        return (assembled.ToArray(), result);
+    }
+}
+
+/// <summary>
+/// A send-serialized <see cref="IWebSocketConnection"/> wrapper for the client-side
+/// WebSocket, used by per-message interceptors. Sends are guarded by a
+/// <see cref="SemaphoreSlim"/> to avoid overlapping with the origin→client relay task.
+/// Interceptor-sent responses are also captured via <paramref name="onMessage"/> for
+/// HAR / reporting.
+/// </summary>
+internal sealed class InterceptorClientConnection(
+    WebSocket clientWs,
+    SemaphoreSlim sendLock,
+    Action<WebSocketMessageRecord>? onMessage) : IWebSocketConnection
+{
+    public async Task SendTextAsync(string message, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        var data = Encoding.UTF8.GetBytes(message);
+        await sendLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await clientWs.SendAsync(data, WebSocketMessageType.Text, endOfMessage: true, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            sendLock.Release();
+        }
+        // Interceptor sends to the client appear as "receive" from the client's perspective.
+        onMessage?.Invoke(new WebSocketMessageRecord(
+            WebSocketMessageDirection.Receive, WebSocketMessageType.Text, data, DateTimeOffset.UtcNow));
+    }
+
+    public async Task SendBinaryAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken)
+    {
+        await sendLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await clientWs.SendAsync(message, WebSocketMessageType.Binary, endOfMessage: true, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            sendLock.Release();
+        }
+        onMessage?.Invoke(new WebSocketMessageRecord(
+            WebSocketMessageDirection.Receive, WebSocketMessageType.Binary, message, DateTimeOffset.UtcNow));
+    }
+
+    public Task<WebSocketMessage?> ReceiveAsync(CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("Receiving is handled by the relay loop; interceptors should not call ReceiveAsync.");
+
+    public async Task CloseAsync(CancellationToken cancellationToken)
+    {
+        await sendLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (clientWs.State is WebSocketState.Open or WebSocketState.CloseReceived)
+            {
+                await clientWs.CloseOutputAsync(
+                    WebSocketCloseStatus.NormalClosure, statusDescription: null, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (WebSocketException) { }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            sendLock.Release();
         }
     }
 }
