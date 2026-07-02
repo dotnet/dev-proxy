@@ -4,6 +4,7 @@
 
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Models;
 using DevProxy.Plugins.Utils;
@@ -11,6 +12,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Globalization;
+using System.Net.WebSockets;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Web;
@@ -161,6 +163,24 @@ public sealed class HarGeneratorPlugin(
                 BodySize = response.HasBody ? response.Body.Length : 0
             } : null
         };
+
+        // Attach WebSocket messages (if any) following the Chrome/mitmproxy convention.
+        var wsMessages = log.Context.Session.WebSocketMessages;
+        if (request.IsWebSocketRequest && wsMessages.Count > 0)
+        {
+            entry.ResourceType = "websocket";
+            entry.WebSocketMessages = [.. wsMessages.Select(m =>
+            {
+                var isText = m.Type == WebSocketMessageType.Text;
+                return new HarWebSocketMessage
+                {
+                    Type = m.Direction == WebSocketMessageDirection.Send ? "send" : "receive",
+                    Time = m.Timestamp.ToUnixTimeMilliseconds() / 1000.0,
+                    Opcode = (int)m.Type,
+                    Data = isText ? m.Text : Convert.ToBase64String(m.Data.Span)
+                };
+            })];
+        }
 
         return entry;
     }

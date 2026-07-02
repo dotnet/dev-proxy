@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System.Collections.Concurrent;
 using System.Net;
 using DevProxy.Abstractions.Proxy.Http;
 
@@ -19,6 +20,7 @@ public sealed class CanonicalProxySession : IProxySession
 
     private MutableHttpResponse? _response;
     private Func<IWebSocketConnection, CancellationToken, Task>? _webSocketHandler;
+    private readonly ConcurrentQueue<WebSocketMessageRecord> _webSocketMessages = new();
 
     public CanonicalProxySession(string sessionId, MutableHttpRequest request, int? processId)
         : this(sessionId, request, processId, requestId: 0)
@@ -77,6 +79,15 @@ public sealed class CanonicalProxySession : IProxySession
 
     /// <summary>The plugin-supplied WebSocket mock handler, or <c>null</c>.</summary>
     public Func<IWebSocketConnection, CancellationToken, Task>? WebSocketHandler => _webSocketHandler;
+
+    /// <inheritdoc />
+    public IReadOnlyList<WebSocketMessageRecord> WebSocketMessages => [.. _webSocketMessages];
+
+    /// <summary>
+    /// Records a WebSocket message observed during the relay. Thread-safe — called
+    /// concurrently from the client→origin and origin→client relay tasks.
+    /// </summary>
+    internal void RecordWebSocketMessage(WebSocketMessageRecord message) => _webSocketMessages.Enqueue(message);
 
     /// <summary>
     /// Sets the response received from the origin. Does not flag the exchange as

@@ -6,6 +6,7 @@ using System.Globalization;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
+using System.Net.WebSockets;
 using System.Text;
 using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Proxy.Kestrel.Http;
@@ -50,14 +51,16 @@ internal sealed class WebSocketRelay(ILogger logger)
     /// Connects to the origin, replays the upgrade handshake, invokes
     /// <paramref name="onHandshakeResponse"/> with the origin's parsed response (so the
     /// caller can run the response pipeline / log it), writes that response back to the
-    /// client verbatim, and — on <c>101</c> — splices frames in both directions until
-    /// either peer closes.
+    /// client verbatim, and — on <c>101</c> — relays WebSocket messages in both directions
+    /// until either peer closes. Each relayed message is reported via
+    /// <paramref name="onMessage"/> (when non-null) for HAR / reporting capture.
     /// </summary>
     public async Task RelayAsync(
         Stream clientStream,
         IHttpRequest request,
         Uri origin,
         Func<MutableHttpResponse, Task> onHandshakeResponse,
+        Action<WebSocketMessageRecord>? onMessage,
         CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(clientStream);
@@ -101,10 +104,6 @@ internal sealed class WebSocketRelay(ILogger logger)
 
         // Write the origin's handshake response to the client verbatim.
         await clientStream.WriteAsync(rawHead, ct).ConfigureAwait(false);
-        if (leftover.Length > 0)
-        {
-            await clientStream.WriteAsync(leftover, ct).ConfigureAwait(false);
-        }
         await clientStream.FlushAsync(ct).ConfigureAwait(false);
 
         if (statusCode != (int)HttpStatusCode.SwitchingProtocols)
@@ -115,10 +114,26 @@ internal sealed class WebSocketRelay(ILogger logger)
             return;
         }
 
+        // Extract sub-protocol from handshake response for WebSocket creation.
+        var subProtocol = headers.GetFirst("Sec-WebSocket-Protocol")?.Value;
+
         logger.LogDebug("WebSocket {Scheme}://{Host}:{Port}{Path} established",
             useTls ? "wss" : "ws", origin.Host, origin.Port, origin.PathAndQuery);
 
-        await StreamRelay.RelayBidirectionalAsync(clientStream, originStream, ct).ConfigureAwait(false);
+        // Wrap both sides as WebSocket instances for frame-level relay and message
+        // capture. Any leftover bytes (read past the response head) are prepended to
+        // the origin stream so the first origin frame isn't lost.
+#pragma warning disable CA2000 // PrefixedStream is disposed via await using below; ownership is clear.
+        await using var prefixed = leftover.Length > 0 ? new PrefixedStream(leftover, originStream) : null;
+#pragma warning restore CA2000
+        Stream effectiveOriginStream = prefixed ?? originStream;
+
+        using var clientWs = WebSocket.CreateFromStream(
+            clientStream, new WebSocketCreationOptions { IsServer = true, SubProtocol = subProtocol, KeepAliveInterval = KeepAliveInterval });
+        using var originWs = WebSocket.CreateFromStream(
+            effectiveOriginStream, new WebSocketCreationOptions { IsServer = false, SubProtocol = subProtocol, KeepAliveInterval = KeepAliveInterval });
+
+        await RelayWebSocketAsync(clientWs, originWs, onMessage, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -265,5 +280,162 @@ internal sealed class WebSocketRelay(ILogger logger)
         }
 
         return (statusCode, reason, headers);
+    }
+
+    private static readonly TimeSpan KeepAliveInterval = TimeSpan.FromSeconds(30);
+    private const int ReceiveChunkSize = 8 * 1024;
+
+    /// <summary>
+    /// Relays complete WebSocket messages between <paramref name="client"/> and
+    /// <paramref name="origin"/> in both directions, capturing each message via
+    /// <paramref name="onMessage"/>. Runs until either peer closes or the token fires.
+    /// </summary>
+    private static async Task RelayWebSocketAsync(
+        WebSocket client,
+        WebSocket origin,
+        Action<WebSocketMessageRecord>? onMessage,
+        CancellationToken ct)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+
+        var clientToOrigin = RelayOneDirectionAsync(
+            client, origin, WebSocketMessageDirection.Send, onMessage, linked.Token);
+        var originToClient = RelayOneDirectionAsync(
+            origin, client, WebSocketMessageDirection.Receive, onMessage, linked.Token);
+
+        try
+        {
+            _ = await Task.WhenAny(clientToOrigin, originToClient).ConfigureAwait(false);
+            await linked.CancelAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            try
+            {
+                await Task.WhenAll(clientToOrigin, originToClient).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ConnectionTeardown.IsExpected(ex))
+            {
+                // Either peer closed — normal teardown.
+            }
+        }
+    }
+
+    /// <summary>
+    /// Receives complete messages from <paramref name="source"/> (reassembling
+    /// fragments) and forwards them to <paramref name="destination"/>, recording
+    /// each message via <paramref name="onMessage"/>.
+    /// </summary>
+    private static async Task RelayOneDirectionAsync(
+        WebSocket source,
+        WebSocket destination,
+        WebSocketMessageDirection direction,
+        Action<WebSocketMessageRecord>? onMessage,
+        CancellationToken ct)
+    {
+        var buffer = new byte[ReceiveChunkSize];
+
+        while (source.State is WebSocketState.Open or WebSocketState.CloseSent)
+        {
+            // Reassemble fragments into a complete message.
+            var assembled = new List<byte>(ReceiveChunkSize);
+            WebSocketReceiveResult result;
+            do
+            {
+                result = await source.ReceiveAsync(buffer, ct).ConfigureAwait(false);
+
+                if (result.MessageType == WebSocketMessageType.Close)
+                {
+                    // Propagate close to the other side.
+                    if (destination.State is WebSocketState.Open or WebSocketState.CloseReceived)
+                    {
+                        await destination.CloseOutputAsync(
+                            result.CloseStatus ?? WebSocketCloseStatus.NormalClosure,
+                            result.CloseStatusDescription,
+                            ct).ConfigureAwait(false);
+                    }
+
+                    onMessage?.Invoke(new WebSocketMessageRecord(
+                        direction, WebSocketMessageType.Close, ReadOnlyMemory<byte>.Empty, DateTimeOffset.UtcNow));
+                    return;
+                }
+
+                assembled.AddRange(buffer.AsSpan(0, result.Count));
+            }
+            while (!result.EndOfMessage);
+
+            var data = assembled.ToArray();
+
+            // Forward the complete message to the other side.
+            await destination.SendAsync(
+                data, result.MessageType, endOfMessage: true, ct).ConfigureAwait(false);
+
+            onMessage?.Invoke(new WebSocketMessageRecord(
+                direction, result.MessageType, data, DateTimeOffset.UtcNow));
+        }
+    }
+}
+
+/// <summary>
+/// A read-only stream wrapper that prepends a byte prefix to an inner stream.
+/// Used to replay leftover bytes read past the HTTP response head before the
+/// inner stream is wrapped as a WebSocket.
+/// </summary>
+internal sealed class PrefixedStream(byte[] prefix, Stream inner) : Stream
+{
+    private int _prefixOffset;
+
+    public override bool CanRead => true;
+    public override bool CanSeek => false;
+    public override bool CanWrite => inner.CanWrite;
+    public override long Length => throw new NotSupportedException();
+    public override long Position
+    {
+        get => throw new NotSupportedException();
+        set => throw new NotSupportedException();
+    }
+
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+        if (_prefixOffset < prefix.Length)
+        {
+            var available = Math.Min(count, prefix.Length - _prefixOffset);
+            Array.Copy(prefix, _prefixOffset, buffer, offset, available);
+            _prefixOffset += available;
+            return available;
+        }
+        return inner.Read(buffer, offset, count);
+    }
+
+    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+    {
+        if (_prefixOffset < prefix.Length)
+        {
+            var available = Math.Min(buffer.Length, prefix.Length - _prefixOffset);
+            prefix.AsMemory(_prefixOffset, available).CopyTo(buffer);
+            _prefixOffset += available;
+            return available;
+        }
+        return await inner.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+    }
+
+    public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        => await ReadAsync(buffer.AsMemory(offset, count), cancellationToken).ConfigureAwait(false);
+
+    public override void Write(byte[] buffer, int offset, int count) => inner.Write(buffer, offset, count);
+    public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        => inner.WriteAsync(buffer, offset, count, cancellationToken);
+    public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        => inner.WriteAsync(buffer, cancellationToken);
+
+    public override void Flush() => inner.Flush();
+    public override Task FlushAsync(CancellationToken cancellationToken) => inner.FlushAsync(cancellationToken);
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override void SetLength(long value) => throw new NotSupportedException();
+
+    protected override void Dispose(bool disposing)
+    {
+        // Don't dispose inner — it's owned by the caller (TcpClient/SslStream).
+        base.Dispose(disposing);
     }
 }

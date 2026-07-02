@@ -386,7 +386,8 @@ internal sealed class ProxyConnectionHandler(
                 }
                 else
                 {
-                    await _webSocketRelay.RelayAsync(clientStream, request, requestUri, OnHandshakeAsync, ct).ConfigureAwait(false);
+                    await _webSocketRelay.RelayAsync(clientStream, request, requestUri, OnHandshakeAsync,
+                        msg => session.RecordWebSocketMessage(msg), ct).ConfigureAwait(false);
                 }
             }
             catch (Exception ex) when (ConnectionTeardown.IsExpected(ex))
