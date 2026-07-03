@@ -3,8 +3,12 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Net;
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
 using DevProxy.Abstractions.Models;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Generation;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -77,6 +81,59 @@ public sealed class GenerationPluginsIntegrationTests
             var har = dir.GetFiles("devproxy-*.har").Single();
             var content = await File.ReadAllTextAsync(har.FullName);
             Assert.Contains("api.contoso.com/users", content, StringComparison.Ordinal);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task HarGenerator_WritesWebSocketMessages()
+    {
+        var plugin = new HarGeneratorPlugin(
+            TestDefaults.HttpClient,
+            NullLogger<HarGeneratorPlugin>.Instance,
+            Watch,
+            new TestProxyConfiguration(),
+            PluginConfig.Empty());
+
+        var t0 = DateTimeOffset.FromUnixTimeMilliseconds(1_700_000_000_500);
+        var wsExchange = TestExchange.WebSocket(
+            "https://api.contoso.com/socket",
+            new WebSocketMessageRecord(WebSocketMessageDirection.Send, WebSocketMessageType.Text, Encoding.UTF8.GetBytes("ping"), t0),
+            new WebSocketMessageRecord(WebSocketMessageDirection.Receive, WebSocketMessageType.Text, Encoding.UTF8.GetBytes("pong"), t0.AddMilliseconds(10)),
+            new WebSocketMessageRecord(WebSocketMessageDirection.Send, WebSocketMessageType.Binary, new byte[] { 0x01, 0x02, 0x03 }, t0.AddMilliseconds(20)))
+            .AsRequestLog(MessageType.InterceptedResponse);
+
+        var args = Recording([wsExchange]);
+        var dir = await InTempCwdAsync(() => plugin.AfterRecordingStopAsync(args, CancellationToken.None));
+        try
+        {
+            var har = dir.GetFiles("devproxy-*.har").Single();
+            using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(har.FullName));
+            var entry = doc.RootElement.GetProperty("log").GetProperty("entries").EnumerateArray().Single();
+
+            Assert.Equal("websocket", entry.GetProperty("_resourceType").GetString());
+
+            var messages = entry.GetProperty("_webSocketMessages").EnumerateArray().ToArray();
+            Assert.Equal(3, messages.Length);
+
+            // send text "ping": type=send, opcode=1 (RFC 6455 text), data is raw UTF-8.
+            Assert.Equal("send", messages[0].GetProperty("type").GetString());
+            Assert.Equal(1, messages[0].GetProperty("opcode").GetInt32());
+            Assert.Equal("ping", messages[0].GetProperty("data").GetString());
+            Assert.Equal(1_700_000_000.5, messages[0].GetProperty("time").GetDouble(), 3);
+
+            // receive text "pong".
+            Assert.Equal("receive", messages[1].GetProperty("type").GetString());
+            Assert.Equal(1, messages[1].GetProperty("opcode").GetInt32());
+            Assert.Equal("pong", messages[1].GetProperty("data").GetString());
+
+            // send binary: opcode=2 (RFC 6455 binary), data is base64.
+            Assert.Equal("send", messages[2].GetProperty("type").GetString());
+            Assert.Equal(2, messages[2].GetProperty("opcode").GetInt32());
+            Assert.Equal(Convert.ToBase64String(new byte[] { 0x01, 0x02, 0x03 }), messages[2].GetProperty("data").GetString());
         }
         finally
         {

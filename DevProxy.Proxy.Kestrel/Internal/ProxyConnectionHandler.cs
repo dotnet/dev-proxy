@@ -8,6 +8,7 @@ using System.IO.Pipelines;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
+using System.Net.WebSockets;
 using System.Text;
 using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Proxy.Kestrel.Http;
@@ -379,6 +380,13 @@ internal sealed class ProxyConnectionHandler(
 
             try
             {
+                // Only capture messages when the request is watched — nothing consumes
+                // IProxySession.WebSocketMessages otherwise, and capturing every frame on
+                // long-lived/high-volume sockets would grow memory unbounded.
+                Action<WebSocketMessageRecord>? onMessage = phase == RequestPhase.Watched
+                    ? session.RecordWebSocketMessage
+                    : null;
+
                 if (session.WebSocketHandledByPlugin)
                 {
                     await _webSocketMockResponder.RespondAsync(
@@ -386,7 +394,29 @@ internal sealed class ProxyConnectionHandler(
                 }
                 else
                 {
-                    await _webSocketRelay.RelayAsync(clientStream, request, requestUri, OnHandshakeAsync, ct).ConfigureAwait(false);
+                    var relayed = await _webSocketRelay.RelayAsync(clientStream, request, requestUri, OnHandshakeAsync,
+                        onMessage,
+                        session.WebSocketMessageInterceptor,
+                        session.WebSocketOnConnected,
+                        ct).ConfigureAwait(false);
+
+                    // Origin unreachable but a per-message interceptor is registered →
+                    // fall back to mock-only mode: the proxy becomes the WebSocket server
+                    // and runs the interceptor loop without an origin, exactly like
+                    // HandleWebSocket but driven by the interceptor callbacks.
+                    if (!relayed && session.HasWebSocketInterceptor)
+                    {
+                        logger.LogDebug("Origin unreachable for {Url}; falling back to interceptor-only WebSocket mode", absoluteUrl);
+                        await _webSocketMockResponder.RespondAsync(
+                            clientStream, request,
+                            (connection, innerCt) => RunInterceptorOnlyAsync(
+                                session.WebSocketMessageInterceptor!,
+                                session.WebSocketOnConnected,
+                                connection,
+                                onMessage,
+                                innerCt),
+                            OnHandshakeAsync, ct).ConfigureAwait(false);
+                    }
                 }
             }
             catch (Exception ex) when (ConnectionTeardown.IsExpected(ex))
@@ -597,4 +627,61 @@ internal sealed class ProxyConnectionHandler(
 
     private static Task WriteAsciiAsync(Stream stream, string text, CancellationToken ct) =>
         stream.WriteAsync(Encoding.ASCII.GetBytes(text), ct).AsTask();
+
+    /// <summary>
+    /// Runs a per-message interceptor loop without an origin connection. Used as a
+    /// fallback when the origin is unreachable but a plugin registered an interceptor.
+    /// The proxy becomes the WebSocket server (via <see cref="WebSocketMockResponder"/>)
+    /// and dispatches each client message through the interceptor; unmatched messages
+    /// are silently dropped since there is no origin to forward them to.
+    /// When <paramref name="onMessage"/> is set, both incoming client messages and
+    /// interceptor/onConnected responses are captured so HAR output is complete.
+    /// </summary>
+    private static async Task RunInterceptorOnlyAsync(
+        Func<WebSocketMessage, IWebSocketConnection, CancellationToken, Task<bool>> interceptor,
+        Func<IWebSocketConnection, CancellationToken, Task>? onConnected,
+        IWebSocketConnection connection,
+        Action<WebSocketMessageRecord>? onMessage,
+        CancellationToken ct)
+    {
+        // Wrap so interceptor/onConnected sends to the client are captured as "receive".
+        var scriptedConnection = onMessage is not null
+            ? new CapturingWebSocketConnection(connection, onMessage)
+            : connection;
+
+        if (onConnected is not null)
+        {
+            await onConnected(scriptedConnection, ct).ConfigureAwait(false);
+        }
+
+        while (!ct.IsCancellationRequested)
+        {
+            var msg = await connection.ReceiveAsync(ct).ConfigureAwait(false);
+            if (msg is null)
+            {
+                break;
+            }
+
+            if (msg.Type == WebSocketMessageType.Close)
+            {
+                // Record the client→proxy close (a "send" from the client) before ending.
+                onMessage?.Invoke(new WebSocketMessageRecord(
+                    WebSocketMessageDirection.Send,
+                    WebSocketMessageType.Close,
+                    ReadOnlyMemory<byte>.Empty,
+                    DateTimeOffset.UtcNow));
+                break;
+            }
+
+            // Record the incoming client message.
+            onMessage?.Invoke(new WebSocketMessageRecord(
+                WebSocketMessageDirection.Send,
+                msg.Type,
+                msg.Data,
+                DateTimeOffset.UtcNow));
+
+            // Offer to the interceptor. If not handled, drop — no origin to forward to.
+            _ = await interceptor(msg, scriptedConnection, ct).ConfigureAwait(false);
+        }
+    }
 }

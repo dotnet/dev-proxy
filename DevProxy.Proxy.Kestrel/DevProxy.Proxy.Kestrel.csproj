@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="DevProxy.Proxy.Kestrel.Tests" />
+    <InternalsVisibleTo Include="DevProxy.Integration.Tests" />
   </ItemGroup>
 
   <ItemGroup>
