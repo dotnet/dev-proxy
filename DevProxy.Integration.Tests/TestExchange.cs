@@ -97,4 +97,22 @@ internal sealed class TestExchange
     /// </summary>
     public RequestLog AsRequestLog(MessageType messageType = MessageType.InterceptedRequest) =>
         new($"{Session.Request.Method} {Session.Request.Url}", messageType, new LoggingContext(Session));
+
+    /// <summary>
+    /// Builds a WebSocket upgrade exchange (GET with <c>Upgrade: websocket</c> + a
+    /// <c>101 Switching Protocols</c> response) and records the supplied relayed
+    /// messages on the session, exactly as the engine does after the handshake. Used to
+    /// exercise the WebSocket HAR extension (<c>_resourceType</c> / <c>_webSocketMessages</c>).
+    /// </summary>
+    public static TestExchange WebSocket(string url, params WebSocketMessageRecord[] messages)
+    {
+        var exchange = Request("GET", url, headers: [("Upgrade", "websocket"), ("Connection", "Upgrade")])
+            .WithResponse(HttpStatusCode.SwitchingProtocols);
+        foreach (var message in messages)
+        {
+            exchange.Session.RecordWebSocketMessage(message);
+        }
+
+        return exchange;
+    }
 }

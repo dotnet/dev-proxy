@@ -4,6 +4,7 @@
 
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Models;
 using DevProxy.Plugins.Utils;
@@ -11,6 +12,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Globalization;
+using System.Net.WebSockets;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Web;
@@ -162,8 +164,37 @@ public sealed class HarGeneratorPlugin(
             } : null
         };
 
+        // Attach WebSocket messages (if any) following the Chrome/mitmproxy convention.
+        var wsMessages = log.Context.Session.WebSocketMessages;
+        if (request.IsWebSocketRequest && wsMessages.Count > 0)
+        {
+            entry.ResourceType = "websocket";
+            entry.WebSocketMessages = [.. wsMessages.Select(m =>
+            {
+                var isText = m.Type == WebSocketMessageType.Text;
+                return new HarWebSocketMessage
+                {
+                    Type = m.Direction == WebSocketMessageDirection.Send ? "send" : "receive",
+                    Time = m.Timestamp.ToUnixTimeMilliseconds() / 1000.0,
+                    Opcode = ToRfc6455Opcode(m.Type),
+                    Data = isText ? m.Text : Convert.ToBase64String(m.Data.Span)
+                };
+            })];
+        }
+
         return entry;
     }
+
+    // Maps the framework WebSocketMessageType to the RFC 6455 opcode used by the
+    // Chrome DevTools / mitmproxy _webSocketMessages convention (1=text, 2=binary,
+    // 8=close). WebSocketMessageType values (0/1/2) are NOT the wire opcodes.
+    private static int ToRfc6455Opcode(WebSocketMessageType type) => type switch
+    {
+        WebSocketMessageType.Text => 1,
+        WebSocketMessageType.Binary => 2,
+        WebSocketMessageType.Close => 8,
+        _ => 1
+    };
 
     private static string UnescapeSurrogatePairs(string json)
     {

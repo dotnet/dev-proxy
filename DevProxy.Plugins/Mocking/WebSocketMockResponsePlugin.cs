@@ -32,19 +32,22 @@ public sealed class WebSocketMockResponseConfiguration
 }
 
 /// <summary>
-/// Mocks WebSocket conversations: matched <c>ws://</c>/<c>wss://</c> upgrades are answered
-/// by the proxy itself (the origin is never contacted) and a scripted exchange runs over
-/// the connection. This is the WebSocket analogue of <see cref="MockResponsePlugin"/>.
+/// Mocks WebSocket messages: matched <c>ws://</c>/<c>wss://</c> upgrades are connected
+/// to the origin normally, but individual client messages that match a mock rule are
+/// intercepted — the mock response is sent to the client and the message is not forwarded
+/// to the origin. Unmatched messages pass through to the origin, just like HTTP mocking.
 ///
 /// <code>
 ///   BeforeRequest: is this a watched WebSocket upgrade with a matching mock?
 ///        │ yes
 ///        ▼
-///   session.HandleWebSocket(handler)   ── engine completes the handshake, then runs:
+///   session.InterceptWebSocketMessages(interceptor, onConnected)
 ///        │
-///        ├─ send each OnConnect message
-///        └─ loop: receive client message → first matching Rule → send Responses
-///                                         (no match → CloseOnUnmatched ? close : ignore)
+///        ├─ onConnected: send each OnConnect message to the client
+///        └─ interceptor: for each client message:
+///              ├─ matches a Rule → send mock Responses, don't forward to origin
+///              ├─ no match       → forward to origin (passthrough)
+///              └─ CloseOnUnmatched? close the connection
 /// </code>
 /// </summary>
 public sealed class WebSocketMockResponsePlugin(
@@ -164,62 +167,68 @@ public sealed class WebSocketMockResponsePlugin(
 
         // Clone so concurrent connections don't share/mutate the same instance.
         var scripted = (WebSocketMock)mock.Clone();
-        // NOTE: do NOT set ResponseState.HasBeenSet here. The mock is served over the
-        // WebSocket transport, not as an HTTP response — leaving the session in the
-        // Watched phase (no HTTP response) lets the engine's IsWebSocketRequest branch
-        // dispatch to the WebSocketMockResponder. Setting HasBeenSet would short-circuit
-        // the pipeline into the Mocked/ResponseWriter path and corrupt the handshake.
-        e.ProxySession.HandleWebSocket((connection, ct) => RunMockAsync(scripted, connection, ct));
+        // Register a per-message interceptor: the engine connects to the origin and
+        // relays traffic, but each client→origin message is offered to our interceptor
+        // first. Matched messages get mock responses; unmatched ones pass through.
+        e.ProxySession.InterceptWebSocketMessages(
+            interceptor: (message, client, ct) => InterceptMessageAsync(scripted, message, client, ct),
+            onConnected: scripted.OnConnect.Any()
+                ? (client, ct) => SendOnConnectAsync(scripted, client, ct)
+                : null);
 
-        Logger.LogRequest($"Mocking WebSocket {request.Url}", MessageType.Mocked, new LoggingContext(e.ProxySession));
+        Logger.LogRequest($"Intercepting WebSocket {request.Url}", MessageType.Mocked, new LoggingContext(e.ProxySession));
 
         Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
         return Task.CompletedTask;
     }
 
-    // ── mock conversation pump ──────────────────────────────────────────────
+    // ── per-message interceptor ────────────────────────────────────────────
     //
-    //   send OnConnect messages
-    //   while open:
-    //     receive client message
-    //       └─ first Rule whose Match matches → send Responses (+ optional close)
-    //          no match → CloseOnUnmatched ? close : keep listening
-    private static async Task RunMockAsync(WebSocketMock mock, IWebSocketConnection connection, CancellationToken ct)
+    //   onConnected: send OnConnect messages
+    //   interceptor: for each client message:
+    //     └─ first Rule whose Match matches → send Responses (+ optional close) → return true
+    //        no match → CloseOnUnmatched ? close + return true : return false (passthrough)
+
+    private static async Task SendOnConnectAsync(
+        WebSocketMock mock, IWebSocketConnection client, CancellationToken ct)
     {
         foreach (var message in mock.OnConnect)
         {
-            await SendAsync(connection, message, ct).ConfigureAwait(false);
+            await SendAsync(client, message, ct).ConfigureAwait(false);
         }
+    }
 
-        while (!ct.IsCancellationRequested)
+    private static async Task<bool> InterceptMessageAsync(
+        WebSocketMock mock, WebSocketMessage message, IWebSocketConnection client, CancellationToken ct)
+    {
+        if (message.Type == FrameworkWsMessageType.Close)
         {
-            var received = await connection.ReceiveAsync(ct).ConfigureAwait(false);
-            if (received is null || received.Type == FrameworkWsMessageType.Close)
-            {
-                break;
-            }
-
-            var text = received.Text;
-            var rule = mock.Rules.FirstOrDefault(r => WebSocketMessageMatcher.Matches(r.Match, text));
-            if (rule is null)
-            {
-                if (mock.CloseOnUnmatched)
-                {
-                    break;
-                }
-                continue;
-            }
-
-            foreach (var response in rule.Responses)
-            {
-                await SendAsync(connection, response, ct).ConfigureAwait(false);
-            }
-
-            if (rule.CloseAfter)
-            {
-                break;
-            }
+            return false; // let the relay handle close propagation
         }
+
+        var text = message.Text;
+        var rule = mock.Rules.FirstOrDefault(r => WebSocketMessageMatcher.Matches(r.Match, text));
+        if (rule is null)
+        {
+            if (mock.CloseOnUnmatched)
+            {
+                await client.CloseAsync(ct).ConfigureAwait(false);
+                return true;
+            }
+            return false; // no match — forward to origin
+        }
+
+        foreach (var response in rule.Responses)
+        {
+            await SendAsync(client, response, ct).ConfigureAwait(false);
+        }
+
+        if (rule.CloseAfter)
+        {
+            await client.CloseAsync(ct).ConfigureAwait(false);
+        }
+
+        return true; // handled — don't forward to origin
     }
 
     private static Task SendAsync(IWebSocketConnection connection, WebSocketMessageMock message, CancellationToken ct)
