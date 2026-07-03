@@ -657,8 +657,19 @@ internal sealed class ProxyConnectionHandler(
         while (!ct.IsCancellationRequested)
         {
             var msg = await connection.ReceiveAsync(ct).ConfigureAwait(false);
-            if (msg is null || msg.Type == WebSocketMessageType.Close)
+            if (msg is null)
             {
+                break;
+            }
+
+            if (msg.Type == WebSocketMessageType.Close)
+            {
+                // Record the client→proxy close (a "send" from the client) before ending.
+                onMessage?.Invoke(new WebSocketMessageRecord(
+                    WebSocketMessageDirection.Send,
+                    WebSocketMessageType.Close,
+                    ReadOnlyMemory<byte>.Empty,
+                    DateTimeOffset.UtcNow));
                 break;
             }
 

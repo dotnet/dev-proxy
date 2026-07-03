@@ -117,8 +117,14 @@ internal sealed class WebSocketRelay(ILogger logger)
 
         if (statusCode != (int)HttpStatusCode.SwitchingProtocols)
         {
-            // Origin declined the upgrade. We've relayed its response; there's no
-            // tunnel to splice. Close (a non-101 may carry a body we don't frame yet).
+            // Origin declined the upgrade. There's no tunnel to splice. Forward any
+            // bytes already read past the response head (e.g. the start of an error
+            // body) so the client sees the full non-101 response, then close.
+            if (leftover.Length > 0)
+            {
+                await clientStream.WriteAsync(leftover, ct).ConfigureAwait(false);
+                await clientStream.FlushAsync(ct).ConfigureAwait(false);
+            }
             logger.LogDebug("WebSocket origin {Host} declined upgrade with {Status}", origin.Host, statusCode);
             return true;
         }
@@ -592,6 +598,10 @@ internal sealed class InterceptorClientConnection(
         {
             sendLock.Release();
         }
+        // An interceptor-initiated close is proxy→client, i.e. a "receive" from the
+        // client's perspective — matching how the relay records origin→client closes.
+        onMessage?.Invoke(new WebSocketMessageRecord(
+            WebSocketMessageDirection.Receive, WebSocketMessageType.Close, ReadOnlyMemory<byte>.Empty, DateTimeOffset.UtcNow));
     }
 }
 
@@ -624,8 +634,13 @@ internal sealed class CapturingWebSocketConnection(
     public Task<WebSocketMessage?> ReceiveAsync(CancellationToken cancellationToken) =>
         inner.ReceiveAsync(cancellationToken);
 
-    public Task CloseAsync(CancellationToken cancellationToken) =>
-        inner.CloseAsync(cancellationToken);
+    public async Task CloseAsync(CancellationToken cancellationToken)
+    {
+        await inner.CloseAsync(cancellationToken).ConfigureAwait(false);
+        // A plugin/interceptor-initiated close is proxy→client, i.e. a "receive".
+        onMessage(new WebSocketMessageRecord(
+            WebSocketMessageDirection.Receive, WebSocketMessageType.Close, ReadOnlyMemory<byte>.Empty, DateTimeOffset.UtcNow));
+    }
 }
 
 /// <summary>
