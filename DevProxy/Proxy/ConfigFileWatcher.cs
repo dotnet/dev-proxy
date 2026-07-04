@@ -24,23 +24,9 @@ sealed class ConfigFileWatcher(
     public static bool IsRestarting { get; private set; }
 
     /// <summary>
-    /// Signaled when the proxy has fully stopped and system proxy is deregistered.
-    /// </summary>
-    public static TaskCompletionSource? ProxyStoppedCompletionSource { get; private set; }
-
-    /// <summary>
     /// Resets the restart flag. Called before each proxy run.
     /// </summary>
-    public static void Reset()
-    {
-        IsRestarting = false;
-        ProxyStoppedCompletionSource = null;
-    }
-
-    /// <summary>
-    /// Signals that the proxy has fully stopped.
-    /// </summary>
-    public static void SignalProxyStopped() => ProxyStoppedCompletionSource?.TrySetResult();
+    public static void Reset() => IsRestarting = false;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -93,14 +79,12 @@ sealed class ConfigFileWatcher(
         {
             _logger.LogInformation("Configuration file changed. Restarting proxy...");
             IsRestarting = true;
-            ProxyStoppedCompletionSource = new TaskCompletionSource();
             _hostApplicationLifetime.StopApplication();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error while handling configuration file change. Restart has not been initiated.");
             IsRestarting = false;
-            ProxyStoppedCompletionSource = null;
         }
     }
 
