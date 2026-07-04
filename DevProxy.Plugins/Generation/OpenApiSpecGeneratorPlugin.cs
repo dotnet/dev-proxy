@@ -243,6 +243,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
             "PATCH" => HttpMethod.Patch,
             "POST" => HttpMethod.Post,
             "PUT" => HttpMethod.Put,
+            "QUERY" => HttpMethod.Query,
             "TRACE" => HttpMethod.Trace,
             _ => throw new NotSupportedException($"Method {request.Method} is not supported")
         };

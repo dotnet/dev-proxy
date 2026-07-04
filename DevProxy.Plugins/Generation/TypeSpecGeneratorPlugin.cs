@@ -81,6 +81,8 @@ public sealed class TypeSpecGeneratorPlugin(
               request.Method is null ||
               // TypeSpec does not support OPTIONS requests
               string.Equals(request.Context.Session.HttpClient.Request.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase) ||
+              // TypeSpec's @http library has no verb decorator for QUERY, so it can't be represented
+              string.Equals(request.Context.Session.HttpClient.Request.Method, "QUERY", StringComparison.OrdinalIgnoreCase) ||
               !ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri))
             {
                 continue;
