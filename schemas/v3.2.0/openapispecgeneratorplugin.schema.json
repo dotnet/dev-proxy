@@ -19,9 +19,11 @@
       "type": "string",
       "enum": [
         "v2_0",
-        "v3_0"
+        "v3_0",
+        "v3_1",
+        "v3_2"
       ],
-      "description": "Specifies the OpenAPI spec version to generate. Allowed values: 'v2_0' or 'v3_0'. Default: 'v3_0'."
+      "description": "Specifies the OpenAPI spec version to generate. Allowed values: 'v2_0', 'v3_0', 'v3_1' or 'v3_2'. Default: 'v3_0'."
     },
     "specFormat": {
       "type": "string",
