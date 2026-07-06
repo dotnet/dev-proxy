@@ -18,10 +18,10 @@ internal sealed class CertificateDiskCache : ICertificateCache
 
     private string? rootCertificatePath;
 
-    public Task<X509Certificate2?> LoadRootCertificateAsync(string pathOrName, string password, X509KeyStorageFlags storageFlags, CancellationToken cancellationToken)
+    public async Task<X509Certificate2?> LoadRootCertificateAsync(string pathOrName, string password, X509KeyStorageFlags storageFlags, CancellationToken cancellationToken)
     {
         var path = GetRootCertificatePath(pathOrName, false);
-        return Task.FromResult(LoadCertificate(path, password, storageFlags));
+        return await LoadCertificateAsync(path, password, storageFlags, cancellationToken);
     }
 
     public async Task SaveRootCertificateAsync(string pathOrName, string password, X509Certificate2 certificate, CancellationToken cancellationToken)
@@ -31,10 +31,10 @@ internal sealed class CertificateDiskCache : ICertificateCache
         await File.WriteAllBytesAsync(path, exported, cancellationToken);
     }
 
-    public Task<X509Certificate2?> LoadCertificateAsync(string subjectName, X509KeyStorageFlags storageFlags, CancellationToken cancellationToken)
+    public async Task<X509Certificate2?> LoadCertificateAsync(string subjectName, X509KeyStorageFlags storageFlags, CancellationToken cancellationToken)
     {
         var filePath = Path.Combine(GetCertificatePath(false), subjectName + DefaultCertificateFileExtension);
-        return Task.FromResult(LoadCertificate(filePath, string.Empty, storageFlags));
+        return await LoadCertificateAsync(filePath, string.Empty, storageFlags, cancellationToken);
     }
 
     public async Task SaveCertificateAsync(string subjectName, X509Certificate2 certificate, CancellationToken cancellationToken)
@@ -118,7 +118,7 @@ internal sealed class CertificateDiskCache : ICertificateCache
         return rootCertificatePath;
     }
 
-    private static X509Certificate2? LoadCertificate(string path, string password, X509KeyStorageFlags storageFlags)
+    private static async Task<X509Certificate2?> LoadCertificateAsync(string path, string password, X509KeyStorageFlags storageFlags, CancellationToken cancellationToken)
     {
         byte[] exported;
 
@@ -129,7 +129,7 @@ internal sealed class CertificateDiskCache : ICertificateCache
 
         try
         {
-            exported = File.ReadAllBytes(path);
+            exported = await File.ReadAllBytesAsync(path, cancellationToken);
         }
         catch (IOException)
         {
