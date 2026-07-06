@@ -18,10 +18,10 @@ internal sealed class CertificateDiskCache : ICertificateCache
 
     private string? rootCertificatePath;
 
-    public async Task<X509Certificate2?> LoadRootCertificateAsync(string pathOrName, string password, X509KeyStorageFlags storageFlags, CancellationToken cancellationToken)
+    public Task<X509Certificate2?> LoadRootCertificateAsync(string pathOrName, string password, X509KeyStorageFlags storageFlags, CancellationToken cancellationToken)
     {
         var path = GetRootCertificatePath(pathOrName, false);
-        return await LoadCertificateAsync(path, password, storageFlags, cancellationToken);
+        return LoadCertificateAsync(path, password, storageFlags, cancellationToken);
     }
 
     public async Task SaveRootCertificateAsync(string pathOrName, string password, X509Certificate2 certificate, CancellationToken cancellationToken)
@@ -31,10 +31,10 @@ internal sealed class CertificateDiskCache : ICertificateCache
         await File.WriteAllBytesAsync(path, exported, cancellationToken);
     }
 
-    public async Task<X509Certificate2?> LoadCertificateAsync(string subjectName, X509KeyStorageFlags storageFlags, CancellationToken cancellationToken)
+    public Task<X509Certificate2?> LoadCertificateAsync(string subjectName, X509KeyStorageFlags storageFlags, CancellationToken cancellationToken)
     {
         var filePath = Path.Combine(GetCertificatePath(false), subjectName + DefaultCertificateFileExtension);
-        return await LoadCertificateAsync(filePath, string.Empty, storageFlags, cancellationToken);
+        return LoadCertificateAsync(filePath, string.Empty, storageFlags, cancellationToken);
     }
 
     public async Task SaveCertificateAsync(string subjectName, X509Certificate2 certificate, CancellationToken cancellationToken)
