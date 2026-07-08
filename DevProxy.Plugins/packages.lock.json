@@ -522,8 +522,8 @@
       },
       "YamlDotNet": {
         "type": "Transitive",
-        "resolved": "18.0.0",
-        "contentHash": "ptHVgcYmLejGuWXV7RMFoEqFKYMXnieOlWLPzEslfDtzZ9ngMhjYwykfqjBN2+fMEAEyobozkj07lKEpR4dssA=="
+        "resolved": "18.1.0",
+        "contentHash": "5K+9KFg2TdTl7VXv88Qzi/0lqK6JFoNP3lRuImPYGRV7K/QYklDyTrj4+A+KAki1JsQi6qKY+hDyY7d6WRqjrw=="
       },
       "devproxy.abstractions": {
         "type": "Project",
@@ -541,7 +541,7 @@
           "Scriban": "[7.2.5, )",
           "System.CommandLine": "[2.0.9, )",
           "Unobtanium.Web.Proxy": "[0.1.5, )",
-          "YamlDotNet": "[18.0.0, )"
+          "YamlDotNet": "[18.1.0, )"
         }
       }
     }
