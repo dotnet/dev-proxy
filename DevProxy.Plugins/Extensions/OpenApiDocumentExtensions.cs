@@ -71,6 +71,7 @@ static class OpenApiDocumentExtensions
                 "OPTIONS" => HttpMethod.Options,
                 "HEAD" => HttpMethod.Head,
                 "PATCH" => HttpMethod.Patch,
+                "QUERY" => HttpMethod.Query,
                 "TRACE" => HttpMethod.Trace,
                 _ => null
             };
