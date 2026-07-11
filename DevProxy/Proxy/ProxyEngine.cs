@@ -159,6 +159,17 @@ sealed class ProxyEngine(
             _logger.LogInformation("Dev Proxy listening on {IPAddress}:{Port}...", endPoint.IpAddress, endPoint.Port);
         }
 
+        // Recover from a system-proxy registration left behind by a previous
+        // instance that crashed before restoring the OS proxy, so a stale
+        // registration doesn't linger across runs.
+        var reconciliation = await SystemProxyManager.ReconcileOrphanedSystemProxiesAsync(stoppingToken);
+        foreach (var orphan in reconciliation.Orphans)
+        {
+            _logger.LogInformation(
+                "Recovered system proxy left by a crashed Dev Proxy instance (PID: {Pid}).",
+                orphan.Pid);
+        }
+
         if (_config.AsSystemProxy)
         {
             if (RunTime.IsWindows)

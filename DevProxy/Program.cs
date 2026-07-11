@@ -51,6 +51,24 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
 {
     var isJsonOutput = IsJsonOutputRequested(args);
 
+    // Recover from a system-proxy registration left behind by a previous
+    // instance that crashed before restoring the OS proxy. This must run before
+    // any state-loading call below, which prunes (deletes) the stale state files
+    // it depends on without restoring the proxy.
+    var reconciliation = await SystemProxyManager.ReconcileOrphanedSystemProxiesAsync();
+    foreach (var orphan in reconciliation.Orphans)
+    {
+        var message = $"Recovered system proxy left by a crashed Dev Proxy instance (PID: {orphan.Pid}).";
+        if (isJsonOutput)
+        {
+            await Console.Out.WriteLineAsync(FormatJsonLogEntry("info", message));
+        }
+        else
+        {
+            await Console.Out.WriteLineAsync(message);
+        }
+    }
+
     // Check if an instance is already running as system proxy
     var systemProxyInstance = await StateManager.FindSystemProxyInstanceAsync();
     if (systemProxyInstance is not null)

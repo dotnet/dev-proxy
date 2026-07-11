@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Proxy;
 using DevProxy.State;
 using System.CommandLine;
 using System.Diagnostics;
@@ -34,18 +35,16 @@ internal sealed class StopCommand : Command
 
         if (pid is not null)
         {
-            var state = await StateManager.LoadStateByPidAsync(pid.Value, cancellationToken);
-            if (state is null)
-            {
-                Console.WriteLine($"No running Dev Proxy instance with PID {pid.Value}.");
-                return 1;
-            }
-
-            return await StopInstanceAsync(state, force, cancellationToken);
+            return await StopByPidAsync(pid.Value, force, cancellationToken);
         }
 
+        // Reconcile any system-proxy registrations left behind by crashed
+        // instances first — this must run before LoadAllStatesAsync, which prunes
+        // (deletes) the stale state files it depends on.
+        var reconciliation = await SystemProxyManager.ReconcileOrphanedSystemProxiesAsync(cancellationToken);
+
         var states = await StateManager.LoadAllStatesAsync(cancellationToken);
-        if (states.Count == 0)
+        if (states.Count == 0 && reconciliation.Orphans.Count == 0)
         {
             Console.WriteLine("Dev Proxy is not running.");
             return 1;
@@ -61,7 +60,53 @@ internal sealed class StopCommand : Command
             }
         }
 
+        ReportReconciledOrphans(reconciliation);
+
         return exitCode;
+    }
+
+    private static async Task<int> StopByPidAsync(int pid, bool force, CancellationToken cancellationToken)
+    {
+        // Capture a potential orphaned system-proxy record before LoadStateByPidAsync
+        // prunes (deletes) the stale state file for a dead PID.
+        var orphan = (await StateManager.GetOrphanedSystemProxyStatesAsync(cancellationToken))
+            .Find(o => o.Pid == pid);
+
+        var state = await StateManager.LoadStateByPidAsync(pid, cancellationToken);
+        if (state is not null)
+        {
+            return await StopInstanceAsync(state, force, cancellationToken);
+        }
+
+        if (orphan is not null)
+        {
+            var liveOwner = await StateManager.FindSystemProxyInstanceAsync(cancellationToken);
+            if (liveOwner is null)
+            {
+                SystemProxyManager.Disable();
+                Console.WriteLine($"Restored system proxy left by crashed Dev Proxy (PID: {pid}).");
+            }
+            else
+            {
+                Console.WriteLine($"Removed stale record for crashed Dev Proxy (PID: {pid}); system proxy is owned by a running instance (PID: {liveOwner.Pid}).");
+            }
+
+            await StateManager.DeleteStateAsync(pid, cancellationToken);
+            return 0;
+        }
+
+        Console.WriteLine($"No running Dev Proxy instance with PID {pid}.");
+        return 1;
+    }
+
+    private static void ReportReconciledOrphans(SystemProxyManager.OrphanReconciliation reconciliation)
+    {
+        foreach (var orphan in reconciliation.Orphans)
+        {
+            Console.WriteLine(reconciliation.SystemProxyDisabled
+                ? $"Restored system proxy left by crashed Dev Proxy (PID: {orphan.Pid})."
+                : $"Removed stale record for crashed Dev Proxy (PID: {orphan.Pid}); system proxy is owned by a running instance.");
+        }
     }
 
     private static async Task<int> StopInstanceAsync(ProxyInstanceState state, bool force, CancellationToken cancellationToken)
@@ -146,7 +191,12 @@ internal sealed class StopCommand : Command
 
     private static async Task<int> ForceStopAsync(ProxyInstanceState state, CancellationToken cancellationToken)
     {
-        DisableSystemProxy();
+        // A killed process can't run its own cleanup, so restore the system proxy
+        // on its behalf before terminating it.
+        if (state.AsSystemProxy)
+        {
+            SystemProxyManager.Disable();
+        }
 
         try
         {
@@ -171,47 +221,5 @@ internal sealed class StopCommand : Command
 
         await StateManager.DeleteStateAsync(state.Pid, cancellationToken);
         return 0;
-    }
-
-    /// <summary>
-    /// Disables the system proxy on macOS by calling toggle-proxy.sh off.
-    /// This ensures the system proxy settings are cleaned up even when the
-    /// daemon process is killed forcefully (SIGKILL cannot be caught).
-    /// </summary>
-    private static void DisableSystemProxy()
-    {
-        if (!OperatingSystem.IsMacOS())
-        {
-            return;
-        }
-
-        var bashScriptPath = Path.Join(AppContext.BaseDirectory, "toggle-proxy.sh");
-        if (!File.Exists(bashScriptPath))
-        {
-            return;
-        }
-
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "/bin/bash",
-            Arguments = $"{bashScriptPath} off",
-            RedirectStandardOutput = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
-        try
-        {
-            using var process = new Process { StartInfo = startInfo };
-            process.Start();
-            if (!process.WaitForExit(TimeSpan.FromSeconds(10)))
-            {
-                process.Kill();
-            }
-        }
-        catch
-        {
-            // Best-effort cleanup — don't block the stop flow
-        }
     }
 }
