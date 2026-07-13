@@ -109,11 +109,12 @@ internal static class SystemProxyManager
         var startInfo = new ProcessStartInfo
         {
             FileName = "/bin/bash",
-            Arguments = $"{bashScriptPath} off",
             RedirectStandardOutput = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        startInfo.ArgumentList.Add(bashScriptPath);
+        startInfo.ArgumentList.Add("off");
 
         using var process = new Process { StartInfo = startInfo };
         _ = process.Start();

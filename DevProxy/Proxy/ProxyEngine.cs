@@ -165,9 +165,18 @@ sealed class ProxyEngine(
         var reconciliation = await SystemProxyManager.ReconcileOrphanedSystemProxiesAsync(stoppingToken);
         foreach (var orphan in reconciliation.Orphans)
         {
-            _logger.LogInformation(
-                "Recovered system proxy left by a crashed Dev Proxy instance (PID: {Pid}).",
-                orphan.Pid);
+            if (reconciliation.SystemProxyDisabled)
+            {
+                _logger.LogInformation(
+                    "Recovered system proxy left by a crashed Dev Proxy instance (PID: {Pid}).",
+                    orphan.Pid);
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "Removed stale system-proxy registration left by a crashed Dev Proxy instance (PID: {Pid}) while keeping the current system proxy owner unchanged.",
+                    orphan.Pid);
+            }
         }
 
         if (_config.AsSystemProxy)

@@ -58,7 +58,9 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
     var reconciliation = await SystemProxyManager.ReconcileOrphanedSystemProxiesAsync();
     foreach (var orphan in reconciliation.Orphans)
     {
-        var message = $"Recovered system proxy left by a crashed Dev Proxy instance (PID: {orphan.Pid}).";
+        var message = reconciliation.SystemProxyDisabled
+            ? $"Recovered system proxy left by a crashed Dev Proxy instance (PID: {orphan.Pid})."
+            : $"Removed stale system-proxy registration left by a crashed Dev Proxy instance (PID: {orphan.Pid}) while keeping the current system proxy owner unchanged.";
         if (isJsonOutput)
         {
             await Console.Out.WriteLineAsync(FormatJsonLogEntry("info", message));
