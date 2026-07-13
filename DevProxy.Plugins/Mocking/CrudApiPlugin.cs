@@ -19,6 +19,7 @@ using System.Net;
 using System.Security.Claims;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using System.Web;
 using Titanium.Web.Proxy.EventArguments;
 using Titanium.Web.Proxy.Http;
 using Titanium.Web.Proxy.Models;
@@ -307,8 +308,8 @@ public sealed class CrudApiPlugin(
             }
 
             // match query string parameters individually (order-independent)
-            var actionQueryParams = System.Web.HttpUtility.ParseQueryString(actionQuery.TrimStart('?'));
-            var requestQueryParams = System.Web.HttpUtility.ParseQueryString(requestQuery.TrimStart('?'));
+            var actionQueryParams = HttpUtility.ParseQueryString(actionQuery.TrimStart('?'));
+            var requestQueryParams = HttpUtility.ParseQueryString(requestQuery.TrimStart('?'));
 
             foreach (string? key in actionQueryParams.AllKeys)
             {
