@@ -199,6 +199,9 @@ internal sealed class ProxySession(
         using var stdin = Console.OpenStandardInput();
         // Buffer for accumulating partial messages that don't end with a newline
         var pendingData = new StringBuilder();
+        // Decoder maintains state across calls to handle multi-byte UTF-8
+        // characters that may be split across buffer boundaries
+        var decoder = Encoding.UTF8.GetDecoder();
 
         try
         {
@@ -238,8 +241,10 @@ internal sealed class ProxySession(
                 // Split the buffer into individual newline-delimited messages.
                 // A single read may contain multiple messages when they arrive
                 // back-to-back (e.g., a notification followed by a request).
-                var chunk = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                pendingData.Append(chunk);
+                var charCount = decoder.GetCharCount(buffer, 0, bytesRead, flush: false);
+                var chars = new char[charCount];
+                decoder.GetChars(buffer, 0, bytesRead, chars, 0, flush: false);
+                pendingData.Append(chars);
 
                 var pending = pendingData.ToString();
                 var lines = pending.Split('\n');
