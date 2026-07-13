@@ -197,6 +197,8 @@ internal sealed class ProxySession(
     {
         var buffer = new byte[4096];
         using var stdin = Console.OpenStandardInput();
+        // Buffer for accumulating partial messages that don't end with a newline
+        var pendingData = new StringBuilder();
 
         try
         {
@@ -231,57 +233,90 @@ internal sealed class ProxySession(
                     break;
                 }
 
-                var data = buffer[..bytesRead];
                 Log("STDIN >>>", buffer, bytesRead);
 
-                // Log intercepted stdin (similar to HTTP InterceptedRequest)
-                await LogInterceptedStdioAsync(data, StdioMessageDirection.Stdin);
+                // Split the buffer into individual newline-delimited messages.
+                // A single read may contain multiple messages when they arrive
+                // back-to-back (e.g., a notification followed by a request).
+                var chunk = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                pendingData.Append(chunk);
 
-                // Execute plugins and check if message was consumed
-                var responseState = new ResponseState();
-                var requestArgs = new StdioRequestArgs
+                var pending = pendingData.ToString();
+                var lines = pending.Split('\n');
+
+                // If the chunk doesn't end with a newline, the last element is
+                // a partial message that needs to be carried over to the next read.
+                if (!pending.EndsWith('\n'))
                 {
-                    Body = data,
-                    ResponseState = responseState,
-                    Session = _stdioSession!,
-                    SessionData = _sessionData,
-                    GlobalData = _globalData
-                };
-
-                await ExecuteBeforeStdinPluginsAsync(requestArgs);
-
-                // Only forward to child if not consumed
-                if (!responseState.HasBeenSet)
-                {
-                    await _writeSemaphore.WaitAsync(_cts.Token);
-                    try
-                    {
-                        await _childStdin!.WriteAsync(buffer.AsMemory(0, bytesRead), _cts.Token);
-                        await _childStdin.FlushAsync(_cts.Token);
-                    }
-                    finally
-                    {
-                        _ = _writeSemaphore.Release();
-                    }
+                    pendingData.Clear();
+                    pendingData.Append(lines[^1]);
+                    lines = lines[..^1];
                 }
                 else
                 {
-                    // Send mock response if set by a plugin
-                    await SendMockResponseAsync(requestArgs);
+                    pendingData.Clear();
                 }
 
-                // Create request log entry for this stdin message
-                var requestLog = new StdioRequestLog
+                foreach (var line in lines)
                 {
-                    Command = _stdioSession!.Command,
-                    StdinBody = data,
-                    StdinTimestamp = DateTimeOffset.UtcNow,
-                    MessageType = responseState.HasBeenSet ? MessageType.Mocked : MessageType.PassedThrough
-                };
-                _requestLogs.Add(requestLog);
+                    var message = line.TrimEnd('\r');
+                    if (message.Length == 0)
+                    {
+                        continue;
+                    }
 
-                // Notify plugins of the request log
-                await NotifyStdioRequestLogAsync(requestLog);
+                    var messageBytes = Encoding.UTF8.GetBytes(message);
+
+                    // Log intercepted stdin (similar to HTTP InterceptedRequest)
+                    await LogInterceptedStdioAsync(messageBytes, StdioMessageDirection.Stdin);
+
+                    // Execute plugins and check if message was consumed
+                    var responseState = new ResponseState();
+                    var requestArgs = new StdioRequestArgs
+                    {
+                        Body = messageBytes,
+                        ResponseState = responseState,
+                        Session = _stdioSession!,
+                        SessionData = _sessionData,
+                        GlobalData = _globalData
+                    };
+
+                    await ExecuteBeforeStdinPluginsAsync(requestArgs);
+
+                    // Only forward to child if not consumed
+                    if (!responseState.HasBeenSet)
+                    {
+                        var forwardBytes = Encoding.UTF8.GetBytes(message + "\n");
+                        await _writeSemaphore.WaitAsync(_cts.Token);
+                        try
+                        {
+                            await _childStdin!.WriteAsync(forwardBytes.AsMemory(), _cts.Token);
+                            await _childStdin.FlushAsync(_cts.Token);
+                        }
+                        finally
+                        {
+                            _ = _writeSemaphore.Release();
+                        }
+                    }
+                    else
+                    {
+                        // Send mock response if set by a plugin
+                        await SendMockResponseAsync(requestArgs);
+                    }
+
+                    // Create request log entry for this stdin message
+                    var requestLog = new StdioRequestLog
+                    {
+                        Command = _stdioSession!.Command,
+                        StdinBody = messageBytes,
+                        StdinTimestamp = DateTimeOffset.UtcNow,
+                        MessageType = responseState.HasBeenSet ? MessageType.Mocked : MessageType.PassedThrough
+                    };
+                    _requestLogs.Add(requestLog);
+
+                    // Notify plugins of the request log
+                    await NotifyStdioRequestLogAsync(requestLog);
+                }
             }
         }
         catch (OperationCanceledException)
