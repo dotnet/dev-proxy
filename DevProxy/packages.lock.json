@@ -233,8 +233,8 @@
       },
       "Microsoft.OpenApi": {
         "type": "Transitive",
-        "resolved": "3.7.0",
-        "contentHash": "7Ld/wUsxSEKBjAk8nPZ13qkju5kNoh20gf0JHPeHrK41tMZRpIq9amXFAOHncicjg0U5M035I+6/z3cBsYBHfg=="
+        "resolved": "3.8.0",
+        "contentHash": "bF+KnfJSd9KLUOZxl07IdhmQcvz/adqU+GVub7+SVOydHpJGOGIWqwngZ3JxgtDpKYRA6vlk+0tv82G0KXRuhw=="
       },
       "Microsoft.OpenApi.YamlReader": {
         "type": "Transitive",
@@ -349,7 +349,7 @@
         "dependencies": {
           "Markdig": "[1.3.2, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.9, )",
-          "Microsoft.OpenApi": "[3.7.0, )",
+          "Microsoft.OpenApi": "[3.8.0, )",
           "Microsoft.OpenApi.YamlReader": "[3.7.0, )",
           "Newtonsoft.Json.Schema": "[4.0.1, )",
           "Scriban": "[7.2.5, )",
