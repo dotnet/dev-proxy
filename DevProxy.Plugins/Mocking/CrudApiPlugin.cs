@@ -19,6 +19,7 @@ using System.Net;
 using System.Security.Claims;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using System.Web;
 using Titanium.Web.Proxy.EventArguments;
 using Titanium.Web.Proxy.Http;
 using Titanium.Web.Proxy.Models;
@@ -246,6 +247,7 @@ public sealed class CrudApiPlugin(
         });
 
         var requestUrlWithoutQuery = request.RequestUri.GetLeftPart(UriPartial.Path);
+        var requestQuery = request.RequestUri.Query;
         var parameters = new Dictionary<string, string>();
         var action = Configuration.Actions.FirstOrDefault(action =>
         {
@@ -256,33 +258,85 @@ public sealed class CrudApiPlugin(
 
             var absoluteActionUrl = (Configuration.BaseUrl + action.Url).Replace("//", "/", 8);
 
-            if (absoluteActionUrl == requestUrlWithoutQuery)
+            // split action URL into path and query parts
+            string actionPath;
+            string? actionQuery = null;
+            var queryIndex = absoluteActionUrl.IndexOf('?', StringComparison.OrdinalIgnoreCase);
+            if (queryIndex >= 0)
+            {
+                actionPath = absoluteActionUrl[..queryIndex];
+                actionQuery = absoluteActionUrl[queryIndex..];
+            }
+            else
+            {
+                actionPath = absoluteActionUrl;
+            }
+
+            // match the path part
+            var pathMatched = false;
+            if (actionPath == requestUrlWithoutQuery)
+            {
+                pathMatched = true;
+            }
+            else if (actionPath.Contains('{', StringComparison.OrdinalIgnoreCase))
+            {
+                var pathRegex = Regex.Replace(Regex.Escape(actionPath).Replace("\\{", "{", StringComparison.OrdinalIgnoreCase), "({[^}]+})", parameterMatchEvaluator);
+                var pathMatch = Regex.Match(requestUrlWithoutQuery, pathRegex);
+                if (pathMatch.Success)
+                {
+                    pathMatched = true;
+                    foreach (var groupName in pathMatch.Groups.Keys)
+                    {
+                        if (groupName == "0")
+                        {
+                            continue;
+                        }
+                        parameters[groupName] = Uri.UnescapeDataString(pathMatch.Groups[groupName].Value);
+                    }
+                }
+            }
+
+            if (!pathMatched)
+            {
+                return false;
+            }
+
+            // if the action has no query string definition, it's a match
+            if (string.IsNullOrEmpty(actionQuery))
             {
                 return true;
             }
 
-            // check if the action contains parameters
-            // if it doesn't, it's not a match for the current request for sure
-            if (!absoluteActionUrl.Contains('{', StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
+            // match query string parameters individually (order-independent)
+            var actionQueryParams = HttpUtility.ParseQueryString(actionQuery.TrimStart('?'));
+            var requestQueryParams = HttpUtility.ParseQueryString(requestQuery.TrimStart('?'));
 
-            // convert parameters into named regex groups
-            var urlRegex = Regex.Replace(Regex.Escape(absoluteActionUrl).Replace("\\{", "{", StringComparison.OrdinalIgnoreCase), "({[^}]+})", parameterMatchEvaluator);
-            var match = Regex.Match(requestUrlWithoutQuery, urlRegex);
-            if (!match.Success)
+            foreach (string? key in actionQueryParams.AllKeys)
             {
-                return false;
-            }
-
-            foreach (var groupName in match.Groups.Keys)
-            {
-                if (groupName == "0")
+                if (key is null)
                 {
                     continue;
                 }
-                parameters.Add(groupName, Uri.UnescapeDataString(match.Groups[groupName].Value));
+
+                var actionValue = actionQueryParams[key] ?? string.Empty;
+                var requestValue = requestQueryParams[key];
+
+                if (requestValue is null)
+                {
+                    return false;
+                }
+
+                // check if the action value is a parameter pattern like {param}
+                var paramMatch = Regex.Match(actionValue, "^{([^}]+)}$");
+                if (paramMatch.Success)
+                {
+                    var paramName = paramMatch.Groups[1].Value.Replace('-', '_');
+                    parameters[paramName] = Uri.UnescapeDataString(requestValue);
+                }
+                else if (!string.Equals(actionValue, requestValue, StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
             }
             return true;
         });
