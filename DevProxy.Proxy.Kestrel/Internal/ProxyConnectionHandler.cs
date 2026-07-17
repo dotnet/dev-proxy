@@ -278,7 +278,8 @@ internal sealed class ProxyConnectionHandler(
     private async Task<bool> ExchangeAsync(
         Http1ConnectionReader reader, Stream clientStream, ParsedRequestHead head, string absoluteUrl, CancellationToken ct)
     {
-        if (!Uri.TryCreate(absoluteUrl, UriKind.Absolute, out var requestUri))
+        if (!Uri.TryCreate(absoluteUrl, UriKind.Absolute, out var requestUri)
+            || (requestUri.Scheme != "http" && requestUri.Scheme != "https"))
         {
             await WriteErrorAsync(clientStream, HttpStatusCode.BadRequest, "Malformed request target", ct).ConfigureAwait(false);
             return false;
