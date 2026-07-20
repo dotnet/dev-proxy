@@ -176,6 +176,46 @@ internal static class StateManager
     }
 
     /// <summary>
+    /// Finds state records left behind by instances that registered as the
+    /// system proxy but whose process is no longer alive (e.g. crashed or killed
+    /// before running cleanup). These represent orphaned system-proxy
+    /// registrations that outlived the process and should be reconciled by
+    /// restoring the OS proxy.
+    /// The state files are left in place so the caller can remove them (via
+    /// <see cref="DeleteStateAsync(int, CancellationToken)"/>) only after the
+    /// system proxy has been restored.
+    /// </summary>
+    public static async Task<List<ProxyInstanceState>> GetOrphanedSystemProxyStatesAsync(CancellationToken cancellationToken = default)
+    {
+        var configFolder = GetConfigFolder();
+        if (!Directory.Exists(configFolder))
+        {
+            return [];
+        }
+
+        var orphaned = new List<ProxyInstanceState>();
+        var seenPids = new HashSet<int>();
+
+        var stateFiles = Directory.GetFiles(configFolder, $"{StateFilePrefix}*{StateFileExtension}");
+        var legacyPath = GetStateFilePath();
+        var paths = File.Exists(legacyPath) ? [.. stateFiles, legacyPath] : stateFiles;
+
+        foreach (var filePath in paths)
+        {
+            var state = await ReadStateFromFileAsync(filePath, cancellationToken);
+            if (state is not null &&
+                state.AsSystemProxy &&
+                !IsProcessRunning(state.Pid) &&
+                seenPids.Add(state.Pid))
+            {
+                orphaned.Add(state);
+            }
+        }
+
+        return orphaned;
+    }
+
+    /// <summary>
     /// Deletes the state file for a specific PID.
     /// Also cleans up the legacy state file if it belongs to this PID.
     /// </summary>
@@ -256,6 +296,33 @@ internal static class StateManager
         string filePath,
         CancellationToken cancellationToken)
     {
+        var state = await ReadStateFromFileAsync(filePath, cancellationToken);
+        if (state is null)
+        {
+            return null;
+        }
+
+        // Verify the process is still running
+        if (!IsProcessRunning(state.Pid))
+        {
+            // Clean up stale state file
+            DeleteFile(filePath);
+            return null;
+        }
+
+        return state;
+    }
+
+    /// <summary>
+    /// Reads and deserializes a state file without verifying process liveness or
+    /// pruning stale files. Returns null if the file doesn't exist or can't be
+    /// parsed. Use this when the caller needs to inspect records of processes that
+    /// may no longer be alive (e.g. crash recovery).
+    /// </summary>
+    private static async Task<ProxyInstanceState?> ReadStateFromFileAsync(
+        string filePath,
+        CancellationToken cancellationToken)
+    {
         if (!File.Exists(filePath))
         {
             return null;
@@ -264,22 +331,7 @@ internal static class StateManager
         try
         {
             var json = await File.ReadAllTextAsync(filePath, cancellationToken);
-            var state = JsonSerializer.Deserialize<ProxyInstanceState>(json);
-
-            if (state is null)
-            {
-                return null;
-            }
-
-            // Verify the process is still running
-            if (!IsProcessRunning(state.Pid))
-            {
-                // Clean up stale state file
-                DeleteFile(filePath);
-                return null;
-            }
-
-            return state;
+            return JsonSerializer.Deserialize<ProxyInstanceState>(json);
         }
         catch (JsonException)
         {
