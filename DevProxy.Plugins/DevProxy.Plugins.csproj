@@ -37,11 +37,11 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.OpenApi" Version="3.7.0">
+    <PackageReference Include="Microsoft.OpenApi" Version="3.8.0">
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.OpenApi.YamlReader" Version="3.7.0">
+    <PackageReference Include="Microsoft.OpenApi.YamlReader" Version="3.8.0">
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
