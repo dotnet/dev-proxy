@@ -6,6 +6,8 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.State;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Win32;
 
 namespace DevProxy.Proxy;
@@ -159,5 +161,45 @@ internal sealed class SystemProxyManager(ILogger<SystemProxyManager> logger) : I
         {
             logger.LogError(ex, "Failed to toggle the system proxy via toggle-proxy.sh.");
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Static helpers for orphan reconciliation (crash-cleanup path).
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// The outcome of reconciling orphaned system-proxy registrations.
+    /// </summary>
+    internal readonly record struct OrphanReconciliation(
+        IReadOnlyList<ProxyInstanceState> Orphans,
+        bool SystemProxyDisabled);
+
+    /// <summary>
+    /// Reconciles system-proxy registrations left behind by crashed instances.
+    /// Restores the OS proxy (unless a live instance still owns it) and removes
+    /// the stale state records. Safe to call when there are no orphans.
+    /// </summary>
+    public static async Task<OrphanReconciliation> ReconcileOrphanedSystemProxiesAsync(CancellationToken cancellationToken = default)
+    {
+        var orphans = await StateManager.GetOrphanedSystemProxyStatesAsync(cancellationToken);
+        if (orphans.Count == 0)
+        {
+            return new([], false);
+        }
+
+        var liveOwner = await StateManager.FindSystemProxyInstanceAsync(cancellationToken);
+        var disabled = false;
+        if (liveOwner is null)
+        {
+            new SystemProxyManager(NullLogger<SystemProxyManager>.Instance).Disable();
+            disabled = true;
+        }
+
+        foreach (var orphan in orphans)
+        {
+            await StateManager.DeleteStateAsync(orphan.Pid, cancellationToken);
+        }
+
+        return new(orphans, disabled);
     }
 }
