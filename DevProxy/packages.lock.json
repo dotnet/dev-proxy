@@ -70,9 +70,9 @@
       },
       "System.CommandLine": {
         "type": "Direct",
-        "requested": "[2.0.9, )",
-        "resolved": "2.0.9",
-        "contentHash": "SW0WhEk4NFVZ4lOnsLrHQOV/7s0eTidezNybHQWXfqhuXWB17X3RXbrifeWBbUx1iu+NcYchVSufmW7svjUEnA=="
+        "requested": "[2.0.10, )",
+        "resolved": "2.0.10",
+        "contentHash": "6i1D6/U3i1f/PiXTt9pDvbJwdXEe0F2DZPup6BHzeIu5yPk/lkFzgtrJnPbj54JWUh8Y9vJeKG/TZIT6MkF8TA=="
       },
       "System.IdentityModel.Tokens.Jwt": {
         "type": "Direct",
@@ -233,15 +233,15 @@
       },
       "Microsoft.OpenApi": {
         "type": "Transitive",
-        "resolved": "3.8.0",
-        "contentHash": "bF+KnfJSd9KLUOZxl07IdhmQcvz/adqU+GVub7+SVOydHpJGOGIWqwngZ3JxgtDpKYRA6vlk+0tv82G0KXRuhw=="
+        "resolved": "3.9.0",
+        "contentHash": "2sDK6AFY1L/Xg8JvwlaDoPwzGqCftjUgHG2NhCy8gNV/1v4eXziYoH39e/pwC7oTBJInuYUUJqfkRpIMPQ/Fyw=="
       },
       "Microsoft.OpenApi.YamlReader": {
         "type": "Transitive",
-        "resolved": "3.8.0",
-        "contentHash": "1mMfB9LsIsYvfcmc0KIhAswzcy58nZDFJnVoV2Cxat4Ij6vOxW1MsMjROpyeDmAE3ueE6vKg7/BZ5uafrd23jw==",
+        "resolved": "3.9.0",
+        "contentHash": "5ZznymAMT7g8SNObLoBzSp3Sg9X+NjfLXOxiDbIQrMz9dksccd3i0FFcIM2YuVSWa6hiUsmQ3Wsrm2X8XrhtHw==",
         "dependencies": {
-          "Microsoft.OpenApi": "3.8.0",
+          "Microsoft.OpenApi": "3.9.0",
           "SharpYaml": "2.1.4"
         }
       },
@@ -349,11 +349,11 @@
         "dependencies": {
           "Markdig": "[1.3.2, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.9, )",
-          "Microsoft.OpenApi": "[3.8.0, )",
-          "Microsoft.OpenApi.YamlReader": "[3.8.0, )",
+          "Microsoft.OpenApi": "[3.9.0, )",
+          "Microsoft.OpenApi.YamlReader": "[3.9.0, )",
           "Newtonsoft.Json.Schema": "[4.0.1, )",
           "Scriban": "[7.2.5, )",
-          "System.CommandLine": "[2.0.9, )",
+          "System.CommandLine": "[2.0.10, )",
           "Unobtanium.Web.Proxy": "[0.1.5, )",
           "YamlDotNet": "[18.1.0, )"
         }
