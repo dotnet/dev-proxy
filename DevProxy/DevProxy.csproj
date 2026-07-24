@@ -38,7 +38,7 @@
     <PackageReference Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="8.19.2" />
     <PackageReference Include="Microsoft.VisualStudio.Threading" Version="18.7.23" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-    <PackageReference Include="OpenTelemetry" Version="1.16.0" />
+    <PackageReference Include="OpenTelemetry" Version="1.17.0" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.16.0" />
     <PackageReference Include="System.CommandLine" Version="2.0.9" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.19.2" />
