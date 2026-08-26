@@ -57,7 +57,7 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="System.CommandLine" Version="2.0.10">
+    <PackageReference Include="System.CommandLine" Version="2.0.11">
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
