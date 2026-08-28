@@ -233,16 +233,16 @@
       },
       "Microsoft.OpenApi": {
         "type": "Transitive",
-        "resolved": "3.10.0",
-        "contentHash": "Iltx5vuQ+TWyuxsLNnLAaqm9RDdOtwWLgJtwH/XSKe/MkdpDQepqDi7it/4OM7JpLsHl1Ir65mm9vpAkbiNlow=="
+        "resolved": "3.10.2",
+        "contentHash": "qzg4a3WmgQm28Azaporbnsu+KHA+vq5sgpQQFLiJgB06Rra2S+kzGAU7pzUB8/UIwZJCSCY2JEE/M5e0hQ2K8w=="
       },
       "Microsoft.OpenApi.YamlReader": {
         "type": "Transitive",
-        "resolved": "3.10.0",
-        "contentHash": "+3nJM24rXJgDlNI77H8w6F1OEL1nAGFd7c1iu+lNjoeZUde63OAEEdvtKVr+KbSdrL0ITnmBY+6xsN0Y1v+rEg==",
+        "resolved": "3.10.2",
+        "contentHash": "qVWoRH8gBWcs2C67e5crYLXPPqK3O8VbzN9G4nxC3Ykjv+Vjv6BJZXx9WyAohe2UT5ZOkHr4LdLJ/ZpaptWdZQ==",
         "dependencies": {
-          "Microsoft.OpenApi": "3.10.0",
-          "SharpYaml": "2.1.4"
+          "Microsoft.OpenApi": "3.10.2",
+          "SharpYaml": "2.1.5"
         }
       },
       "Microsoft.VisualStudio.Threading.Analyzers": {
@@ -291,8 +291,8 @@
       },
       "SharpYaml": {
         "type": "Transitive",
-        "resolved": "2.1.4",
-        "contentHash": "/iwULhVBpTjD4wPZhLU+eUWBanDvri/2AGx5YbaAj5kp9kXzhqUfJEy56H5Yi+c+OXsdm/oKD1aTKB24BFp8cw=="
+        "resolved": "2.1.5",
+        "contentHash": "1pNSpfXxNAgCQ9sacKKpEWO2DxTefoLEjw0v1nWMvyJScUWacoHvjXr4LfcUkhm0qYgNYripFFiUeEzW4tdXIQ=="
       },
       "SQLitePCLRaw.bundle_e_sqlite3": {
         "type": "Transitive",
@@ -349,8 +349,8 @@
         "dependencies": {
           "Markdig": "[1.3.2, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.11, )",
-          "Microsoft.OpenApi": "[3.10.0, )",
-          "Microsoft.OpenApi.YamlReader": "[3.10.0, )",
+          "Microsoft.OpenApi": "[3.10.2, )",
+          "Microsoft.OpenApi.YamlReader": "[3.10.2, )",
           "Newtonsoft.Json.Schema": "[4.0.1, )",
           "Scriban": "[7.2.6, )",
           "System.CommandLine": "[2.0.10, )",
