@@ -243,7 +243,7 @@ jobs:
         with:
           path: output
       - name: Release
-        uses: anton-yurchenko/git-release@ec9c5b5c36b27eaffc628785b9183eae54601200 # v6.0.0
+        uses: anton-yurchenko/git-release@a0b22db344178d5f7a592521092265be69649bf9 # v7.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DRAFT_RELEASE: "false"
