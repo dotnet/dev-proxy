@@ -474,8 +474,8 @@
       },
       "Scriban": {
         "type": "Transitive",
-        "resolved": "7.2.6",
-        "contentHash": "k6DvaRY83jtigNudMoYlN5Zg42JEDDOCSeKrnpHiE5Gthkd9Fr+6VnYFnL3DqtkZTtPezJJdoX3ZfOTTFpQEMg=="
+        "resolved": "7.2.7",
+        "contentHash": "BrVsb+LAwY/3ePGNUW9K6k0ivSD4QmKCSJrUNCj1NVrATfEUqSKIosl/N38YZp4L00xmAi2F95itC878snptMg=="
       },
       "SharpYaml": {
         "type": "Transitive",
@@ -548,7 +548,7 @@
           "Microsoft.OpenApi": "[3.10.2, )",
           "Microsoft.OpenApi.YamlReader": "[3.10.2, )",
           "Newtonsoft.Json.Schema": "[4.0.1, )",
-          "Scriban": "[7.2.6, )",
+          "Scriban": "[7.2.7, )",
           "System.CommandLine": "[2.0.10, )",
           "Unobtanium.Web.Proxy": "[0.1.5, )",
           "YamlDotNet": "[18.1.0, )"
