@@ -56,10 +56,17 @@ done
 echo ""
 echo "Step 3: Updating schema URLs..."
 # JSON files
-for json in DevProxy/devproxyrc.json DevProxy/devproxy-errors.json DevProxy/config/*.json; do
+for json in DevProxy/devproxyrc.json DevProxy/devproxy-errors.json DevProxy/config/*.json DevProxy/config-templates/*.json; do
     if [[ -f "$WORKSPACE_ROOT/$json" ]]; then
         sed -i '' "s|schemas/v$CURRENT_VERSION/|schemas/v$NEW_VERSION/|g" "$WORKSPACE_ROOT/$json"
         echo "  Updated: $json"
+    fi
+done
+
+for yaml in DevProxy/config-templates/*.yaml; do
+    if [[ -f "$WORKSPACE_ROOT/$yaml" ]]; then
+        sed -i '' "s|schemas/v$CURRENT_VERSION/|schemas/v$NEW_VERSION/|g" "$WORKSPACE_ROOT/$yaml"
+        echo "  Updated: $yaml"
     fi
 done
 

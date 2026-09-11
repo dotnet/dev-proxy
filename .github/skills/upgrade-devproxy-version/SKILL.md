@@ -56,6 +56,8 @@ Update `schemas/v<old>/` to `schemas/v<new>/` in:
 - `DevProxy/config/microsoft-graph.json` - all `$schema` URLs
 - `DevProxy/config/microsoft-graph-rate-limiting.json` - `$schema` URL
 - `DevProxy/config/spo-csom-types.json` - `$schema` URL
+- `DevProxy/config-templates/devproxyrc.json` - `$schema` URL
+- `DevProxy/config-templates/devproxyrc.yaml` - `$schema` URL
 - `DevProxy.Plugins/Mocking/MockResponsePlugin.cs` - hardcoded schema URL
 
 **Category C: Installer Files** (format: `X.Y.Z` or `X.Y.Z-beta.N`)
