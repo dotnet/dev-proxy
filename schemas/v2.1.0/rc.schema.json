@@ -9,7 +9,7 @@
       "description": "The URL of the JSON schema used to validate this configuration file. Should match the Dev Proxy version."
     },
     "apiPort": {
-      "type": "number",
+      "type": "integer",
       "minimum": 0,
       "maximum": 65535,
       "description": "Port for the Dev Proxy API server."
@@ -41,7 +41,14 @@
     },
     "ipAddress": {
       "type": "string",
-      "format": "ipv4",
+      "anyOf": [
+        {
+          "format": "ipv4"
+        },
+        {
+          "format": "ipv6"
+        }
+      ],
       "description": "IP address for Dev Proxy to listen on."
     },
     "languageModel": {
@@ -134,13 +141,12 @@
         },
         "required": [
           "name",
-          "enabled",
           "pluginPath"
         ]
       }
     },
     "port": {
-      "type": "number",
+      "type": "integer",
       "minimum": 0,
       "maximum": 65535,
       "description": "Port for Dev Proxy to listen on."
@@ -168,7 +174,7 @@
       "type": "array",
       "description": "List of process IDs to watch for network traffic.",
       "items": {
-        "type": "number"
+        "type": "integer"
       }
     },
     "watchProcessNames": {
@@ -182,8 +188,8 @@
       "type": "boolean",
       "description": "Show timestamps in log output."
     },
-    "timeout": {
-      "type": "number",
+    "timeoutSeconds": {
+      "type": "integer",
       "minimum": 1,
       "description": "Timeout in seconds for requests passing through Dev Proxy."
     }

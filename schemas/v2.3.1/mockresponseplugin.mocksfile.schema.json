@@ -58,9 +58,11 @@
                 "type": [
                   "object",
                   "array",
-                  "string"
+                  "string",
+                  "number",
+                  "boolean"
                 ],
-                "description": "The response body (object, array, or string; can reference a file with '@filename')."
+                "description": "The response body (object, array, string, number, or boolean; strings can reference a file with '@filename')."
               },
               "statusCode": {
                 "type": "integer",

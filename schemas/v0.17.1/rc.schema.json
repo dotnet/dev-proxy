@@ -12,7 +12,14 @@
     },
     "ipAddress": {
       "type": "string",
-      "format": "ipv4"
+      "anyOf": [
+        {
+          "format": "ipv4"
+        },
+        {
+          "format": "ipv6"
+        }
+      ]
     },
     "labelMode": {
       "type": "string",
@@ -66,13 +73,12 @@
         },
         "required": [
           "name",
-          "enabled",
           "pluginPath"
         ]
       }
     },
     "port": {
-      "type": "number",
+      "type": "integer",
       "minimum": 0,
       "maximum": 65535
     },
@@ -93,7 +99,7 @@
     "watchPids": {
       "type": "array",
       "items": {
-        "type": "number"
+        "type": "integer"
       }
     },
     "watchProcessNames": {

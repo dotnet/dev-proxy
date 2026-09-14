@@ -36,17 +36,21 @@
                 "type": [
                   "object",
                   "array",
-                  "string"
+                  "string",
+                  "number",
+                  "boolean"
                 ],
-                "description": "The stdout content to return. Can be a string, object, or array. If the value starts with @, it's treated as a file path."
+                "description": "The stdout content to return. Can be an object, array, string, number, or boolean. If a string value starts with @, it's treated as a file path."
               },
               "stderr": {
                 "type": [
                   "object",
                   "array",
-                  "string"
+                  "string",
+                  "number",
+                  "boolean"
                 ],
-                "description": "The stderr content to return. Can be a string, object, or array. If the value starts with @, it's treated as a file path."
+                "description": "The stderr content to return. Can be an object, array, string, number, or boolean. If a string value starts with @, it's treated as a file path."
               }
             }
           }

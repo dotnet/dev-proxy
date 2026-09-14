@@ -11,6 +11,7 @@
       "enum": [
         "Edge",
         "EdgeDev",
+        "EdgeBeta",
         "Chrome"
       ]
     }
