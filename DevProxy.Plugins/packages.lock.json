@@ -97,9 +97,9 @@
       },
       "System.CommandLine": {
         "type": "Direct",
-        "requested": "[2.0.11, )",
-        "resolved": "2.0.11",
-        "contentHash": "Pmg3/T0M37ZS3ovwPHtfBNTCdqNpnxo+tnZMg8JDHVR0qD8KwcPUKlheEiZysb1En8IyH7yDoa9QDq97Ny/vhQ=="
+        "requested": "[2.0.12, )",
+        "resolved": "2.0.12",
+        "contentHash": "FpW672e6qqrTd1EfKqsvUtFZaJWlTlszUR1o8tdakXhkzKbnEZVndtpfd4K3fUPCFcIs9UmcswMyYGJP1zp/rg=="
       },
       "System.IdentityModel.Tokens.Jwt": {
         "type": "Direct",
@@ -549,7 +549,7 @@
           "Microsoft.OpenApi.YamlReader": "[3.10.2, )",
           "Newtonsoft.Json.Schema": "[4.0.1, )",
           "Scriban": "[7.2.6, )",
-          "System.CommandLine": "[2.0.10, )",
+          "System.CommandLine": "[2.0.12, )",
           "Unobtanium.Web.Proxy": "[0.1.5, )",
           "YamlDotNet": "[18.1.0, )"
         }
