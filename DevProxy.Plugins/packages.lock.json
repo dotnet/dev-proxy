@@ -38,9 +38,9 @@
       },
       "Microsoft.Extensions.FileSystemGlobbing": {
         "type": "Direct",
-        "requested": "[10.0.11, )",
-        "resolved": "10.0.11",
-        "contentHash": "2i6rtW/B5rCnWCnhdmWWEmaM9O0HD0zsPY9eRqa++y4tclI3Uw8zvGbBvhY/LjAdtf8gUHhUPcAWj3DRlWMXmQ=="
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "45cV+UeI0chPAIXrx9Wv7K4PJXuuIR2pnOur5MOAo6kOFclBHSLLDrvGAxMfWRMtUvpv/kQZkxlgaUN56jwzSQ=="
       },
       "Microsoft.IdentityModel.Protocols.OpenIdConnect": {
         "type": "Direct",
@@ -543,7 +543,7 @@
           "Microsoft.Extensions.Configuration": "[10.0.11, )",
           "Microsoft.Extensions.Configuration.Binder": "[10.0.11, )",
           "Microsoft.Extensions.Configuration.Json": "[10.0.11, )",
-          "Microsoft.Extensions.FileSystemGlobbing": "[10.0.11, )",
+          "Microsoft.Extensions.FileSystemGlobbing": "[10.0.12, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.11, )",
           "Microsoft.OpenApi": "[3.10.2, )",
           "Microsoft.OpenApi.YamlReader": "[3.10.2, )",
