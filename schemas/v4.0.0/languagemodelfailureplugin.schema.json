@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy LanguageModelFailurePlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "The JSON schema reference for validation."
+    },
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Array of failure types to simulate in language model responses. If not specified, uses default failure types including AmbiguityVagueness, BiasStereotyping, CircularReasoning, ContradictoryInformation, FailureDisclaimHedge, FailureFollowInstructions, Hallucination, IncorrectFormatStyle, Misinterpretation, OutdatedInformation, OverSpecification, OverconfidenceUncertainty, Overgeneralization, OverreliancePriorConversation, and PlausibleIncorrect."
+    }
+  },
+  "additionalProperties": false
+}

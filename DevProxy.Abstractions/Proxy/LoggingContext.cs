@@ -2,7 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using Titanium.Web.Proxy.EventArguments;
+using DevProxy.Abstractions.Proxy.Http;
 
 namespace DevProxy.Abstractions.Proxy;
 
@@ -23,9 +23,9 @@ public enum MessageType
     Timestamp
 }
 
-public class LoggingContext(SessionEventArgs session)
+public class LoggingContext(IProxySession session)
 {
-    public SessionEventArgs Session { get; } = session;
+    public IProxySession Session { get; } = session;
 }
 
 public class StdioLoggingContext(StdioSession session, StdioMessageDirection direction)

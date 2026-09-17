@@ -99,22 +99,22 @@ public sealed class OpenAITelemetryPlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
 
-        var request = e.Session.HttpClient.Request;
+        var request = e.ProxySession.Request;
         if (request.Method is null ||
             !request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase) ||
             !request.HasBody)
         {
-            Logger.LogRequest("Request is not a POST request with a body", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Request is not a POST request with a body", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
 
         if (!OpenAIRequest.TryGetOpenAIRequest(request.BodyString, Logger, out var openAiRequest) || openAiRequest is null)
         {
-            Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
 
@@ -165,12 +165,13 @@ public sealed class OpenAITelemetryPlugin(
 
         try
         {
-            var response = e.Session.HttpClient.Response;
+            var response = e.ProxySession.Response!;
 
-            _ = activity.SetTag("http.status_code", response.StatusCode);
+            var statusCode = (int)response.StatusCode;
+            _ = activity.SetTag("http.status_code", statusCode);
 
 #pragma warning disable IDE0010
-            switch (response.StatusCode)
+            switch (statusCode)
 #pragma warning restore IDE0010
             {
                 case int code when code is >= 200 and < 300:
@@ -189,7 +190,7 @@ public sealed class OpenAITelemetryPlugin(
             _ = e.SessionData.Remove("OpenAIActivity");
             _ = e.SessionData.Remove("OpenAIRequest");
 
-            Logger.LogRequest("OpenTelemetry information emitted", MessageType.Processed, new LoggingContext(e.Session));
+            Logger.LogRequest("OpenTelemetry information emitted", MessageType.Processed, new LoggingContext(e.ProxySession));
         }
 
         Logger.LogTrace("Left {Name}", nameof(AfterResponseAsync));
@@ -289,7 +290,7 @@ public sealed class OpenAITelemetryPlugin(
     {
         Logger.LogTrace("ProcessErrorResponse() called");
 
-        var response = e.Session.HttpClient.Response;
+        var response = e.ProxySession.Response!;
 
         _ = activity.SetTag("error", true)
             .SetTag("error.type", "http")
@@ -321,7 +322,7 @@ public sealed class OpenAITelemetryPlugin(
     {
         Logger.LogTrace("ProcessSuccessResponse() called");
 
-        var response = e.Session.HttpClient.Response;
+        var response = e.ProxySession.Response!;
 
         if (!response.HasBody || string.IsNullOrEmpty(response.BodyString))
         {
@@ -988,13 +989,13 @@ public sealed class OpenAITelemetryPlugin(
             r.Context is not null &&
             r.Context.Session is not null &&
             r.MessageType == MessageType.InterceptedResponse &&
-            string.Equals("POST", r.Context.Session.HttpClient.Request.Method, StringComparison.OrdinalIgnoreCase) &&
-            r.Context.Session.HttpClient.Response.StatusCode >= 200 &&
-            r.Context.Session.HttpClient.Response.StatusCode < 300 &&
-            r.Context.Session.HttpClient.Response.HasBody &&
-            !string.IsNullOrEmpty(r.Context.Session.HttpClient.Response.BodyString) &&
-            ProxyUtils.MatchesUrlToWatch(UrlsToWatch, r.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri) &&
-            OpenAIRequest.TryGetOpenAIRequest(r.Context.Session.HttpClient.Request.BodyString, NullLogger.Instance, out var openAiRequest) &&
+            string.Equals("POST", r.Context.Session.Request.Method, StringComparison.OrdinalIgnoreCase) &&
+            (int)r.Context.Session.Response!.StatusCode >= 200 &&
+            (int)r.Context.Session.Response!.StatusCode < 300 &&
+            r.Context.Session.Response!.HasBody &&
+            !string.IsNullOrEmpty(r.Context.Session.Response!.BodyString) &&
+            ProxyUtils.MatchesUrlToWatch(UrlsToWatch, r.Context.Session.Request.RequestUri.AbsoluteUri) &&
+            OpenAIRequest.TryGetOpenAIRequest(r.Context.Session.Request.BodyString, NullLogger.Instance, out var openAiRequest) &&
             openAiRequest is not null
         );
 
@@ -1002,7 +1003,7 @@ public sealed class OpenAITelemetryPlugin(
         {
             try
             {
-                var response = JsonSerializer.Deserialize<OpenAIResponse>(requestLog.Context!.Session.HttpClient.Response.BodyString, ProxyUtils.JsonSerializerOptions);
+                var response = JsonSerializer.Deserialize<OpenAIResponse>(requestLog.Context!.Session.Response!.BodyString, ProxyUtils.JsonSerializerOptions);
                 if (response is null)
                 {
                     continue;

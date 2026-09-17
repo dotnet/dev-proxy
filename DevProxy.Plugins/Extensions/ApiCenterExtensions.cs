@@ -201,7 +201,7 @@ public static class ModelExtensions
 
             // check headers
             Debug.Assert(request.Context is not null);
-            var header = request.Context.Session.HttpClient.Request.Headers.FirstOrDefault(
+            var header = request.Context.Session.Request.Headers.FirstOrDefault(
                 h =>
                     (!string.IsNullOrEmpty(apiVersion.Name) && h.Value.Contains(apiVersion.Name, StringComparison.OrdinalIgnoreCase)) ||
                     (!string.IsNullOrEmpty(apiVersion.Properties?.Title) && h.Value.Contains(apiVersion.Properties.Title, StringComparison.OrdinalIgnoreCase))

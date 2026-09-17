@@ -6,6 +6,7 @@ using DevProxy.Abstractions.LanguageModel;
 using DevProxy.Abstractions.Models;
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,8 +14,6 @@ using Microsoft.Extensions.Logging;
 using System.Globalization;
 using System.Net;
 using System.Text.Json;
-using Titanium.Web.Proxy.Http;
-using Titanium.Web.Proxy.Models;
 
 namespace DevProxy.Plugins.Behavior;
 
@@ -77,31 +76,29 @@ public sealed class LanguageModelRateLimitingPlugin(
 
         ArgumentNullException.ThrowIfNull(e);
 
-        var session = e.Session;
         var state = e.ResponseState;
         if (state.HasBeenSet)
         {
-            Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
 
-        var request = e.Session.HttpClient.Request;
-        if (request.Method is null ||
-            !request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase) ||
+        var request = e.ProxySession.Request;
+        if (!request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase) ||
             !request.HasBody)
         {
-            Logger.LogRequest("Request is not a POST request with a body", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Request is not a POST request with a body", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
 
         if (!OpenAIRequest.TryGetCompletionLikeRequest(request.BodyString, Logger, out var openAiRequest))
         {
-            Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Skipping non-OpenAI request", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
 
@@ -127,7 +124,7 @@ public sealed class LanguageModelRateLimitingPlugin(
         // check if we have tokens available
         if (_promptTokensRemaining <= 0 || _completionTokensRemaining <= 0)
         {
-            Logger.LogRequest($"Exceeded token limit when calling {request.Url}. Request will be throttled", MessageType.Failed, new LoggingContext(e.Session));
+            Logger.LogRequest($"Exceeded token limit when calling {request.Url}. Request will be throttled", MessageType.Failed, new LoggingContext(e.ProxySession));
 
             if (Configuration.WhenLimitExceeded == TokenLimitResponseWhenExceeded.Throttle)
             {
@@ -184,13 +181,13 @@ public sealed class LanguageModelRateLimitingPlugin(
                     string body = Configuration.CustomResponse.Body is not null ?
                         JsonSerializer.Serialize(Configuration.CustomResponse.Body, ProxyUtils.JsonSerializerOptions) :
                         "";
-                    e.Session.GenericResponse(body, responseCode, headers);
+                    e.ProxySession.Respond(body, responseCode, headers);
                     state.HasBeenSet = true;
                 }
                 else
                 {
-                    Logger.LogRequest($"Custom behavior not set. {Configuration.CustomResponseFile} not found.", MessageType.Failed, new LoggingContext(e.Session));
-                    e.Session.GenericResponse("Custom response file not found.", HttpStatusCode.InternalServerError, []);
+                    Logger.LogRequest($"Custom behavior not set. {Configuration.CustomResponseFile} not found.", MessageType.Failed, new LoggingContext(e.ProxySession));
+                    e.ProxySession.Respond("Custom response file not found.", HttpStatusCode.InternalServerError, []);
                     state.HasBeenSet = true;
                 }
             }
@@ -211,13 +208,12 @@ public sealed class LanguageModelRateLimitingPlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
 
-        var request = e.Session.HttpClient.Request;
-        if (request.Method is null ||
-            !request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase) ||
+        var request = e.ProxySession.Request;
+        if (!request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase) ||
             !request.HasBody)
         {
             Logger.LogDebug("Skipping non-POST request");
@@ -231,7 +227,7 @@ public sealed class LanguageModelRateLimitingPlugin(
         }
 
         // Read the response body to get token usage
-        var response = e.Session.HttpClient.Response;
+        var response = e.ProxySession.Response!;
         if (response.HasBody)
         {
             var responseBody = response.BodyString;
@@ -257,7 +253,7 @@ public sealed class LanguageModelRateLimitingPlugin(
                             _completionTokensRemaining = 0;
                         }
 
-                        Logger.LogRequest($"Consumed {promptTokens} prompt tokens and {completionTokens} completion tokens. Remaining - Prompt: {_promptTokensRemaining}, Completion: {_completionTokensRemaining}", MessageType.Processed, new LoggingContext(e.Session));
+                        Logger.LogRequest($"Consumed {promptTokens} prompt tokens and {completionTokens} completion tokens. Remaining - Prompt: {_promptTokensRemaining}, Completion: {_completionTokensRemaining}", MessageType.Processed, new LoggingContext(e.ProxySession));
                     }
                 }
                 catch (JsonException ex)
@@ -271,7 +267,7 @@ public sealed class LanguageModelRateLimitingPlugin(
         return Task.CompletedTask;
     }
 
-    private ThrottlingInfo ShouldThrottle(Request request, string throttlingKey)
+    private ThrottlingInfo ShouldThrottle(IHttpRequest request, string throttlingKey)
     {
         var throttleKeyForRequest = BuildThrottleKey(request);
         return new(throttleKeyForRequest == throttlingKey ?
@@ -283,7 +279,7 @@ public sealed class LanguageModelRateLimitingPlugin(
     {
         var headers = new List<MockResponseHeader>();
         var body = string.Empty;
-        var request = e.Session.HttpClient.Request;
+        var request = e.ProxySession.Request;
 
         // Build standard OpenAI error response for token limit exceeded
         var openAiError = new
@@ -305,10 +301,10 @@ public sealed class LanguageModelRateLimitingPlugin(
             headers.Add(new("Access-Control-Expose-Headers", Configuration.HeaderRetryAfter));
         }
 
-        e.Session.GenericResponse(body, HttpStatusCode.TooManyRequests, [.. headers.Select(h => new HttpHeader(h.Name, h.Value))]);
+        e.ProxySession.Respond(body, HttpStatusCode.TooManyRequests, [.. headers.Select(h => new HttpHeader(h.Name, h.Value))]);
     }
 
-    private static string BuildThrottleKey(Request r) => r.RequestUri.Host;
+    private static string BuildThrottleKey(IHttpRequest r) => r.RequestUri.Host;
 
     protected override void Dispose(bool disposing)
     {

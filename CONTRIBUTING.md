@@ -28,4 +28,4 @@ Typos are embarrassing! Most PRs that fix typos will be accepted immediately. To
 
 ## Our foundation
 
-The Dev Proxy is built with .NET 9 and uses the [Unobtanium Web Proxy](https://github.com/svrooij/unobtanium-web-proxy).
+The Dev Proxy is built with .NET and uses [ASP.NET Core Kestrel](https://learn.microsoft.com/aspnet/core/fundamentals/servers/kestrel) for its forward-proxy engine.
