@@ -36,7 +36,7 @@ static class OpenApiDocumentExtensions
             logger.LogDebug("Checking request {Request}...", methodAndUrl);
             var (method, url) = (methodAndUrlChunks[0].ToUpperInvariant(), methodAndUrlChunks[1]);
 
-            var authorizationHeaderValue = request.Context?.Session.HttpClient.Request.Headers.FirstOrDefault(h => h.Name.Equals("authorization", StringComparison.OrdinalIgnoreCase))?.Value;
+            var authorizationHeaderValue = request.Context?.Session.Request.Headers.FirstOrDefault(h => h.Name.Equals("authorization", StringComparison.OrdinalIgnoreCase))?.Value;
             if (authorizationHeaderValue is null)
             {
                 errors.Add(new()

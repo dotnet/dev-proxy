@@ -4,6 +4,7 @@
 
 using DevProxy.Proxy;
 using DevProxy.State;
+using Microsoft.Extensions.Logging.Abstractions;
 using System.CommandLine;
 using System.Diagnostics;
 
@@ -83,7 +84,7 @@ internal sealed class StopCommand : Command
             var liveOwner = await StateManager.FindSystemProxyInstanceAsync(cancellationToken);
             if (liveOwner is null)
             {
-                SystemProxyManager.Disable();
+                new SystemProxyManager(NullLogger<SystemProxyManager>.Instance).Disable();
                 Console.WriteLine($"Restored system proxy left by crashed Dev Proxy (PID: {pid}).");
             }
             else
@@ -195,7 +196,7 @@ internal sealed class StopCommand : Command
         // on its behalf before terminating it.
         if (state.AsSystemProxy)
         {
-            SystemProxyManager.Disable();
+            new SystemProxyManager(NullLogger<SystemProxyManager>.Instance).Disable();
         }
 
         try

@@ -5,9 +5,13 @@
 using DevProxy;
 using DevProxy.Abstractions.Data;
 using DevProxy.Abstractions.LanguageModel;
+using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Commands;
 using DevProxy.Proxy;
+using DevProxy.Proxy.Kestrel;
+using DevProxy.Proxy.Kestrel.Internal;
+using Microsoft.Extensions.Logging;
 
 #pragma warning disable IDE0130
 namespace Microsoft.Extensions.DependencyInjection;
@@ -33,8 +37,29 @@ static class IServiceCollectionExtensions
         });
         _ = services
             .AddApplicationServices(configuration, options)
-            .AddHostedService<ProxyEngine>()
+            .AddProxyEngine()
             .Configure<RouteOptions>(options => options.LowercaseUrls = true);
+
+        return services;
+    }
+
+    // The Kestrel engine is the sole proxy engine. It receives the shared
+    // CertificateAuthority (registered via AddKestrelCertificateAuthority) plus the
+    // host's platform trust + system-proxy implementations.
+    static IServiceCollection AddProxyEngine(this IServiceCollection services)
+    {
+        _ = services.AddSingleton<IRootCertificateTrust, RootCertificateTrust>();
+        _ = services.AddSingleton<ISystemProxyManager, SystemProxyManager>();
+        _ = services.AddKestrelCertificateAuthority();
+        _ = services.AddHostedService(sp => new KestrelProxyEngine(
+            sp.GetRequiredService<CertificateAuthority>(),
+            sp.GetServices<IPlugin>(),
+            sp.GetRequiredService<ISet<UrlToWatch>>(),
+            sp.GetRequiredService<IProxyConfiguration>(),
+            sp.GetRequiredService<IProxyState>().GlobalData,
+            sp.GetRequiredService<ILoggerFactory>(),
+            sp.GetRequiredService<IRootCertificateTrust>(),
+            sp.GetRequiredService<ISystemProxyManager>()));
 
         return services;
     }
@@ -49,11 +74,11 @@ static class IServiceCollectionExtensions
             .AddSingleton<IProxyConfiguration, ProxyConfiguration>()
             .AddSingleton<IProxyStateController, ProxyStateController>()
             .AddSingleton<IProxyState, ProxyState>()
+            .AddSingleton<ISystemConsole, SystemConsole>()
             .AddHostedService<ConfigFileWatcher>()
-            .AddSingleton(sp => ProxyEngine.Certificate!)
+            .AddHostedService<InteractiveConsoleService>()
             .AddSingleton(sp => LanguageModelClientFactory.Create(sp, configuration))
             .AddSingleton<UpdateNotification>()
-            .AddSingleton<ProxyEngine>()
             .AddSingleton<DevProxyCommand>()
             .AddSingleton<MSGraphDb>()
             .AddHttpClient();
