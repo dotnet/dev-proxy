@@ -3,9 +3,12 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.State;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Win32;
 
 namespace DevProxy.Proxy;
@@ -46,7 +49,10 @@ internal sealed class SystemProxyManager(ILogger<SystemProxyManager> logger) : I
         }
         else if (OperatingSystem.IsMacOS())
         {
-            RunToggleScript($"on {SystemProxyAddress.ResolveHost(ipAddress)} {port}");
+            RunToggleScript(
+                "on",
+                SystemProxyAddress.ResolveHost(ipAddress),
+                port.ToString(CultureInfo.InvariantCulture));
         }
         else
         {
@@ -128,7 +134,7 @@ internal sealed class SystemProxyManager(ILogger<SystemProxyManager> logger) : I
     private static extern bool InternetSetOption(IntPtr hInternet, int dwOption, IntPtr lpBuffer, int dwBufferLength);
 #pragma warning restore SYSLIB1054
 
-    private void RunToggleScript(string arguments)
+    private void RunToggleScript(params string[] arguments)
     {
         var bashScriptPath = Path.Join(AppContext.BaseDirectory, "toggle-proxy.sh");
         if (!File.Exists(bashScriptPath))
@@ -137,14 +143,7 @@ internal sealed class SystemProxyManager(ILogger<SystemProxyManager> logger) : I
             return;
         }
 
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "/bin/bash",
-            Arguments = $"{bashScriptPath} {arguments}",
-            RedirectStandardOutput = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
+        var startInfo = CreateToggleScriptStartInfo(bashScriptPath, arguments);
 
         try
         {
@@ -159,5 +158,62 @@ internal sealed class SystemProxyManager(ILogger<SystemProxyManager> logger) : I
         {
             logger.LogError(ex, "Failed to toggle the system proxy via toggle-proxy.sh.");
         }
+    }
+
+    internal static ProcessStartInfo CreateToggleScriptStartInfo(string bashScriptPath, IEnumerable<string> arguments)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "/bin/bash",
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        startInfo.ArgumentList.Add(bashScriptPath);
+        foreach (var argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+        return startInfo;
+    }
+
+    // ------------------------------------------------------------------
+    // Static helpers for orphan reconciliation (crash-cleanup path).
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// The outcome of reconciling orphaned system-proxy registrations.
+    /// </summary>
+    internal readonly record struct OrphanReconciliation(
+        IReadOnlyList<ProxyInstanceState> Orphans,
+        bool SystemProxyDisabled);
+
+    /// <summary>
+    /// Reconciles system-proxy registrations left behind by crashed instances.
+    /// Restores the OS proxy (unless a live instance still owns it) and removes
+    /// the stale state records. Safe to call when there are no orphans.
+    /// </summary>
+    public static async Task<OrphanReconciliation> ReconcileOrphanedSystemProxiesAsync(CancellationToken cancellationToken = default)
+    {
+        var orphans = await StateManager.GetOrphanedSystemProxyStatesAsync(cancellationToken);
+        if (orphans.Count == 0)
+        {
+            return new([], false);
+        }
+
+        var liveOwner = await StateManager.FindSystemProxyInstanceAsync(cancellationToken);
+        var disabled = false;
+        if (liveOwner is null)
+        {
+            new SystemProxyManager(NullLogger<SystemProxyManager>.Instance).Disable();
+            disabled = true;
+        }
+
+        foreach (var orphan in orphans)
+        {
+            await StateManager.DeleteStateAsync(orphan.Pid, cancellationToken);
+        }
+
+        return new(orphans, disabled);
     }
 }

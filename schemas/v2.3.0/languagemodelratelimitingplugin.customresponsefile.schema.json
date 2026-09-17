@@ -12,9 +12,11 @@
       "type": [
         "object",
         "array",
-        "string"
+        "string",
+        "number",
+        "boolean"
       ],
-      "description": "The body of the custom response returned when the token limit is exceeded. Can be an object, array, or string."
+      "description": "The body of the custom response returned when the token limit is exceeded. Can be an object, array, string, number, or boolean."
     },
     "statusCode": {
       "type": "integer",

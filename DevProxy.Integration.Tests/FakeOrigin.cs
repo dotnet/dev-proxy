@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Globalization;
+using System.Net.WebSockets;
 using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -26,6 +27,7 @@ namespace DevProxy.Integration.Tests;
 ///   GET  /sse            → 200 text/event-stream, 5 events flushed ~50ms apart
 ///   GET  /big/{n}        → 200, n bytes of 'A' (large finite body)
 ///   GET  /json           → 200 application/json, a 2-element array
+///   GET  /socket-b       → WebSocket sends "rewritten"
 /// </code>
 /// </summary>
 internal sealed class FakeOrigin : IAsyncDisposable
@@ -59,6 +61,7 @@ internal sealed class FakeOrigin : IAsyncDisposable
                 listen.Protocols = HttpProtocols.Http1));
 
         var app = builder.Build();
+        app.UseWebSockets();
 
         var received = new System.Collections.Concurrent.ConcurrentQueue<ReceivedRequest>();
         app.Use(async (ctx, next) =>
@@ -112,6 +115,26 @@ internal sealed class FakeOrigin : IAsyncDisposable
             new { id = 1, name = "alpha" },
             new { id = 2, name = "beta" },
         }));
+
+        app.Map("/socket-b", async context =>
+        {
+            if (!context.WebSockets.IsWebSocketRequest)
+            {
+                context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                return;
+            }
+
+            using var webSocket = await context.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
+            await webSocket.SendAsync(
+                Encoding.UTF8.GetBytes("rewritten"),
+                WebSocketMessageType.Text,
+                endOfMessage: true,
+                context.RequestAborted).ConfigureAwait(false);
+            await webSocket.CloseOutputAsync(
+                WebSocketCloseStatus.NormalClosure,
+                statusDescription: null,
+                context.RequestAborted).ConfigureAwait(false);
+        });
 
         await app.StartAsync().ConfigureAwait(false);
         return new FakeOrigin(app, port, received);

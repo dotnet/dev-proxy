@@ -3,6 +3,8 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using DevProxy.Plugins.Behavior;
 using DevProxy.Plugins.Manipulation;
 using DevProxy.Plugins.Mocking;
@@ -49,6 +51,67 @@ public sealed class ManipulationAndMockingIntegrationTests
 
         // 503 proves the request was rewritten to /status/503 before forwarding.
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Rewrite_RewritesWebSocketUrl_OriginReceivesRewrittenPath()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        await using var origin = await FakeOrigin.StartAsync();
+        var urls = KestrelProxyHarness.BuildUrlsToWatch(origin.Host);
+        var config = PluginConfig.FromJson("""
+            {
+              "rewrites": [
+                { "in": { "url": "/socket-a$" }, "out": { "url": "/socket-b" } }
+              ]
+            }
+            """);
+        var plugin = new RewritePlugin(
+            SharedHttpClient,
+            NullLogger<RewritePlugin>.Instance,
+            urls,
+            ProxyConfig,
+            config);
+
+        await using var proxy = await KestrelProxyHarness.StartAsync(origin.Host, [plugin]);
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, proxy.Port, cts.Token);
+        await using var stream = client.GetStream();
+
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(
+            $"GET http://{origin.Host}/socket-a HTTP/1.1\r\n" +
+            $"Host: {origin.Host}\r\n" +
+            "Upgrade: websocket\r\n" +
+            "Connection: Upgrade\r\n" +
+            "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" +
+            "Sec-WebSocket-Version: 13\r\n\r\n"), cts.Token);
+        await stream.FlushAsync(cts.Token);
+        var responseHead = await ReadUntilDoubleCrlfAsync(stream, cts.Token);
+
+        Assert.Contains(origin.ReceivedRequests, request => request.PathAndQuery == "/socket-b");
+        Assert.StartsWith("HTTP/1.1 101 Switching Protocols", responseHead, StringComparison.Ordinal);
+    }
+
+    private static async Task<string> ReadUntilDoubleCrlfAsync(Stream stream, CancellationToken ct)
+    {
+        var bytes = new List<byte>();
+        var buffer = new byte[1];
+        while (true)
+        {
+            var read = await stream.ReadAsync(buffer, ct);
+            if (read == 0)
+            {
+                break;
+            }
+            bytes.Add(buffer[0]);
+            if (bytes.Count >= 4
+                && bytes[^4] == (byte)'\r' && bytes[^3] == (byte)'\n'
+                && bytes[^2] == (byte)'\r' && bytes[^1] == (byte)'\n')
+            {
+                break;
+            }
+        }
+        return Encoding.ASCII.GetString(bytes.ToArray());
     }
 
     [Fact]

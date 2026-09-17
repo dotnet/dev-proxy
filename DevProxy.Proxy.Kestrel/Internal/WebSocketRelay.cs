@@ -107,24 +107,33 @@ internal sealed class WebSocketRelay(ILogger logger)
 
         var (statusCode, reason, headers, _, leftover) = head.Value;
 
+        var originUpgraded = statusCode == (int)HttpStatusCode.SwitchingProtocols;
+        var body = originUpgraded
+            ? []
+            : await ReadHttpResponseBodyAsync(
+                originStream, leftover, headers, request.Method, (HttpStatusCode)statusCode, ct).ConfigureAwait(false);
+
+        if (!originUpgraded && !string.Equals(request.Method, "HEAD", StringComparison.OrdinalIgnoreCase))
+        {
+            _ = headers.Remove("Transfer-Encoding");
+            headers.Replace("Content-Length", body.Length.ToString(CultureInfo.InvariantCulture));
+        }
+
         var response = new MutableHttpResponse(
-            (HttpStatusCode)statusCode, HttpVersion.Version11, headers, ReadOnlyMemory<byte>.Empty, reason);
+            (HttpStatusCode)statusCode, HttpVersion.Version11, headers, body, reason);
         await onHandshakeResponse(response).ConfigureAwait(false);
+
+        if (!originUpgraded || response.StatusCode != HttpStatusCode.SwitchingProtocols)
+        {
+            await WriteHttpResponseAsync(clientStream, response, request.Method, ct).ConfigureAwait(false);
+            logger.LogDebug("WebSocket origin {Host} declined upgrade with {Status}", origin.Host, statusCode);
+            return true;
+        }
 
         // Serialize the post-pipeline response so intentional status/header changes
         // are reflected on the wire.
         await clientStream.WriteAsync(BuildResponseHead(response), ct).ConfigureAwait(false);
         await clientStream.FlushAsync(ct).ConfigureAwait(false);
-
-        if (response.StatusCode != HttpStatusCode.SwitchingProtocols)
-        {
-            // Origin declined the upgrade. There's no tunnel to splice. Forward any
-            // bytes already read past the response head (e.g. the start of an error
-            // body) so the client sees the full non-101 response, then close.
-            await ForwardToEndAsync(originStream, clientStream, leftover, ct).ConfigureAwait(false);
-            logger.LogDebug("WebSocket origin {Host} declined upgrade with {Status}", origin.Host, statusCode);
-            return true;
-        }
 
         // Extract sub-protocol from handshake response for WebSocket creation.
         var subProtocol = headers.GetFirst("Sec-WebSocket-Protocol")?.Value;
@@ -331,17 +340,104 @@ internal sealed class WebSocketRelay(ILogger logger)
         return Encoding.ASCII.GetBytes(builder.ToString());
     }
 
-    private static async Task ForwardToEndAsync(
+    private static async Task<byte[]> ReadHttpResponseBodyAsync(
         Stream origin,
-        Stream client,
         byte[] leftover,
+        HeaderCollection headers,
+        string requestMethod,
+        HttpStatusCode statusCode,
         CancellationToken ct)
     {
-        if (leftover.Length > 0)
+        if (string.Equals(requestMethod, "HEAD", StringComparison.OrdinalIgnoreCase)
+            || statusCode is >= HttpStatusCode.Continue and < HttpStatusCode.OK
+            || statusCode is HttpStatusCode.NoContent or HttpStatusCode.NotModified)
         {
-            await client.WriteAsync(leftover, ct).ConfigureAwait(false);
+            return [];
         }
-        await origin.CopyToAsync(client, ct).ConfigureAwait(false);
+
+        await using var prefixed = new PrefixedStream(leftover, origin);
+        var transferCodings = headers
+            .Where(h => string.Equals(h.Name, "Transfer-Encoding", StringComparison.OrdinalIgnoreCase))
+            .SelectMany(h => h.Value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .ToArray();
+        if (transferCodings.Length > 0)
+        {
+            if (transferCodings.Length != 1
+                || !string.Equals(transferCodings[0], "chunked", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Unsupported WebSocket handshake response transfer encoding.");
+            }
+
+            return await new Http1ConnectionReader(prefixed).ReadChunkedBodyAsync(ct).ConfigureAwait(false);
+        }
+
+        var contentLengthHeaders = headers
+            .Where(h => string.Equals(h.Name, "Content-Length", StringComparison.OrdinalIgnoreCase))
+            .Select(h => (h.Name, h.Value))
+            .ToArray();
+        if (contentLengthHeaders.Length > 0)
+        {
+            var contentLength = Http1RequestReader.GetContentLength(contentLengthHeaders);
+            return await new Http1ConnectionReader(prefixed).ReadBodyAsync(contentLength, ct).ConfigureAwait(false);
+        }
+
+        using var destination = new MemoryStream();
+        var buffer = new byte[81920];
+        while (true)
+        {
+            var read = await prefixed.ReadAsync(buffer, ct).ConfigureAwait(false);
+            if (read == 0)
+            {
+                return destination.ToArray();
+            }
+            if (destination.Length > Http1ConnectionReader.MaxBufferedBodyBytes - read)
+            {
+                throw new InvalidOperationException("WebSocket handshake response body too large.");
+            }
+            await destination.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task WriteHttpResponseAsync(
+        Stream client,
+        MutableHttpResponse response,
+        string requestMethod,
+        CancellationToken ct)
+    {
+        var isHead = string.Equals(requestMethod, "HEAD", StringComparison.OrdinalIgnoreCase);
+        var reason = response.StatusDescription ?? response.StatusCode.ToString();
+        var builder = new StringBuilder()
+            .Append(CultureInfo.InvariantCulture, $"HTTP/1.1 {(int)response.StatusCode} {reason}\r\n");
+
+        string? preservedContentLength = null;
+        foreach (var header in response.Headers)
+        {
+            if (ForwardingInvariants.HopByHopHeaders.Contains(header.Name))
+            {
+                continue;
+            }
+            if (string.Equals(header.Name, "Content-Length", StringComparison.OrdinalIgnoreCase))
+            {
+                if (isHead)
+                {
+                    preservedContentLength ??= header.Value;
+                }
+                continue;
+            }
+            _ = builder.Append(CultureInfo.InvariantCulture, $"{header.Name}: {header.Value}\r\n");
+        }
+
+        var contentLength = isHead
+            ? preservedContentLength ?? response.Body.Length.ToString(CultureInfo.InvariantCulture)
+            : response.Body.Length.ToString(CultureInfo.InvariantCulture);
+        _ = builder.Append(CultureInfo.InvariantCulture, $"Content-Length: {contentLength}\r\n");
+        _ = builder.Append("Connection: close\r\n\r\n");
+
+        await client.WriteAsync(Encoding.ASCII.GetBytes(builder.ToString()), ct).ConfigureAwait(false);
+        if (!isHead && !response.Body.IsEmpty)
+        {
+            await client.WriteAsync(response.Body, ct).ConfigureAwait(false);
+        }
         await client.FlushAsync(ct).ConfigureAwait(false);
     }
 

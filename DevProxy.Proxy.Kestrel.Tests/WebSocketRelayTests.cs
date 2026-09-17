@@ -140,6 +140,44 @@ public class WebSocketRelayTests
         Assert.Equal("client-frame", messages[1].Text);
     }
 
+    [Fact]
+    public async Task RelayAsync_NonSwitchingResponse_ReadsDeclaredBodyWithoutWaitingForClose()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var originListener = new TcpListener(IPAddress.Loopback, 0);
+        originListener.Start();
+        var originPort = ((IPEndPoint)originListener.LocalEndpoint).Port;
+        var releaseOrigin = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var originTask = RunRejectingOriginAsync(originListener, releaseOrigin.Task, cts.Token);
+        var (clientSide, proxySide) = await TestSockets.ConnectedPairAsync();
+
+        var headers = new HeaderCollection();
+        headers.Add("Host", "stale.example.test");
+        headers.Add("Upgrade", "websocket");
+        headers.Add("Connection", "Upgrade");
+        headers.Add("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==");
+        var request = new MutableHttpRequest(
+            "GET", new Uri($"http://127.0.0.1:{originPort}/chat"), HttpVersion.Version11, headers, ReadOnlyMemory<byte>.Empty);
+
+        var relay = new WebSocketRelay(NullLogger.Instance);
+        var relayTask = relay.RelayAsync(
+            proxySide, request, request.RequestUri, _ => Task.CompletedTask,
+            onMessage: null, messageInterceptor: null, onConnected: null, cts.Token);
+
+        var responseHead = await ReadUntilDoubleCrlfAsync(clientSide, cts.Token);
+        var responseBody = await ReadExactlyAsync(clientSide, 11, cts.Token);
+
+        Assert.StartsWith("HTTP/1.1 403 Forbidden", responseHead, StringComparison.Ordinal);
+        Assert.Contains("Content-Length: 11", responseHead, StringComparison.Ordinal);
+        Assert.Equal("not allowed", Encoding.ASCII.GetString(responseBody));
+        Assert.True(await relayTask.WaitAsync(TimeSpan.FromSeconds(2), cts.Token));
+
+        releaseOrigin.SetResult();
+        await originTask;
+        proxySide.Dispose();
+        clientSide.Dispose();
+    }
+
     // Fake origin: read the request head, reply 101, send a text message, receive one back.
     private static async Task<string> RunFakeOriginAsync(
         TcpListener listener, TaskCompletionSource<string> handshakeText, CancellationToken ct)
@@ -176,6 +214,41 @@ public class WebSocketRelayTests
         }
 
         return received;
+    }
+
+    private static async Task RunRejectingOriginAsync(
+        TcpListener listener, Task release, CancellationToken ct)
+    {
+        using var client = await listener.AcceptTcpClientAsync(ct);
+        await using var stream = client.GetStream();
+        _ = await ReadUntilDoubleCrlfAsync(stream, ct);
+
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(
+            "HTTP/1.1 403 Forbidden\r\n" +
+            "Content-Length: 11\r\n" +
+            "Content-Type: text/plain\r\n\r\n"), ct);
+        await stream.FlushAsync(ct);
+        await Task.Delay(100, ct);
+        await stream.WriteAsync(Encoding.ASCII.GetBytes("not allowed"), ct);
+        await stream.FlushAsync(ct);
+
+        await release.WaitAsync(ct);
+    }
+
+    private static async Task<byte[]> ReadExactlyAsync(Stream stream, int count, CancellationToken ct)
+    {
+        var bytes = new byte[count];
+        var offset = 0;
+        while (offset < count)
+        {
+            var read = await stream.ReadAsync(bytes.AsMemory(offset, count - offset), ct);
+            if (read == 0)
+            {
+                throw new EndOfStreamException();
+            }
+            offset += read;
+        }
+        return bytes;
     }
 
     private static async Task<string> ReadUntilDoubleCrlfAsync(Stream stream, CancellationToken ct)

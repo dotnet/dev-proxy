@@ -80,8 +80,8 @@ internal sealed class Http1ConnectionReader(Stream stream)
     /// <summary>
     /// Reads exactly <paramref name="contentLength"/> body bytes, consuming buffered
     /// bytes first and then the stream. Any bytes buffered beyond the body (a pipelined
-    /// next request) are retained for the following <see cref="ReadHeadAsync"/>. On a
-    /// premature EOF the partial body read so far is returned.
+    /// next request) are retained for the following <see cref="ReadHeadAsync"/>.
+    /// A premature EOF is rejected as invalid framing.
     /// </summary>
     public async Task<byte[]> ReadBodyAsync(int contentLength, CancellationToken ct)
     {
