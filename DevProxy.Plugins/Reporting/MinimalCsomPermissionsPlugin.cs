@@ -95,13 +95,13 @@ public sealed class MinimalCsomPermissionsPlugin(
                 continue;
             }
 
-            if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri))
+            if (!ProxyUtils.MatchesUrlToWatch(UrlsToWatch, request.Context.Session.Request.RequestUri.AbsoluteUri))
             {
-                Logger.LogDebug("URL not matched: {Url}", request.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri);
+                Logger.LogDebug("URL not matched: {Url}", request.Context.Session.Request.RequestUri.AbsoluteUri);
                 continue;
             }
 
-            var requestBody = await request.Context.Session.GetRequestBodyAsString(cancellationToken);
+            var requestBody = request.Context.Session.Request.BodyString;
             if (string.IsNullOrEmpty(requestBody))
             {
                 continue;

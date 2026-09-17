@@ -41,11 +41,11 @@ public sealed class LatencyPlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return;
         }
 
-        await ApplyDelayAsync("request", new LoggingContext(e.Session), cancellationToken);
+        await ApplyDelayAsync("request", new LoggingContext(e.ProxySession), cancellationToken);
 
         Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
     }

@@ -28,7 +28,7 @@ public sealed class UrlDiscoveryPlugin(
         }
 
         var requestLogs = e.RequestLogs
-            .Where(l => ProxyUtils.MatchesUrlToWatch(UrlsToWatch, l.Context?.Session.HttpClient.Request.RequestUri.AbsoluteUri ?? ""));
+            .Where(l => ProxyUtils.MatchesUrlToWatch(UrlsToWatch, l.Context?.Session.Request.RequestUri.AbsoluteUri ?? ""));
 
         UrlDiscoveryPluginReport report = new()
         {
@@ -36,7 +36,7 @@ public sealed class UrlDiscoveryPlugin(
             [
                 .. requestLogs
                     .Where(log => log.Context is not null)
-                    .Select(log => log.Context!.Session.HttpClient.Request.RequestUri.ToString()).Distinct().Order()
+                    .Select(log => log.Context!.Session.Request.RequestUri.ToString()).Distinct().Order()
             ]
         };
 

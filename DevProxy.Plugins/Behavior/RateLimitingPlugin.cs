@@ -5,6 +5,7 @@
 using DevProxy.Abstractions.Models;
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Models;
 using DevProxy.Plugins.Utils;
@@ -15,8 +16,6 @@ using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Titanium.Web.Proxy.Http;
-using Titanium.Web.Proxy.Models;
 
 namespace DevProxy.Plugins.Behavior;
 
@@ -89,16 +88,15 @@ public sealed class RateLimitingPlugin(
 
         ArgumentNullException.ThrowIfNull(e);
 
-        var session = e.Session;
         var state = e.ResponseState;
         if (state.HasBeenSet)
         {
-            Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
 
@@ -124,9 +122,9 @@ public sealed class RateLimitingPlugin(
         if (_resourcesRemaining < 0)
         {
             _resourcesRemaining = 0;
-            var request = e.Session.HttpClient.Request;
+            var request = e.ProxySession.Request;
 
-            Logger.LogRequest($"Exceeded resource limit when calling {request.Url}. Request will be throttled", MessageType.Failed, new LoggingContext(e.Session));
+            Logger.LogRequest($"Exceeded resource limit when calling {request.Url}. Request will be throttled", MessageType.Failed, new LoggingContext(e.ProxySession));
             if (Configuration.WhenLimitExceeded == RateLimitResponseWhenLimitExceeded.Throttle)
             {
                 if (!e.GlobalData.TryGetValue(RetryAfterPlugin.ThrottledRequestsKey, out var value))
@@ -182,18 +180,18 @@ public sealed class RateLimitingPlugin(
                     string body = Configuration.CustomResponse.Body is not null ?
                         JsonSerializer.Serialize(Configuration.CustomResponse.Body, ProxyUtils.JsonSerializerOptions) :
                         "";
-                    e.Session.GenericResponse(body, responseCode, headers);
+                    e.ProxySession.Respond(body, responseCode, headers);
                     state.HasBeenSet = true;
                 }
                 else
                 {
-                    Logger.LogRequest($"Custom behavior not set. {Configuration.CustomResponseFile} not found.", MessageType.Failed, new LoggingContext(e.Session));
+                    Logger.LogRequest($"Custom behavior not set. {Configuration.CustomResponseFile} not found.", MessageType.Failed, new LoggingContext(e.ProxySession));
                 }
             }
         }
         else
         {
-            Logger.LogRequest($"Resources remaining: {_resourcesRemaining}", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest($"Resources remaining: {_resourcesRemaining}", MessageType.Skipped, new LoggingContext(e.ProxySession));
         }
 
         StoreRateLimitingHeaders(e);
@@ -208,12 +206,12 @@ public sealed class RateLimitingPlugin(
 
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
-            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("URL not matched", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
         if (e.ResponseState.HasBeenSet)
         {
-            Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.Session));
+            Logger.LogRequest("Response already set", MessageType.Skipped, new LoggingContext(e.ProxySession));
             return Task.CompletedTask;
         }
 
@@ -223,7 +221,7 @@ public sealed class RateLimitingPlugin(
         return Task.CompletedTask;
     }
 
-    private ThrottlingInfo ShouldThrottle(Request request, string throttlingKey)
+    private ThrottlingInfo ShouldThrottle(IHttpRequest request, string throttlingKey)
     {
         var throttleKeyForRequest = BuildThrottleKey(request);
         return new(throttleKeyForRequest == throttlingKey ?
@@ -237,8 +235,8 @@ public sealed class RateLimitingPlugin(
     {
         var headers = new List<MockResponseHeader>();
         var body = string.Empty;
-        var request = e.Session.HttpClient.Request;
-        var response = e.Session.HttpClient.Response;
+        var request = e.ProxySession.Request;
+        var response = e.ProxySession.Response!;
 
         // resources exceeded
         if (errorStatus == HttpStatusCode.TooManyRequests)
@@ -273,7 +271,7 @@ public sealed class RateLimitingPlugin(
                 headers.Add(new("Access-Control-Expose-Headers", Configuration.HeaderRetryAfter));
             }
 
-            e.Session.GenericResponse(body ?? string.Empty, errorStatus, [.. headers.Select(h => new HttpHeader(h.Name, h.Value))]);
+            e.ProxySession.Respond(body ?? string.Empty, errorStatus, [.. headers.Select(h => new HttpHeader(h.Name, h.Value))]);
             return;
         }
 
@@ -284,8 +282,8 @@ public sealed class RateLimitingPlugin(
         }
 
         // add headers to the original API response, avoiding duplicates
-        headers.ForEach(h => e.Session.HttpClient.Response.Headers.RemoveHeader(h.Name));
-        e.Session.HttpClient.Response.Headers.AddHeaders(headers.Select(h => new HttpHeader(h.Name, h.Value)).ToArray());
+        headers.ForEach(h => response.Headers.Remove(h.Name));
+        response.Headers.AddRange(headers.Select(h => new HttpHeader(h.Name, h.Value)));
     }
 
     private void StoreRateLimitingHeaders(ProxyRequestArgs e)
@@ -314,7 +312,7 @@ public sealed class RateLimitingPlugin(
 
     private void ExposeRateLimitingForCors(List<MockResponseHeader> headers, ProxyRequestArgs e)
     {
-        var request = e.Session.HttpClient.Request;
+        var request = e.ProxySession.Request;
         if (request.Headers.FirstOrDefault((h) => h.Name.Equals("Origin", StringComparison.OrdinalIgnoreCase)) is null)
         {
             return;
@@ -324,9 +322,9 @@ public sealed class RateLimitingPlugin(
         headers.Add(new("Access-Control-Expose-Headers", $"{Configuration.HeaderLimit}, {Configuration.HeaderRemaining}, {Configuration.HeaderReset}, {Configuration.HeaderRetryAfter}"));
     }
 
-    private static string BuildApiErrorMessage(Request r) => $"Some error was generated by the proxy. {(ProxyUtils.IsGraphRequest(r) ? ProxyUtils.IsSdkRequest(r) ? "" : string.Join(' ', MessageUtils.BuildUseSdkForErrorsMessage()) : "")}";
+    private static string BuildApiErrorMessage(IHttpRequest r) => $"Some error was generated by the proxy. {(ProxyUtils.IsGraphRequest(r) ? ProxyUtils.IsSdkRequest(r) ? "" : string.Join(' ', MessageUtils.BuildUseSdkForErrorsMessage()) : "")}";
 
-    private static string BuildThrottleKey(Request r)
+    private static string BuildThrottleKey(IHttpRequest r)
     {
         if (ProxyUtils.IsGraphRequest(r))
         {

@@ -91,7 +91,7 @@ public sealed class ExecutionSummaryPlugin(
             .Where(
                 l => l.MessageType == MessageType.InterceptedRequest &&
                 l.Context?.Session is not null &&
-                ProxyUtils.MatchesUrlToWatch(UrlsToWatch, l.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri)
+                ProxyUtils.MatchesUrlToWatch(UrlsToWatch, l.Context.Session.Request.RequestUri.AbsoluteUri)
             );
 
         ExecutionSummaryPluginReportBase report = Configuration.GroupBy switch
@@ -231,7 +231,7 @@ public sealed class ExecutionSummaryPlugin(
     private static string GetMethodAndUrl(RequestLog requestLog)
     {
         return requestLog.Context is not null
-            ? $"{requestLog.Context.Session.HttpClient.Request.Method} {requestLog.Context.Session.HttpClient.Request.RequestUri}"
+            ? $"{requestLog.Context.Session.Request.Method} {requestLog.Context.Session.Request.RequestUri}"
             : "Undefined";
     }
 
