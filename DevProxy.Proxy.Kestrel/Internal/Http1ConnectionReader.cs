@@ -91,7 +91,7 @@ internal sealed class Http1ConnectionReader(Stream stream)
         }
         if (contentLength > MaxBufferedBodyBytes)
         {
-            throw new InvalidOperationException("Request body too large.");
+            throw new RequestBodyTooLargeException();
         }
 
         var body = new byte[contentLength];
@@ -159,7 +159,7 @@ internal sealed class Http1ConnectionReader(Stream stream)
             var chunk = await ReadExactlyAsync(size, ct).ConfigureAwait(false);
             if (body.Count > MaxBufferedBodyBytes - chunk.Length)
             {
-                throw new InvalidOperationException("Request body too large.");
+                throw new RequestBodyTooLargeException();
             }
             body.AddRange(chunk);
 
@@ -267,4 +267,22 @@ internal sealed class Http1ConnectionReader(Stream stream)
 
     private static byte[] Slice(List<byte> accumulator, int start) =>
         start >= accumulator.Count ? [] : accumulator.GetRange(start, accumulator.Count - start).ToArray();
+}
+
+internal sealed class RequestBodyTooLargeException : InvalidOperationException
+{
+    public RequestBodyTooLargeException()
+        : base("Request body too large.")
+    {
+    }
+
+    public RequestBodyTooLargeException(string message)
+        : base(message)
+    {
+    }
+
+    public RequestBodyTooLargeException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
 }

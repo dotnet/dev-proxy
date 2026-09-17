@@ -309,6 +309,13 @@ internal sealed class ProxyConnectionHandler(
                 ? await reader.ReadChunkedBodyAsync(ct).ConfigureAwait(false)
                 : await reader.ReadBodyAsync(Http1RequestReader.GetContentLength(head.Headers), ct).ConfigureAwait(false);
         }
+        catch (RequestBodyTooLargeException ex)
+        {
+            logger.LogWarning(ex, "Request body exceeds the buffering limit");
+            await WriteErrorAsync(
+                clientStream, HttpStatusCode.RequestEntityTooLarge, "Request body too large", ct).ConfigureAwait(false);
+            return false;
+        }
         catch (InvalidOperationException ex)
         {
             // Malformed chunked framing (bad chunk size, missing CRLF, truncated). The

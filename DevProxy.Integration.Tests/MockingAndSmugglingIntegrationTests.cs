@@ -8,6 +8,7 @@ using System.Net.Sockets;
 using System.Text;
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Proxy.Kestrel.Internal;
 using Xunit;
 
 namespace DevProxy.Integration.Tests;
@@ -71,6 +72,29 @@ public sealed class MockingAndSmugglingIntegrationTests
         var response = await ReadStatusLineAsync(stream);
 
         Assert.Contains("400", response, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OversizedContentLength_IsRejectedWith413BeforeBodyRead()
+    {
+        await using var origin = await FakeOrigin.StartAsync();
+        await using var proxy = await KestrelProxyHarness.StartAsync(origin.Host);
+        var raw =
+            $"POST http://{origin.Host}/echo HTTP/1.1\r\n" +
+            $"Host: {origin.Host}\r\n" +
+            $"Content-Length: {Http1ConnectionReader.MaxBufferedBodyBytes + 1}\r\n" +
+            "\r\n";
+
+        using var tcp = new TcpClient();
+        await tcp.ConnectAsync(IPAddress.Loopback, proxy.Port);
+        var stream = tcp.GetStream();
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(raw));
+        await stream.FlushAsync();
+
+        var response = await ReadStatusLineAsync(stream);
+
+        Assert.Contains("413", response, StringComparison.Ordinal);
+        Assert.Empty(origin.ReceivedRequests);
     }
 
     private static async Task<string> ReadStatusLineAsync(NetworkStream stream)

@@ -94,7 +94,7 @@ public class Http1ConnectionReaderTests
     {
         var reader = ReaderOver("");
 
-        _ = await Assert.ThrowsAsync<InvalidOperationException>(
+        _ = await Assert.ThrowsAsync<RequestBodyTooLargeException>(
             async () => await reader.ReadBodyAsync(
                 Http1ConnectionReader.MaxBufferedBodyBytes + 1, CancellationToken.None));
     }
