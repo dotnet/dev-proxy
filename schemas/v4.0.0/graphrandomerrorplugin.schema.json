@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy GraphRandomErrorPlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Reference to the JSON schema definition."
+    },
+    "allowedErrors": {
+      "type": "array",
+      "description": "Array of HTTP status codes (integers between 400 and 599) that the plugin can use to simulate errors. For example, [429] to simulate throttling.",
+      "items": {
+        "type": "integer",
+        "minimum": 400,
+        "maximum": 599
+      }
+    },
+    "rate": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "The percentage (0-100) of requests that should be failed with a random error."
+    },
+    "retryAfterInSeconds": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The number of seconds to set in the Retry-After header for throttling responses."
+    }
+  },
+  "additionalProperties": false
+}

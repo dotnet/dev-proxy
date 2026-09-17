@@ -68,8 +68,7 @@ static class ILoggingBuilderExtensions
                 .AddFilter("Microsoft.Hosting.*", LogLevel.Error)
                 .AddFilter("Microsoft.AspNetCore.*", LogLevel.Error)
                 .AddFilter("Microsoft.Extensions.*", LogLevel.Error)
-                .AddFilter("System.*", LogLevel.Error)
-                .AddFilter("Titanium.Web.Proxy.*", LogLevel.Warning)
+                .AddFilter("System.*", LogLevel.Error)
                 // Only show plugin messages when no global options are set
                 .AddFilter("DevProxy.Plugins.*", level =>
                     level >= configuredLogLevel &&
@@ -106,8 +105,7 @@ static class ILoggingBuilderExtensions
             .AddFilter("Microsoft.Hosting.*", LogLevel.Error)
             .AddFilter("Microsoft.AspNetCore.*", LogLevel.Error)
             .AddFilter("Microsoft.Extensions.*", LogLevel.Error)
-            .AddFilter("System.*", LogLevel.Error)
-            .AddFilter("Titanium.Web.Proxy.*", LogLevel.Warning)
+            .AddFilter("System.*", LogLevel.Error)
             .AddFilter("DevProxy.Plugins.*", LogLevel.None)
             .AddConsole(consoleOptions =>
                 {
