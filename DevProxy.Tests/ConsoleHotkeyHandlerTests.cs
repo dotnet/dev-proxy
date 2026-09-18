@@ -136,6 +136,16 @@ public sealed class ConsoleHotkeyHandlerTests
     }
 
     [Fact]
+    public void PrintApiInstructions_NormalizesIpv6WildcardAddress()
+    {
+        var (handler, _, console) = CreateHandler(OutputFormat.Json, "::");
+
+        handler.PrintApiInstructions();
+
+        Assert.Contains(console.Lines, line => line.Contains("http://127.0.0.1:8897/proxy", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void PrintBanner_TextMode_PrintsHotkeys()
     {
         var (handler, _, console) = CreateHandler(OutputFormat.Text);

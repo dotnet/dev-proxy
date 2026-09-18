@@ -43,7 +43,7 @@ sealed class ApiCommand : Command
     {
         var ipAddress = _proxyConfiguration.IPAddress;
         var apiPort = _proxyConfiguration.ApiPort;
-        var baseUrl = new UriBuilder(Uri.UriSchemeHttp, ipAddress, apiPort).Uri.GetLeftPart(UriPartial.Authority);
+        var baseUrl = SystemProxyAddress.ToHttpAuthority(ipAddress, apiPort);
 
         var endpoints = new[]
         {

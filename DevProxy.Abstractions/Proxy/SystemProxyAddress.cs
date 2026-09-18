@@ -35,8 +35,17 @@ public static class SystemProxyAddress
             return "127.0.0.1";
         }
 
-        return ipAddress is "0.0.0.0" or "::" ? "127.0.0.1" : ipAddress;
+        if (IPAddress.TryParse(ipAddress, out var address) &&
+            (address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any)))
+        {
+            return "127.0.0.1";
+        }
+
+        return ipAddress;
     }
+
+    public static string ToHttpAuthority(string? ipAddress, int port) =>
+        new UriBuilder(Uri.UriSchemeHttp, ResolveHost(ipAddress), port).Uri.GetLeftPart(UriPartial.Authority);
 
     /// <summary>
     /// The <c>host:port</c> value used for the Windows <c>ProxyServer</c> registry setting.
