@@ -35,13 +35,19 @@ public static class SystemProxyAddress
             return "127.0.0.1";
         }
 
-        if (IPAddress.TryParse(ipAddress, out var address) &&
+        var host = ipAddress;
+        if (host.Length > 1 && host[0] == '[' && host[^1] == ']')
+        {
+            host = host[1..^1];
+        }
+
+        if (IPAddress.TryParse(host, out var address) &&
             (address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any)))
         {
             return "127.0.0.1";
         }
 
-        return ipAddress;
+        return host;
     }
 
     public static string ToHttpAuthority(string? ipAddress, int port) =>

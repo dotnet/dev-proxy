@@ -315,7 +315,7 @@ sealed class DevProxyCommand : RootCommand
                 var serverAddresses = _app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>();
                 var serverAddress = serverAddresses?.Addresses.FirstOrDefault();
                 var address = Uri.TryCreate(serverAddress, UriKind.Absolute, out var serverUri) ?
-                    SystemProxyAddress.ToHttpAuthority(serverUri.Host, serverUri.Port) :
+                    SystemProxyAddress.ToHttpAuthority(serverUri.DnsSafeHost, serverUri.Port) :
                     SystemProxyAddress.ToHttpAuthority(_proxyConfiguration.IPAddress, _proxyConfiguration.ApiPort);
                 _logger.LogInformation("Dev Proxy API listening on {Address}...", address);
 

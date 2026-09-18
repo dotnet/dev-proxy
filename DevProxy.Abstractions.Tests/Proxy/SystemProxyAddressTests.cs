@@ -17,6 +17,7 @@ public class SystemProxyAddressTests
     [InlineData("::")]
     [InlineData("::0")]
     [InlineData("0:0:0:0:0:0:0:0")]
+    [InlineData("[::]")]
     public void ResolveHost_WildcardOrEmpty_CollapsesToLoopback(string? ipAddress) =>
         Assert.Equal("127.0.0.1", SystemProxyAddress.ResolveHost(ipAddress));
 
@@ -52,6 +53,7 @@ public class SystemProxyAddressTests
     [InlineData("::")]
     [InlineData("::0")]
     [InlineData("0:0:0:0:0:0:0:0")]
+    [InlineData("[::]")]
     public void ToHttpAuthority_WildcardAddress_UsesLoopback(string ipAddress) =>
         Assert.Equal("http://127.0.0.1:9090", SystemProxyAddress.ToHttpAuthority(ipAddress, 9090));
 
