@@ -135,8 +135,8 @@
       },
       "System.CommandLine": {
         "type": "Transitive",
-        "resolved": "2.0.10",
-        "contentHash": "6i1D6/U3i1f/PiXTt9pDvbJwdXEe0F2DZPup6BHzeIu5yPk/lkFzgtrJnPbj54JWUh8Y9vJeKG/TZIT6MkF8TA=="
+        "resolved": "2.0.12",
+        "contentHash": "FpW672e6qqrTd1EfKqsvUtFZaJWlTlszUR1o8tdakXhkzKbnEZVndtpfd4K3fUPCFcIs9UmcswMyYGJP1zp/rg=="
       },
       "YamlDotNet": {
         "type": "Transitive",
@@ -152,7 +152,7 @@
           "Microsoft.OpenApi.YamlReader": "[3.10.2, )",
           "Newtonsoft.Json.Schema": "[4.0.1, )",
           "Scriban": "[7.4.0, )",
-          "System.CommandLine": "[2.0.10, )",
+          "System.CommandLine": "[2.0.12, )",
           "YamlDotNet": "[18.1.0, )"
         }
       }
