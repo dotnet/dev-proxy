@@ -117,7 +117,7 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
             if (ProxyUtils.IsGraphBatchUrl(uri))
             {
                 var graphVersion = ProxyUtils.IsGraphBetaUrl(uri) ? "beta" : "v1.0";
-                requestsFromBatch = GraphUtils.GetRequestsFromBatch(request.Context?.Session.HttpClient.Request.BodyString!, graphVersion, uri.Host);
+                requestsFromBatch = GraphUtils.GetRequestsFromBatch(request.Context?.Session.Request.BodyString!, graphVersion, uri.Host);
             }
             else
             {
@@ -311,7 +311,7 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
     /// </summary>
     private static (GraphPermissionsType type, IEnumerable<string> permissions) GetPermissionsAndType(RequestLog request)
     {
-        var authHeader = request.Context?.Session.HttpClient.Request.Headers.GetFirstHeader("Authorization");
+        var authHeader = request.Context?.Session.Request.Headers.GetFirst("Authorization");
         if (authHeader == null)
         {
             return (GraphPermissionsType.Application, []);

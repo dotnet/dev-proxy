@@ -110,9 +110,9 @@ public sealed class EntraMockResponsePlugin(
 
     private void StoreLastNonce(ProxyRequestArgs e)
     {
-        if (e.Session.HttpClient.Request.RequestUri.Query.Contains("nonce=", StringComparison.OrdinalIgnoreCase))
+        if (e.ProxySession.Request.RequestUri.Query.Contains("nonce=", StringComparison.OrdinalIgnoreCase))
         {
-            var queryString = HttpUtility.ParseQueryString(e.Session.HttpClient.Request.RequestUri.Query);
+            var queryString = HttpUtility.ParseQueryString(e.ProxySession.Request.RequestUri.Query);
             lastNonce = queryString["nonce"];
         }
     }
@@ -179,12 +179,12 @@ public sealed class EntraMockResponsePlugin(
         var locationHeader = headers.FirstOrDefault(h => h.Name.Equals("Location", StringComparison.OrdinalIgnoreCase));
 
         if (locationHeader is null ||
-            !e.Session.HttpClient.Request.RequestUri.Query.Contains("state=", StringComparison.OrdinalIgnoreCase))
+            !e.ProxySession.Request.RequestUri.Query.Contains("state=", StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
 
-        var queryString = HttpUtility.ParseQueryString(e.Session.HttpClient.Request.RequestUri.Query);
+        var queryString = HttpUtility.ParseQueryString(e.ProxySession.Request.RequestUri.Query);
         var msalState = queryString["state"];
         locationHeader.Value = locationHeader.Value.Replace("state=@dynamic", $"state={msalState}", StringComparison.OrdinalIgnoreCase);
     }
@@ -192,12 +192,12 @@ public sealed class EntraMockResponsePlugin(
     private static void UpdateMsalStateInBody(ref string body, ProxyRequestArgs e, ref bool changed)
     {
         if (!body.Contains("state=@dynamic", StringComparison.OrdinalIgnoreCase) ||
-          !e.Session.HttpClient.Request.RequestUri.Query.Contains("state=", StringComparison.OrdinalIgnoreCase))
+          !e.ProxySession.Request.RequestUri.Query.Contains("state=", StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
 
-        var queryString = HttpUtility.ParseQueryString(e.Session.HttpClient.Request.RequestUri.Query);
+        var queryString = HttpUtility.ParseQueryString(e.ProxySession.Request.RequestUri.Query);
         var msalState = queryString["state"];
         body = body.Replace("state=@dynamic", $"state={msalState}", StringComparison.OrdinalIgnoreCase);
         changed = true;
