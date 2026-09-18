@@ -44,7 +44,7 @@
                   "number",
                   "boolean"
                 ],
-                "description": "The stdout content to return. If a string value starts with @, it's treated as a file path."
+                "description": "The stdout content to return. Can be an object, array, string, number, or boolean. If a string value starts with @, it's treated as a file path."
               },
               "stderr": {
                 "type": [
@@ -54,7 +54,7 @@
                   "number",
                   "boolean"
                 ],
-                "description": "The stderr content to return. If a string value starts with @, it's treated as a file path."
+                "description": "The stderr content to return. Can be an object, array, string, number, or boolean. If a string value starts with @, it's treated as a file path."
               }
             }
           }

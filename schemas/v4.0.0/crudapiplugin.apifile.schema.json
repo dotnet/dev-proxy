@@ -54,7 +54,8 @@
               "POST",
               "PUT",
               "PATCH",
-              "DELETE"
+              "DELETE",
+              "QUERY"
             ],
             "description": "HTTP method that Dev Proxy uses to expose the action. Defaults depend on the action type."
           },

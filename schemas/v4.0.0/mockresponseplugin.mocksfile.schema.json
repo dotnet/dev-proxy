@@ -63,7 +63,7 @@
                   "number",
                   "boolean"
                 ],
-                "description": "The response body; string values can reference a file with '@filename'."
+                "description": "The response body (object, array, string, number, or boolean; strings can reference a file with '@filename')."
               },
               "statusCode": {
                 "type": "integer",

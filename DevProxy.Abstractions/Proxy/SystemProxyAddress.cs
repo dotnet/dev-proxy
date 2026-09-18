@@ -3,6 +3,8 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Globalization;
+using System.Net;
+using System.Net.Sockets;
 
 namespace DevProxy.Abstractions.Proxy;
 
@@ -33,12 +35,35 @@ public static class SystemProxyAddress
             return "127.0.0.1";
         }
 
-        return ipAddress is "0.0.0.0" or "::" ? "127.0.0.1" : ipAddress;
+        var host = ipAddress;
+        if (host.Length > 1 && host[0] == '[' && host[^1] == ']')
+        {
+            host = host[1..^1];
+        }
+
+        if (IPAddress.TryParse(host, out var address) &&
+            (address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any)))
+        {
+            return "127.0.0.1";
+        }
+
+        return host;
     }
+
+    public static string ToHttpAuthority(string? ipAddress, int port) =>
+        $"{Uri.UriSchemeHttp}://{ToHostPort(ipAddress, port)}";
 
     /// <summary>
     /// The <c>host:port</c> value used for the Windows <c>ProxyServer</c> registry setting.
     /// </summary>
-    public static string ToHostPort(string? ipAddress, int port) =>
-        $"{ResolveHost(ipAddress)}:{port.ToString(CultureInfo.InvariantCulture)}";
+    public static string ToHostPort(string? ipAddress, int port)
+    {
+        var host = ResolveHost(ipAddress);
+        if (IPAddress.TryParse(host, out var address) && address.AddressFamily == AddressFamily.InterNetworkV6)
+        {
+            host = $"[{host}]";
+        }
+
+        return $"{host}:{port.ToString(CultureInfo.InvariantCulture)}";
+    }
 }

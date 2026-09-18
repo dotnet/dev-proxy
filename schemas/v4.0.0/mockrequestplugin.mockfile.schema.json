@@ -34,8 +34,14 @@
           "description": "HTTP method to use (default: POST)."
         },
         "body": {
-          "type": ["object", "array", "string", "number", "boolean"],
-          "description": "Body of the request."
+          "type": [
+            "object",
+            "array",
+            "string",
+            "number",
+            "boolean"
+          ],
+          "description": "Body of the request (object, array, string, number, or boolean)."
         },
         "headers": {
           "type": "array",

@@ -137,7 +137,8 @@ Exposes Dev Proxy activity in Chrome DevTools (HTTP and STDIO).
 
 | Property | Default | Description |
 |----------|---------|-------------|
-| `preferredBrowser` | `Edge` | `Edge`, `EdgeDev`, or `Chrome` |
+| `preferredBrowser` | `Edge` | `Edge`, `EdgeDev`, `EdgeBeta`, or `Chrome` |
+| `preferredBrowserPath` | empty | Path to the browser executable; overrides `preferredBrowser` |
 
 ### MockStdioResponsePlugin
 

@@ -54,7 +54,7 @@ internal sealed class ConsoleHotkeyHandler(
 
     public void PrintApiInstructions()
     {
-        var baseUrl = $"http://{configuration.IPAddress}:{configuration.ApiPort}/proxy";
+        var baseUrl = SystemProxyAddress.ToHttpAuthority(configuration.IPAddress, configuration.ApiPort) + "/proxy";
         var timestamp = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
         console.WriteLine("");
         console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"Issue web request: curl -X POST {baseUrl}/mockRequest\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");

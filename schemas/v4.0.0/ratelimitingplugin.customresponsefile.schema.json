@@ -16,7 +16,7 @@
         "number",
         "boolean"
       ],
-      "description": "The body of the custom response returned when the rate limit is exceeded."
+      "description": "The body of the custom response returned when the rate limit is exceeded. Can be an object, array, string, number, or boolean."
     },
     "statusCode": {
       "type": "integer",

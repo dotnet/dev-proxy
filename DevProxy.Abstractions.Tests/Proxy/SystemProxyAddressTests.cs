@@ -15,6 +15,9 @@ public class SystemProxyAddressTests
     [InlineData("   ")]
     [InlineData("0.0.0.0")]
     [InlineData("::")]
+    [InlineData("::0")]
+    [InlineData("0:0:0:0:0:0:0:0")]
+    [InlineData("[::]")]
     public void ResolveHost_WildcardOrEmpty_CollapsesToLoopback(string? ipAddress) =>
         Assert.Equal("127.0.0.1", SystemProxyAddress.ResolveHost(ipAddress));
 
@@ -32,6 +35,27 @@ public class SystemProxyAddressTests
     [Fact]
     public void ToHostPort_ExplicitAddress() =>
         Assert.Equal("10.0.0.5:9090", SystemProxyAddress.ToHostPort("10.0.0.5", 9090));
+
+    [Fact]
+    public void ToHostPort_ExplicitIpv6Address_UsesBrackets() =>
+        Assert.Equal("[::1]:9090", SystemProxyAddress.ToHostPort("::1", 9090));
+
+    [Fact]
+    public void ToHttpAuthority_Ipv6Address_UsesBrackets() =>
+        Assert.Equal("http://[::1]:9090", SystemProxyAddress.ToHttpAuthority("::1", 9090));
+
+    [Fact]
+    public void ToHttpAuthority_DefaultHttpPort_IsPreserved() =>
+        Assert.Equal("http://127.0.0.1:80", SystemProxyAddress.ToHttpAuthority("127.0.0.1", 80));
+
+    [Theory]
+    [InlineData("0.0.0.0")]
+    [InlineData("::")]
+    [InlineData("::0")]
+    [InlineData("0:0:0:0:0:0:0:0")]
+    [InlineData("[::]")]
+    public void ToHttpAuthority_WildcardAddress_UsesLoopback(string ipAddress) =>
+        Assert.Equal("http://127.0.0.1:9090", SystemProxyAddress.ToHttpAuthority(ipAddress, 9090));
 
     [Fact]
     public void ToHostPort_NullAddress_UsesLoopback() =>

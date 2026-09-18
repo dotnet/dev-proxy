@@ -79,7 +79,7 @@ A quick reference. All configuration details are in [references/configuration.md
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v3.0.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v4.0.0/rc.schema.json",
   "plugins": [
     {
       "name": "PluginName",
@@ -90,7 +90,7 @@ A quick reference. All configuration details are in [references/configuration.md
   ],
   "urlsToWatch": ["https://api.contoso.com/*"],
   "pluginConfig": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v3.0.0/pluginname.schema.json"
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v4.0.0/pluginname.schema.json"
   }
 }
 ```

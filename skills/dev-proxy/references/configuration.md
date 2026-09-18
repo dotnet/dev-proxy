@@ -10,7 +10,7 @@ A configuration file follows a specific property order: `$schema`, then `plugins
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v3.0.0/rc.schema.json",
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v4.0.0/rc.schema.json",
   "plugins": [
     {
       "name": "RetryAfterPlugin",
@@ -28,7 +28,7 @@ A configuration file follows a specific property order: `$schema`, then `plugins
     "https://jsonplaceholder.typicode.com/*"
   ],
   "genericRandomErrorPlugin": {
-    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v3.0.0/genericrandomerrorplugin.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v4.0.0/genericrandomerrorplugin.schema.json",
     "errorsFile": "devproxy-errors.json",
     "rate": 50
   },
@@ -288,4 +288,5 @@ Exposes Dev Proxy activity in Chrome DevTools (HTTP and STDIO).
 
 | Property | Default | Description |
 |----------|---------|-------------|
-| `preferredBrowser` | `Edge` | `Edge`, `EdgeDev`, or `Chrome` |
+| `preferredBrowser` | `Edge` | `Edge`, `EdgeDev`, `EdgeBeta`, or `Chrome` |
+| `preferredBrowserPath` | empty | Path to the browser executable; overrides `preferredBrowser` |
