@@ -34,6 +34,10 @@ public class SystemProxyAddressTests
         Assert.Equal("10.0.0.5:9090", SystemProxyAddress.ToHostPort("10.0.0.5", 9090));
 
     [Fact]
+    public void ToHostPort_ExplicitIpv6Address_UsesBrackets() =>
+        Assert.Equal("[::1]:9090", SystemProxyAddress.ToHostPort("::1", 9090));
+
+    [Fact]
     public void ToHostPort_NullAddress_UsesLoopback() =>
         Assert.Equal("127.0.0.1:8080", SystemProxyAddress.ToHostPort(null, 8080));
 }

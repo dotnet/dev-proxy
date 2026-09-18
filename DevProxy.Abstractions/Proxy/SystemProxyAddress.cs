@@ -3,6 +3,8 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Globalization;
+using System.Net;
+using System.Net.Sockets;
 
 namespace DevProxy.Abstractions.Proxy;
 
@@ -39,6 +41,14 @@ public static class SystemProxyAddress
     /// <summary>
     /// The <c>host:port</c> value used for the Windows <c>ProxyServer</c> registry setting.
     /// </summary>
-    public static string ToHostPort(string? ipAddress, int port) =>
-        $"{ResolveHost(ipAddress)}:{port.ToString(CultureInfo.InvariantCulture)}";
+    public static string ToHostPort(string? ipAddress, int port)
+    {
+        var host = ResolveHost(ipAddress);
+        if (IPAddress.TryParse(host, out var address) && address.AddressFamily == AddressFamily.InterNetworkV6)
+        {
+            host = $"[{host}]";
+        }
+
+        return $"{host}:{port.ToString(CultureInfo.InvariantCulture)}";
+    }
 }
