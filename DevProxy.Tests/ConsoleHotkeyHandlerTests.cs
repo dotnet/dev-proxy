@@ -15,11 +15,11 @@ namespace DevProxy.Tests;
 public sealed class ConsoleHotkeyHandlerTests
 {
     private static (ConsoleHotkeyHandler handler, FakeProxyStateController controller, RecordingConsole console)
-        CreateHandler(OutputFormat output = OutputFormat.Text)
+        CreateHandler(OutputFormat output = OutputFormat.Text, string ipAddress = "127.0.0.1")
     {
         var controller = new FakeProxyStateController();
         var console = new RecordingConsole();
-        var configuration = new FakeProxyConfiguration { Output = output };
+        var configuration = new FakeProxyConfiguration { Output = output, IPAddress = ipAddress };
         var handler = new ConsoleHotkeyHandler(controller, configuration, console);
         return (handler, controller, console);
     }
@@ -123,6 +123,16 @@ public sealed class ConsoleHotkeyHandlerTests
         Assert.Contains("\\\"recording\\\": true", joined, StringComparison.Ordinal);
         Assert.Contains("\\\"recording\\\": false", joined, StringComparison.Ordinal);
         Assert.Contains("/proxy/stopProxy", joined, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PrintApiInstructions_FormatsIpv6Address()
+    {
+        var (handler, _, console) = CreateHandler(OutputFormat.Json, "::1");
+
+        handler.PrintApiInstructions();
+
+        Assert.Contains(console.Lines, line => line.Contains("http://[::1]:8897/proxy", StringComparison.Ordinal));
     }
 
     [Fact]

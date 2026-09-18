@@ -243,7 +243,7 @@ sealed class DevProxyCommand : RootCommand
         IProxyConfiguration proxyConfiguration,
         IServiceProvider serviceProvider,
         UpdateNotification updateNotification,
-        ILogger<DevProxyCommand> logger) : base($"Start Dev Proxy\n\nAPI:\n  Dev Proxy exposes a REST API for runtime management.\n  OpenAPI spec: http://{proxyConfiguration.IPAddress ?? "127.0.0.1"}:{proxyConfiguration.ApiPort}/swagger\n  Use --api-port to configure (default: {proxyConfiguration.ApiPort}).\n  Run 'devproxy api show' for more information.")
+        ILogger<DevProxyCommand> logger) : base($"Start Dev Proxy\n\nAPI:\n  Dev Proxy exposes a REST API for runtime management.\n  OpenAPI spec: {new UriBuilder(Uri.UriSchemeHttp, proxyConfiguration.IPAddress ?? "127.0.0.1", proxyConfiguration.ApiPort).Uri.GetLeftPart(UriPartial.Authority)}/swagger\n  Use --api-port to configure (default: {proxyConfiguration.ApiPort}).\n  Run 'devproxy api show' for more information.")
     {
         _serviceProvider = serviceProvider;
         _plugins = plugins;
@@ -313,7 +313,8 @@ sealed class DevProxyCommand : RootCommand
             _app.Lifetime.ApplicationStarted.Register(() =>
             {
                 var serverAddresses = _app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>();
-                var address = serverAddresses?.Addresses.FirstOrDefault() ?? $"http://{_proxyConfiguration.IPAddress}:{_proxyConfiguration.ApiPort}";
+                var address = serverAddresses?.Addresses.FirstOrDefault() ??
+                    new UriBuilder(Uri.UriSchemeHttp, _proxyConfiguration.IPAddress, _proxyConfiguration.ApiPort).Uri.GetLeftPart(UriPartial.Authority);
                 _logger.LogInformation("Dev Proxy API listening on {Address}...", address);
 
                 // Persist the daemon state so the parent process's readiness check,

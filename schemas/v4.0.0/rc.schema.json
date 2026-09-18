@@ -41,6 +41,14 @@
     },
     "ipAddress": {
       "type": "string",
+      "anyOf": [
+        {
+          "format": "ipv4"
+        },
+        {
+          "format": "ipv6"
+        }
+      ],
       "description": "IP address for Dev Proxy to listen on."
     },
     "languageModel": {
