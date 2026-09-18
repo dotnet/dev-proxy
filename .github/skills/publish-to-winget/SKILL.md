@@ -36,7 +36,7 @@ Validate with pattern: `^(\d+)\.(\d+)\.(\d+)(-beta\.\d+)?$`
 UPSTREAM_REPO = microsoft/winget-pkgs
 GITHUB_RELEASE_URL = https://github.com/dotnet/dev-proxy/releases/download/v
 MANIFEST_SCHEMA_URL = https://aka.ms/winget-manifest
-MANIFEST_VERSION = 1.12.0
+MANIFEST_VERSION = 1.28.0
 ```
 
 > **Keeping the schema version current:** The `MANIFEST_VERSION` must match the

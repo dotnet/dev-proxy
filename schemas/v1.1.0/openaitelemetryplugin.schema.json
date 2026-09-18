@@ -36,7 +36,7 @@
     "includeCosts": {
       "type": "boolean",
       "description": "Whether to calculate and include cost information in the spans. Requires prices data.",
-      "default": true
+      "default": false
     },
     "includePrompt": {
       "type": "boolean",

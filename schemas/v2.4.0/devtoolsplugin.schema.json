@@ -12,9 +12,10 @@
       "enum": [
         "Edge",
         "EdgeDev",
+        "EdgeBeta",
         "Chrome"
       ],
-      "description": "Which browser to use to launch Dev Tools. Supported values: Edge, EdgeDev, Chrome. Default: Edge."
+      "description": "Which browser to use to launch Dev Tools. Supported values: Edge, EdgeDev, EdgeBeta, Chrome. Default: Edge."
     }
   },
   "additionalProperties": false

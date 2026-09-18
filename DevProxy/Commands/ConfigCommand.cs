@@ -36,13 +36,6 @@ sealed class GitHubTreeItem
     public string Type { get; set; } = string.Empty;
 }
 
-sealed class VisualStudioCodeSnippet
-{
-    public string? Prefix { get; set; }
-    public string[]? Body { get; set; }
-    public string? Description { get; set; }
-}
-
 sealed class ConfigCommand : Command
 {
     private enum ConfigFileFormat
@@ -54,8 +47,8 @@ sealed class ConfigCommand : Command
     private readonly ILogger _logger;
     private readonly IProxyConfiguration _proxyConfiguration;
     private readonly HttpClient _httpClient;
-    private readonly string snippetsBaseUrl = $"https://aka.ms/devproxy/snippets/v{ProxyUtils.NormalizeVersion(ProxyUtils.ProductVersion)}";
-    private readonly string configFileSnippetName = "ConfigFile";
+    private const string ConfigTemplatesFolder = "config-templates";
+
     public ConfigCommand(
         HttpClient httpClient,
         IProxyConfiguration proxyConfiguration,
@@ -447,35 +440,13 @@ sealed class ConfigCommand : Command
         try
         {
             var selectedFormat = format ?? GetConfigFileFormatFromFileName(name);
-
-            var snippets = await DownloadSnippetsAsync(selectedFormat);
-            if (snippets is null)
-            {
-                return;
-            }
-
-            if (!snippets.TryGetValue(configFileSnippetName, out var snippet))
-            {
-                if (outputFormat == OutputFormat.Text)
-                {
-                    _logger.LogError("Snippet {SnippetName} not found", configFileSnippetName);
-                }
-                return;
-            }
-
-            if (snippet.Body is null || snippet.Body.Length == 0)
-            {
-                if (outputFormat == OutputFormat.Text)
-                {
-                    _logger.LogError("Snippet {SnippetName} is empty", configFileSnippetName);
-                }
-                return;
-            }
-
-            var snippetBody = GetSnippetBody(snippet.Body);
+            var templateFileName = selectedFormat == ConfigFileFormat.Yaml ? "devproxyrc.yaml" : "devproxyrc.json";
+            var templateFilePath = Path.Combine(AppContext.BaseDirectory, ConfigTemplatesFolder, templateFileName);
+            _logger.LogDebug("Reading config template from {TemplateFilePath}...", templateFilePath);
+            var template = await File.ReadAllTextAsync(templateFilePath);
 
             var targetFileName = GetTargetFileName(name);
-            await File.WriteAllTextAsync(targetFileName, snippetBody);
+            await File.WriteAllTextAsync(targetFileName, template);
 
             if (outputFormat == OutputFormat.Json)
             {
@@ -494,7 +465,7 @@ sealed class ConfigCommand : Command
         {
             if (outputFormat == OutputFormat.Text)
             {
-                _logger.LogError(ex, "Error downloading config");
+                _logger.LogError(ex, "Error creating config");
             }
         }
     }
@@ -506,32 +477,6 @@ sealed class ConfigCommand : Command
     {
         var extension = Path.GetExtension(name).ToLowerInvariant();
         return extension is ".yaml" or ".yml" ? ConfigFileFormat.Yaml : ConfigFileFormat.Json;
-    }
-
-    private async Task<Dictionary<string, VisualStudioCodeSnippet>?> DownloadSnippetsAsync(ConfigFileFormat format)
-    {
-        var formatSuffix = format == ConfigFileFormat.Yaml ? "yaml" : "json";
-        var snippetsFileUrl = $"{snippetsBaseUrl}/{formatSuffix}";
-        _logger.LogDebug("Downloading snippets from {SnippetsFileUrl}...", snippetsFileUrl);
-        var response = await _httpClient.GetAsync(new Uri(snippetsFileUrl));
-        if (response.IsSuccessStatusCode)
-        {
-            var content = await response.Content.ReadAsStringAsync();
-            try
-            {
-                return JsonSerializer.Deserialize<Dictionary<string, VisualStudioCodeSnippet>>(content, ProxyUtils.JsonSerializerOptions);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to parse snippets from {Url}", snippetsFileUrl);
-                return null;
-            }
-        }
-        else
-        {
-            _logger.LogError("Failed to download snippets. Status code: {StatusCode}", response.StatusCode);
-            return null;
-        }
     }
 
     private string GetTargetFileName(string name)
@@ -564,16 +509,6 @@ sealed class ConfigCommand : Command
         }
 
         return newFolder;
-    }
-
-    private static string? GetSnippetBody(string[] bodyLines)
-    {
-        var body = string.Join("\n", bodyLines);
-        // unescape $
-        body = body.Replace("\\$", "$", StringComparison.OrdinalIgnoreCase);
-        // remove snippet $n markers
-        body = Regex.Replace(body, @"\$[0-9]+", "");
-        return body;
     }
 
     private static string? ResolveConfigFile(string? configFilePath)

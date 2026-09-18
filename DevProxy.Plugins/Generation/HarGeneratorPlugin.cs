@@ -4,6 +4,7 @@
 
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Models;
 using DevProxy.Plugins.Utils;
@@ -11,6 +12,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Globalization;
+using System.Net.WebSockets;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Web;
@@ -68,7 +70,7 @@ public sealed class HarGeneratorPlugin(
                     r is not null &&
                     r.Context is not null &&
                     r.Context.Session is not null &&
-                    ProxyUtils.MatchesUrlToWatch(UrlsToWatch, r.Context.Session.HttpClient.Request.RequestUri.AbsoluteUri)).Select(CreateHarEntry)]
+                    ProxyUtils.MatchesUrlToWatch(UrlsToWatch, r.Context.Session.Request.RequestUri.AbsoluteUri)).Select(CreateHarEntry)]
             }
         };
 
@@ -102,8 +104,8 @@ public sealed class HarGeneratorPlugin(
         Debug.Assert(log is not null);
         Debug.Assert(log.Context is not null);
 
-        var request = log.Context.Session.HttpClient.Request;
-        var response = log.Context.Session.HttpClient.Response;
+        var request = log.Context.Session.Request;
+        var response = log.Context.Session.Response!;
 
         var entry = new HarEntry
         {
@@ -129,17 +131,17 @@ public sealed class HarGeneratorPlugin(
                         return new HarCookie { Name = parts[0].Trim(), Value = parts.Length > 1 ? parts[1].Trim() : "" };
                     })],
                 HeadersSize = request.Headers?.ToString()?.Length ?? 0,
-                BodySize = request.HasBody ? (request.Body?.Length ?? 0) : 0,
+                BodySize = request.HasBody ? request.Body.Length : 0,
                 PostData = request.HasBody ? new HarPostData
                 {
                     MimeType = request.ContentType,
-                    Text = request.Body is not null ? HttpUtils.GetBodyString(request.ContentType, request.Body) : ""
+                    Text = HttpUtils.GetBodyString(request.ContentType, request.Body.ToArray())
                 }
                     : null
             },
             Response = response is not null ? new HarResponse
             {
-                Status = response.StatusCode,
+                Status = (int)response.StatusCode,
                 StatusText = response.StatusDescription,
                 HttpVersion = $"HTTP/{response.HttpVersion}",
                 Headers = [.. response.Headers.Select(h => new HarHeader { Name = h.Name, Value = GetHeaderValue(h.Name, string.Join(", ", h.Value)) })],
@@ -153,17 +155,46 @@ public sealed class HarGeneratorPlugin(
                     })],
                 Content = new HarContent
                 {
-                    Size = response.HasBody ? (response.Body?.Length ?? 0) : 0,
+                    Size = response.HasBody ? response.Body.Length : 0,
                     MimeType = response.ContentType ?? "",
-                    Text = Configuration.IncludeResponse && response.HasBody && response.Body is not null ? HttpUtils.GetBodyString(response.ContentType, response.Body) : null
+                    Text = Configuration.IncludeResponse && response.HasBody ? HttpUtils.GetBodyString(response.ContentType, response.Body.ToArray()) : null
                 },
                 HeadersSize = response.Headers?.ToString()?.Length ?? 0,
-                BodySize = response.HasBody ? (response.Body?.Length ?? 0) : 0
+                BodySize = response.HasBody ? response.Body.Length : 0
             } : null
         };
 
+        // Attach WebSocket messages (if any) following the Chrome/mitmproxy convention.
+        var wsMessages = log.Context.Session.WebSocketMessages;
+        if (request.IsWebSocketRequest && wsMessages.Count > 0)
+        {
+            entry.ResourceType = "websocket";
+            entry.WebSocketMessages = [.. wsMessages.Select(m =>
+            {
+                var isText = m.Type == WebSocketMessageType.Text;
+                return new HarWebSocketMessage
+                {
+                    Type = m.Direction == WebSocketMessageDirection.Send ? "send" : "receive",
+                    Time = m.Timestamp.ToUnixTimeMilliseconds() / 1000.0,
+                    Opcode = ToRfc6455Opcode(m.Type),
+                    Data = isText ? m.Text : Convert.ToBase64String(m.Data.Span)
+                };
+            })];
+        }
+
         return entry;
     }
+
+    // Maps the framework WebSocketMessageType to the RFC 6455 opcode used by the
+    // Chrome DevTools / mitmproxy _webSocketMessages convention (1=text, 2=binary,
+    // 8=close). WebSocketMessageType values (0/1/2) are NOT the wire opcodes.
+    private static int ToRfc6455Opcode(WebSocketMessageType type) => type switch
+    {
+        WebSocketMessageType.Text => 1,
+        WebSocketMessageType.Binary => 2,
+        WebSocketMessageType.Close => 8,
+        _ => 1
+    };
 
     private static string UnescapeSurrogatePairs(string json)
     {

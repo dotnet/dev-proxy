@@ -1,0 +1,35 @@
+﻿// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
+
+using DevProxy.Abstractions.Proxy.Http;
+
+namespace DevProxy.Abstractions.Proxy;
+
+public enum MessageType
+{
+    Normal,
+    InterceptedRequest,
+    PassedThrough,
+    Warning,
+    Tip,
+    Failed,
+    Chaos,
+    Mocked,
+    InterceptedResponse,
+    FinishedProcessingRequest,
+    Skipped,
+    Processed,
+    Timestamp
+}
+
+public class LoggingContext(IProxySession session)
+{
+    public IProxySession Session { get; } = session;
+}
+
+public class StdioLoggingContext(StdioSession session, StdioMessageDirection direction)
+{
+    public StdioSession Session { get; } = session;
+    public StdioMessageDirection Direction { get; } = direction;
+}

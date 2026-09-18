@@ -2,10 +2,10 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using System.CommandLine;
 using System.Text.Json.Serialization;
-using Titanium.Web.Proxy.EventArguments;
 
 namespace DevProxy.Abstractions.Proxy;
 
@@ -15,17 +15,17 @@ public class ProxyEventArgsBase
     public Dictionary<string, object> GlobalData { get; init; } = [];
 }
 
-public class ProxyHttpEventArgsBase(SessionEventArgs session) : ProxyEventArgsBase
+public class ProxyHttpEventArgsBase(IProxySession proxySession) : ProxyEventArgsBase
 {
-    public SessionEventArgs Session { get; } = session ??
-        throw new ArgumentNullException(nameof(session));
+    public IProxySession ProxySession { get; } = proxySession ??
+        throw new ArgumentNullException(nameof(proxySession));
 
     public bool HasRequestUrlMatch(ISet<UrlToWatch> watchedUrls) =>
-        ProxyUtils.MatchesUrlToWatch(watchedUrls, Session.HttpClient.Request.RequestUri.AbsoluteUri);
+        ProxyUtils.MatchesUrlToWatch(watchedUrls, ProxySession.Request.RequestUri.AbsoluteUri);
 }
 
-public class ProxyRequestArgs(SessionEventArgs session, ResponseState responseState) :
-    ProxyHttpEventArgsBase(session)
+public class ProxyRequestArgs(IProxySession proxySession, ResponseState responseState) :
+    ProxyHttpEventArgsBase(proxySession)
 {
     public ResponseState ResponseState { get; } = responseState ??
         throw new ArgumentNullException(nameof(responseState));
@@ -35,8 +35,8 @@ public class ProxyRequestArgs(SessionEventArgs session, ResponseState responseSt
         && HasRequestUrlMatch(watchedUrls);
 }
 
-public class ProxyResponseArgs(SessionEventArgs session, ResponseState responseState) :
-    ProxyHttpEventArgsBase(session)
+public class ProxyResponseArgs(IProxySession proxySession, ResponseState responseState) :
+    ProxyHttpEventArgsBase(proxySession)
 {
     public ResponseState ResponseState { get; } = responseState ??
         throw new ArgumentNullException(nameof(responseState));
@@ -72,7 +72,7 @@ public class RequestLog
     public string? Url { get; init; }
 
     public RequestLog(string message, MessageType messageType, LoggingContext? context) :
-        this(message, messageType, context?.Session.HttpClient.Request.Method, context?.Session.HttpClient.Request.Url, context)
+        this(message, messageType, context?.Session.Request.Method, context?.Session.Request.Url, context)
     {
     }
 

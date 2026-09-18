@@ -49,8 +49,11 @@
                   "type": [
                     "object",
                     "array",
-                    "string"
-                  ]
+                    "string",
+                    "number",
+                    "boolean"
+                  ],
+                  "description": "Response body to return. Can be an object, array, string, number, or boolean."
                 },
                 "statusCode": {
                   "type": "integer"
