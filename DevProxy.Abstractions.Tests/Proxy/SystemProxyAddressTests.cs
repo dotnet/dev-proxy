@@ -43,6 +43,10 @@ public class SystemProxyAddressTests
     public void ToHttpAuthority_Ipv6Address_UsesBrackets() =>
         Assert.Equal("http://[::1]:9090", SystemProxyAddress.ToHttpAuthority("::1", 9090));
 
+    [Fact]
+    public void ToHttpAuthority_DefaultHttpPort_IsPreserved() =>
+        Assert.Equal("http://127.0.0.1:80", SystemProxyAddress.ToHttpAuthority("127.0.0.1", 80));
+
     [Theory]
     [InlineData("0.0.0.0")]
     [InlineData("::")]

@@ -45,7 +45,7 @@ public static class SystemProxyAddress
     }
 
     public static string ToHttpAuthority(string? ipAddress, int port) =>
-        new UriBuilder(Uri.UriSchemeHttp, ResolveHost(ipAddress), port).Uri.GetLeftPart(UriPartial.Authority);
+        $"{Uri.UriSchemeHttp}://{ToHostPort(ipAddress, port)}";
 
     /// <summary>
     /// The <c>host:port</c> value used for the Windows <c>ProxyServer</c> registry setting.
