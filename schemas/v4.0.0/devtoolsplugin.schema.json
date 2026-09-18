@@ -16,6 +16,10 @@
         "EdgeBeta"
       ],
       "description": "Which browser to use to launch Dev Tools. Supported values: Edge, EdgeDev, Chrome, EdgeBeta. Default: Edge."
+    },
+    "preferredBrowserPath": {
+      "type": "string",
+      "description": "Path to the browser executable. When specified, overrides preferredBrowser."
     }
   },
   "additionalProperties": false
