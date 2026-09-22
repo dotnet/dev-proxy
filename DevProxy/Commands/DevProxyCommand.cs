@@ -31,6 +31,7 @@ sealed class DevProxyCommand : RootCommand
     internal const string RecordOptionName = "--record";
     internal const string WatchPidsOptionName = "--watch-pids";
     internal const string WatchProcessNamesOptionName = "--watch-process-names";
+    internal const string WatchProcessTreeOptionName = "--watch-process-tree";
     internal const string ConfigFileOptionName = "--config-file";
     internal static readonly Option<string?> ConfigFileOption = new(ConfigFileOptionName, "-c")
     {
@@ -456,6 +457,11 @@ sealed class DevProxyCommand : RootCommand
             HelpName = "process-names",
         };
 
+        var watchProcessTreeOption = new Option<bool?>(WatchProcessTreeOptionName)
+        {
+            Description = "Also watch descendants of processes selected by --watch-pids or --watch-process-names"
+        };
+
         var noFirstRunOption = new Option<bool?>(NoFirstRunOptionName)
         {
             Description = "Skip the first run experience"
@@ -609,7 +615,8 @@ sealed class DevProxyCommand : RootCommand
             timeoutOption,
             urlsToWatchOption,
             watchPidsOption,
-            watchProcessNamesOption
+            watchProcessNamesOption,
+            watchProcessTreeOption
         };
         options.AddRange(_plugins
             .SelectMany(p => p.GetOptions())
@@ -703,6 +710,12 @@ sealed class DevProxyCommand : RootCommand
         if (watchProcessNames is not null && watchProcessNames.Any())
         {
             _proxyConfiguration.WatchProcessNames = watchProcessNames;
+        }
+        var watchProcessTree = parseResult.GetValueOrDefault<bool?>(WatchProcessTreeOptionName);
+        if (watchProcessTree is not null &&
+            _proxyConfiguration is IProcessTreeProxyConfiguration processTreeConfiguration)
+        {
+            processTreeConfiguration.WatchProcessTree = watchProcessTree.Value;
         }
         var noFirstRun = parseResult.GetValueOrDefault<bool?>(NoFirstRunOptionName);
         if (noFirstRun is not null)

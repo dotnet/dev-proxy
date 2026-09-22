@@ -51,3 +51,8 @@ public interface IProxyConfiguration
     IEnumerable<int> WatchPids { get; set; }
     IEnumerable<string> WatchProcessNames { get; set; }
 }
+
+public interface IProcessTreeProxyConfiguration
+{
+    bool WatchProcessTree { get; set; }
+}

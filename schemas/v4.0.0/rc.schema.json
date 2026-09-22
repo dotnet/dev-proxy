@@ -201,6 +201,10 @@
         "type": "string"
       }
     },
+    "watchProcessTree": {
+      "type": "boolean",
+      "description": "Whether to also watch descendants of processes selected by watchPids or watchProcessNames."
+    },
     "showTimestamps": {
       "type": "boolean",
       "description": "Show timestamps in log output."

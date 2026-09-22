@@ -13,9 +13,21 @@ public class ProcessFilterTests
     private static ProcessFilter Filter(
         IEnumerable<int>? pids = null,
         IEnumerable<string>? names = null,
+        bool watchProcessTree = false,
         Func<int, int?>? resolvePid = null,
-        Func<int, string?>? resolveName = null) =>
-        new(pids ?? [], names ?? [], resolvePid, resolveName);
+        Func<int, string?>? resolveName = null,
+        Func<int, DateTimeOffset?>? resolveStartTime = null,
+        Func<IReadOnlyDictionary<int, int>>? resolveParentPids = null,
+        Func<DateTimeOffset>? utcNow = null) =>
+        new(
+            pids ?? [],
+            names ?? [],
+            watchProcessTree,
+            resolvePid,
+            resolveName,
+            resolveStartTime,
+            resolveParentPids,
+            utcNow);
 
     [Fact]
     public void IsEmpty_True_WhenNoFilterConfigured()
@@ -102,6 +114,218 @@ public class ProcessFilterTests
             resolvePid: _ => 4242,
             resolveName: _ => throw new InvalidOperationException("name lookup not needed"));
         Assert.True(filter.IsWatchedProcess(54321));
+    }
+
+    [Fact]
+    public void IsWatchedProcess_False_ForChild_WhenProcessTreeDisabled()
+    {
+        var filter = Filter(
+            pids: [100],
+            resolvePid: _ => 300,
+            resolveParentPids: () => new Dictionary<int, int> { [300] = 200, [200] = 100 });
+
+        Assert.False(filter.IsWatchedProcess(54321));
+    }
+
+    [Fact]
+    public void IsWatchedProcess_True_WhenAncestorPidMatches()
+    {
+        var filter = Filter(
+            pids: [100],
+            watchProcessTree: true,
+            resolvePid: _ => 300,
+            resolveName: _ => null,
+            resolveStartTime: pid => DateTimeOffset.UnixEpoch.AddSeconds(pid),
+            resolveParentPids: () => new Dictionary<int, int> { [300] = 200, [200] = 100 });
+
+        Assert.True(filter.IsWatchedProcess(54321));
+    }
+
+    [Fact]
+    public void IsWatchedProcess_True_WhenAncestorNameMatches()
+    {
+        var names = new Dictionary<int, string>
+        {
+            [100] = "Visual Studio Code",
+            [200] = "extension-host",
+            [300] = "node"
+        };
+        var filter = Filter(
+            names: ["Visual Studio Code"],
+            watchProcessTree: true,
+            resolvePid: _ => 300,
+            resolveName: pid => names[pid],
+            resolveStartTime: pid => DateTimeOffset.UnixEpoch.AddSeconds(pid),
+            resolveParentPids: () => new Dictionary<int, int> { [300] = 200, [200] = 100 });
+
+        Assert.True(filter.IsWatchedProcess(54321));
+    }
+
+    [Fact]
+    public void IsWatchedProcess_False_WhenNoAncestorMatches()
+    {
+        var filter = Filter(
+            names: ["Visual Studio Code"],
+            watchProcessTree: true,
+            resolvePid: _ => 300,
+            resolveName: pid => pid == 100 ? "terminal" : "node",
+            resolveStartTime: pid => DateTimeOffset.UnixEpoch.AddSeconds(pid),
+            resolveParentPids: () => new Dictionary<int, int> { [300] = 200, [200] = 100 });
+
+        Assert.False(filter.IsWatchedProcess(54321));
+    }
+
+    [Fact]
+    public void IsWatchedProcess_UsesCachedDecision_ForSameProcessInstance()
+    {
+        var parentResolutionCount = 0;
+        var filter = Filter(
+            pids: [100],
+            watchProcessTree: true,
+            resolvePid: _ => 300,
+            resolveName: _ => null,
+            resolveStartTime: pid => DateTimeOffset.UnixEpoch.AddSeconds(pid),
+            resolveParentPids: () =>
+            {
+                parentResolutionCount++;
+                return new Dictionary<int, int> { [300] = 200, [200] = 100 };
+            });
+
+        Assert.True(filter.IsWatchedProcess(54321));
+        Assert.True(filter.IsWatchedProcess(54322));
+        Assert.Equal(1, parentResolutionCount);
+    }
+
+    [Fact]
+    public void IsWatchedProcess_DoesNotReuseCache_WhenPidIsReused()
+    {
+        var startTime = DateTimeOffset.UnixEpoch;
+        var parents = new Dictionary<int, int> { [300] = 100 };
+        var filter = Filter(
+            pids: [100],
+            watchProcessTree: true,
+            resolvePid: _ => 300,
+            resolveName: _ => null,
+            resolveStartTime: _ => startTime,
+            resolveParentPids: () => parents);
+
+        Assert.True(filter.IsWatchedProcess(54321));
+
+        startTime = startTime.AddMinutes(1);
+        parents = new Dictionary<int, int> { [300] = 400 };
+
+        Assert.False(filter.IsWatchedProcess(54322));
+    }
+
+    [Fact]
+    public void IsWatchedProcess_False_WhenAncestorPidWasReused()
+    {
+        var processStartTimes = new Dictionary<int, DateTimeOffset>
+        {
+            [300] = DateTimeOffset.UnixEpoch.AddMinutes(1),
+            // PID 100 is listed as the creator of 300, but the process currently
+            // owning that PID started later and is therefore unrelated.
+            [100] = DateTimeOffset.UnixEpoch.AddMinutes(2)
+        };
+        var filter = Filter(
+            names: ["Visual Studio Code"],
+            watchProcessTree: true,
+            resolvePid: _ => 300,
+            resolveName: pid => pid == 100 ? "Visual Studio Code" : "node",
+            resolveStartTime: pid => processStartTimes[pid],
+            resolveParentPids: () => new Dictionary<int, int> { [300] = 100 });
+
+        Assert.False(filter.IsWatchedProcess(54321));
+    }
+
+    [Fact]
+    public void IsWatchedProcess_False_WhenAncestorStartTimeCannotBeResolved()
+    {
+        var filter = Filter(
+            pids: [100],
+            watchProcessTree: true,
+            resolvePid: _ => 300,
+            resolveName: _ => null,
+            resolveStartTime: pid => pid == 300 ? DateTimeOffset.UnixEpoch : null,
+            resolveParentPids: () => new Dictionary<int, int> { [300] = 100 });
+
+        Assert.False(filter.IsWatchedProcess(54321));
+    }
+
+    [Fact]
+    public void IsWatchedProcess_RefreshesExpiredCacheEntry()
+    {
+        var now = DateTimeOffset.UnixEpoch;
+        var parentResolutionCount = 0;
+        var filter = Filter(
+            pids: [100],
+            watchProcessTree: true,
+            resolvePid: _ => 300,
+            resolveName: _ => null,
+            resolveStartTime: pid => DateTimeOffset.UnixEpoch.AddSeconds(pid),
+            resolveParentPids: () =>
+            {
+                parentResolutionCount++;
+                return new Dictionary<int, int> { [300] = 100 };
+            },
+            utcNow: () => now);
+
+        Assert.True(filter.IsWatchedProcess(54321));
+
+        now = now.AddMinutes(2);
+
+        Assert.True(filter.IsWatchedProcess(54322));
+        Assert.Equal(2, parentResolutionCount);
+    }
+
+    [Fact]
+    public void IsWatchedProcess_StopsWhenParentGraphContainsCycle()
+    {
+        var filter = Filter(
+            pids: [100],
+            watchProcessTree: true,
+            resolvePid: _ => 300,
+            resolveName: _ => null,
+            resolveStartTime: pid => DateTimeOffset.UnixEpoch.AddSeconds(pid),
+            resolveParentPids: () => new Dictionary<int, int> { [300] = 200, [200] = 300 });
+
+        Assert.False(filter.IsWatchedProcess(54321));
+    }
+}
+
+public class ProcessTreeResolverTests
+{
+    [Fact]
+    public void ParsePsOutput_ReturnsParentRelationships()
+    {
+        const string output = """
+              1     0
+            100     1
+            200   100
+            300   200
+            """;
+
+        var parents = ProcessTreeResolver.ParsePsOutput(output);
+
+        Assert.Equal(0, parents[1]);
+        Assert.Equal(1, parents[100]);
+        Assert.Equal(100, parents[200]);
+        Assert.Equal(200, parents[300]);
+    }
+
+    [Fact]
+    public void ParsePsOutput_IgnoresMalformedLines()
+    {
+        const string output = """
+            PID PPID
+            invalid
+            200 100
+            """;
+
+        var parents = ProcessTreeResolver.ParsePsOutput(output);
+
+        Assert.Single(parents);
+        Assert.Equal(100, parents[200]);
     }
 }
 

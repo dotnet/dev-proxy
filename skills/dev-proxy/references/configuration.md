@@ -135,6 +135,7 @@ Plugin-specific override:
 | `record` | off | `--record` | Start in recording mode |
 | `watchPids` | — | `--watch-pids` | Only intercept from these PIDs |
 | `watchProcessNames` | — | `--watch-process-names` | Only intercept from these processes |
+| `watchProcessTree` | — | `--watch-process-tree` | Also intercept descendants of watched processes |
 | `asSystemProxy` | `true` | `--as-system-proxy` | Register as system proxy |
 | — | off | `--detach` | Run in detached (background) mode |
 | — | `text` | `--output` | Output format: `text` or `json` |
@@ -273,6 +274,7 @@ Limit interception to specific processes:
 ```bash
 devproxy --watch-process-names msedge node
 devproxy --watch-pids 1234 5678
+devproxy --watch-process-names code --watch-process-tree
 ```
 
 Or filter by request headers:
