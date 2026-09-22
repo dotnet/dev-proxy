@@ -14,7 +14,7 @@
         "EdgeDev",
         "Chrome",
         "EdgeBeta"
-      ]
+      ],
       "description": "Which browser to use to launch Dev Tools. Supported values: Edge, EdgeDev, Chrome. Default: Edge."
     }
   },
