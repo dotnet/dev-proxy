@@ -19,6 +19,7 @@ sealed class DevProxyConfigOptions : RootCommand
     }
 
     public int? ApiPort => _parseResult?.GetValueOrDefault<int?>(DevProxyCommand.ApiPortOptionName);
+    public string? ApiIpAddress => _parseResult?.GetValueOrDefault<string?>(DevProxyCommand.ApiIpAddressOptionName);
     public bool? AsSystemProxy => _parseResult?.GetValueOrDefault<bool?>(DevProxyCommand.AsSystemProxyOptionName);
     public int? Port => _parseResult?.GetValueOrDefault<int?>(DevProxyCommand.PortOptionName);
     public bool Discover => _parseResult?.GetValueOrDefault<bool?>(DevProxyCommand.DiscoverOptionName) ?? false;
@@ -139,6 +140,7 @@ sealed class DevProxyConfigOptions : RootCommand
         };
 
         var apiPortOption = new Option<int?>(DevProxyCommand.ApiPortOptionName);
+        var apiIpAddressOption = new Option<string?>(DevProxyCommand.ApiIpAddressOptionName);
         var asSystemProxyOption = new Option<bool?>(DevProxyCommand.AsSystemProxyOptionName);
         var portOption = new Option<int?>(DevProxyCommand.PortOptionName, "-p");
 
@@ -155,6 +157,7 @@ sealed class DevProxyConfigOptions : RootCommand
         var options = new List<Option>
         {
             apiPortOption,
+            apiIpAddressOption,
             asSystemProxyOption,
             ipAddressOption,
             configFileOption,

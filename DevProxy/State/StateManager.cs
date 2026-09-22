@@ -91,15 +91,9 @@ internal static class StateManager
     public static async Task SaveStateAsync(ProxyInstanceState state, CancellationToken cancellationToken = default)
     {
         var stateFilePath = GetInstanceStateFilePath(state.Pid);
-        var directory = Path.GetDirectoryName(stateFilePath);
-
-        if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-        {
-            _ = Directory.CreateDirectory(directory);
-        }
 
         var json = JsonSerializer.Serialize(state, _jsonOptions);
-        await File.WriteAllTextAsync(stateFilePath, json, cancellationToken);
+        await PrivateFiles.WriteAllTextAsync(stateFilePath, json, cancellationToken);
     }
 
     /// <summary>
@@ -139,6 +133,19 @@ internal static class StateManager
 
         var states = new List<ProxyInstanceState>();
         var seenPids = new HashSet<int>();
+
+        var credentialsFolder = Path.Combine(configFolder, "credentials");
+        if (Directory.Exists(credentialsFolder))
+        {
+            foreach (var credentialFile in Directory.GetFiles(credentialsFolder, "api-*.token"))
+            {
+                if (int.TryParse(Path.GetFileNameWithoutExtension(credentialFile).AsSpan(4), out var pid) &&
+                    !IsProcessRunning(pid))
+                {
+                    DeleteFile(credentialFile);
+                }
+            }
+        }
 
         // Check per-instance state files
         var stateFiles = Directory.GetFiles(configFolder, $"{StateFilePrefix}*{StateFileExtension}");
@@ -222,6 +229,7 @@ internal static class StateManager
     public static async Task DeleteStateAsync(int pid, CancellationToken cancellationToken = default)
     {
         DeleteFile(GetInstanceStateFilePath(pid));
+        DeleteFile(ApiSecurity.GetTokenFilePath(pid));
 
         // Also clean up legacy state file if it belongs to this PID
         var legacyPath = GetStateFilePath();
@@ -307,6 +315,7 @@ internal static class StateManager
         {
             // Clean up stale state file
             DeleteFile(filePath);
+            DeleteFile(ApiSecurity.GetTokenFilePath(state.Pid));
             return null;
         }
 

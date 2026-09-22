@@ -36,6 +36,7 @@ sealed class ProxyEngine(
     IProxyStateController proxyController,
     ILogger<ProxyEngine> logger,
     ILoggerFactory loggerFactory,
+    IHostApplicationLifetime applicationLifetime,
     IServer server) : BackgroundService, IDisposable
 {
     private readonly IEnumerable<IPlugin> _plugins = plugins;
@@ -143,12 +144,18 @@ sealed class ProxyEngine(
         }
 
         ProxyServer.AddEndPoint(_explicitEndPoint);
+        await ApiSecurity.SaveTokenAsync(stoppingToken);
         await ProxyServer.StartAsync(cancellationToken: stoppingToken);
 
+        var applicationStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = applicationLifetime.ApplicationStarted.Register(() => applicationStarted.TrySetResult());
+        await applicationStarted.Task.WaitAsync(stoppingToken);
+
         // Save state with actual bound ports so other commands can find us
-        if (DevProxyCommand.IsInternalDaemon)
+        await SaveInstanceStateAsync();
+        if (!IPAddress.IsLoopback(IPAddress.Parse(_config.ApiIpAddress)))
         {
-            await SaveInstanceStateAsync();
+            _logger.LogWarning("The Dev Proxy API is bound to {ApiIpAddress} off-loopback. Bearer tokens are sent over HTTP; use only on trusted networks or through a secure tunnel.", _config.ApiIpAddress);
         }
 
         // run first-run setup on macOS
@@ -210,10 +217,13 @@ sealed class ProxyEngine(
             // since LLMs/agents can use the API even in non-interactive mode
             PrintApiInstructions(_config);
         }
-        else if (isInteractive)
+        else
         {
-            // Print hotkeys only when they can be used (interactive terminal, human mode)
-            PrintHotkeys();
+            ApiSecurity.PrintTokenOnce(ApiSecurity.GetApiUrl(server, _config.ApiPort));
+            if (isInteractive)
+            {
+                PrintHotkeys();
+            }
         }
 
         if (_config.Record)
@@ -252,19 +262,25 @@ sealed class ProxyEngine(
     private async Task SaveInstanceStateAsync()
     {
         var proxyPort = _explicitEndPoint?.Port ?? _config.Port;
-        var ipAddress = _config.IPAddress;
-        var loopbackAddress = ipAddress is "0.0.0.0" or "::" ? "127.0.0.1" : ipAddress;
+        var proxyAddress = _explicitEndPoint?.IpAddress ?? IPAddress.Loopback;
+        if (proxyAddress.Equals(IPAddress.Any))
+        {
+            proxyAddress = IPAddress.Loopback;
+        }
+        else if (proxyAddress.Equals(IPAddress.IPv6Any))
+        {
+            proxyAddress = IPAddress.IPv6Loopback;
+        }
 
         // Get real API port from Kestrel
-        var serverAddresses = server.Features.Get<IServerAddressesFeature>();
-        var apiAddress = serverAddresses?.Addresses.FirstOrDefault();
-        var apiUrl = apiAddress ?? $"http://{loopbackAddress}:{_config.ApiPort}";
+        var apiUrl = ApiSecurity.GetApiUrl(server, _config.ApiPort);
 
         var state = new ProxyInstanceState
         {
             Pid = Environment.ProcessId,
             ApiUrl = apiUrl,
-            LogFile = DevProxyCommand.DetachedLogFilePath,
+            ProxyUrl = new UriBuilder(Uri.UriSchemeHttp, proxyAddress.ToString(), proxyPort).Uri.GetLeftPart(UriPartial.Authority),
+            LogFile = DevProxyCommand.IsInternalDaemon ? DevProxyCommand.DetachedLogFilePath : string.Empty,
             StartedAt = DateTimeOffset.UtcNow,
             ConfigFile = _config.ConfigFile,
             Port = proxyPort,
@@ -731,15 +747,23 @@ sealed class ProxyEngine(
         Console.WriteLine("");
     }
 
-    private static void PrintApiInstructions(IProxyConfiguration config)
+    private void PrintApiInstructions(IProxyConfiguration config)
     {
-        var baseUrl = $"http://{config.IPAddress}:{config.ApiPort}/proxy";
+        var apiUrl = ApiSecurity.GetApiUrl(server, config.ApiPort);
+        var baseUrl = $"{apiUrl}/proxy";
+        _logger.LogStructuredOutput(System.Text.Json.JsonSerializer.Serialize(new
+        {
+            pid = Environment.ProcessId,
+            apiUrl,
+            token = ApiSecurity.DisplayToken
+        }, ProxyUtils.JsonSerializerOptions));
         var timestamp = DateTime.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture);
         Console.WriteLine("");
-        Console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"Issue web request: curl -X POST {baseUrl}/mockRequest\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
-        Console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"Start recording: curl -X POST {baseUrl} -H \\\"Content-Type: application/json\\\" -d '{{\\\"recording\\\": true}}'\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
-        Console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"Stop recording: curl -X POST {baseUrl} -H \\\"Content-Type: application/json\\\" -d '{{\\\"recording\\\": false}}'\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
-        Console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"Stop Dev Proxy: curl -X POST {baseUrl}/stopProxy\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
+        Console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"All API requests require Authorization: Bearer <token>. In CI, retrieve it explicitly with devproxy api token --pid {Environment.ProcessId}.\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
+        Console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"Issue web request: POST {baseUrl}/mockRequest\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
+        Console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"Start recording: POST {baseUrl} with JSON {{\\\"recording\\\":true}}\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
+        Console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"Stop recording: POST {baseUrl} with JSON {{\\\"recording\\\":false}}\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
+        Console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"Stop Dev Proxy: POST {baseUrl}/stopProxy\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
         Console.WriteLine("");
     }
 

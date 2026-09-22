@@ -35,9 +35,10 @@ if (DevProxyCommand.IsInternalDaemon)
 {
     var logFilePath = DevProxyCommand.DetachedLogFilePath;
     var logDir = Path.GetDirectoryName(logFilePath);
-    if (!string.IsNullOrEmpty(logDir) && !Directory.Exists(logDir))
+    if (!string.IsNullOrEmpty(logDir))
     {
-        _ = Directory.CreateDirectory(logDir);
+        PrivateFiles.EnsureDirectory(StateManager.GetConfigFolder());
+        PrivateFiles.EnsureDirectory(logDir);
     }
 
 #pragma warning disable CA2000 // Lifetime managed manually; disposed before Environment.Exit
@@ -185,16 +186,9 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
             var state = await StateManager.LoadStateByPidAsync(process.Id);
             if (state is { Port: > 0 } && !string.IsNullOrEmpty(state.ApiUrl) && !state.ApiUrl.EndsWith(":0", StringComparison.Ordinal))
             {
-                Uri? apiUri = null;
-                if (!string.IsNullOrWhiteSpace(state.ApiUrl))
-                {
-                    _ = Uri.TryCreate(state.ApiUrl, UriKind.Absolute, out apiUri);
-                }
-
-                // Build proxy URL in a way that correctly handles IPv6 hosts.
-                var hostForProxy = apiUri?.Host ?? IPAddress.Loopback.ToString();
-                var proxyUriBuilder = new UriBuilder(Uri.UriSchemeHttp, hostForProxy, state.Port);
-                var proxyUrl = proxyUriBuilder.Uri.ToString().TrimEnd('/');
+                var proxyUrl = state.ProxyUrl;
+                var token = ApiSecurity.ShouldDisplayToken ?
+                    (await File.ReadAllTextAsync(ApiSecurity.GetTokenFilePath(state.Pid))).Trim() : null;
 
                 if (isJsonOutput)
                 {
@@ -203,18 +197,28 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
                         state.Pid,
                         ProxyUrl = proxyUrl,
                         state.ApiUrl,
+                        Token = token,
                         state.LogFile
                     }));
                 }
                 else
                 {
+                    var showToken = token is not null;
                     await Console.Out.WriteLineAsync("Dev Proxy started in background.");
                     await Console.Out.WriteLineAsync();
                     await Console.Out.WriteLineAsync($"  PID:       {state.Pid}");
                     await Console.Out.WriteLineAsync($"  Proxy URL: {proxyUrl}");
                     await Console.Out.WriteLineAsync($"  API URL:   {state.ApiUrl}");
+                    if (showToken)
+                    {
+                        await Console.Out.WriteLineAsync($"  API token: {token}");
+                    }
                     await Console.Out.WriteLineAsync($"  Log file:  {state.LogFile}");
                     await Console.Out.WriteLineAsync();
+                    if (!showToken)
+                    {
+                        await Console.Out.WriteLineAsync($"Use 'devproxy api token --pid {state.Pid}' to get the API token.");
+                    }
                     await Console.Out.WriteLineAsync("Use 'devproxy status' to check status.");
                     await Console.Out.WriteLineAsync("Use 'devproxy logs' to view logs.");
                     await Console.Out.WriteLineAsync("Use 'devproxy stop' to stop.");
@@ -361,23 +365,27 @@ static WebApplication BuildApplication(DevProxyConfigOptions options)
 
     _ = builder.Configuration.ConfigureDevProxyConfig(options);
     _ = builder.Logging.ConfigureDevProxyLogging(builder.Configuration, options);
-    _ = builder.Services.ConfigureDevProxyServices(builder.Configuration, options);
+    var allowedOrigins = ApiSecurity.GetAllowedOrigins(builder.Configuration);
+    _ = builder.Services.ConfigureDevProxyServices(builder.Configuration, options, allowedOrigins);
 
-    var defaultIpAddress = "127.0.0.1";
-    var ipAddress = options.IPAddress ??
-        builder.Configuration.GetValue("ipAddress", defaultIpAddress) ??
-        defaultIpAddress;
     var defaultApiPort = 8897;
     var apiPort = options.ApiPort ??
         builder.Configuration.GetValue("apiPort", defaultApiPort);
+    var apiAddressText = options.ApiIpAddress ?? builder.Configuration.GetValue("apiIpAddress", "127.0.0.1");
+    if (!IPAddress.TryParse(apiAddressText, out var apiAddress))
+    {
+        throw new InvalidOperationException("apiIpAddress must be an IP address, for example 127.0.0.1 or ::1.");
+    }
     _ = builder.WebHost.ConfigureKestrel(options =>
     {
-        options.Listen(IPAddress.Parse(ipAddress), apiPort);
+        options.Listen(apiAddress, apiPort);
     });
 
     var app = builder.Build();
 
+    _ = app.Use((context, next) => ApiSecurity.CheckOriginAsync(context, next, allowedOrigins));
     _ = app.UseCors();
+    _ = app.Use(ApiSecurity.AuthenticateAsync);
     _ = app.MapControllers();
 
     return app;
@@ -393,13 +401,6 @@ static async Task<int> RunProxyAsync(string[] args, DevProxyConfigOptions option
     }
     finally
     {
-        // Clean up state file when daemon exits
-        if (DevProxyCommand.IsInternalDaemon)
-        {
-            await StateManager.DeleteStateAsync();
-        }
-
-        // Dispose the app to clean up all services (including FileSystemWatchers in BaseLoader)
         await app.DisposeAsync();
     }
 }
@@ -458,6 +459,11 @@ do
         shouldRestart = false;
     }
 } while (shouldRestart);
+
+if (DevProxyCommand.IsRootCommand)
+{
+    await StateManager.DeleteStateAsync();
+}
 
 if (_detachedLogWriter is not null)
 {

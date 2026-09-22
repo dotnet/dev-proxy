@@ -24,6 +24,7 @@ sealed class DevProxyCommand : RootCommand
 
     internal const string PortOptionName = "--port";
     internal const string ApiPortOptionName = "--api-port";
+    internal const string ApiIpAddressOptionName = "--api-ip-address";
     internal const string IpAddressOptionName = "--ip-address";
     internal const string LogLevelOptionName = "--log-level";
     internal const string RecordOptionName = "--record";
@@ -243,7 +244,7 @@ sealed class DevProxyCommand : RootCommand
         IProxyConfiguration proxyConfiguration,
         IServiceProvider serviceProvider,
         UpdateNotification updateNotification,
-        ILogger<DevProxyCommand> logger) : base($"Start Dev Proxy\n\nAPI:\n  Dev Proxy exposes a REST API for runtime management.\n  OpenAPI spec: http://{proxyConfiguration.IPAddress ?? "127.0.0.1"}:{proxyConfiguration.ApiPort}/swagger\n  Use --api-port to configure (default: {proxyConfiguration.ApiPort}).\n  Run 'devproxy api show' for more information.")
+        ILogger<DevProxyCommand> logger) : base($"Start Dev Proxy\n\nAPI:\n  Dev Proxy exposes an authenticated REST API for runtime management.\n  Use --api-port (default: {proxyConfiguration.ApiPort}) and --api-ip-address (default: 127.0.0.1).\n  The API bind address is independent of --ip-address.\n  Run 'devproxy status' for the API URL and token, or 'devproxy api show' for endpoints.")
     {
         _serviceProvider = serviceProvider;
         _plugins = plugins;
@@ -313,15 +314,8 @@ sealed class DevProxyCommand : RootCommand
             _app.Lifetime.ApplicationStarted.Register(() =>
             {
                 var serverAddresses = _app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>();
-                var address = serverAddresses?.Addresses.FirstOrDefault() ?? $"http://{_proxyConfiguration.IPAddress}:{_proxyConfiguration.ApiPort}";
+                var address = serverAddresses?.Addresses.FirstOrDefault() ?? $"http://127.0.0.1:{_proxyConfiguration.ApiPort}";
                 _logger.LogInformation("Dev Proxy API listening on {Address}...", address);
-
-                // Update state file with the actual Kestrel API address
-                // (resolves port 0 to OS-assigned port)
-                if (IsInternalDaemon)
-                {
-                    _ = UpdateStateWithApiUrlAsync(address);
-                }
             });
             await _app.RunAsync(cancellationToken);
 
@@ -412,6 +406,18 @@ sealed class DevProxyCommand : RootCommand
             Description = "The port for the Dev Proxy API to listen on",
             HelpName = "api-port"
         };
+        var apiIpAddressOption = new Option<string?>(ApiIpAddressOptionName)
+        {
+            Description = "The API bind address (default: 127.0.0.1). Use ::1 for IPv6 loopback. Non-loopback binding requires a trusted network",
+            HelpName = "api-ip-address"
+        };
+        apiIpAddressOption.Validators.Add(input =>
+        {
+            if (!System.Net.IPAddress.TryParse(input.Tokens[0].Value, out _))
+            {
+                input.AddError("The API address must be an IP address, for example 127.0.0.1 or ::1.");
+            }
+        });
 
         var recordOption = new Option<bool?>(RecordOptionName)
         {
@@ -566,6 +572,7 @@ sealed class DevProxyCommand : RootCommand
         var options = new List<Option>
         {
             apiPortOption,
+            apiIpAddressOption,
             asSystemProxyOption,
             ConfigFileOption,
             detachedOption,
@@ -655,6 +662,11 @@ sealed class DevProxyCommand : RootCommand
             _proxyConfiguration.ApiPort = apiPort.Value;
         }
         var ipAddress = parseResult.GetValueOrDefault<string?>(IpAddressOptionName);
+        var apiIpAddress = parseResult.GetValueOrDefault<string?>(ApiIpAddressOptionName);
+        if (apiIpAddress is not null)
+        {
+            _proxyConfiguration.ApiIpAddress = apiIpAddress;
+        }
         if (ipAddress is not null)
         {
             _proxyConfiguration.IPAddress = ipAddress;
@@ -736,13 +748,4 @@ sealed class DevProxyCommand : RootCommand
         }
     }
 
-    private static async Task UpdateStateWithApiUrlAsync(string apiUrl)
-    {
-        var state = await StateManager.LoadStateByPidAsync(Environment.ProcessId);
-        if (state is not null)
-        {
-            state.ApiUrl = apiUrl;
-            await StateManager.SaveStateAsync(state);
-        }
-    }
 }

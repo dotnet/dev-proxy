@@ -119,8 +119,8 @@ internal sealed class StopCommand : Command
         // Try graceful shutdown via API
         try
         {
-            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-            var response = await httpClient.PostAsync($"{state.ApiUrl}/proxy/stopProxy", null, cancellationToken);
+            using var httpClient = await ApiSecurity.CreateClientAsync(state, TimeSpan.FromSeconds(10), cancellationToken);
+            using var response = await httpClient.PostAsync("/proxy/stopProxy", null, cancellationToken);
 
             if (response.IsSuccessStatusCode || response.StatusCode == System.Net.HttpStatusCode.Accepted)
             {
@@ -175,7 +175,7 @@ internal sealed class StopCommand : Command
             Console.WriteLine($"Use --force --pid {state.Pid} to forcefully terminate the process.");
             return 1;
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex) when (ex is HttpRequestException or IOException or UnauthorizedAccessException or InvalidOperationException or FormatException)
         {
             Console.WriteLine($"Failed to connect to Dev Proxy API (PID: {state.Pid}): {ex.Message}");
             Console.WriteLine($"Use --force --pid {state.Pid} to forcefully terminate the process.");

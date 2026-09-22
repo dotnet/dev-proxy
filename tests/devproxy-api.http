@@ -1,8 +1,13 @@
-GET http://localhost:8897/proxy
+@apiUrl = http://127.0.0.1:8897
+@apiToken = {{$processEnv DEVPROXY_API_TOKEN}}
+
+GET {{apiUrl}}/proxy
+Authorization: Bearer {{apiToken}}
 
 ###
 
-POST http://localhost:8897/proxy
+POST {{apiUrl}}/proxy
+Authorization: Bearer {{apiToken}}
 content-type: application/json
 
 {
@@ -11,7 +16,8 @@ content-type: application/json
 
 ###
 
-POST http://localhost:8897/proxy
+POST {{apiUrl}}/proxy
+Authorization: Bearer {{apiToken}}
 content-type: application/json
 
 {
@@ -20,8 +26,10 @@ content-type: application/json
 
 ###
 
-POST http://localhost:8897/proxy/raiseMockRequest
+POST {{apiUrl}}/proxy/mockRequest
+Authorization: Bearer {{apiToken}}
 
 ###
 
-POST http://localhost:8897/proxy/stopProxy
+POST {{apiUrl}}/proxy/stopProxy
+Authorization: Bearer {{apiToken}}

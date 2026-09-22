@@ -8,11 +8,28 @@
       "type": "string",
       "description": "The URL of the JSON schema used to validate this configuration file. Should match the Dev Proxy version."
     },
+    "apiAllowedOrigins": {
+      "type": "array",
+      "default": [],
+      "uniqueItems": true,
+      "description": "Exact browser origins allowed to call the control API, for example http://127.0.0.1:3000. No wildcards, paths, or trailing slashes. All requests still require the instance bearer token.",
+      "items": {
+        "type": "string",
+        "format": "uri",
+        "pattern": "^https?://[^/*?#@]+$"
+      }
+    },
+    "apiIpAddress": {
+      "type": "string",
+      "default": "127.0.0.1",
+      "description": "API bind IP address, independent of ipAddress. Defaults to 127.0.0.1; use ::1 for IPv6 loopback. Non-loopback bindings require a trusted network; HTTP bearer tokens are not encrypted.",
+      "anyOf": [{ "format": "ipv4" }, { "format": "ipv6" }]
+    },
     "apiPort": {
       "type": "integer",
       "minimum": 0,
       "maximum": 65535,
-      "description": "Port for the Dev Proxy API server."
+      "description": "Port for the authenticated Dev Proxy API on apiIpAddress, independent of the traffic proxy. Set 0 to let the OS assign an available port."
     },
     "asSystemProxy": {
       "type": "boolean",
