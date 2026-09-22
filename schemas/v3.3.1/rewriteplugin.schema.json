@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy RewritePlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "The URL of the JSON schema used to validate this configuration file."
+    },
+    "rewritesFile": {
+      "type": "string",
+      "description": "Path to the file containing rewrite definitions (e.g., 'rewrites.json')."
+    }
+  },
+  "required": [
+    "rewritesFile"
+  ],
+  "additionalProperties": false
+}
