@@ -17,18 +17,23 @@ Dev Proxy operates in two phases: intercepting (live) and reporting (after recor
 For CI/CD, use the Dev Proxy API instead of keyboard shortcuts:
 
 ```bash
+TOKEN=$(devproxy api token)
 # Start recording
-curl -X POST http://localhost:8897/proxy \
+curl --noproxy '*' --fail -X POST http://127.0.0.1:8897/proxy \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"recording": true}'
 
 # Stop recording
-curl -X POST http://localhost:8897/proxy \
+curl --noproxy '*' --fail -X POST http://127.0.0.1:8897/proxy \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"recording": false}'
 ```
 
 Use `--record` to start recording automatically when Dev Proxy starts.
+
+These API examples require Dev Proxy 3.3.1 or later. Set `CI=true` when starting the proxy in CI to suppress automatic token output; explicit `api token` retrieval still works. Disable shell tracing around credentials. With multiple instances, use `api token --pid <PID>` and the API URL reported by `devproxy status`.
 
 ## Plugin Architecture for Analysis
 

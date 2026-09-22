@@ -15,11 +15,11 @@ namespace DevProxy.Tests;
 public sealed class ConsoleHotkeyHandlerTests
 {
     private static (ConsoleHotkeyHandler handler, FakeProxyStateController controller, RecordingConsole console)
-        CreateHandler(OutputFormat output = OutputFormat.Text, string ipAddress = "127.0.0.1")
+        CreateHandler(OutputFormat output = OutputFormat.Text, string apiIpAddress = "127.0.0.1")
     {
         var controller = new FakeProxyStateController();
         var console = new RecordingConsole();
-        var configuration = new FakeProxyConfiguration { Output = output, IPAddress = ipAddress };
+        var configuration = new FakeProxyConfiguration { Output = output, ApiIpAddress = apiIpAddress };
         var handler = new ConsoleHotkeyHandler(controller, configuration, console);
         return (handler, controller, console);
     }
@@ -119,10 +119,14 @@ public sealed class ConsoleHotkeyHandlerTests
         handler.PrintApiInstructions();
 
         var joined = string.Join('\n', console.Lines);
+        Assert.Contains("Authorization: Bearer <token>", joined, StringComparison.Ordinal);
         Assert.Contains("/proxy/mockRequest", joined, StringComparison.Ordinal);
-        Assert.Contains("\\\"recording\\\": true", joined, StringComparison.Ordinal);
-        Assert.Contains("\\\"recording\\\": false", joined, StringComparison.Ordinal);
+        Assert.Contains("\\\"recording\\\":true", joined, StringComparison.Ordinal);
+        Assert.Contains("\\\"recording\\\":false", joined, StringComparison.Ordinal);
         Assert.Contains("/proxy/stopProxy", joined, StringComparison.Ordinal);
+        var result = Assert.Single(console.Lines, line => line.Contains("\"type\":\"result\"", StringComparison.Ordinal));
+        Assert.DoesNotContain('\n', result);
+        Assert.Contains("\"category\":\"ProxyEngine\"", result, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -142,7 +146,7 @@ public sealed class ConsoleHotkeyHandlerTests
 
         handler.PrintApiInstructions();
 
-        Assert.Contains(console.Lines, line => line.Contains("http://127.0.0.1:8897/proxy", StringComparison.Ordinal));
+        Assert.Contains(console.Lines, line => line.Contains("http://[::1]:8897/proxy", StringComparison.Ordinal));
     }
 
     [Fact]

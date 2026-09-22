@@ -48,6 +48,10 @@ internal sealed class InteractiveConsoleService(
     private static readonly TimeSpan _keyPollInterval = TimeSpan.FromMilliseconds(10);
 
     private readonly ConsoleHotkeyHandler _handler = new(controller, configuration, console);
+    // Direct console output must wait until queued startup logs have been submitted.
+    private readonly TaskCompletionSource _startupMessagesCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    internal void CompleteStartupMessages() => _startupMessagesCompleted.TrySetResult();
 
     /// <summary>
     /// Hotkeys are only usable from a real terminal driven by a human. Skip the
@@ -79,6 +83,15 @@ internal sealed class InteractiveConsoleService(
         if (configuration.Record)
         {
             controller.StartRecording();
+        }
+
+        try
+        {
+            await _startupMessagesCompleted.Task.WaitAsync(stoppingToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
         }
 
         if (configuration.Output == OutputFormat.Json)

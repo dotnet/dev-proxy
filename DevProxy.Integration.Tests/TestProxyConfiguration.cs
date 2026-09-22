@@ -15,6 +15,7 @@ namespace DevProxy.Integration.Tests;
 /// </summary>
 internal sealed class TestProxyConfiguration : IProxyConfiguration
 {
+    public string ApiIpAddress { get; set; } = "127.0.0.1";
     public int ApiPort { get; set; }
     public bool AsSystemProxy { get; set; }
     public string ConfigFile { get; set; } = "devproxyrc.json";

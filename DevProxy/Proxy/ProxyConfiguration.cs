@@ -13,6 +13,7 @@ sealed class ProxyConfiguration : IProxyConfiguration
     private readonly IConfigurationRoot _configurationRoot;
 
     public int ApiPort { get; set; } = 8897;
+    public string ApiIpAddress { get; set; } = "127.0.0.1";
     public bool AsSystemProxy { get; set; } = true;
     private bool configFileResolved;
     private string configFile = string.Empty;

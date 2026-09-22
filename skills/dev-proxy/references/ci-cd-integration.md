@@ -2,6 +2,10 @@
 
 Dev Proxy runs headlessly in CI/CD pipelines to automate API testing — catching shadow APIs, verifying permissions, ensuring production-ready API versions, and validating resilience.
 
+With Dev Proxy 3.3.1 or later, every management API request requires a bearer token. Set `CI=true` in the proxy process to suppress automatic token output, and retrieve credentials explicitly with `devproxy api token`. Keep shell tracing disabled around credentials. For multiple instances, add `--pid <PID>` and use the actual API URL from `devproxy status`.
+
+Use action versions that support the authenticated API. For integrations that have not yet added bearer authentication, use the CLI and authenticated HTTP examples below.
+
 ## GitHub Actions (Recommended)
 
 Use the official [Dev Proxy Actions](https://github.com/marketplace/actions/dev-proxy-actions) for the simplest integration.
@@ -206,7 +210,7 @@ steps:
   - script: npm test
     displayName: Run tests
 
-  - script: curl -X POST http://localhost:8897/proxy/stopProxy
+  - script: ./devproxy/devproxy stop
     displayName: Stop Dev Proxy
 
   - script: |
@@ -251,7 +255,7 @@ steps:
 
   - script: |
       mkdir -p ~/.config/dev-proxy
-      ./devproxy/devproxy --config-file .devproxy/config.json > $(LOG_FILE) 2>&1 &
+      CI=true ./devproxy/devproxy --config-file .devproxy/config.json > $(LOG_FILE) 2>&1 &
       echo "Waiting for Dev Proxy to start..."
       while true; do
         if grep -q "Dev Proxy listening on" $(LOG_FILE); then break; fi
@@ -263,7 +267,9 @@ steps:
       sudo update-ca-certificates
     displayName: Start Dev Proxy
 
-  - script: curl -X POST http://localhost:8897/proxy -H "Content-Type: application/json" -d '{"recording": true}'
+  - script: |
+      TOKEN=$(./devproxy/devproxy api token)
+      curl --noproxy '*' --fail -X POST http://127.0.0.1:8897/proxy -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"recording": true}'
     displayName: Start recording
 
   - script: npm test
@@ -272,10 +278,12 @@ steps:
       http_proxy: http://127.0.0.1:8000
       https_proxy: http://127.0.0.1:8000
 
-  - script: curl -X POST http://localhost:8897/proxy -H "Content-Type: application/json" -d '{"recording": false}'
+  - script: |
+      TOKEN=$(./devproxy/devproxy api token)
+      curl --noproxy '*' --fail -X POST http://127.0.0.1:8897/proxy -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"recording": false}'
     displayName: Stop recording
 
-  - script: curl -X POST http://localhost:8897/proxy/stopProxy
+  - script: ./devproxy/devproxy stop
     displayName: Stop Dev Proxy
 
   - script: |
@@ -307,7 +315,7 @@ bash -c "$(curl -sL https://aka.ms/devproxy/setup.sh)" -- v4.0.0
 
 ```bash
 mkdir -p ~/.config/dev-proxy
-./devproxy/devproxy > devproxy.log 2>&1 &
+CI=true ./devproxy/devproxy > devproxy.log 2>&1 &
 ```
 
 ### 3. Wait for Startup
@@ -337,14 +345,15 @@ export https_proxy=http://127.0.0.1:8000
 ### 6. Control via API
 
 ```bash
+TOKEN=$(./devproxy/devproxy api token)
 # Start recording
-curl -X POST http://localhost:8897/proxy -H "Content-Type: application/json" -d '{"recording": true}'
+curl --noproxy '*' --fail -X POST http://127.0.0.1:8897/proxy -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"recording": true}'
 # Run tests
 npm test
 # Stop recording
-curl -X POST http://localhost:8897/proxy -H "Content-Type: application/json" -d '{"recording": false}'
+curl --noproxy '*' --fail -X POST http://127.0.0.1:8897/proxy -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"recording": false}'
 # Stop proxy
-curl -X POST http://localhost:8897/proxy/stopProxy
+./devproxy/devproxy stop
 ```
 
 ### 7. Wait for Completion
@@ -367,7 +376,7 @@ done
 | `/proxy/mockRequest` | POST | Trigger mock request (equivalent of pressing `w`) |
 | `/proxy/rootCertificate?format=crt` | GET | Download root cert in PEM format |
 
-Swagger: `http://localhost:8897/swagger`
+Run `devproxy api show` for endpoint information. All endpoints require `Authorization: Bearer <token>`; browser origins must also be explicitly allowed with `apiAllowedOrigins`.
 
 ## Environment Variables for Azure API Center
 
@@ -393,7 +402,7 @@ LOG_FILE=${LOG_FILE:-devproxy.log}
 CONFIG_FILE=${CONFIG_FILE:-.devproxy/devproxyrc.json}
 
 mkdir -p ~/.config/dev-proxy
-./devproxy/devproxy --config-file "$CONFIG_FILE" > "$LOG_FILE" 2>&1 &
+CI=true ./devproxy/devproxy --config-file "$CONFIG_FILE" > "$LOG_FILE" 2>&1 &
 
 while true; do
   if grep -q "Dev Proxy listening on" "$LOG_FILE"; then break; fi
@@ -417,7 +426,7 @@ set -e
 
 LOG_FILE=${LOG_FILE:-devproxy.log}
 
-curl -s -X POST http://localhost:8897/proxy/stopProxy
+./devproxy/devproxy stop
 
 while true; do
   if grep -q -e "DONE" -e "No requests to process" -e "An error occurred in a plugin" "$LOG_FILE"; then break; fi

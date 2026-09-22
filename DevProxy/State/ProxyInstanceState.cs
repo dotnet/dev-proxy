@@ -18,6 +18,9 @@ internal sealed class ProxyInstanceState
     [JsonPropertyName("apiUrl")]
     public string ApiUrl { get; set; } = string.Empty;
 
+    [JsonPropertyName("proxyUrl")]
+    public string ProxyUrl { get; set; } = string.Empty;
+
     [JsonPropertyName("logFile")]
     public string LogFile { get; set; } = string.Empty;
 

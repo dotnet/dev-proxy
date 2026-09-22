@@ -22,7 +22,8 @@ static class IServiceCollectionExtensions
     public static IServiceCollection ConfigureDevProxyServices(
         this IServiceCollection services,
         ConfigurationManager configuration,
-        DevProxyConfigOptions options)
+        DevProxyConfigOptions options,
+        string[] allowedOrigins)
     {
         _ = services.AddControllers();
         _ = services.AddCors(options =>
@@ -30,9 +31,9 @@ static class IServiceCollectionExtensions
             options.AddDefaultPolicy(builder =>
             {
                 _ = builder
-                    .AllowAnyOrigin()
-                    .AllowAnyMethod()
-                    .AllowAnyHeader();
+                    .WithOrigins(allowedOrigins)
+                    .WithMethods("GET", "POST")
+                    .WithHeaders("Authorization", "Content-Type", "Accept");
             });
         });
         _ = services
@@ -76,7 +77,9 @@ static class IServiceCollectionExtensions
             .AddSingleton<IProxyState, ProxyState>()
             .AddSingleton<ISystemConsole, SystemConsole>()
             .AddHostedService<ConfigFileWatcher>()
-            .AddHostedService<InteractiveConsoleService>()
+            // Share the hosted instance so the command can release its startup-output gate.
+            .AddSingleton<InteractiveConsoleService>()
+            .AddHostedService(sp => sp.GetRequiredService<InteractiveConsoleService>())
             .AddSingleton(sp => LanguageModelClientFactory.Create(sp, configuration))
             .AddSingleton<UpdateNotification>()
             .AddSingleton<DevProxyCommand>()

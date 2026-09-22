@@ -44,4 +44,5 @@ WORKDIR /config
 
 USER ${USERNAME}
 
-ENTRYPOINT ["/app/devproxy/devproxy", "--ip-address", "0.0.0.0"]
+ENV PATH="/app/devproxy:${PATH}"
+ENTRYPOINT ["/app/devproxy/devproxy", "--ip-address", "0.0.0.0", "--api-ip-address", "0.0.0.0"]

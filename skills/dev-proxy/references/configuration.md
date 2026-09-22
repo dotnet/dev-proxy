@@ -127,7 +127,9 @@ Plugin-specific override:
 | Setting | Default | CLI flag | Description |
 |---------|---------|----------|-------------|
 | `port` | `8000` | `-p` | Proxy listening port |
-| `apiPort` | `8897` | `--api-port` | Dev Proxy API port |
+| `apiPort` | `8897` | `--api-port` | API port; `0` lets the OS assign an available port |
+| `apiIpAddress` | `127.0.0.1` | `--api-ip-address` | API bind address, independent of `ipAddress`; use `::1` for IPv6 loopback |
+| `apiAllowedOrigins` | `[]` | - | Exact HTTP/HTTPS browser origins allowed to call the API; bearer authentication is still required |
 | `rate` | `50` | `-f` | Failure rate (0-100) |
 | `logLevel` | `information` | `--log-level` | Log verbosity |
 | `record` | off | `--record` | Start in recording mode |
@@ -136,6 +138,35 @@ Plugin-specific override:
 | `asSystemProxy` | `true` | `--as-system-proxy` | Register as system proxy |
 | — | off | `--detach` | Run in detached (background) mode |
 | — | `text` | `--output` | Output format: `text` or `json` |
+
+## API Authentication and Binding
+
+Every API request requires `Authorization: Bearer <token>`. Startup and `devproxy status` show the per-process token in text and JSON, including redirected output and daemon logs. Tokens survive configuration reloads but change on process restart.
+
+When the `CI` environment variable is set, automatic token output is suppressed. Explicit retrieval remains available:
+
+```bash
+TOKEN=$(devproxy api token)
+curl --noproxy '*' --fail http://127.0.0.1:8897/proxy -H "Authorization: Bearer $TOKEN"
+```
+
+For multiple instances, select one with `devproxy api token --pid <PID>`. Use `devproxy status --output json` to discover its actual API URL, especially with `--api-port 0`. Status emits one JSONL `result` per instance, with `pid`, `apiUrl`, `token`, `apiStatus` and instance details. The token is omitted in CI; `apiStatus` distinguishes `available`, `unauthorized`, `invalidCredentials`, and `unavailable`. An empty result has `running: false`.
+
+Status exits with `0` when a matching running instance is found, even if its API cannot be queried, and `1` when none is found. Check the diagnostic or `apiStatus` field for API availability and authentication failures.
+
+Browser access is disabled by default. Set `apiAllowedOrigins` to exact origins such as `http://127.0.0.1:3000`, without paths, wildcards, or trailing slashes. Origins do not replace authentication.
+
+The API uses one listener on `apiIpAddress`, defaulting to `127.0.0.1`. Set `::1` for IPv6 loopback or a specific interface address for network access. `status` and `stop` use that instance's recorded API address; wildcard bindings (`0.0.0.0` or `::`) are mapped to the corresponding loopback address for local commands. Off-loopback startup logs a warning: HTTP sends bearer tokens without encryption, so use a trusted network or a secure tunnel.
+
+### Containers
+
+The shipped images use `--api-ip-address 0.0.0.0`. Publish the API on the host loopback, for example `-p 127.0.0.1:8897:8897`, unless remote access is intentional. Retrieve the running container's token from the host:
+
+```bash
+docker exec <container> devproxy api token
+```
+
+For the beta image, use `devproxy-beta` instead of `devproxy`. Add `--pid <PID>` when the container has multiple instances.
 
 ## Local Language Model
 
@@ -165,7 +196,7 @@ Detached mode runs Dev Proxy in the background as a separate process. Use it for
 devproxy --detach
 ```
 
-Output includes PID, proxy URL, API URL, and log file path:
+Output includes PID, proxy URL, API URL, token (outside CI), and log file path:
 
 ```text
 Dev Proxy started in background.
@@ -173,6 +204,7 @@ Dev Proxy started in background.
   PID:       6456
   Proxy URL: http://127.0.0.1:8000
   API URL:   http://127.0.0.1:8897
+  API token: <session-token>
   Log file:  /Users/user/.local/dev-proxy/logs/devproxy-6456-2026-03-05.log
 ```
 
@@ -183,7 +215,7 @@ devproxy --detach --output json
 ```
 
 ```json
-{"type":"result","data":{"pid":6456,"proxyUrl":"http://127.0.0.1:8000","apiUrl":"http://127.0.0.1:8897","logFile":"/Users/user/.local/dev-proxy/logs/devproxy-6456-2026-03-05.log"},"timestamp":"2026-03-05T14:22:42.0000000Z"}
+{"type":"result","data":{"pid":6456,"proxyUrl":"http://127.0.0.1:8000","apiUrl":"http://127.0.0.1:8897","token":"<session-token>","logFile":"/Users/user/.local/dev-proxy/logs/devproxy-6456-2026-03-05.log"},"timestamp":"2026-03-05T14:22:42.0000000Z"}
 ```
 
 ### Common Detached Mode Patterns

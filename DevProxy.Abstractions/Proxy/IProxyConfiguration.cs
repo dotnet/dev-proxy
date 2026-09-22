@@ -29,6 +29,7 @@ public enum OutputFormat
 public interface IProxyConfiguration
 {
     int ApiPort { get; set; }
+    string ApiIpAddress { get; set; }
     bool AsSystemProxy { get; set; }
     string ConfigFile { get; }
 #pragma warning disable CA2227

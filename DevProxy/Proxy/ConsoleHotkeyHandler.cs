@@ -4,6 +4,8 @@
 
 using System.Globalization;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Utils;
+using System.Text.Json;
 
 namespace DevProxy.Proxy;
 
@@ -28,6 +30,8 @@ internal sealed class ConsoleHotkeyHandler(
     IProxyConfiguration configuration,
     ISystemConsole console)
 {
+    private static readonly JsonSerializerOptions _jsonOptions = new(ProxyUtils.JsonSerializerOptions) { WriteIndented = false };
+
     /// <summary>
     /// Prints the banner appropriate for the current output mode: machine-readable
     /// API instructions in JSON mode, human hotkey hints otherwise.
@@ -54,13 +58,27 @@ internal sealed class ConsoleHotkeyHandler(
 
     public void PrintApiInstructions()
     {
-        var baseUrl = SystemProxyAddress.ToHttpAuthority(configuration.IPAddress, configuration.ApiPort) + "/proxy";
+        var apiUrl = ApiSecurity.GetApiUrl(new UriBuilder(Uri.UriSchemeHttp, configuration.ApiIpAddress, configuration.ApiPort).Uri.AbsoluteUri);
+        var baseUrl = $"{apiUrl}/proxy";
         var timestamp = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
+        console.WriteLine(JsonSerializer.Serialize(new
+        {
+            type = "result",
+            data = new
+            {
+                pid = Environment.ProcessId,
+                apiUrl,
+                token = ApiSecurity.DisplayToken
+            },
+            category = "ProxyEngine",
+            timestamp
+        }, _jsonOptions));
         console.WriteLine("");
-        console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"Issue web request: curl -X POST {baseUrl}/mockRequest\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
-        console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"Start recording: curl -X POST {baseUrl} -H \\\"Content-Type: application/json\\\" -d '{{\\\"recording\\\": true}}'\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
-        console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"Stop recording: curl -X POST {baseUrl} -H \\\"Content-Type: application/json\\\" -d '{{\\\"recording\\\": false}}'\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
-        console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"Stop Dev Proxy: curl -X POST {baseUrl}/stopProxy\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
+        console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"All API requests require Authorization: Bearer <token>. In CI, retrieve it explicitly with devproxy api token --pid {Environment.ProcessId}.\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
+        console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"Issue web request: POST {baseUrl}/mockRequest\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
+        console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"Start recording: POST {baseUrl} with JSON {{\\\"recording\\\":true}}\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
+        console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"Stop recording: POST {baseUrl} with JSON {{\\\"recording\\\":false}}\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
+        console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"Stop Dev Proxy: POST {baseUrl}/stopProxy\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
         console.WriteLine("");
     }
 

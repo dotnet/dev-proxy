@@ -1,6 +1,7 @@
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
+using DevProxy.Proxy;
 using DevProxy.State;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
@@ -24,6 +25,7 @@ sealed class DevProxyCommand : RootCommand
 
     internal const string PortOptionName = "--port";
     internal const string ApiPortOptionName = "--api-port";
+    internal const string ApiIpAddressOptionName = "--api-ip-address";
     internal const string IpAddressOptionName = "--ip-address";
     internal const string LogLevelOptionName = "--log-level";
     internal const string RecordOptionName = "--record";
@@ -243,7 +245,7 @@ sealed class DevProxyCommand : RootCommand
         IProxyConfiguration proxyConfiguration,
         IServiceProvider serviceProvider,
         UpdateNotification updateNotification,
-        ILogger<DevProxyCommand> logger) : base($"Start Dev Proxy\n\nAPI:\n  Dev Proxy exposes a REST API for runtime management.\n  OpenAPI spec: {SystemProxyAddress.ToHttpAuthority(proxyConfiguration.IPAddress, proxyConfiguration.ApiPort)}/swagger\n  Use --api-port to configure (default: {proxyConfiguration.ApiPort}).\n  Run 'devproxy api show' for more information.")
+        ILogger<DevProxyCommand> logger) : base($"Start Dev Proxy\n\nAPI:\n  Dev Proxy exposes an authenticated REST API for runtime management.\n  OpenAPI spec: {ApiSecurity.GetApiUrl(new UriBuilder(Uri.UriSchemeHttp, proxyConfiguration.ApiIpAddress, proxyConfiguration.ApiPort).Uri.AbsoluteUri)}/swagger\n  Use --api-port (default: {proxyConfiguration.ApiPort}) and --api-ip-address (default: 127.0.0.1).\n  The API bind address is independent of --ip-address.\n  Run 'devproxy status' for the API URL and token, or 'devproxy api show' for endpoints.")
     {
         _serviceProvider = serviceProvider;
         _plugins = plugins;
@@ -310,24 +312,30 @@ sealed class DevProxyCommand : RootCommand
 
         try
         {
-            _app.Lifetime.ApplicationStarted.Register(() =>
-            {
-                var serverAddresses = _app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>();
-                var serverAddress = serverAddresses?.Addresses.FirstOrDefault();
-                var address = Uri.TryCreate(serverAddress, UriKind.Absolute, out var serverUri) ?
-                    SystemProxyAddress.ToHttpAuthority(serverUri.DnsSafeHost, serverUri.Port) :
-                    SystemProxyAddress.ToHttpAuthority(_proxyConfiguration.IPAddress, _proxyConfiguration.ApiPort);
-                _logger.LogInformation("Dev Proxy API listening on {Address}...", address);
+            await ApiSecurity.SaveTokenAsync(cancellationToken);
+            await _app.StartAsync(cancellationToken);
 
-                // Persist the daemon state so the parent process's readiness check,
-                // `devproxy stop`, and `devproxy status` can find this instance
-                // (resolves port 0 to the OS-assigned ports for both proxy and API).
-                if (IsInternalDaemon)
-                {
-                    _ = WriteDaemonStateAsync(address);
-                }
-            });
-            await _app.RunAsync(cancellationToken);
+            var serverAddresses = _app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>();
+            var serverAddress = serverAddresses?.Addresses.FirstOrDefault();
+            var address = ApiSecurity.GetApiUrl(serverAddress ??
+                new UriBuilder(Uri.UriSchemeHttp, _proxyConfiguration.ApiIpAddress, _proxyConfiguration.ApiPort).Uri.AbsoluteUri);
+            _logger.LogInformation("Dev Proxy API listening on {Address}...", address);
+
+            if (_proxyConfiguration.Output != OutputFormat.Json)
+            {
+                ApiSecurity.LogTokenOnce(_logger);
+            }
+
+            if (!System.Net.IPAddress.IsLoopback(System.Net.IPAddress.Parse(_proxyConfiguration.ApiIpAddress)))
+            {
+                _logger.LogWarning("The Dev Proxy API is bound to {ApiIpAddress} off-loopback. Bearer tokens are sent over HTTP; use only on trusted networks or through a secure tunnel.", _proxyConfiguration.ApiIpAddress);
+            }
+
+            await WriteInstanceStateAsync(address);
+            // Hotkeys write directly to the console, so release them after startup logging is complete.
+            _app.Services.GetRequiredService<InteractiveConsoleService>().CompleteStartupMessages();
+
+            await _app.WaitForShutdownAsync(cancellationToken);
 
             return 0;
         }
@@ -416,6 +424,18 @@ sealed class DevProxyCommand : RootCommand
             Description = "The port for the Dev Proxy API to listen on",
             HelpName = "api-port"
         };
+        var apiIpAddressOption = new Option<string?>(ApiIpAddressOptionName)
+        {
+            Description = "The API bind address (default: 127.0.0.1). Use ::1 for IPv6 loopback. Non-loopback binding requires a trusted network",
+            HelpName = "api-ip-address"
+        };
+        apiIpAddressOption.Validators.Add(input =>
+        {
+            if (!System.Net.IPAddress.TryParse(input.Tokens[0].Value, out _))
+            {
+                input.AddError("The API address must be an IP address, for example 127.0.0.1 or ::1.");
+            }
+        });
 
         var recordOption = new Option<bool?>(RecordOptionName)
         {
@@ -570,6 +590,7 @@ sealed class DevProxyCommand : RootCommand
         var options = new List<Option>
         {
             apiPortOption,
+            apiIpAddressOption,
             asSystemProxyOption,
             ConfigFileOption,
             detachedOption,
@@ -659,6 +680,11 @@ sealed class DevProxyCommand : RootCommand
             _proxyConfiguration.ApiPort = apiPort.Value;
         }
         var ipAddress = parseResult.GetValueOrDefault<string?>(IpAddressOptionName);
+        var apiIpAddress = parseResult.GetValueOrDefault<string?>(ApiIpAddressOptionName);
+        if (apiIpAddress is not null)
+        {
+            _proxyConfiguration.ApiIpAddress = apiIpAddress;
+        }
         if (ipAddress is not null)
         {
             _proxyConfiguration.IPAddress = ipAddress;
@@ -740,12 +766,11 @@ sealed class DevProxyCommand : RootCommand
         }
     }
 
-    private async Task WriteDaemonStateAsync(string apiUrl)
+    private async Task WriteInstanceStateAsync(string apiUrl)
     {
         // The proxy engine publishes its actually-bound port back to the shared
         // configuration once it binds. Wait briefly for it so the persisted state
-        // carries the real proxy port (matters for --port 0); the parent's readiness
-        // poll requires Port > 0 before it reports the daemon as started.
+        // carries the real proxy port (matters for --port 0).
         var deadline = Environment.TickCount64 + 10_000;
         while (_proxyConfiguration.Port <= 0 && Environment.TickCount64 < deadline)
         {
@@ -756,7 +781,8 @@ sealed class DevProxyCommand : RootCommand
         {
             Pid = Environment.ProcessId,
             ApiUrl = apiUrl,
-            LogFile = DetachedLogFilePath,
+            ProxyUrl = SystemProxyAddress.ToHttpAuthority(_proxyConfiguration.IPAddress, _proxyConfiguration.Port),
+            LogFile = IsInternalDaemon ? DetachedLogFilePath : string.Empty,
             StartedAt = DateTimeOffset.UtcNow,
             ConfigFile = _proxyConfiguration.ConfigFile,
             Port = _proxyConfiguration.Port,

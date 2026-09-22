@@ -65,11 +65,12 @@ internal sealed class RecordingConsole : ISystemConsole
 }
 
 /// <summary>
-/// Minimal <see cref="IProxyConfiguration"/>; only Output/IPAddress/ApiPort/Record
+/// Minimal <see cref="IProxyConfiguration"/>; only Output/ApiIpAddress/ApiPort/Record
 /// are read by the interactive console, the rest carry inert defaults.
 /// </summary>
 internal sealed class FakeProxyConfiguration : IProxyConfiguration
 {
+    public string ApiIpAddress { get; set; } = "127.0.0.1";
     public int ApiPort { get; set; } = 8897;
     public bool AsSystemProxy { get; set; }
     public string ConfigFile { get; set; } = "devproxyrc.json";
