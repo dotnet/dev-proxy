@@ -209,6 +209,7 @@ public sealed class CertificateAuthorityTests : IDisposable
         using var rsa = RSA.Create(2048);
         var req = new CertificateRequest("CN=Old Root", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         req.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        req.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(req.PublicKey, false));
         using var cert = req.CreateSelfSigned(NotAfter.AddDays(-10), NotAfter);
         return cert.Export(X509ContentType.Pkcs12, string.Empty);
     }

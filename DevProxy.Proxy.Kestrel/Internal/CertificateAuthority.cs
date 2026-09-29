@@ -326,6 +326,10 @@ public sealed class CertificateAuthority : IDisposable
         request.CertificateExtensions.Add(sanBuilder.Build());
         request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
 
+        request.CertificateExtensions.Add(
+            X509AuthorityKeyIdentifierExtension.CreateFromCertificate(
+                _ca, includeKeyIdentifier: true, includeIssuerAndSerial: false));
+
         var serialNumber = new byte[8];
         RandomNumberGenerator.Fill(serialNumber);
 
