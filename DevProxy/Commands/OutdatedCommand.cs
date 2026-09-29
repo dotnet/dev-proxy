@@ -70,7 +70,7 @@ sealed class OutdatedCommand : Command
             }
             else
             {
-                var notesLink = isBeta ? "https://aka.ms/devproxy/notes" : "https://aka.ms/devproxy/beta/notes";
+                var notesLink = isBeta ? "https://aka.ms/devproxy/beta/notes" : "https://aka.ms/devproxy/notes";
                 _logger.LogInformation(
                     "New Dev Proxy version {Version} is available.{NewLine}Release notes: {Link}{NewLine}Docs: https://aka.ms/devproxy/upgrade",
                     releaseInfo.Version,
@@ -91,7 +91,7 @@ sealed class OutdatedCommand : Command
         if (releaseInfo is not null && releaseInfo.Version is not null)
         {
             var isBeta = releaseInfo.Version.Contains("-beta", StringComparison.OrdinalIgnoreCase);
-            var notesLink = isBeta ? "https://aka.ms/devproxy/notes" : "https://aka.ms/devproxy/beta/notes";
+            var notesLink = isBeta ? "https://aka.ms/devproxy/beta/notes" : "https://aka.ms/devproxy/notes";
 
             if (versionOnly)
             {
