@@ -148,7 +148,15 @@ public sealed class CertificateAuthority : IDisposable
                 .OfType<X509BasicConstraintsExtension>()
                 .FirstOrDefault()?.CertificateAuthority == true;
 
-            if (cert.HasPrivateKey && isCa && cert.NotAfter > DateTime.Now)
+            var hasSKI = cert.Extensions
+                .OfType<X509SubjectKeyIdentifierExtension>()
+                .Any();
+
+            var hasKeyCertSign = (cert.Extensions
+                .OfType<X509KeyUsageExtension>()
+                .FirstOrDefault()?.KeyUsages & X509KeyUsageFlags.KeyCertSign) == X509KeyUsageFlags.KeyCertSign;
+
+            if (cert.HasPrivateKey && isCa && hasSKI && hasKeyCertSign && cert.NotAfter > DateTime.Now)
             {
                 return cert;
             }
@@ -214,7 +222,7 @@ public sealed class CertificateAuthority : IDisposable
         return leaf;
     }
 
-    private static X509Certificate2? TryLoadLeaf(string path)
+    private X509Certificate2? TryLoadLeaf(string path)
     {
         if (!File.Exists(path))
         {
@@ -228,7 +236,19 @@ public sealed class CertificateAuthority : IDisposable
                 string.Empty,
                 X509KeyStorageFlags.Exportable);
 
-            if (cert.HasPrivateKey && cert.NotAfter > DateTime.Now)
+            var ski = _ca.Extensions
+                .OfType<X509SubjectKeyIdentifierExtension>()
+                .FirstOrDefault()?.SubjectKeyIdentifierBytes;
+
+            var aki = cert.Extensions
+                .OfType<X509AuthorityKeyIdentifierExtension>()
+                .FirstOrDefault()?.KeyIdentifier;
+
+            var akiMatchesCA = aki.HasValue
+                && ski.HasValue
+                && aki.Value.Span.SequenceEqual(ski.Value.Span);
+
+            if (cert.HasPrivateKey && akiMatchesCA && cert.NotAfter > DateTime.Now)
             {
                 return cert;
             }

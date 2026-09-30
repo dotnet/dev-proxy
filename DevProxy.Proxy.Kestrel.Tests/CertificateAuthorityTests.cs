@@ -54,6 +54,8 @@ public sealed class CertificateAuthorityTests : IDisposable
         Assert.Equal("CN=Dev Proxy CA", root.Subject);
         Assert.True(root.HasPrivateKey);
         Assert.True(IsCertificateAuthority(root));
+        Assert.True(HasSubjectKeyIdentifier(root));
+        Assert.True(HasKeyCertSignUsage(root));
         Assert.True(root.NotAfter > DateTime.Now);
         Assert.True(File.Exists(_rootPath));
     }
@@ -106,6 +108,36 @@ public sealed class CertificateAuthorityTests : IDisposable
     }
 
     [Fact]
+    public void CaRootWithoutSki_Regenerates()
+    {
+        File.WriteAllBytes(_rootPath, CreateCaWithoutSkiPfx());
+
+        using var ca = new CertificateAuthority(_rootPath, _leafDir);
+
+        Assert.True(HasSubjectKeyIdentifier(ca.RootCertificate));
+    }
+
+    [Fact]
+    public void CaRootWithoutKeyCertSignUsage_Regenerates()
+    {
+        File.WriteAllBytes(_rootPath, CreateCaWithoutKeyCertSignUsagePfx());
+
+        using var ca = new CertificateAuthority(_rootPath, _leafDir);
+
+        Assert.True(HasKeyCertSignUsage(ca.RootCertificate));
+    }
+
+    [Fact]
+    public void CaRootWithoutKeyUsageExtension_Regenerates()
+    {
+        File.WriteAllBytes(_rootPath, CreateCaWithoutKeyUsageExtensionPfx());
+
+        using var ca = new CertificateAuthority(_rootPath, _leafDir);
+
+        Assert.True(HasKeyCertSignUsage(ca.RootCertificate));
+    }
+
+    [Fact]
     public void GetCertificateForHost_MintsLeafSignedByRoot_AndPersists()
     {
         using var ca = new CertificateAuthority(_rootPath, _leafDir);
@@ -116,6 +148,7 @@ public sealed class CertificateAuthorityTests : IDisposable
         Assert.Equal("CN=example.com", leaf.Subject);
         Assert.Equal(ca.RootCertificate.Subject, leaf.Issuer);
         Assert.Contains("example.com", GetSanText(leaf), StringComparison.Ordinal);
+        Assert.True(DoesAuthorityKeyIdentifierMatchCA(leaf, ca.RootCertificate));
         Assert.True(File.Exists(Path.Combine(_leafDir, "example.com.pfx")));
     }
 
@@ -195,8 +228,59 @@ public sealed class CertificateAuthorityTests : IDisposable
         Assert.True(leaf.NotAfter <= ca.RootCertificate.NotAfter);
     }
 
+    [Fact]
+    public void GetCertificateForHost_LeafWithoutAki_Regenerates()
+    {
+        using var ca = new CertificateAuthority(_rootPath, _leafDir);
+
+        _ = Directory.CreateDirectory(_leafDir);
+        File.WriteAllBytes(Path.Combine(_leafDir, "example.com.pfx"), CreateLeafPfx(ca.RootCertificate, null));
+
+        var leaf = ca.GetCertificateForHost("example.com");
+
+        Assert.True(DoesAuthorityKeyIdentifierMatchCA(leaf, ca.RootCertificate));
+    }
+
+    [Fact]
+    public void GetCertificateForHost_LeafWithMismatchedAki_Regenerates()
+    {
+        var rootNotAfter = DateTimeOffset.UtcNow.AddDays(10);
+        var other_ca = CreateRootCertificate(rootNotAfter);
+        using var ca = new CertificateAuthority(_rootPath, _leafDir);
+
+        _ = Directory.CreateDirectory(_leafDir);
+        File.WriteAllBytes(Path.Combine(_leafDir, "example.com.pfx"), CreateLeafPfx(ca.RootCertificate, other_ca));
+
+        var leaf = ca.GetCertificateForHost("example.com");
+
+        Assert.True(DoesAuthorityKeyIdentifierMatchCA(leaf, ca.RootCertificate));
+    }
+
     private static bool IsCertificateAuthority(X509Certificate2 cert) =>
         cert.Extensions.OfType<X509BasicConstraintsExtension>().FirstOrDefault()?.CertificateAuthority == true;
+
+    private static bool HasSubjectKeyIdentifier(X509Certificate2 cert) =>
+        cert.Extensions.OfType<X509SubjectKeyIdentifierExtension>().Any();
+
+    private static bool HasKeyCertSignUsage(X509Certificate2 cert) =>
+        (cert.Extensions
+         .OfType<X509KeyUsageExtension>()
+         .FirstOrDefault()?.KeyUsages & X509KeyUsageFlags.KeyCertSign) == X509KeyUsageFlags.KeyCertSign;
+
+    private static bool DoesAuthorityKeyIdentifierMatchCA(X509Certificate2 cert, X509Certificate2 ca)
+    {
+        var ski = ca.Extensions
+            .OfType<X509SubjectKeyIdentifierExtension>()
+            .FirstOrDefault()?.SubjectKeyIdentifierBytes;
+
+        var aki = cert.Extensions
+            .OfType<X509AuthorityKeyIdentifierExtension>()
+            .FirstOrDefault()?.KeyIdentifier;
+
+        return aki.HasValue
+            && ski.HasValue
+            && aki.Value.Span.SequenceEqual(ski.Value.Span);
+    }
 
     private static string GetSanText(X509Certificate2 cert)
     {
@@ -204,13 +288,51 @@ public sealed class CertificateAuthorityTests : IDisposable
         return san?.Format(false) ?? string.Empty;
     }
 
-    private static byte[] CreateRootPfx(DateTimeOffset NotAfter)
+    private static X509Certificate2 CreateRootCertificate(DateTimeOffset NotAfter)
     {
         using var rsa = RSA.Create(2048);
         var req = new CertificateRequest("CN=Old Root", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         req.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
         req.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(req.PublicKey, false));
-        using var cert = req.CreateSelfSigned(NotAfter.AddDays(-10), NotAfter);
+        req.CertificateExtensions.Add(new X509KeyUsageExtension(
+            X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
+        return req.CreateSelfSigned(NotAfter.AddDays(-10), NotAfter);
+    }
+
+    private static byte[] CreateRootPfx(DateTimeOffset NotAfter)
+    {
+        using var cert = CreateRootCertificate(NotAfter);
+        return cert.Export(X509ContentType.Pkcs12, string.Empty);
+    }
+
+    private static byte[] CreateCaWithoutSkiPfx()
+    {
+        using var rsa = RSA.Create(2048);
+        var req = new CertificateRequest("CN=CA Root Without SKI", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        req.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        req.CertificateExtensions.Add(new X509KeyUsageExtension(
+            X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
+        using var cert = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
+        return cert.Export(X509ContentType.Pkcs12, string.Empty);
+    }
+
+    private static byte[] CreateCaWithoutKeyCertSignUsagePfx()
+    {
+        using var rsa = RSA.Create(2048);
+        var req = new CertificateRequest("CN=CA Root Without KeyCertSign", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        req.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        req.CertificateExtensions.Add(new X509KeyUsageExtension(
+            X509KeyUsageFlags.CrlSign, true));
+        using var cert = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
+        return cert.Export(X509ContentType.Pkcs12, string.Empty);
+    }
+
+    private static byte[] CreateCaWithoutKeyUsageExtensionPfx()
+    {
+        using var rsa = RSA.Create(2048);
+        var req = new CertificateRequest("CN=CA Root Without KeyUsageExtension", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        req.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        using var cert = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
         return cert.Export(X509ContentType.Pkcs12, string.Empty);
     }
 
@@ -222,4 +344,21 @@ public sealed class CertificateAuthorityTests : IDisposable
         using var cert = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
         return cert.Export(X509ContentType.Pkcs12, string.Empty);
     }
+
+    private static byte[] CreateLeafPfx(X509Certificate2 ca, X509Certificate2? aki_source)
+    {
+        using var rsa = RSA.Create(2048);
+        var req = new CertificateRequest("CN=Leaf", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        req.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));
+        if (aki_source is not null) {
+            req.CertificateExtensions.Add(
+                X509AuthorityKeyIdentifierExtension.CreateFromCertificate(
+                    aki_source, includeKeyIdentifier: true, includeIssuerAndSerial: false));
+        }
+        var serialNumber = new byte[8];
+        RandomNumberGenerator.Fill(serialNumber);
+        using var cert = req.Create(ca, DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(10), serialNumber);
+        return cert.Export(X509ContentType.Pkcs12, string.Empty);
+    }
+
 }
