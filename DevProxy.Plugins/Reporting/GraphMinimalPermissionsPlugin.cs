@@ -140,7 +140,7 @@ public sealed class GraphMinimalPermissionsPlugin(
 
         try
         {
-            var url = $"https://devxapi-func-prod-eastus.azurewebsites.net/permissions?scopeType={GraphUtils.GetScopeTypeString(Configuration.Type)}";
+            var url = $"https://graph-devx-api.microsoft.com/permissions?scopeType={GraphUtils.GetScopeTypeString(Configuration.Type)}";
             var stringPayload = JsonSerializer.Serialize(payload, ProxyUtils.JsonSerializerOptions);
             Logger.LogDebug("Calling {Url} with payload\r\n{StringPayload}", url, stringPayload);
 

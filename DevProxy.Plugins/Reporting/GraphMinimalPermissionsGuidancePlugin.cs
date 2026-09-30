@@ -244,7 +244,7 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
 
         try
         {
-            var url = $"https://devxapi-func-prod-eastus.azurewebsites.net/permissions?scopeType={GraphUtils.GetScopeTypeString(scopeType)}";
+            var url = $"https://graph-devx-api.microsoft.com/permissions?scopeType={GraphUtils.GetScopeTypeString(scopeType)}";
             var stringPayload = JsonSerializer.Serialize(payload, ProxyUtils.JsonSerializerOptions);
             Logger.LogDebug("Calling {Url} with payload{NewLine}{Payload}", url, Environment.NewLine, stringPayload);
 

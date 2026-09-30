@@ -60,7 +60,7 @@ sealed class GraphUtils(
 
         var newMinimalScopes = new HashSet<string>(minimalScopes);
 
-        var url = $"https://devxapi-func-prod-eastus.azurewebsites.net/permissions?scopeType={GetScopeTypeString(permissionsType)}";
+        var url = $"https://graph-devx-api.microsoft.com/permissions?scopeType={GetScopeTypeString(permissionsType)}";
         var urls = userEndpoints.Select(e =>
         {
             _logger.LogDebug("Getting permissions for {Method} {Url}", e.Method, e.Url);
