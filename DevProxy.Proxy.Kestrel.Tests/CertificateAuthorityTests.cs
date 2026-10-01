@@ -245,11 +245,11 @@ public sealed class CertificateAuthorityTests : IDisposable
     public void GetCertificateForHost_LeafWithMismatchedAki_Regenerates()
     {
         var rootNotAfter = DateTimeOffset.UtcNow.AddDays(10);
-        var other_ca = CreateRootCertificate(rootNotAfter);
+        using var otherCa = CreateRootCertificate(rootNotAfter);
         using var ca = new CertificateAuthority(_rootPath, _leafDir);
 
         _ = Directory.CreateDirectory(_leafDir);
-        File.WriteAllBytes(Path.Combine(_leafDir, "example.com.pfx"), CreateLeafPfx(ca.RootCertificate, other_ca));
+        File.WriteAllBytes(Path.Combine(_leafDir, "example.com.pfx"), CreateLeafPfx(ca.RootCertificate, otherCa));
 
         var leaf = ca.GetCertificateForHost("example.com");
 
@@ -345,20 +345,20 @@ public sealed class CertificateAuthorityTests : IDisposable
         return cert.Export(X509ContentType.Pkcs12, string.Empty);
     }
 
-    private static byte[] CreateLeafPfx(X509Certificate2 ca, X509Certificate2? aki_source)
+    private static byte[] CreateLeafPfx(X509Certificate2 ca, X509Certificate2? akiSource)
     {
         using var rsa = RSA.Create(2048);
         var req = new CertificateRequest("CN=Leaf", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         req.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));
-        if (aki_source is not null) {
+        if (akiSource is not null)
+        {
             req.CertificateExtensions.Add(
                 X509AuthorityKeyIdentifierExtension.CreateFromCertificate(
-                    aki_source, includeKeyIdentifier: true, includeIssuerAndSerial: false));
+                    akiSource, includeKeyIdentifier: true, includeIssuerAndSerial: false));
         }
         var serialNumber = new byte[8];
         RandomNumberGenerator.Fill(serialNumber);
         using var cert = req.Create(ca, DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(10), serialNumber);
         return cert.Export(X509ContentType.Pkcs12, string.Empty);
     }
-
 }
