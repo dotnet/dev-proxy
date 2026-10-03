@@ -166,15 +166,18 @@ Use `LanguageModelRateLimitingPlugin` to test token quota handling.
   ],
   "body": {
     "error": {
-      "message": "Token quota exceeded. Please wait.",
-      "type": "insufficient_quota",
-      "code": "token_quota_exceeded"
+      "message": "Rate limit reached on tokens per min (TPM). Please try again later.",
+      "type": "tokens",
+      "param": null,
+      "code": "rate_limit_exceeded"
     }
   }
 }
 ```
 
 Use `@dynamic` for the retry-after header to auto-calculate seconds until reset.
+
+With `whenLimitExceeded: "Throttle"`, the plugin returns a 429 with OpenAI's `rate_limit_exceeded` error (`type: "tokens"`) so clients back off and retry. To simulate a billing/quota error instead (`insufficient_quota`), use `Custom` with your own response.
 
 ### Scenario Configs
 
