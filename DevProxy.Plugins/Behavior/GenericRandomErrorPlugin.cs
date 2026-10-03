@@ -219,10 +219,11 @@ public sealed class GenericRandomErrorPlugin(
             headers.AddRange(error.Headers);
         }
 
-        if (error.StatusCode == (int)HttpStatusCode.TooManyRequests &&
-            error.Headers is not null)
+        // Retry-After can be sent with any status code (eg. 429, 503, 529),
+        // so resolve @dynamic regardless of the status code
+        if (error.Headers is not null)
         {
-            var retryAfterHeader = error.Headers.FirstOrDefault(h => h.Name is "Retry-After" or "retry-after");
+            var retryAfterHeader = error.Headers.FirstOrDefault(h => string.Equals(h.Name, "Retry-After", StringComparison.OrdinalIgnoreCase));
             if (retryAfterHeader?.Value is not null && retryAfterHeader.Value.StartsWith("@dynamic", StringComparison.OrdinalIgnoreCase))
             {
                 // Parse @dynamic or @dynamic=value syntax
@@ -257,7 +258,7 @@ public sealed class GenericRandomErrorPlugin(
                 var throttleKey = BuildThrottleKey(request);
                 throttledRequests?.Add(new(throttleKey, (req, key) => ShouldThrottle(req, key, retryAfterInSeconds), retryAfterDate));
                 // replace the header with the @dynamic value with the actual value
-                var h = headers.First(h => h.Name is "Retry-After" or "retry-after");
+                var h = headers.First(h => string.Equals(h.Name, "Retry-After", StringComparison.OrdinalIgnoreCase));
                 _ = headers.Remove(h);
                 headers.Add(new("Retry-After", retryAfterInSeconds.ToString(CultureInfo.InvariantCulture)));
             }
