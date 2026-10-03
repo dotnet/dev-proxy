@@ -40,7 +40,44 @@ With Dev Proxy you:
 
 ## Get started
 
-To get started with Dev Proxy, follow our [tutorial](https://aka.ms/devproxy/start) to install and run Dev Proxy for the first time.
+Install Dev Proxy using the command for your operating system.
+
+**Windows** (after the installation finishes, open a new terminal):
+
+```bash
+winget install DevProxy.DevProxy --silent
+```
+
+**macOS**:
+
+```bash
+brew tap dotnet/dev-proxy
+brew install dev-proxy
+```
+
+**Linux** (after the installation finishes, run the `source` command the installer prints, or open a new terminal):
+
+```bash
+bash -c "$(curl -sL https://aka.ms/devproxy/setup.sh)"
+```
+
+Download the preset for the API your app calls, and start Dev Proxy with it:
+
+```bash
+devproxy config get github-rate-limiting
+devproxy --config-file "~dataFolder/configs/github-rate-limiting/.devproxy/devproxyrc.json"
+```
+
+API | Preset
+----|-------
+GitHub | `github-rate-limiting`
+OpenAI | `openai-throttling`
+Anthropic | `anthropic-throttling`
+Microsoft Graph | `microsoft-graph-rate-limiting`
+
+The first time you start Dev Proxy, trust its certificate so that it can intercept HTTPS requests. On Linux, you need to trust the certificate manually. Our [tutorial](https://aka.ms/devproxy/start) walks you through these steps.
+
+Then, run your app as usual. It keeps calling the real API URLs, and Dev Proxy simulates the API's rate limits and errors. Find presets for other APIs in the [samples gallery](https://aka.ms/devproxy/samples).
 
 [![Getting started with Dev Proxy](https://img.youtube.com/vi/HVTJlGSxhcw/0.jpg)](https://www.youtube.com/watch?v=HVTJlGSxhcw)
 
