@@ -48,6 +48,7 @@ sealed class ConfigCommand : Command
     private readonly IProxyConfiguration _proxyConfiguration;
     private readonly HttpClient _httpClient;
     private const string ConfigTemplatesFolder = "config-templates";
+    private static readonly string[] configFilePatterns = ["*.json", "*.yaml", "*.yml"];
 
     public ConfigCommand(
         HttpClient httpClient,
@@ -309,6 +310,8 @@ sealed class ConfigCommand : Command
     /// these file names. If there are no proxy configs, it'll return
     /// an array of all the mock files. If there are no mocks, it'll return
     /// an empty array indicating that there's no entry point.
+    /// Files in the .devproxy subfolder are listed before files in the
+    /// root folder.
     /// </remarks>
     /// <param name="configFolder">Full path to the folder with config files</param>
     /// <returns>Array of files that can be used to start proxy with</returns>
@@ -318,11 +321,14 @@ sealed class ConfigCommand : Command
 
         _logger.LogDebug("Getting list of config files in {ConfigFolder}...", configFolder);
 
-        // Get both JSON and YAML files
-        var jsonFiles = Directory.GetFiles(configFolder, "*.json");
-        var yamlFiles = Directory.GetFiles(configFolder, "*.yaml");
-        var ymlFiles = Directory.GetFiles(configFolder, "*.yml");
-        var allConfigFiles = jsonFiles.Concat(yamlFiles).Concat(ymlFiles).ToArray();
+        // Presets in the samples gallery keep their config in a .devproxy
+        // subfolder, so scan it first, followed by the root folder
+        var foldersToScan = new[] { Path.Combine(configFolder, ".devproxy"), configFolder }
+            .Where(Directory.Exists);
+        var allConfigFiles = foldersToScan
+            .SelectMany(folder => configFilePatterns
+                .SelectMany(pattern => Directory.GetFiles(folder, pattern)))
+            .ToArray();
 
         if (allConfigFiles.Length == 0)
         {
