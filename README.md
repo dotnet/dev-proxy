@@ -55,7 +55,7 @@ brew tap dotnet/dev-proxy
 brew install dev-proxy
 ```
 
-**Linux**:
+**Linux** (after the installation finishes, run the `source` command the installer prints, or open a new terminal):
 
 ```bash
 bash -c "$(curl -sL https://aka.ms/devproxy/setup.sh)"
@@ -75,9 +75,9 @@ OpenAI | `openai-throttling`
 Anthropic | `anthropic-throttling`
 Microsoft Graph | `microsoft-graph-rate-limiting`
 
-Run your app as usual. It keeps calling the real API URLs, and Dev Proxy simulates the API's rate limits and errors. Find presets for other APIs in the [samples gallery](https://aka.ms/devproxy/samples).
+The first time you start Dev Proxy, trust its certificate so that it can intercept HTTPS requests. On Linux, you need to trust the certificate manually. Our [tutorial](https://aka.ms/devproxy/start) walks you through these steps.
 
-For a step-by-step walkthrough, including trusting the Dev Proxy certificate the first time you start it, follow our [tutorial](https://aka.ms/devproxy/start).
+Then, run your app as usual. It keeps calling the real API URLs, and Dev Proxy simulates the API's rate limits and errors. Find presets for other APIs in the [samples gallery](https://aka.ms/devproxy/samples).
 
 [![Getting started with Dev Proxy](https://img.youtube.com/vi/HVTJlGSxhcw/0.jpg)](https://www.youtube.com/watch?v=HVTJlGSxhcw)
 
