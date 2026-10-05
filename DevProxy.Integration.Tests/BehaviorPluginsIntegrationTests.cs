@@ -5,6 +5,8 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Net;
+using System.Text;
+using System.Text.Json;
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Plugins.Behavior;
@@ -211,5 +213,50 @@ public sealed class BehaviorPluginsIntegrationTests
                 CultureInfo.InvariantCulture,
                 out _),
             "Retry-After header should be an integer seconds value.");
+    }
+
+    [Fact]
+    public async Task LanguageModelRateLimiting_Throttle_ReturnsOpenAIRateLimitError()
+    {
+        await using var origin = await FakeOrigin.StartAsync();
+        var urls = KestrelProxyHarness.BuildUrlsToWatch(origin.Host);
+
+        var plugin = new LanguageModelRateLimitingPlugin(
+            SharedHttpClient,
+            NullLogger<LanguageModelRateLimitingPlugin>.Instance,
+            urls,
+            ProxyConfig,
+            PluginConfig.FromJson("""
+                { "promptTokenLimit": 10, "completionTokenLimit": 100, "resetTimeWindowSeconds": 300 }
+                """));
+
+        await using var proxy = await KestrelProxyHarness.StartAsync(
+            origin.Host, [plugin]);
+        using var client = proxy.CreateHttpClient();
+
+        // /echo returns the request body, so the usage below is read back as the
+        // response's token usage. #1 exceeds the prompt token limit, #2 is throttled.
+        const string requestBody = """
+            {
+              "model": "gpt-4o",
+              "messages": [ { "role": "user", "content": "hi" } ],
+              "usage": { "prompt_tokens": 15, "completion_tokens": 5, "total_tokens": 20 }
+            }
+            """;
+        using var firstContent = new StringContent(requestBody, Encoding.UTF8, "application/json");
+        using var first = await client.PostAsync(new Uri($"http://{origin.Host}/echo"), firstContent);
+        using var secondContent = new StringContent(requestBody, Encoding.UTF8, "application/json");
+        using var throttled = await client.PostAsync(new Uri($"http://{origin.Host}/echo"), secondContent);
+
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, throttled.StatusCode);
+        Assert.True(throttled.Headers.Contains("retry-after"));
+
+        using var json = JsonDocument.Parse(await throttled.Content.ReadAsStringAsync());
+        var error = json.RootElement.GetProperty("error");
+        Assert.Equal("rate_limit_exceeded", error.GetProperty("code").GetString());
+        Assert.Equal("tokens", error.GetProperty("type").GetString());
+        var message = error.GetProperty("message").GetString();
+        Assert.StartsWith("Rate limit reached for gpt-4o on tokens per min (TPM): Limit 10, Used 15.", message, StringComparison.Ordinal);
     }
 }

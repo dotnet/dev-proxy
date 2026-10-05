@@ -51,7 +51,11 @@ public sealed class LanguageModelRateLimitingPlugin(
     // first request and can set the initial values
     private int _promptTokensRemaining = -1;
     private int _completionTokensRemaining = -1;
+    private int _promptTokensUsed;
+    private int _completionTokensUsed;
     private DateTime _resetTime = DateTime.MinValue;
+    // guards the token window state which is shared across concurrent connections
+    private readonly Lock _tokenWindowLock = new();
     private LanguageModelRateLimitingCustomResponseLoader? _loader;
 
     public override string Name => nameof(LanguageModelRateLimitingPlugin);
@@ -102,27 +106,10 @@ public sealed class LanguageModelRateLimitingPlugin(
             return Task.CompletedTask;
         }
 
-        // set the initial values for the first request
-        if (_resetTime == DateTime.MinValue)
-        {
-            _resetTime = DateTime.Now.AddSeconds(Configuration.ResetTimeWindowSeconds);
-        }
-        if (_promptTokensRemaining == -1)
-        {
-            _promptTokensRemaining = Configuration.PromptTokenLimit;
-            _completionTokensRemaining = Configuration.CompletionTokenLimit;
-        }
-
-        // see if we passed the reset time window
-        if (DateTime.Now > _resetTime)
-        {
-            _promptTokensRemaining = Configuration.PromptTokenLimit;
-            _completionTokensRemaining = Configuration.CompletionTokenLimit;
-            _resetTime = DateTime.Now.AddSeconds(Configuration.ResetTimeWindowSeconds);
-        }
+        var window = GetTokenWindowSnapshot();
 
         // check if we have tokens available
-        if (_promptTokensRemaining <= 0 || _completionTokensRemaining <= 0)
+        if (window.PromptTokensRemaining <= 0 || window.CompletionTokensRemaining <= 0)
         {
             Logger.LogRequest($"Exceeded token limit when calling {request.Url}. Request will be throttled", MessageType.Failed, new LoggingContext(e.ProxySession));
 
@@ -138,9 +125,9 @@ public sealed class LanguageModelRateLimitingPlugin(
                 throttledRequests?.Add(new(
                     BuildThrottleKey(request),
                     ShouldThrottle,
-                    _resetTime
+                    window.ResetTime
                 ));
-                ThrottleResponse(e);
+                ThrottleResponse(e, openAiRequest?.Model, window);
                 state.HasBeenSet = true;
             }
             else
@@ -154,7 +141,7 @@ public sealed class LanguageModelRateLimitingPlugin(
                     var retryAfterHeader = headersList.FirstOrDefault(h => h.Name.Equals(Configuration.HeaderRetryAfter, StringComparison.OrdinalIgnoreCase));
                     if (retryAfterHeader is not null && retryAfterHeader.Value == "@dynamic")
                     {
-                        headersList.Add(new(Configuration.HeaderRetryAfter, ((int)(_resetTime - DateTime.Now).TotalSeconds).ToString(CultureInfo.InvariantCulture)));
+                        headersList.Add(new(Configuration.HeaderRetryAfter, ((int)(window.ResetTime - DateTime.Now).TotalSeconds).ToString(CultureInfo.InvariantCulture)));
                         _ = headersList.Remove(retryAfterHeader);
                     }
 
@@ -174,7 +161,7 @@ public sealed class LanguageModelRateLimitingPlugin(
                         throttledRequests?.Add(new(
                             BuildThrottleKey(request),
                             ShouldThrottle,
-                            _resetTime
+                            window.ResetTime
                         ));
                     }
 
@@ -194,7 +181,7 @@ public sealed class LanguageModelRateLimitingPlugin(
         }
         else
         {
-            Logger.LogDebug("Tokens remaining - Prompt: {PromptTokensRemaining}, Completion: {CompletionTokensRemaining}", _promptTokensRemaining, _completionTokensRemaining);
+            Logger.LogDebug("Tokens remaining - Prompt: {PromptTokensRemaining}, Completion: {CompletionTokensRemaining}", window.PromptTokensRemaining, window.CompletionTokensRemaining);
         }
 
         return Task.CompletedTask;
@@ -241,19 +228,28 @@ public sealed class LanguageModelRateLimitingPlugin(
                         var promptTokens = (int)openAiResponse.Usage.PromptTokens;
                         var completionTokens = (int)openAiResponse.Usage.CompletionTokens;
 
-                        _promptTokensRemaining -= promptTokens;
-                        _completionTokensRemaining -= completionTokens;
-
-                        if (_promptTokensRemaining < 0)
+                        int promptTokensRemaining, completionTokensRemaining;
+                        lock (_tokenWindowLock)
                         {
-                            _promptTokensRemaining = 0;
-                        }
-                        if (_completionTokensRemaining < 0)
-                        {
-                            _completionTokensRemaining = 0;
+                            _promptTokensRemaining -= promptTokens;
+                            _completionTokensRemaining -= completionTokens;
+                            _promptTokensUsed += promptTokens;
+                            _completionTokensUsed += completionTokens;
+
+                            if (_promptTokensRemaining < 0)
+                            {
+                                _promptTokensRemaining = 0;
+                            }
+                            if (_completionTokensRemaining < 0)
+                            {
+                                _completionTokensRemaining = 0;
+                            }
+
+                            promptTokensRemaining = _promptTokensRemaining;
+                            completionTokensRemaining = _completionTokensRemaining;
                         }
 
-                        Logger.LogRequest($"Consumed {promptTokens} prompt tokens and {completionTokens} completion tokens. Remaining - Prompt: {_promptTokensRemaining}, Completion: {_completionTokensRemaining}", MessageType.Processed, new LoggingContext(e.ProxySession));
+                        Logger.LogRequest($"Consumed {promptTokens} prompt tokens and {completionTokens} completion tokens. Remaining - Prompt: {promptTokensRemaining}, Completion: {completionTokensRemaining}", MessageType.Processed, new LoggingContext(e.ProxySession));
                     }
                 }
                 catch (JsonException ex)
@@ -267,34 +263,79 @@ public sealed class LanguageModelRateLimitingPlugin(
         return Task.CompletedTask;
     }
 
+    private TokenWindowSnapshot GetTokenWindowSnapshot()
+    {
+        lock (_tokenWindowLock)
+        {
+            // set the initial values for the first request
+            if (_resetTime == DateTime.MinValue)
+            {
+                _resetTime = DateTime.Now.AddSeconds(Configuration.ResetTimeWindowSeconds);
+            }
+            if (_promptTokensRemaining == -1)
+            {
+                _promptTokensRemaining = Configuration.PromptTokenLimit;
+                _completionTokensRemaining = Configuration.CompletionTokenLimit;
+            }
+
+            // see if we passed the reset time window
+            if (DateTime.Now > _resetTime)
+            {
+                _promptTokensRemaining = Configuration.PromptTokenLimit;
+                _completionTokensRemaining = Configuration.CompletionTokenLimit;
+                _promptTokensUsed = 0;
+                _completionTokensUsed = 0;
+                _resetTime = DateTime.Now.AddSeconds(Configuration.ResetTimeWindowSeconds);
+            }
+
+            return new(
+                _resetTime,
+                _promptTokensRemaining,
+                _completionTokensRemaining,
+                _promptTokensUsed,
+                _completionTokensUsed);
+        }
+    }
+
     private ThrottlingInfo ShouldThrottle(IHttpRequest request, string throttlingKey)
     {
         var throttleKeyForRequest = BuildThrottleKey(request);
+        DateTime resetTime;
+        lock (_tokenWindowLock)
+        {
+            resetTime = _resetTime;
+        }
         return new(throttleKeyForRequest == throttlingKey ?
-            (int)(_resetTime - DateTime.Now).TotalSeconds : 0,
+            (int)(resetTime - DateTime.Now).TotalSeconds : 0,
             Configuration.HeaderRetryAfter);
     }
 
-    private void ThrottleResponse(ProxyRequestArgs e)
+    private void ThrottleResponse(ProxyRequestArgs e, string? model, TokenWindowSnapshot window)
     {
         var headers = new List<MockResponseHeader>();
-        var body = string.Empty;
         var request = e.ProxySession.Request;
+        var retryAfterSeconds = (int)(window.ResetTime - DateTime.Now).TotalSeconds;
 
-        // Build standard OpenAI error response for token limit exceeded
+        // Report the limit that's been exhausted, matching OpenAI's
+        // tokens-per-minute rate limit error so that clients back off and retry
+        var (limit, used) = window.PromptTokensRemaining <= 0 ?
+            (Configuration.PromptTokenLimit, window.PromptTokensUsed) :
+            (Configuration.CompletionTokenLimit, window.CompletionTokensUsed);
+        var modelInfo = string.IsNullOrEmpty(model) ? string.Empty : $" for {model}";
+
         var openAiError = new
         {
             error = new
             {
-                message = "You exceeded your current quota, please check your plan and billing details.",
-                type = "insufficient_quota",
+                message = string.Create(CultureInfo.InvariantCulture, $"Rate limit reached{modelInfo} on tokens per min (TPM): Limit {limit}, Used {used}. Please try again in {retryAfterSeconds}s."),
+                type = "tokens",
                 param = (object?)null,
-                code = "insufficient_quota"
+                code = "rate_limit_exceeded"
             }
         };
-        body = JsonSerializer.Serialize(openAiError, ProxyUtils.JsonSerializerOptions);
+        var body = JsonSerializer.Serialize(openAiError, ProxyUtils.JsonSerializerOptions);
 
-        headers.Add(new(Configuration.HeaderRetryAfter, ((int)(_resetTime - DateTime.Now).TotalSeconds).ToString(CultureInfo.InvariantCulture)));
+        headers.Add(new(Configuration.HeaderRetryAfter, retryAfterSeconds.ToString(CultureInfo.InvariantCulture)));
         if (request.Headers.Any(h => h.Name.Equals("Origin", StringComparison.OrdinalIgnoreCase)))
         {
             headers.Add(new("Access-Control-Allow-Origin", "*"));
@@ -305,6 +346,13 @@ public sealed class LanguageModelRateLimitingPlugin(
     }
 
     private static string BuildThrottleKey(IHttpRequest r) => r.RequestUri.Host;
+
+    private readonly record struct TokenWindowSnapshot(
+        DateTime ResetTime,
+        int PromptTokensRemaining,
+        int CompletionTokensRemaining,
+        int PromptTokensUsed,
+        int CompletionTokensUsed);
 
     protected override void Dispose(bool disposing)
     {
