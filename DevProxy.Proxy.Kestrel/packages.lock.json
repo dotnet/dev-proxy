@@ -85,15 +85,15 @@
       },
       "Newtonsoft.Json": {
         "type": "Transitive",
-        "resolved": "13.0.3",
-        "contentHash": "HrC5BXdl00IP9zeV+0Z848QWPAoCr9P3bDEZguI+gkLcBKAOxix/tLEAAHC+UvDNPv4a2d18lOReHMOagPa+zQ=="
+        "resolved": "13.0.4",
+        "contentHash": "pdgNNMai3zv51W5aq268sujXUyx7SNdE2bj1wZcWjAQrKMFZV260lbqYop1d2GM67JI1huLRwxo9ZqnfF/lC6A=="
       },
       "Newtonsoft.Json.Schema": {
         "type": "Transitive",
-        "resolved": "4.0.1",
-        "contentHash": "rbHUKp5WTIbqmLEeJ21nTTDGcfR0LA7bVMzm0bYc3yx6NFKiCIHzzvYbwA4Sqgs7+wNldc5nBlkbithWj8IZig==",
+        "resolved": "4.0.2",
+        "contentHash": "+Kyhf67t35xoUycpSkaaxGeBaTLz/sZOPEW94HCVM/WJFVJooIsIHGUV7hS8xSvT1Ci78XwN4Fr57927OGYE6w==",
         "dependencies": {
-          "Newtonsoft.Json": "13.0.3"
+          "Newtonsoft.Json": "13.0.4"
         }
       },
       "Scriban": {
@@ -150,7 +150,7 @@
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.12, )",
           "Microsoft.OpenApi": "[3.10.2, )",
           "Microsoft.OpenApi.YamlReader": "[3.10.2, )",
-          "Newtonsoft.Json.Schema": "[4.0.1, )",
+          "Newtonsoft.Json.Schema": "[4.0.2, )",
           "Scriban": "[7.5.0, )",
           "System.CommandLine": "[2.0.12, )",
           "YamlDotNet": "[18.1.0, )"

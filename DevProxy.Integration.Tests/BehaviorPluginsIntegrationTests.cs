@@ -65,6 +65,53 @@ public sealed class BehaviorPluginsIntegrationTests
     }
 
     [Fact]
+    public async Task GenericRandomError_DynamicRetryAfterOnNon429_IsResolved()
+    {
+        await using var origin = await FakeOrigin.StartAsync();
+        var urls = KestrelProxyHarness.BuildUrlsToWatch(origin.Host);
+
+        var config = PluginConfig.FromJson($$"""
+            {
+              "rate": 100,
+              "errors": [
+                {
+                  "request": { "url": "http://{{origin.Host}}/*" },
+                  "responses": [
+                    {
+                      "statusCode": 503,
+                      "headers": [ { "name": "RETRY-after", "value": "@dynamic=7" } ]
+                    }
+                  ]
+                }
+              ]
+            }
+            """);
+        var plugin = new GenericRandomErrorPlugin(
+            SharedHttpClient,
+            NullLogger<GenericRandomErrorPlugin>.Instance,
+            urls,
+            ProxyConfig,
+            config);
+        var retryAfter = new RetryAfterPlugin(
+            NullLogger<RetryAfterPlugin>.Instance,
+            urls);
+
+        await using var proxy = await KestrelProxyHarness.StartAsync(
+            origin.Host, [retryAfter, plugin]);
+        using var client = proxy.CreateHttpClient();
+
+        using var response = await client.GetAsync(new Uri($"http://{origin.Host}/get"));
+        // an immediate retry must be throttled by RetryAfterPlugin, proving the
+        // non-429 error registered the request for throttling
+        using var retry = await client.GetAsync(new Uri($"http://{origin.Host}/get"));
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.True(response.Headers.TryGetValues("Retry-After", out var values));
+        Assert.Equal("7", Assert.Single(values));
+        Assert.Equal(HttpStatusCode.TooManyRequests, retry.StatusCode);
+    }
+
+    [Fact]
     public async Task Latency_AddsConfiguredDelayBeforeForwarding()
     {
         await using var origin = await FakeOrigin.StartAsync();
