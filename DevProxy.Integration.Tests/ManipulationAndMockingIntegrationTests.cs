@@ -150,6 +150,81 @@ public sealed class ManipulationAndMockingIntegrationTests
     }
 
     [Fact]
+    public async Task Rewrite_ExpandsEnvironmentVariablesInUrlAndHeader()
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+        var pathVar = $"DEVPROXY_TEST_PATH_{suffix}";
+        var headerVar = $"DEVPROXY_TEST_HEADER_{suffix}";
+        Environment.SetEnvironmentVariable(pathVar, "/head$1");
+        Environment.SetEnvironmentVariable(headerVar, "from-env");
+        try
+        {
+            await using var origin = await FakeOrigin.StartAsync();
+            var urls = KestrelProxyHarness.BuildUrlsToWatch(origin.Host);
+            var config = PluginConfig.FromJson($$"""
+                {
+                  "rewrites": [
+                    { "in": { "url": "/get(ers)$" }, "out": { "url": "${env:{{pathVar}}}", "headers": [ { "name": "X-Probe", "value": "v-${env:{{headerVar}}}" } ] } }
+                  ]
+                }
+                """);
+            var plugin = new RewritePlugin(
+                SharedHttpClient,
+                NullLogger<RewritePlugin>.Instance,
+                urls,
+                ProxyConfig,
+                config);
+
+            await using var proxy = await KestrelProxyHarness.StartAsync(origin.Host, [plugin]);
+            using var client = proxy.CreateHttpClient();
+
+            using var response = await client.GetAsync(new Uri($"http://{origin.Host}/geters"));
+            var body = await response.Content.ReadAsStringAsync();
+
+            // /head + capture group "ers" referenced from the env var value.
+            Assert.Contains(origin.ReceivedRequests, r => r.PathAndQuery == "/headers");
+            Assert.Equal("probe=v-from-env", body);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(pathVar, null);
+            Environment.SetEnvironmentVariable(headerVar, null);
+        }
+    }
+
+    [Fact]
+    public async Task Rewrite_SkipsRule_WhenEnvironmentVariableMissing()
+    {
+        var missingVar = $"DEVPROXY_TEST_MISSING_{Guid.NewGuid():N}";
+        await using var origin = await FakeOrigin.StartAsync();
+        var urls = KestrelProxyHarness.BuildUrlsToWatch(origin.Host);
+        var config = PluginConfig.FromJson($$"""
+            {
+              "rewrites": [
+                { "in": { "url": "/headers$" }, "out": { "url": "/status/503", "headers": [ { "name": "X-Probe", "value": "${env:{{missingVar}}}" } ] } }
+              ]
+            }
+            """);
+        var plugin = new RewritePlugin(
+            SharedHttpClient,
+            NullLogger<RewritePlugin>.Instance,
+            urls,
+            ProxyConfig,
+            config);
+
+        await using var proxy = await KestrelProxyHarness.StartAsync(origin.Host, [plugin]);
+        using var client = proxy.CreateHttpClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri($"http://{origin.Host}/headers"));
+        request.Headers.Add("X-Probe", "original");
+
+        using var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("probe=original", body);
+    }
+
+    [Fact]
     public async Task Rewrite_RewritesWebSocketUrl_OriginReceivesRewrittenPath()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));

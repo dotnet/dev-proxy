@@ -36,7 +36,7 @@ public sealed class RewritePluginConfiguration
     public string RewritesFile { get; set; } = "rewrites.json";
 }
 
-public sealed class RewritePlugin(
+public sealed partial class RewritePlugin(
     HttpClient httpClient,
     ILogger<RewritePlugin> logger,
     ISet<UrlToWatch> urlsToWatch,
@@ -106,9 +106,31 @@ public sealed class RewritePlugin(
             // header rewrites apply to the same requests as the URL rewrite.
             var urlMatches = Regex.IsMatch(request.Url, rewrite.In.Url, RegexOptions.IgnoreCase);
 
-            if (!string.IsNullOrEmpty(rewrite.Out.Url))
+            var outUrl = rewrite.Out.Url;
+            if (urlMatches)
             {
-                var newUrl = Regex.Replace(request.Url, rewrite.In.Url, rewrite.Out.Url, RegexOptions.IgnoreCase);
+                var missingVariables = new HashSet<string>(StringComparer.Ordinal);
+                outUrl = ExpandEnvironmentVariables(outUrl, missingVariables);
+                headers = [.. headers.Select(h => new RewriteHeader
+                {
+                    Name = h.Name,
+                    Value = ExpandEnvironmentVariables(h.Value, missingVariables)
+                })];
+
+                if (missingVariables.Count > 0)
+                {
+                    Logger.LogError(
+                        "Skipping rewrite {InUrl} for {RequestUrl}. The following environment variables aren't set: {MissingVariables}",
+                        rewrite.In.Url,
+                        request.Url,
+                        string.Join(", ", missingVariables));
+                    continue;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(outUrl))
+            {
+                var newUrl = Regex.Replace(request.Url, rewrite.In.Url, outUrl, RegexOptions.IgnoreCase);
 
                 if (request.Url.Equals(newUrl, StringComparison.OrdinalIgnoreCase))
                 {
@@ -142,6 +164,29 @@ public sealed class RewritePlugin(
         Logger.LogTrace("Left {Name}", nameof(BeforeRequestAsync));
         return Task.CompletedTask;
     }
+
+    private static string? ExpandEnvironmentVariables(string? value, HashSet<string> missingVariables)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return value;
+        }
+
+        return EnvironmentVariableTokenRegex().Replace(value, match =>
+        {
+            var name = match.Groups["name"].Value;
+            var envValue = Environment.GetEnvironmentVariable(name);
+            if (envValue is null)
+            {
+                _ = missingVariables.Add(name);
+                return match.Value;
+            }
+            return envValue;
+        });
+    }
+
+    [GeneratedRegex(@"\$\{env:(?<name>[^}]+)\}")]
+    private static partial Regex EnvironmentVariableTokenRegex();
 
     protected override void Dispose(bool disposing)
     {

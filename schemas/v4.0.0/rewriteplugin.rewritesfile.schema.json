@@ -33,7 +33,7 @@
               "url": {
                 "type": "string",
                 "pattern": "^.*$",
-                "description": "URL to rewrite the request to. Can use capture groups from the 'in' pattern. If omitted, the request URL isn't changed."
+                "description": "URL to rewrite the request to. Can use capture groups from the 'in' pattern and reference environment variables using ${env:VAR_NAME}. Environment variable values are inserted as-is, so they can also reference capture groups. If a referenced environment variable isn't set, the rule is skipped. If omitted, the request URL isn't changed."
               },
               "headers": {
                 "type": "array",
@@ -48,7 +48,7 @@
                     },
                     "value": {
                       "type": "string",
-                      "description": "Literal value to set for the request header."
+                      "description": "Value to set for the request header. Can reference environment variables using ${env:VAR_NAME}. If a referenced environment variable isn't set, the rule is skipped."
                     }
                   },
                   "required": ["name", "value"]

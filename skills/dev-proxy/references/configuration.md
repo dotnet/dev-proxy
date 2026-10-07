@@ -302,7 +302,7 @@ None of these have configuration properties.
 
 ### RewritePlugin
 
-Rewrites request URLs using regex capture groups and sets request header values. Each rule matches on `in.url`; `out.url` (optional) rewrites the URL, and `out.headers` (optional, `[{ "name", "value" }]`) replaces the header value or adds the header if it's missing.
+Rewrites request URLs using regex capture groups and sets request header values. Each rule matches on `in.url`; `out.url` (optional) rewrites the URL, and `out.headers` (optional, `[{ "name", "value" }]`) replaces the header value or adds the header if it's missing. `out.url` and header values can reference environment variables with `${env:VAR_NAME}` (values are inserted as-is, so in `out.url` they can reference capture groups); if a referenced variable isn't set, Dev Proxy logs an error and skips the rule.
 
 | Property | Default | Description |
 |----------|---------|-------------|
