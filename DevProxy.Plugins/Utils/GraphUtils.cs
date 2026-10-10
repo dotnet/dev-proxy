@@ -9,6 +9,7 @@ using DevProxy.Plugins.Models;
 using Microsoft.Extensions.Logging;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace DevProxy.Plugins.Utils;
 
@@ -16,6 +17,10 @@ sealed class GraphUtils(
     HttpClient httpClient,
     ILogger<GraphUtils> logger)
 {
+    private static readonly Regex DriveItemPathRegex = new(
+        @"^/(?<version>v1\.0|beta)/(?<drive>drive|drives/[^/]+|groups/[^/]+/drive|me/drive|sites/[^/]+/drive|users/[^/]+/drive)/(?:root|items/[^/]+|special/[^/]+):/",
+        RegexOptions.IgnoreCase);
+
     private readonly HttpClient _httpClient = httpClient;
     private readonly ILogger _logger = logger;
 
@@ -115,8 +120,31 @@ sealed class GraphUtils(
 
     internal static string GetTokenizedUrl(string absoluteUrl)
     {
+        absoluteUrl = CanonicalizeDriveItemPathUrl(absoluteUrl);
         var sanitizedUrl = ProxyUtils.SanitizeUrl(absoluteUrl);
         return "/" + string.Concat(new Uri(sanitizedUrl).Segments.Skip(2).Select(Uri.UnescapeDataString));
+    }
+
+    private static string CanonicalizeDriveItemPathUrl(string absoluteUrl)
+    {
+        var uri = new Uri(absoluteUrl);
+        var path = Uri.UnescapeDataString(uri.AbsolutePath);
+        var match = DriveItemPathRegex.Match(path);
+        if (!match.Success)
+        {
+            return absoluteUrl;
+        }
+
+        var suffixDelimiterIndex = path.IndexOf(":/", match.Index + match.Length, StringComparison.Ordinal);
+        var suffix = suffixDelimiterIndex < 0 ? string.Empty : path[(suffixDelimiterIndex + 1)..];
+        var drive = match.Groups["drive"].Value;
+        if (drive.Equals("drive", StringComparison.OrdinalIgnoreCase))
+        {
+            drive = "me/drive";
+        }
+
+        var canonicalPath = $"/{match.Groups["version"].Value}/{drive}/items/{{id}}{suffix}";
+        return $"{uri.GetLeftPart(UriPartial.Authority)}{canonicalPath}{uri.Query}";
     }
 
     internal static MethodAndUrl[] GetRequestsFromBatch(string batchBody, string graphVersion, string graphHostName)
