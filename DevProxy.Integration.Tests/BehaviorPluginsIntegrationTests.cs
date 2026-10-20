@@ -147,6 +147,23 @@ public sealed class BehaviorPluginsIntegrationTests
     }
 
     [Fact]
+    public void Latency_DelayRangeIncludesMaxMs()
+    {
+        var random = new Random(42);
+        var seen = new HashSet<int>();
+        for (var i = 0; i < 1000; i++)
+        {
+            var delay = LatencyPlugin.GetDelay(random, 0, 1);
+            Assert.InRange(delay, 0, 1);
+            _ = seen.Add(delay);
+        }
+
+        Assert.Contains(1, seen);
+        Assert.Equal(5, LatencyPlugin.GetDelay(random, 5, 5));
+        Assert.InRange(LatencyPlugin.GetDelay(random, int.MaxValue - 1, int.MaxValue), int.MaxValue - 1, int.MaxValue);
+    }
+
+    [Fact]
     public async Task RateLimiting_ThrottlesOnceResourcesAreExhausted()
     {
         await using var origin = await FakeOrigin.StartAsync();
