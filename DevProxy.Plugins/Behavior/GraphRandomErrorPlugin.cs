@@ -206,7 +206,7 @@ public sealed class GraphRandomErrorPlugin(
     }
 
     // uses config to determine if a request should be failed
-    private GraphRandomErrorFailMode ShouldFail() => _random.Next(1, 100) <= Configuration.Rate ? GraphRandomErrorFailMode.Random : GraphRandomErrorFailMode.PassThru;
+    private GraphRandomErrorFailMode ShouldFail() => _random.Next(0, 100) < Configuration.Rate ? GraphRandomErrorFailMode.Random : GraphRandomErrorFailMode.PassThru;
 
     private void FailResponse(ProxyRequestArgs e)
     {

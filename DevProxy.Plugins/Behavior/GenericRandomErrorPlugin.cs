@@ -138,7 +138,7 @@ public sealed class GenericRandomErrorPlugin(
     }
 
     // uses config to determine if a request should be failed
-    private GenericRandomErrorFailMode ShouldFail() => _random.Next(1, 100) <= Configuration.Rate ? GenericRandomErrorFailMode.Random : GenericRandomErrorFailMode.PassThru;
+    private GenericRandomErrorFailMode ShouldFail() => _random.Next(0, 100) < Configuration.Rate ? GenericRandomErrorFailMode.Random : GenericRandomErrorFailMode.PassThru;
 
     private void FailResponse(ProxyRequestArgs e)
     {
