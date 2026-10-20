@@ -43,17 +43,17 @@ internal static class ApiSecurity
         return origins;
     }
 
-    public static async Task CheckOriginAsync(HttpContext context, Func<Task> next, string[] allowedOrigins)
+    public static Task CheckOriginAsync(HttpContext context, Func<Task> next, string[] allowedOrigins)
     {
         context.Response.Headers.CacheControl = "no-store";
         if (context.Request.Headers.TryGetValue("Origin", out var origin) &&
             !allowedOrigins.Contains(origin.ToString(), StringComparer.Ordinal))
         {
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
-            return;
+            return Task.CompletedTask;
         }
 
-        await next();
+        return next();
     }
 
     public static string GetTokenFilePath(int pid) =>
@@ -118,7 +118,7 @@ internal static class ApiSecurity
         }
     }
 
-    public static async Task AuthenticateAsync(HttpContext context, Func<Task> next)
+    public static Task AuthenticateAsync(HttpContext context, Func<Task> next)
     {
         var authorization = context.Request.Headers.Authorization.ToString();
         const string prefix = "Bearer ";
@@ -129,10 +129,10 @@ internal static class ApiSecurity
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             context.Response.Headers.WWWAuthenticate = "Bearer";
-            return;
+            return Task.CompletedTask;
         }
 
         context.Response.Headers.CacheControl = "no-store";
-        await next();
+        return next();
     }
 }

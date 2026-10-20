@@ -88,12 +88,12 @@ internal static class StateManager
     /// <summary>
     /// Saves the state of a running detached instance to a per-PID state file.
     /// </summary>
-    public static async Task SaveStateAsync(ProxyInstanceState state, CancellationToken cancellationToken = default)
+    public static Task SaveStateAsync(ProxyInstanceState state, CancellationToken cancellationToken = default)
     {
         var stateFilePath = GetInstanceStateFilePath(state.Pid);
 
         var json = JsonSerializer.Serialize(state, _jsonOptions);
-        await PrivateFiles.WriteAllTextAsync(stateFilePath, json, cancellationToken);
+        return PrivateFiles.WriteAllTextAsync(stateFilePath, json, cancellationToken);
     }
 
     /// <summary>
@@ -114,9 +114,9 @@ internal static class StateManager
     /// Loads the state of a specific instance by PID.
     /// Returns null if no state file exists or the process is no longer running.
     /// </summary>
-    public static async Task<ProxyInstanceState?> LoadStateByPidAsync(int pid, CancellationToken cancellationToken = default)
+    public static Task<ProxyInstanceState?> LoadStateByPidAsync(int pid, CancellationToken cancellationToken = default)
     {
-        return await LoadStateFromFileAsync(GetInstanceStateFilePath(pid), cancellationToken);
+        return LoadStateFromFileAsync(GetInstanceStateFilePath(pid), cancellationToken);
     }
 
     /// <summary>
