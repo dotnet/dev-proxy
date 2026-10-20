@@ -104,6 +104,15 @@ internal static class StateManager
     public static async Task<ProxyInstanceState?> LoadStateAsync(CancellationToken cancellationToken = default)
     {
         var states = await LoadAllStatesAsync(cancellationToken);
+        return SelectPrimaryState(states);
+    }
+
+    /// <summary>
+    /// Selects the primary instance from the given states.
+    /// Prefers the system-proxy instance, then the most recently started instance.
+    /// </summary>
+    public static ProxyInstanceState? SelectPrimaryState(IEnumerable<ProxyInstanceState> states)
+    {
         return states
             .OrderByDescending(s => s.AsSystemProxy ? 1 : 0)
             .ThenByDescending(s => s.StartedAt)

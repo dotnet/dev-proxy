@@ -62,11 +62,18 @@ internal sealed class LogsCommand : Command
         }
         else
         {
-            state = await StateManager.LoadStateAsync(cancellationToken);
+            var states = await StateManager.LoadAllStatesAsync(cancellationToken);
+            state = StateManager.SelectPrimaryState(states);
             if (state is null)
             {
                 Console.WriteLine("Dev Proxy is not running.");
                 return 1;
+            }
+
+            var notice = GetMultipleInstancesNotice(state, states);
+            if (notice is not null)
+            {
+                await Console.Error.WriteLineAsync(notice);
             }
         }
 
@@ -90,6 +97,22 @@ internal sealed class LogsCommand : Command
         }
 
         return 0;
+    }
+
+    internal static string? GetMultipleInstancesNotice(ProxyInstanceState selected, IReadOnlyCollection<ProxyInstanceState> states)
+    {
+        var otherPids = states
+            .Where(s => s.Pid != selected.Pid)
+            .Select(s => s.Pid.ToString(CultureInfo.InvariantCulture))
+            .ToList();
+        if (otherPids.Count == 0)
+        {
+            return null;
+        }
+
+        var selectedDescription = selected.AsSystemProxy ? "system proxy instance" : "most recently started instance";
+        return $"Multiple Dev Proxy instances are running. Showing logs from PID {selected.Pid} ({selectedDescription}). " +
+            $"Other instances: {string.Join(", ", otherPids)}. Use --pid to show logs from a specific instance.";
     }
 
     private static DateTime? ParseSinceOption(string? since)
