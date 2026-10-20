@@ -268,7 +268,7 @@ public sealed class WebSocketMockResponsePlugin(
                 return false;
             }
 
-            return Regex.IsMatch(requestUrl, ProxyUtils.PatternToRegex(mockUrl));
+            return Regex.IsMatch(requestUrl, ProxyUtils.PatternToRegex(mockUrl), RegexOptions.IgnoreCase);
         });
     }
 }
