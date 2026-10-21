@@ -99,6 +99,34 @@ public sealed class HarGeneratorPlugin(
         return originalValue;
     }
 
+    private string GetCookieValue(string originalValue) =>
+        Configuration.IncludeSensitiveInformation ? originalValue : "REDACTED";
+
+    private bool IsSensitiveQueryParameter(string? name) =>
+        !Configuration.IncludeSensitiveInformation &&
+        name is not null &&
+        Http.SensitiveQueryParameters.Contains(name, StringComparer.OrdinalIgnoreCase);
+
+    private string? GetUrl(Uri? uri)
+    {
+        if (uri is null || Configuration.IncludeSensitiveInformation || string.IsNullOrEmpty(uri.Query))
+        {
+            return uri?.ToString();
+        }
+
+        // Rebuild the query string, preserving the original encoding of
+        // non-sensitive parameters and redacting only sensitive values.
+        var query = string.Join('&', uri.Query.TrimStart('?').Split('&').Select(pair =>
+        {
+            var parts = pair.Split('=', 2);
+            return parts.Length == 2 && IsSensitiveQueryParameter(HttpUtility.UrlDecode(parts[0]))
+                ? $"{parts[0]}=REDACTED"
+                : pair;
+        }));
+
+        return new UriBuilder(uri) { Query = query }.Uri.ToString();
+    }
+
     private HarEntry CreateHarEntry(RequestLog log)
     {
         Debug.Assert(log is not null);
@@ -106,6 +134,7 @@ public sealed class HarGeneratorPlugin(
 
         var request = log.Context.Session.Request;
         var response = log.Context.Session.Response!;
+        var queryParams = HttpUtility.ParseQueryString(request.RequestUri?.Query ?? "");
 
         var entry = new HarEntry
         {
@@ -114,13 +143,13 @@ public sealed class HarGeneratorPlugin(
             Request = new HarRequest
             {
                 Method = request.Method,
-                Url = request.RequestUri?.ToString(),
+                Url = GetUrl(request.RequestUri),
                 HttpVersion = $"HTTP/{request.HttpVersion}",
                 Headers = [.. request.Headers.Select(h => new HarHeader { Name = h.Name, Value = GetHeaderValue(h.Name, string.Join(", ", h.Value)) })],
-                QueryString = [.. HttpUtility.ParseQueryString(request.RequestUri?.Query ?? "")
+                QueryString = [.. queryParams
                     .AllKeys
                     .Where(key => key is not null)
-                    .Select(key => new HarQueryParam { Name = key, Value = HttpUtility.ParseQueryString(request.RequestUri?.Query ?? "")[key] ?? "" })],
+                    .Select(key => new HarQueryParam { Name = key, Value = IsSensitiveQueryParameter(key) ? "REDACTED" : queryParams[key] ?? "" })],
                 Cookies = [.. request.Headers
                     .Where(h => string.Equals(h.Name, "Cookie", StringComparison.OrdinalIgnoreCase))
                     .Select(h => h.Value)
@@ -128,7 +157,7 @@ public sealed class HarGeneratorPlugin(
                     .Select(c =>
                     {
                         var parts = c.Split('=', 2);
-                        return new HarCookie { Name = parts[0].Trim(), Value = parts.Length > 1 ? parts[1].Trim() : "" };
+                        return new HarCookie { Name = parts[0].Trim(), Value = GetCookieValue(parts.Length > 1 ? parts[1].Trim() : "") };
                     })],
                 HeadersSize = request.Headers?.ToString()?.Length ?? 0,
                 BodySize = request.HasBody ? request.Body.Length : 0,
@@ -151,7 +180,7 @@ public sealed class HarGeneratorPlugin(
                     .Select(sc =>
                     {
                         var parts = sc.Split(';')[0].Split('=', 2);
-                        return new HarCookie { Name = parts[0].Trim(), Value = parts.Length > 1 ? parts[1].Trim() : "" };
+                        return new HarCookie { Name = parts[0].Trim(), Value = GetCookieValue(parts.Length > 1 ? parts[1].Trim() : "") };
                     })],
                 Content = new HarContent
                 {
