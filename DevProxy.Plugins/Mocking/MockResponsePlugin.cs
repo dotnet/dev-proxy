@@ -426,7 +426,7 @@ public class MockResponsePlugin(
         Logger.LogRequest($"{matchingResponse.Response?.StatusCode ?? 200} {matchingResponse.Request?.Url}", MessageType.Mocked, new LoggingContext(e.ProxySession));
     }
 
-    private async Task GenerateMocksFromHttpResponsesAsync(ParseResult parseResult)
+    private async Task<int> GenerateMocksFromHttpResponsesAsync(ParseResult parseResult)
     {
         Logger.LogTrace("{Method} called", nameof(GenerateMocksFromHttpResponsesAsync));
 
@@ -443,14 +443,14 @@ public class MockResponsePlugin(
         if (string.IsNullOrEmpty(outputFilePath))
         {
             Logger.LogError("No output file path provided for mock responses.");
-            return;
+            return 1;
         }
 
         var httpResponseFiles = parseResult.GetValue(_httpResponseFilesArgument);
         if (httpResponseFiles is null || !httpResponseFiles.Any())
         {
             Logger.LogError("No HTTP response files provided.");
-            return;
+            return 1;
         }
 
         var matcher = new Matcher();
@@ -460,7 +460,7 @@ public class MockResponsePlugin(
         if (!matchingFiles.Any())
         {
             Logger.LogError("No matching HTTP response files found.");
-            return;
+            return 1;
         }
 
         if (Logger.IsEnabled(LogLevel.Information))
@@ -473,6 +473,7 @@ public class MockResponsePlugin(
         }
 
         var mockResponses = new List<MockResponse>();
+        var hasErrors = false;
         foreach (var file in matchingFiles)
         {
             Logger.LogInformation("Processing file: {File}", Path.GetRelativePath(".", file));
@@ -483,6 +484,7 @@ public class MockResponsePlugin(
             catch (Exception ex)
             {
                 Logger.LogError(ex, "Error processing file {File}", file);
+                hasErrors = true;
                 continue;
             }
         }
@@ -499,6 +501,7 @@ public class MockResponsePlugin(
         Logger.LogInformation("Generated mock responses saved to {OutputFile}", outputFilePath);
 
         Logger.LogTrace("Left {Method}", nameof(GenerateMocksFromHttpResponsesAsync));
+        return hasErrors ? 1 : 0;
     }
 
     private static bool HasMatchingBody(MockResponse mockResponse, IHttpRequest request)
