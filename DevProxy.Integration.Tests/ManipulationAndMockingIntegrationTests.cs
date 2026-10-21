@@ -2,9 +2,11 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System.CommandLine;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using DevProxy.Abstractions.Proxy;
 using DevProxy.Plugins.Behavior;
 using DevProxy.Plugins.Manipulation;
 using DevProxy.Plugins.Mocking;
@@ -449,5 +451,58 @@ public sealed class ManipulationAndMockingIntegrationTests
         Assert.True(
             (int)response.StatusCode >= 400,
             $"Expected an injected 4xx/5xx error, saw {(int)response.StatusCode}.");
+    }
+
+    private static GraphRandomErrorPlugin CreateGraphRandomErrorPlugin(string configJson)
+    {
+        var plugin = new GraphRandomErrorPlugin(
+            SharedHttpClient,
+            NullLogger<GraphRandomErrorPlugin>.Instance,
+            KestrelProxyHarness.BuildUrlsToWatch("graph.microsoft.com"),
+            ProxyConfig,
+            PluginConfig.FromJson(configJson));
+        var command = new RootCommand();
+        foreach (var option in plugin.GetOptions())
+        {
+            command.Options.Add(option);
+        }
+        plugin.OptionsLoaded(new OptionsLoadedArgs(command.Parse([])));
+        return plugin;
+    }
+
+    [Fact]
+    public async Task GraphRandomError_NoAllowedErrorsForMethod_PassesThrough()
+    {
+        // 507 isn't a built-in error for GET, so GET has no errors left to
+        // throw while POST does.
+        var plugin = CreateGraphRandomErrorPlugin("""{ "rate": 100, "allowedErrors": [507] }""");
+
+        var get = TestExchange.Request("GET", "https://graph.microsoft.com/v1.0/me");
+        await plugin.BeforeRequestAsync(get.RequestArgs, CancellationToken.None);
+        Assert.False(get.State.HasBeenSet);
+
+        var post = TestExchange.Request("POST", "https://graph.microsoft.com/v1.0/me/messages", body: "{}");
+        await plugin.BeforeRequestAsync(post.RequestArgs, CancellationToken.None);
+        Assert.True(post.State.HasBeenSet);
+    }
+
+    [Fact]
+    public async Task GraphRandomError_BatchWithMethodWithoutAllowedErrors_PassesThrough()
+    {
+        var plugin = CreateGraphRandomErrorPlugin("""{ "rate": 100, "allowedErrors": [507] }""");
+
+        var batch = TestExchange.Request(
+            "POST",
+            "https://graph.microsoft.com/v1.0/$batch",
+            body: """
+                {
+                  "requests": [
+                    { "id": "1", "method": "GET", "url": "/me" },
+                    { "id": "2", "method": "POST", "url": "/me/messages", "body": {}, "headers": { "content-type": "application/json" } }
+                  ]
+                }
+                """);
+        await plugin.BeforeRequestAsync(batch.RequestArgs, CancellationToken.None);
+        Assert.False(batch.State.HasBeenSet);
     }
 }
