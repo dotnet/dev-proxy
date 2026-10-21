@@ -380,16 +380,14 @@ public class MockResponsePlugin(
 
         if (matchingResponse.Response?.Body is not null)
         {
-            var bodyString = JsonSerializer.Serialize(matchingResponse.Response.Body, ProxyUtils.JsonSerializerOptions) as string;
-            // we get a JSON string so need to start with the opening quote
-            if (bodyString?.StartsWith("\"@", StringComparison.OrdinalIgnoreCase) ?? false)
+            string bodyString = ProxyUtils.SerializeBody(matchingResponse.Response.Body);
+            if (bodyString.StartsWith('@'))
             {
                 // we've got a mock body starting with @-token which means we're sending
                 // a response from a file on disk
                 // if we can read the file, we can immediately send the response and
                 // skip the rest of the logic in this method
-                // remove the surrounding quotes and the @-token
-                var filePath = Path.Combine(Path.GetDirectoryName(Configuration.MocksFile) ?? "", ProxyUtils.ReplacePathTokens(bodyString.Trim('"')[1..]));
+                var filePath = Path.Combine(Path.GetDirectoryName(Configuration.MocksFile) ?? "", ProxyUtils.ReplacePathTokens(bodyString[1..]));
                 if (!File.Exists(filePath))
                 {
 

@@ -317,7 +317,8 @@ public sealed class ManipulationAndMockingIntegrationTests
 
         // /get normally returns 200 "hello get"; the mock overrides it.
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        Assert.Contains("mocked-by-test", body, StringComparison.Ordinal);
+        // string bodies must not be JSON-serialized (no surrounding quotes)
+        Assert.Equal("mocked-by-test", body);
     }
 
     [Theory]

@@ -177,9 +177,7 @@ public sealed class RateLimitingPlugin(
                         ));
                     }
 
-                    string body = Configuration.CustomResponse.Body is not null ?
-                        JsonSerializer.Serialize(Configuration.CustomResponse.Body, ProxyUtils.JsonSerializerOptions) :
-                        "";
+                    string body = ProxyUtils.SerializeBody(Configuration.CustomResponse.Body);
                     e.ProxySession.Respond(body, responseCode, headers);
                     state.HasBeenSet = true;
                 }

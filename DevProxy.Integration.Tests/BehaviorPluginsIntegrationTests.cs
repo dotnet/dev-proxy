@@ -66,6 +66,42 @@ public sealed class BehaviorPluginsIntegrationTests
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
     }
 
+    [Fact]
+    public async Task GenericRandomError_StringBody_IsSentAsIs()
+    {
+        await using var origin = await FakeOrigin.StartAsync();
+        var urls = KestrelProxyHarness.BuildUrlsToWatch(origin.Host);
+
+        var config = PluginConfig.FromJson($$"""
+            {
+              "rate": 100,
+              "errors": [
+                {
+                  "request": { "url": "http://{{origin.Host}}/*" },
+                  "responses": [ { "statusCode": 503, "body": "service down" } ]
+                }
+              ]
+            }
+            """);
+        var plugin = new GenericRandomErrorPlugin(
+            SharedHttpClient,
+            NullLogger<GenericRandomErrorPlugin>.Instance,
+            urls,
+            ProxyConfig,
+            config);
+
+        await using var proxy = await KestrelProxyHarness.StartAsync(
+            origin.Host, [plugin]);
+        using var client = proxy.CreateHttpClient();
+
+        using var response = await client.GetAsync(new Uri($"http://{origin.Host}/get"));
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        // string bodies must not be JSON-serialized (no surrounding quotes)
+        Assert.Equal("service down", body);
+    }
+
     [Theory]
     [InlineData("/Get")]
     [InlineData("/Ge*")]
@@ -266,6 +302,60 @@ public sealed class BehaviorPluginsIntegrationTests
 
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
         Assert.Equal(HttpStatusCode.TooManyRequests, second.StatusCode);
+    }
+
+    [Fact]
+    public async Task RateLimiting_CustomResponseStringBody_IsSentAsIs()
+    {
+        await using var origin = await FakeOrigin.StartAsync();
+        var urls = KestrelProxyHarness.BuildUrlsToWatch(origin.Host);
+
+        var dir = Directory.CreateTempSubdirectory("devproxy-ratelimit-");
+        try
+        {
+            var responseFile = Path.Combine(dir.FullName, "rate-limit-response.json");
+            await File.WriteAllTextAsync(responseFile, """
+                { "statusCode": 403, "body": "slow down" }
+                """);
+            var proxyConfig = new TestProxyConfiguration
+            {
+                ConfigFile = Path.Combine(dir.FullName, "devproxyrc.json"),
+            };
+            var plugin = new RateLimitingPlugin(
+                SharedHttpClient,
+                NullLogger<RateLimitingPlugin>.Instance,
+                urls,
+                proxyConfig,
+                PluginConfig.FromJson("""
+                    {
+                      "rateLimit": 2,
+                      "costPerRequest": 2,
+                      "resetTimeWindowSeconds": 300,
+                      "whenLimitExceeded": "custom",
+                      "customResponseFile": "rate-limit-response.json"
+                    }
+                    """));
+
+            using var host = new PluginTestHost(proxyConfig);
+            await plugin.InitializeAsync(host.CreateInitArgs(), CancellationToken.None);
+
+            await using var proxy = await KestrelProxyHarness.StartAsync(
+                origin.Host, [plugin]);
+            using var client = proxy.CreateHttpClient();
+
+            using var first = await client.GetAsync(new Uri($"http://{origin.Host}/get"));
+            using var throttled = await client.GetAsync(new Uri($"http://{origin.Host}/get"));
+            var body = await throttled.Content.ReadAsStringAsync();
+
+            Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden, throttled.StatusCode);
+            // string bodies must not be JSON-serialized (no surrounding quotes)
+            Assert.Equal("slow down", body);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
     }
 
     [Fact]
