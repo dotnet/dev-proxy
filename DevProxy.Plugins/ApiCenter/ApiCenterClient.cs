@@ -56,22 +56,10 @@ internal sealed class ApiCenterClient : IDisposable
         }
 
         // load configuration from env vars
-        if (configuration.SubscriptionId.StartsWith('@'))
-        {
-            configuration.SubscriptionId = Environment.GetEnvironmentVariable(configuration.SubscriptionId[1..]) ?? configuration.SubscriptionId;
-        }
-        if (configuration.ResourceGroupName.StartsWith('@'))
-        {
-            configuration.ResourceGroupName = Environment.GetEnvironmentVariable(configuration.ResourceGroupName[1..]) ?? configuration.ResourceGroupName;
-        }
-        if (configuration.ServiceName.StartsWith('@'))
-        {
-            configuration.ServiceName = Environment.GetEnvironmentVariable(configuration.ServiceName[1..]) ?? configuration.ServiceName;
-        }
-        if (configuration.WorkspaceName.StartsWith('@'))
-        {
-            configuration.WorkspaceName = Environment.GetEnvironmentVariable(configuration.WorkspaceName[1..]) ?? configuration.WorkspaceName;
-        }
+        configuration.SubscriptionId = ResolveEnvironmentVariable(configuration.SubscriptionId, "subscriptionId");
+        configuration.ResourceGroupName = ResolveEnvironmentVariable(configuration.ResourceGroupName, "resourceGroupName");
+        configuration.ServiceName = ResolveEnvironmentVariable(configuration.ServiceName, "serviceName");
+        configuration.WorkspaceName = ResolveEnvironmentVariable(configuration.WorkspaceName, "workspaceName");
 
         _configuration = configuration;
         _logger = logger;
@@ -89,6 +77,20 @@ internal sealed class ApiCenterClient : IDisposable
         {
             using var azureLogger = AzureEventSourceListener.CreateConsoleLogger(EventLevel.Verbose);
         }
+    }
+
+    private static string ResolveEnvironmentVariable(string value, string settingName)
+    {
+        if (!value.StartsWith('@'))
+        {
+            return value;
+        }
+
+        var variableName = value[1..];
+        var variableValue = Environment.GetEnvironmentVariable(variableName);
+        return string.IsNullOrEmpty(variableValue)
+            ? throw new ArgumentException($"Environment variable {variableName} referenced by {settingName} isn't set.")
+            : variableValue;
     }
 
     internal Task<string?> GetAccessTokenAsync(CancellationToken cancellationToken) =>
