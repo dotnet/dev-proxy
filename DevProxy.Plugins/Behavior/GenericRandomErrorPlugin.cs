@@ -264,6 +264,13 @@ public sealed class GenericRandomErrorPlugin(
             }
         }
 
+        // default the content type to application/json unless set in the error response
+        if (error.Body is not null &&
+            !headers.Any(h => string.Equals(h.Name, "Content-Type", StringComparison.OrdinalIgnoreCase)))
+        {
+            headers.Add(new("Content-Type", "application/json"));
+        }
+
         var statusCode = (HttpStatusCode)(error.StatusCode ?? 400);
         var body = error.Body is null ? string.Empty : JsonSerializer.Serialize(error.Body, ProxyUtils.JsonSerializerOptions);
         // we get a JSON string so need to start with the opening quote

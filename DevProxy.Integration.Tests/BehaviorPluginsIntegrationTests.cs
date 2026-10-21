@@ -190,6 +190,107 @@ public sealed class BehaviorPluginsIntegrationTests
     }
 
     [Fact]
+    public async Task GenericRandomError_BodyWithoutContentType_DefaultsToApplicationJson()
+    {
+        await using var origin = await FakeOrigin.StartAsync();
+        var dir = Directory.CreateTempSubdirectory("devproxy-errors-");
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(dir.FullName, "errors.json"),
+                $$"""
+                {
+                  "errors": [
+                    {
+                      "request": { "url": "http://{{origin.Host}}/*" },
+                      "responses": [ { "statusCode": 500, "body": { "error": "boom" } } ]
+                    }
+                  ]
+                }
+                """);
+            var proxyConfig = new TestProxyConfiguration
+            {
+                ConfigFile = Path.Combine(dir.FullName, "devproxyrc.json"),
+            };
+            var plugin = new GenericRandomErrorPlugin(
+                SharedHttpClient,
+                NullLogger<GenericRandomErrorPlugin>.Instance,
+                KestrelProxyHarness.BuildUrlsToWatch(origin.Host),
+                proxyConfig,
+                PluginConfig.FromJson("""{ "rate": 100 }"""));
+
+            using var host = new PluginTestHost(proxyConfig);
+            await plugin.InitializeAsync(host.CreateInitArgs(), CancellationToken.None);
+
+            await using var proxy = await KestrelProxyHarness.StartAsync(origin.Host, [plugin]);
+            using var client = proxy.CreateHttpClient();
+
+            using var response = await client.GetAsync(new Uri($"http://{origin.Host}/get"));
+
+            Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+            Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task GenericRandomError_ExplicitContentType_IsPreserved()
+    {
+        await using var origin = await FakeOrigin.StartAsync();
+        var dir = Directory.CreateTempSubdirectory("devproxy-errors-");
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(dir.FullName, "errors.json"),
+                $$"""
+                {
+                  "errors": [
+                    {
+                      "request": { "url": "http://{{origin.Host}}/*" },
+                      "responses": [
+                        {
+                          "statusCode": 500,
+                          "headers": [ { "name": "Content-Type", "value": "text/plain" } ],
+                          "body": "boom"
+                        }
+                      ]
+                    }
+                  ]
+                }
+                """);
+            var proxyConfig = new TestProxyConfiguration
+            {
+                ConfigFile = Path.Combine(dir.FullName, "devproxyrc.json"),
+            };
+            var plugin = new GenericRandomErrorPlugin(
+                SharedHttpClient,
+                NullLogger<GenericRandomErrorPlugin>.Instance,
+                KestrelProxyHarness.BuildUrlsToWatch(origin.Host),
+                proxyConfig,
+                PluginConfig.FromJson("""{ "rate": 100 }"""));
+
+            using var host = new PluginTestHost(proxyConfig);
+            await plugin.InitializeAsync(host.CreateInitArgs(), CancellationToken.None);
+
+            await using var proxy = await KestrelProxyHarness.StartAsync(origin.Host, [plugin]);
+            using var client = proxy.CreateHttpClient();
+
+            using var response = await client.GetAsync(new Uri($"http://{origin.Host}/get"));
+
+            Assert.Equal("text/plain", response.Content.Headers.ContentType?.MediaType);
+            Assert.True(response.Content.Headers.TryGetValues("Content-Type", out var values));
+            _ = Assert.Single(values);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Latency_AddsConfiguredDelayBeforeForwarding()
     {
         await using var origin = await FakeOrigin.StartAsync();
@@ -266,6 +367,50 @@ public sealed class BehaviorPluginsIntegrationTests
 
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
         Assert.Equal(HttpStatusCode.TooManyRequests, second.StatusCode);
+    }
+
+    [Fact]
+    public async Task RateLimiting_CustomResponseWithBody_DefaultsToApplicationJson()
+    {
+        await using var origin = await FakeOrigin.StartAsync();
+        var dir = Directory.CreateTempSubdirectory("devproxy-ratelimit-");
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(dir.FullName, "rate-limit-response.json"),
+                """
+                { "statusCode": 403, "body": { "error": "quota exceeded" } }
+                """);
+            var proxyConfig = new TestProxyConfiguration
+            {
+                ConfigFile = Path.Combine(dir.FullName, "devproxyrc.json"),
+            };
+            var plugin = new RateLimitingPlugin(
+                SharedHttpClient,
+                NullLogger<RateLimitingPlugin>.Instance,
+                KestrelProxyHarness.BuildUrlsToWatch(origin.Host),
+                proxyConfig,
+                PluginConfig.FromJson("""
+                    { "rateLimit": 2, "costPerRequest": 2, "resetTimeWindowSeconds": 300, "whenLimitExceeded": "Custom" }
+                    """));
+
+            using var host = new PluginTestHost(proxyConfig);
+            await plugin.InitializeAsync(host.CreateInitArgs(), CancellationToken.None);
+
+            await using var proxy = await KestrelProxyHarness.StartAsync(origin.Host, [plugin]);
+            using var client = proxy.CreateHttpClient();
+
+            using var first = await client.GetAsync(new Uri($"http://{origin.Host}/get"));
+            using var limited = await client.GetAsync(new Uri($"http://{origin.Host}/get"));
+
+            Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden, limited.StatusCode);
+            Assert.Equal("application/json", limited.Content.Headers.ContentType?.MediaType);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
     }
 
     [Fact]
