@@ -161,6 +161,49 @@ public sealed class GenerationPluginsIntegrationTests
     }
 
     [Fact]
+    public async Task MockGenerator_PreservesRecordedOrderForSameUrl()
+    {
+        var plugin = new MockGeneratorPlugin(NullLogger<MockGeneratorPlugin>.Instance, Watch);
+
+        // enough entries to exceed the insertion-sort threshold of an unstable sort
+        const int count = 40;
+        var logs = Enumerable.Range(0, count)
+            .Select(i => TestExchange
+                .Request("GET", i % 2 == 0 ? "https://api.contoso.com/a" : "https://api.contoso.com/b")
+                .WithResponse(
+                    HttpStatusCode.OK,
+                    headers: [("Content-Type", "application/json")],
+                    body: $$"""{ "seq": {{i}} }""")
+                .AsRequestLog(MessageType.InterceptedResponse))
+            .ToList();
+
+        var args = Recording(logs);
+        var dir = await InTempCwdAsync(() => plugin.AfterRecordingStopAsync(args, CancellationToken.None));
+        try
+        {
+            var mockFile = dir.GetFiles("mocks-*.json").Single();
+            using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(mockFile.FullName));
+            var mocks = doc.RootElement.GetProperty("mocks").EnumerateArray()
+                .Select(m => (
+                    Url: m.GetProperty("request").GetProperty("url").GetString(),
+                    Seq: m.GetProperty("response").GetProperty("body").GetProperty("seq").GetInt32()))
+                .ToArray();
+
+            Assert.Equal(count, mocks.Length);
+
+            var expected = Enumerable.Range(0, count).Where(i => i % 2 == 1)
+                .Select(i => ("https://api.contoso.com/b", i))
+                .Concat(Enumerable.Range(0, count).Where(i => i % 2 == 0)
+                    .Select(i => ("https://api.contoso.com/a", i)));
+            Assert.Equal(expected, mocks.Select(m => (m.Url!, m.Seq)));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task HttpFileGenerator_WritesHttpFile()
     {
         var plugin = new HttpFileGeneratorPlugin(
