@@ -5,6 +5,7 @@
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Commands;
 using DevProxy.Jwt;
+using DevProxy.Logging;
 using DevProxy.Proxy;
 using Microsoft.AspNetCore.Mvc;
 using System.ComponentModel.DataAnnotations;
@@ -246,7 +247,7 @@ public sealed class ProxyController(IProxyStateController proxyStateController, 
         await Response.Body.FlushAsync(cancellationToken);
     }
 
-    private static IEnumerable<string> FilterLines(IList<string> lines, string? since)
+    private static IEnumerable<string> FilterLines(List<string> lines, string? since)
     {
         if (string.IsNullOrEmpty(since))
         {
@@ -259,7 +260,8 @@ public sealed class ProxyController(IProxyStateController proxyStateController, 
             return lines;
         }
 
-        return lines.Where(line => LineMatchesSince(line, sinceTime.Value));
+        using var process = System.Diagnostics.Process.GetCurrentProcess();
+        return LogSinceFilter.Filter(lines, process.StartTime, sinceTime.Value);
     }
 
     private static DateTime? ParseSinceOption(string? since)
@@ -293,29 +295,6 @@ public sealed class ProxyController(IProxyStateController proxyStateController, 
         }
 
         return null;
-    }
-
-    private static bool LineMatchesSince(string line, DateTime sinceTime)
-    {
-        // Parse timestamp from line format: [HH:mm:ss.fff] ...
-        if (line.Length < 14 || line[0] != '[' || line[13] != ']')
-        {
-            return true;
-        }
-
-        var timestampStr = line[1..13];
-        if (TimeSpan.TryParseExact(timestampStr, "hh\\:mm\\:ss\\.fff", System.Globalization.CultureInfo.InvariantCulture, out var timeOfDay))
-        {
-            var lineTime = DateTime.Today.Add(timeOfDay);
-            if (lineTime > DateTime.Now)
-            {
-                lineTime = lineTime.AddDays(-1);
-            }
-
-            return lineTime >= sinceTime;
-        }
-
-        return true;
     }
 
     private static LogEntryDto ParseLogLine(string line)

@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Logging;
 using DevProxy.State;
 using System.CommandLine;
 using System.Globalization;
@@ -89,11 +90,11 @@ internal sealed class LogsCommand : Command
 
         if (follow)
         {
-            await FollowLogFileAsync(logFile, lines, sinceTime, cancellationToken);
+            await FollowLogFileAsync(logFile, lines, sinceTime, state.StartedAt.LocalDateTime, cancellationToken);
         }
         else
         {
-            await ShowLastLinesAsync(logFile, lines, sinceTime);
+            await ShowLastLinesAsync(logFile, lines, sinceTime, state.StartedAt.LocalDateTime);
         }
 
         return 0;
@@ -148,7 +149,7 @@ internal sealed class LogsCommand : Command
         return null;
     }
 
-    private static async Task ShowLastLinesAsync(string logFile, int lineCount, DateTime? sinceTime)
+    private static async Task ShowLastLinesAsync(string logFile, int lineCount, DateTime? sinceTime, DateTime logStartTime)
     {
         var lines = new List<string>();
         await foreach (var line in File.ReadLinesAsync(logFile))
@@ -156,7 +157,7 @@ internal sealed class LogsCommand : Command
             lines.Add(line);
         }
 
-        var filteredLines = FilterLines(lines, sinceTime);
+        var filteredLines = FilterLines(lines, sinceTime, logStartTime);
         var linesToShow = filteredLines.TakeLast(lineCount);
 
         foreach (var line in linesToShow)
@@ -165,10 +166,10 @@ internal sealed class LogsCommand : Command
         }
     }
 
-    private static async Task FollowLogFileAsync(string logFile, int initialLines, DateTime? sinceTime, CancellationToken cancellationToken)
+    private static async Task FollowLogFileAsync(string logFile, int initialLines, DateTime? sinceTime, DateTime logStartTime, CancellationToken cancellationToken)
     {
         // Show initial lines
-        await ShowLastLinesAsync(logFile, initialLines, sinceTime);
+        await ShowLastLinesAsync(logFile, initialLines, sinceTime, logStartTime);
 
         // Follow new lines using FileSystemWatcher and reading from last position
         var lastPosition = new FileInfo(logFile).Length;
@@ -214,7 +215,8 @@ internal sealed class LogsCommand : Command
                     string? line;
                     while ((line = await reader.ReadLineAsync(cancellationToken)) != null)
                     {
-                        if (sinceTime == null || LineMatchesSince(line, sinceTime.Value))
+                        // New lines are written now
+                        if (sinceTime == null || DateTime.Now >= sinceTime.Value)
                         {
                             Console.WriteLine(line);
                         }
@@ -231,39 +233,13 @@ internal sealed class LogsCommand : Command
         }
     }
 
-    private static IEnumerable<string> FilterLines(IEnumerable<string> lines, DateTime? sinceTime)
+    internal static IEnumerable<string> FilterLines(IReadOnlyList<string> lines, DateTime? sinceTime, DateTime logStartTime)
     {
         if (sinceTime == null)
         {
             return lines;
         }
 
-        return lines.Where(line => LineMatchesSince(line, sinceTime.Value));
-    }
-
-    private static bool LineMatchesSince(string line, DateTime sinceTime)
-    {
-        // Parse timestamp from line format: [HH:mm:ss.fff] ...
-        if (line.Length < 14 || line[0] != '[' || line[13] != ']')
-        {
-            return true; // Include lines that don't match the expected format
-        }
-
-        var timestampStr = line[1..13]; // "HH:mm:ss.fff"
-        if (TimeSpan.TryParseExact(timestampStr, "hh\\:mm\\:ss\\.fff", CultureInfo.InvariantCulture, out var timeOfDay))
-        {
-            // Assume the log is from today
-            var lineTime = DateTime.Today.Add(timeOfDay);
-
-            // If line time is in the future, assume it's from yesterday
-            if (lineTime > DateTime.Now)
-            {
-                lineTime = lineTime.AddDays(-1);
-            }
-
-            return lineTime >= sinceTime;
-        }
-
-        return true; // Include lines with unparseable timestamps
+        return LogSinceFilter.Filter(lines, logStartTime, sinceTime.Value);
     }
 }
