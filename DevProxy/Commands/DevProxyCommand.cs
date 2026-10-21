@@ -527,7 +527,7 @@ sealed class DevProxyCommand : RootCommand
         {
             AllowMultipleArgumentsPerToken = true,
             Arity = ArgumentArity.ZeroOrMore,
-            Description = "Variables to set for the Dev Proxy process",
+            Description = "Environment variables to set for the Dev Proxy process, in name=value format. Also used to replace {name} placeholders in API spec files used by the MinimalPermissions plugins",
             HelpName = "env",
         };
         envOption.Validators.Add(input =>
@@ -544,7 +544,7 @@ sealed class DevProxyCommand : RootCommand
                 {
                     // Split on first '=' only
                     var parts = envVar.Split('=', 2);
-                    if (parts.Length != 2)
+                    if (parts.Length != 2 || parts[0].Length == 0)
                     {
                         input.AddError($"Invalid environment variable format: '{envVar}'. Expected format is 'name=value'.");
                         return;

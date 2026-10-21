@@ -28,6 +28,29 @@ sealed class DevProxyConfigOptions : RootCommand
     public OutputFormat? Output => _parseResult?.GetValueOrDefault<OutputFormat?>(DevProxyCommand.OutputOptionName);
     public LogLevel? LogLevel => _parseResult?.GetValueOrDefault<LogLevel?>(DevProxyCommand.LogLevelOptionName);
 
+    public Dictionary<string, string>? Env => ParseEnv(_parseResult?.GetValueOrDefault<string[]?>(DevProxyCommand.EnvOptionName));
+
+    internal static Dictionary<string, string>? ParseEnv(string[]? env)
+    {
+        if (env is null || env.Length == 0)
+        {
+            return null;
+        }
+
+        var result = new Dictionary<string, string>();
+        foreach (var e in env)
+        {
+            // Split on first '=' only
+            var parts = e.Split('=', 2);
+            if (parts.Length == 2 && parts[0].Length > 0)
+            {
+                result[parts[0]] = parts[1];
+            }
+        }
+
+        return result;
+    }
+
     public List<string>? UrlsToWatch
     {
         get
@@ -154,6 +177,12 @@ sealed class DevProxyConfigOptions : RootCommand
             Arity = ArgumentArity.Zero
         };
 
+        var envOption = new Option<string[]?>(DevProxyCommand.EnvOptionName, "-e")
+        {
+            AllowMultipleArgumentsPerToken = true,
+            Arity = ArgumentArity.ZeroOrMore
+        };
+
         var options = new List<Option>
         {
             apiPortOption,
@@ -166,6 +195,7 @@ sealed class DevProxyConfigOptions : RootCommand
             logLevelOption,
             outputOption,
             discoverOption,
+            envOption,
             noColorOption
         };
         this.AddOptions(options.OrderByName());

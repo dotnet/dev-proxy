@@ -59,6 +59,24 @@ sealed class ProxyConfiguration : IProxyConfiguration, IProcessTreeProxyConfigur
         _configurationRoot.Bind(this);
     }
 
+    // Sets env values from the config file, followed by --env values so that they take precedence.
+    internal static void SetEnvironmentVariables(IConfiguration configuration, IReadOnlyDictionary<string, string>? commandLineEnv)
+    {
+        var configEnv = configuration.GetSection("env").Get<Dictionary<string, string>>();
+        foreach (var variables in new IEnumerable<KeyValuePair<string, string>>?[] { configEnv, commandLineEnv })
+        {
+            if (variables is null)
+            {
+                continue;
+            }
+
+            foreach (var (name, value) in variables)
+            {
+                Environment.SetEnvironmentVariable(name, value);
+            }
+        }
+    }
+
     internal static string GetConfigFilePath(IConfigurationRoot configurationRoot)
     {
         if (configurationRoot.Providers.FirstOrDefault(p => p is FileConfigurationProvider) is not FileConfigurationProvider provider)

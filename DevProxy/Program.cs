@@ -364,6 +364,7 @@ static WebApplication BuildApplication(DevProxyConfigOptions options)
     var builder = WebApplication.CreateBuilder();
 
     _ = builder.Configuration.ConfigureDevProxyConfig(options);
+    ProxyConfiguration.SetEnvironmentVariables(builder.Configuration, options.Env);
     _ = builder.Logging.ConfigureDevProxyLogging(builder.Configuration, options);
     var allowedOrigins = ApiSecurity.GetAllowedOrigins(builder.Configuration);
     _ = builder.Services.ConfigureDevProxyServices(builder.Configuration, options, allowedOrigins);
