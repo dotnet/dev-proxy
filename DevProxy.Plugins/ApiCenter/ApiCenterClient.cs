@@ -40,19 +40,19 @@ internal sealed class ApiCenterClient : IDisposable
     {
         if (string.IsNullOrEmpty(configuration.SubscriptionId))
         {
-            throw new ArgumentException($"Specify {nameof(ApiCenterClientConfiguration.SubscriptionId)} in the configuration.");
+            throw new ArgumentException("Specify subscriptionId in the configuration.");
         }
         if (string.IsNullOrEmpty(configuration.ResourceGroupName))
         {
-            throw new ArgumentException($"Specify {nameof(ApiCenterClientConfiguration.ResourceGroupName)} in the configuration.");
+            throw new ArgumentException("Specify resourceGroupName in the configuration.");
         }
         if (string.IsNullOrEmpty(configuration.ServiceName))
         {
-            throw new ArgumentException($"Specify {nameof(ApiCenterClientConfiguration.ServiceName)} in the configuration.");
+            throw new ArgumentException("Specify serviceName in the configuration.");
         }
         if (string.IsNullOrEmpty(configuration.WorkspaceName))
         {
-            throw new ArgumentException($"Specify {nameof(ApiCenterClientConfiguration.WorkspaceName)} in the configuration.");
+            throw new ArgumentException("Specify workspaceName in the configuration.");
         }
 
         // load configuration from env vars
