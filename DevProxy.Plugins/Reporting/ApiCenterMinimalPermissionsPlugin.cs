@@ -18,6 +18,7 @@ namespace DevProxy.Plugins.Reporting;
 
 public sealed class ApiCenterMinimalPermissionsPluginConfiguration
 {
+    public IEnumerable<string>? PermissionsToExclude { get; set; }
     public string ResourceGroupName { get; set; } = "";
     public string ServiceName { get; set; } = "";
     public string SubscriptionId { get; set; } = "";
@@ -49,6 +50,8 @@ public sealed class ApiCenterMinimalPermissionsPlugin(
         ArgumentNullException.ThrowIfNull(e);
 
         await base.InitializeAsync(e, cancellationToken);
+
+        InitializePermissionsToExclude();
 
         try
         {
@@ -132,6 +135,11 @@ public sealed class ApiCenterMinimalPermissionsPlugin(
 
             var minimalPermissions = CheckMinimalPermissions(requests, apiDefinition);
 
+            var excessivePermissions = GetExcessivePermissions(
+                minimalPermissions.TokenPermissions,
+                minimalPermissions.MinimalScopes,
+                Configuration.PermissionsToExclude);
+
             var api = _apis.FindApiByDefinition(apiDefinition, Logger);
             var result = new ApiCenterMinimalPermissionsPluginReportApiResult
             {
@@ -143,8 +151,8 @@ public sealed class ApiCenterMinimalPermissionsPlugin(
                     .Distinct()],
                 TokenPermissions = [.. minimalPermissions.TokenPermissions.Distinct()],
                 MinimalPermissions = minimalPermissions.MinimalScopes,
-                ExcessivePermissions = [.. minimalPermissions.TokenPermissions.Except(minimalPermissions.MinimalScopes)],
-                UsesMinimalPermissions = !minimalPermissions.TokenPermissions.Except(minimalPermissions.MinimalScopes).Any(),
+                ExcessivePermissions = excessivePermissions,
+                UsesMinimalPermissions = !excessivePermissions.Any(),
                 SchemeName = Configuration.SchemeName
             };
             results.Add(result);
@@ -241,12 +249,36 @@ public sealed class ApiCenterMinimalPermissionsPlugin(
         {
             Results = [.. results],
             UnmatchedRequests = [.. unmatchedRequests],
-            Errors = [.. errors]
+            Errors = [.. errors],
+            ExcludedPermissions = Configuration.PermissionsToExclude
         };
+
+        if (Configuration.PermissionsToExclude?.Any() == true &&
+            Logger.IsEnabled(LogLevel.Information))
+        {
+            Logger.LogInformation("Excluding the following permissions: {Permissions}", string.Join(", ", Configuration.PermissionsToExclude));
+        }
 
         StoreReport(report, e);
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
+    }
+
+    internal static IEnumerable<string> GetExcessivePermissions(
+        IEnumerable<string> tokenPermissions,
+        IEnumerable<string> minimalPermissions,
+        IEnumerable<string>? permissionsToExclude) =>
+        [.. tokenPermissions
+            .Except(permissionsToExclude ?? [])
+            .Except(minimalPermissions)];
+
+    private void InitializePermissionsToExclude()
+    {
+        var key = nameof(ApiCenterMinimalPermissionsPluginConfiguration.PermissionsToExclude)
+            .ToCamelCase();
+
+        string[] defaultPermissionsToExclude = ["profile", "openid", "offline_access", "email"];
+        Configuration.PermissionsToExclude = GetConfigurationValue(key, Configuration.PermissionsToExclude, defaultPermissionsToExclude);
     }
 
     private ApiPermissionsInfo CheckMinimalPermissions(IEnumerable<RequestLog> requests, ApiDefinition apiDefinition)
