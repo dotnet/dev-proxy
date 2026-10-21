@@ -57,11 +57,11 @@ public sealed class ProxyController(IProxyStateController proxyStateController, 
 
     [HttpPost("mockRequest")]
 #pragma warning disable CA1030
-    public async Task RaiseMockRequestAsync(CancellationToken cancellationToken)
+    public async Task<IActionResult> RaiseMockRequestAsync(CancellationToken cancellationToken)
 #pragma warning restore CA1030
     {
         await _proxyStateController.MockRequestAsync(cancellationToken);
-        Response.StatusCode = 202;
+        return NoContent();
     }
 
     [HttpPost("stopProxy")]
