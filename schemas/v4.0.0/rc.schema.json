@@ -212,7 +212,7 @@
     "timeoutSeconds": {
       "type": "integer",
       "minimum": 1,
-      "description": "Timeout in seconds for requests passing through Dev Proxy."
+      "description": "Time in seconds after which Dev Proxy exits. Resets when Dev Proxy intercepts a request."
     }
   },
   "required": [

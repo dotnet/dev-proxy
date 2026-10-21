@@ -55,7 +55,8 @@ internal sealed class ProxyConnectionHandler(
     PluginPipeline pipeline,
     HostWatchList watchList,
     ProcessFilter processFilter,
-    ILogger logger) : ConnectionHandler
+    ILogger logger,
+    Action? onRequest = null) : ConnectionHandler
 {
     // Largest streamed-response body retained in memory for read-only AfterResponse
     // inspectors (e.g. OpenAI telemetry). Beyond this, inspectors simply see no body;
@@ -86,6 +87,8 @@ internal sealed class ProxyConnectionHandler(
             {
                 return;
             }
+
+            onRequest?.Invoke();
 
             if (string.Equals(head.Method, "CONNECT", StringComparison.OrdinalIgnoreCase))
             {
@@ -197,6 +200,7 @@ internal sealed class ProxyConnectionHandler(
         var head = firstHead;
         while (head is not null)
         {
+            onRequest?.Invoke();
             var url = httpsHost is null
                 ? head.Target // plain HTTP proxy request: absolute-form target
                 : httpsPort == 443

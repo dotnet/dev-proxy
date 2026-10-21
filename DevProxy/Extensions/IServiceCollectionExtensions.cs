@@ -60,7 +60,8 @@ static class IServiceCollectionExtensions
             sp.GetRequiredService<IProxyState>().GlobalData,
             sp.GetRequiredService<ILoggerFactory>(),
             sp.GetRequiredService<IRootCertificateTrust>(),
-            sp.GetRequiredService<ISystemProxyManager>()));
+            sp.GetRequiredService<ISystemProxyManager>(),
+            sp.GetRequiredService<IHostApplicationLifetime>()));
 
         return services;
     }
