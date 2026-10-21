@@ -35,4 +35,45 @@ public class ProxyUtilsTests
     [Fact]
     public void NormalizeWebSocketScheme_NullThrows() =>
         Assert.Throws<System.ArgumentNullException>(() => ProxyUtils.NormalizeWebSocketScheme(null!));
+
+    [Fact]
+    public void ReplacePathTokens_ExpandsLeadingTildeSlashToHomeDirectory()
+    {
+        var home = System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile);
+        Assert.Equal(System.IO.Path.Join(home, "mocks/mocks.json"), ProxyUtils.ReplacePathTokens("~/mocks/mocks.json"));
+    }
+
+    [Fact]
+    public void ReplacePathTokens_ExpandsTildeSlashOnlyToHomeDirectory()
+    {
+        var home = System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile);
+        Assert.Equal(home, ProxyUtils.ReplacePathTokens("~/"));
+    }
+
+    [Fact]
+    public void ReplacePathTokens_ExpandsLeadingTildeBackslashOnWindowsOnly()
+    {
+        var home = System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile);
+        var expected = System.OperatingSystem.IsWindows()
+            ? System.IO.Path.Join(home, @"mocks\mocks.json")
+            : @"~\mocks\mocks.json";
+        Assert.Equal(expected, ProxyUtils.ReplacePathTokens(@"~\mocks\mocks.json"));
+    }
+
+    [Theory]
+    [InlineData("~mocks/mocks.json")]
+    [InlineData("mocks/~/mocks.json")]
+    [InlineData("~")]
+    public void ReplacePathTokens_DoesNotExpandNonLeadingOrBareTilde(string input) =>
+        Assert.Equal(input, ProxyUtils.ReplacePathTokens(input));
+
+    [Fact]
+    public void GetFullPath_ResolvesTildeSlashToHomeDirectoryInsteadOfConfigFolder()
+    {
+        var home = System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile);
+        var configFile = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "devproxyrc.json");
+        Assert.Equal(
+            System.IO.Path.GetFullPath(System.IO.Path.Combine(home, "mocks", "mocks.json")),
+            ProxyUtils.GetFullPath("~/mocks/mocks.json", configFile));
+    }
 }

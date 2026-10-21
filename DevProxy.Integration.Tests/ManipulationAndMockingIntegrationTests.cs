@@ -320,6 +320,43 @@ public sealed class ManipulationAndMockingIntegrationTests
         Assert.Contains("mocked-by-test", body, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("/Get")]
+    [InlineData("/Ge*")]
+    public async Task MockResponse_MatchesUrlCaseInsensitively(string mockPath)
+    {
+        await using var origin = await FakeOrigin.StartAsync();
+        var urls = KestrelProxyHarness.BuildUrlsToWatch(origin.Host);
+
+        var config = PluginConfig.FromJson($$"""
+            {
+              "mocks": [
+                {
+                  "request": { "url": "http://{{origin.Host}}{{mockPath}}", "method": "GET" },
+                  "response": { "statusCode": 201, "body": "mocked-by-test" }
+                }
+              ]
+            }
+            """);
+        var plugin = new MockResponsePlugin(
+            SharedHttpClient,
+            NullLogger<MockResponsePlugin>.Instance,
+            urls,
+            ProxyConfig,
+            config);
+
+        await using var proxy = await KestrelProxyHarness.StartAsync(
+            origin.Host, [plugin]);
+        using var client = proxy.CreateHttpClient();
+
+        using var response = await client.GetAsync(new Uri($"http://{origin.Host}/get"));
+        var body = await response.Content.ReadAsStringAsync();
+
+        // urlsToWatch matching ignores case, so mock URL matching must too.
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Contains("mocked-by-test", body, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Auth_ApiKey_RejectsRequestWithoutKey()
     {

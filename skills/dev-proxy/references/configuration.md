@@ -43,7 +43,7 @@ A configuration file follows a specific property order: `$schema`, then `plugins
 - Include `$schema` in both the root config and each plugin config section for validation.
 - The `pluginPath` is always `~appFolder/plugins/DevProxy.Plugins.dll` — `~appFolder` resolves to the Dev Proxy installation directory.
 - The `configSection` value can be any string. Use different, descriptive names for multiple instances of the same plugin.
-- File paths in Dev Proxy configuration files are always relative to the file where they are defined.
+- File paths in Dev Proxy configuration files are relative to the file where they are defined, unless they start with `~/` (or `~\` on Windows), which expands to the user's home directory.
 - Configuration hot-reloads on file save (v2.1.0+) — no restart needed. Works for both the main config and plugin-specific files.
 
 ## Plugin Architecture

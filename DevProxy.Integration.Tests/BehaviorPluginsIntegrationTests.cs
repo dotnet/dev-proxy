@@ -66,6 +66,82 @@ public sealed class BehaviorPluginsIntegrationTests
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("/Get")]
+    [InlineData("/Ge*")]
+    public async Task GenericRandomError_MatchesUrlCaseInsensitively(string errorPath)
+    {
+        await using var origin = await FakeOrigin.StartAsync();
+        var urls = KestrelProxyHarness.BuildUrlsToWatch(origin.Host);
+
+        var config = PluginConfig.FromJson($$"""
+            {
+              "rate": 100,
+              "errors": [
+                {
+                  "request": { "url": "http://{{origin.Host}}{{errorPath}}" },
+                  "responses": [ { "statusCode": 503 } ]
+                }
+              ]
+            }
+            """);
+        var plugin = new GenericRandomErrorPlugin(
+            SharedHttpClient,
+            NullLogger<GenericRandomErrorPlugin>.Instance,
+            urls,
+            ProxyConfig,
+            config);
+
+        await using var proxy = await KestrelProxyHarness.StartAsync(
+            origin.Host, [plugin]);
+        using var client = proxy.CreateHttpClient();
+
+        // urlsToWatch matching ignores case, so error URL matching must too.
+        using var response = await client.GetAsync(new Uri($"http://{origin.Host}/get"));
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GenericRandomError_Rate99_SometimesPassesThrough()
+    {
+        await using var origin = await FakeOrigin.StartAsync();
+        var urls = KestrelProxyHarness.BuildUrlsToWatch(origin.Host);
+
+        // rate:99 ⇒ ~1% of requests pass through. Previously rate:99 behaved like rate:100.
+        var config = PluginConfig.FromJson($$"""
+            {
+              "rate": 99,
+              "errors": [
+                {
+                  "request": { "url": "http://{{origin.Host}}/*" },
+                  "responses": [ { "statusCode": 503 } ]
+                }
+              ]
+            }
+            """);
+        var plugin = new GenericRandomErrorPlugin(
+            SharedHttpClient,
+            NullLogger<GenericRandomErrorPlugin>.Instance,
+            urls,
+            ProxyConfig,
+            config);
+
+        await using var proxy = await KestrelProxyHarness.StartAsync(
+            origin.Host, [plugin]);
+        using var client = proxy.CreateHttpClient();
+
+        // Probability of 2000 consecutive failures at 99% is ~2e-9.
+        var passedThrough = false;
+        for (var i = 0; i < 2000 && !passedThrough; i++)
+        {
+            using var response = await client.GetAsync(new Uri($"http://{origin.Host}/get"));
+            passedThrough = response.StatusCode == HttpStatusCode.OK;
+        }
+
+        Assert.True(passedThrough);
+    }
+
     [Fact]
     public async Task GenericRandomError_DynamicRetryAfterOnNon429_IsResolved()
     {
@@ -144,6 +220,23 @@ public sealed class BehaviorPluginsIntegrationTests
         Assert.True(
             stopwatch.ElapsedMilliseconds >= minMs - 100,
             $"Expected >= {minMs - 100}ms of injected latency, saw {stopwatch.ElapsedMilliseconds}ms.");
+    }
+
+    [Fact]
+    public void Latency_DelayRangeIncludesMaxMs()
+    {
+        var random = new Random(42);
+        var seen = new HashSet<int>();
+        for (var i = 0; i < 1000; i++)
+        {
+            var delay = LatencyPlugin.GetDelay(random, 0, 1);
+            Assert.InRange(delay, 0, 1);
+            _ = seen.Add(delay);
+        }
+
+        Assert.Contains(1, seen);
+        Assert.Equal(5, LatencyPlugin.GetDelay(random, 5, 5));
+        Assert.InRange(LatencyPlugin.GetDelay(random, int.MaxValue - 1, int.MaxValue), int.MaxValue - 1, int.MaxValue);
     }
 
     [Fact]

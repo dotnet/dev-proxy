@@ -138,7 +138,7 @@ public sealed class GenericRandomErrorPlugin(
     }
 
     // uses config to determine if a request should be failed
-    private GenericRandomErrorFailMode ShouldFail() => _random.Next(1, 100) <= Configuration.Rate ? GenericRandomErrorFailMode.Random : GenericRandomErrorFailMode.PassThru;
+    private GenericRandomErrorFailMode ShouldFail() => _random.Next(0, 100) < Configuration.Rate ? GenericRandomErrorFailMode.Random : GenericRandomErrorFailMode.PassThru;
 
     private void FailResponse(ProxyRequestArgs e)
     {
@@ -188,7 +188,7 @@ public sealed class GenericRandomErrorPlugin(
                 return false;
             }
 
-            if (errorResponse.Request.Url == request.Url &&
+            if (string.Equals(errorResponse.Request.Url, request.Url, StringComparison.OrdinalIgnoreCase) &&
                 HasMatchingBody(errorResponse, request))
             {
                 return true;
@@ -203,7 +203,7 @@ public sealed class GenericRandomErrorPlugin(
 
             // turn mock URL with wildcard into a regex and match against the request URL
             var errorResponseUrlRegex = Regex.Escape(errorResponse.Request.Url).Replace("\\*", ".*", StringComparison.OrdinalIgnoreCase);
-            return Regex.IsMatch(request.Url, $"^{errorResponseUrlRegex}$") &&
+            return Regex.IsMatch(request.Url, $"^{errorResponseUrlRegex}$", RegexOptions.IgnoreCase) &&
                 HasMatchingBody(errorResponse, request);
         });
 

@@ -103,15 +103,19 @@ public sealed class LatencyPlugin(
 
     private async Task ApplyDelayAsync(string context, LoggingContext loggingContext, CancellationToken cancellationToken)
     {
-        var delay = _random.Next(Configuration.MinMs, Configuration.MaxMs);
+        var delay = GetDelay(_random, Configuration.MinMs, Configuration.MaxMs);
         Logger.LogRequest($"Delaying {context} for {delay}ms", MessageType.Chaos, loggingContext);
         await Task.Delay(delay, cancellationToken);
     }
 
     private async Task ApplyDelayAsync(string context, StdioLoggingContext loggingContext, CancellationToken cancellationToken)
     {
-        var delay = _random.Next(Configuration.MinMs, Configuration.MaxMs);
+        var delay = GetDelay(_random, Configuration.MinMs, Configuration.MaxMs);
         Logger.LogRequest($"Delaying {context} for {delay}ms", MessageType.Chaos, loggingContext);
         await Task.Delay(delay, cancellationToken);
     }
+
+    // maxMs is inclusive; use a 64-bit upper bound to avoid overflow when maxMs is int.MaxValue
+    internal static int GetDelay(Random random, int minMs, int maxMs) =>
+        (int)random.NextInt64(minMs, (long)maxMs + 1);
 }

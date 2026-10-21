@@ -7,7 +7,7 @@ Dev Proxy is a cross-platform .NET API simulator and proxy for testing how appli
 ## Critical (Non-Obvious)
 
 - **Proxy engine:** Built on [ASP.NET Core Kestrel](https://learn.microsoft.com/aspnet/core/fundamentals/servers/kestrel) (a custom forward-proxy + MITM engine; see `DevProxy.Proxy.Kestrel`)
-- **Config tokens:** Paths in config files can use `~appFolder` for resolution
+- **Config tokens:** Paths in config files can use `~appFolder` and `~dataFolder` tokens, and a leading `~/` (or `~\` on Windows) expands to the home directory
 - **MCP Server:** Use [@devproxy/mcp](https://www.npmjs.com/package/@devproxy/mcp) to programmatically retrieve up-to-date docs and JSON schemas
 
 ## Best Practices

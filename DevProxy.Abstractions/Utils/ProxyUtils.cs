@@ -205,8 +205,26 @@ public static class ProxyUtils
             return path ?? string.Empty;
         }
 
+        path = ExpandHomeDirectory(path);
         path = path.Replace("~dataFolder", DataFolder, StringComparison.OrdinalIgnoreCase);
         return path.Replace("~appFolder", AppFolder, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ExpandHomeDirectory(string path)
+    {
+        if (path.Length < 2 || path[0] != '~' ||
+            (path[1] != '/' && !(OperatingSystem.IsWindows() && path[1] == '\\')))
+        {
+            return path;
+        }
+
+        var homeFolder = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrEmpty(homeFolder))
+        {
+            return path;
+        }
+
+        return Path.Join(homeFolder, path[2..]);
     }
 
     public static string GetFullPath(string? path, string? basePath) =>

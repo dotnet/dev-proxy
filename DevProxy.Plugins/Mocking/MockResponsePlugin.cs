@@ -304,7 +304,7 @@ public class MockResponsePlugin(
                 return false;
             }
 
-            if (mockResponse.Request.Url == request.Url &&
+            if (string.Equals(mockResponse.Request.Url, request.Url, StringComparison.OrdinalIgnoreCase) &&
                 HasMatchingBody(mockResponse, request) &&
                 IsNthRequest(mockResponse))
             {
@@ -319,7 +319,7 @@ public class MockResponsePlugin(
             }
 
             // turn mock URL with wildcard into a regex and match against the request URL
-            return Regex.IsMatch(request.Url, ProxyUtils.PatternToRegex(mockResponse.Request.Url)) &&
+            return Regex.IsMatch(request.Url, ProxyUtils.PatternToRegex(mockResponse.Request.Url), RegexOptions.IgnoreCase) &&
                 HasMatchingBody(mockResponse, request) &&
                 IsNthRequest(mockResponse);
         });

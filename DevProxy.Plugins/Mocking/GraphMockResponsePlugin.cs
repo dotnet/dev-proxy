@@ -190,7 +190,7 @@ public class GraphMockResponsePlugin(
             var absoluteRequestFromBatchUrl = ProxyUtils
                 .GetAbsoluteRequestUrlFromBatch(batchRequestUri, request.Url)
                 .ToString();
-            if (mockResponse.Request.Url == absoluteRequestFromBatchUrl)
+            if (string.Equals(mockResponse.Request.Url, absoluteRequestFromBatchUrl, StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
@@ -204,7 +204,7 @@ public class GraphMockResponsePlugin(
 
             //turn mock URL with wildcard into a regex and match against the request URL
             var mockResponseUrlRegex = Regex.Escape(mockResponse.Request.Url).Replace("\\*", ".*", StringComparison.OrdinalIgnoreCase);
-            return Regex.IsMatch(absoluteRequestFromBatchUrl, $"^{mockResponseUrlRegex}$");
+            return Regex.IsMatch(absoluteRequestFromBatchUrl, $"^{mockResponseUrlRegex}$", RegexOptions.IgnoreCase);
         });
         return mockResponse;
     }
