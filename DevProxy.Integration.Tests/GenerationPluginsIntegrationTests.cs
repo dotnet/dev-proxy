@@ -11,6 +11,7 @@ using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Generation;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -217,9 +218,10 @@ public sealed class GenerationPluginsIntegrationTests
     [Fact]
     public async Task TypeSpecGenerator_WritesSpec()
     {
+        var logger = new MessageCapturingLogger<TypeSpecGeneratorPlugin>();
         var plugin = new TypeSpecGeneratorPlugin(
             TestDefaults.HttpClient,
-            NullLogger<TypeSpecGeneratorPlugin>.Instance,
+            logger,
             Watch,
             new DisabledLanguageModelClient(),
             new TestProxyConfiguration(),
@@ -233,10 +235,30 @@ public sealed class GenerationPluginsIntegrationTests
                 ((Dictionary<string, object>)args.GlobalData[ProxyUtils.ReportsKey])[plugin.Name]);
             Assert.NotEmpty(report);
             Assert.NotEmpty(dir.GetFiles("*.tsp"));
+            Assert.Contains(logger.Messages, m => m.StartsWith("Writing TypeSpec file to ", StringComparison.Ordinal));
+            Assert.Contains(logger.Messages, m => m.StartsWith("Created TypeSpec file ", StringComparison.Ordinal));
+            Assert.DoesNotContain(logger.Messages, m => m.Contains("OpenAPI", StringComparison.Ordinal));
         }
         finally
         {
             dir.Delete(recursive: true);
         }
+    }
+
+    private sealed class MessageCapturingLogger<T> : ILogger<T>
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            Messages.Add(formatter(state, exception));
     }
 }
