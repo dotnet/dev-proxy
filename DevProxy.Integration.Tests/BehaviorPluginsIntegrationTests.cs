@@ -240,6 +240,47 @@ public sealed class BehaviorPluginsIntegrationTests
     }
 
     [Fact]
+    public async Task Latency_InitializeFailsWhenMinMsGreaterThanMaxMs()
+    {
+        var config = PluginConfig.FromJson("""
+            { "minMs": 500, "maxMs": 100 }
+            """);
+        var plugin = new LatencyPlugin(
+            SharedHttpClient,
+            NullLogger<LatencyPlugin>.Instance,
+            KestrelProxyHarness.BuildUrlsToWatch("localhost"),
+            ProxyConfig,
+            config);
+
+        using var host = new PluginTestHost(ProxyConfig);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => plugin.InitializeAsync(host.CreateInitArgs(), CancellationToken.None));
+
+        Assert.Contains("minMs (500)", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("maxMs (100)", ex.Message, StringComparison.Ordinal);
+        Assert.False(plugin.Enabled);
+    }
+
+    [Fact]
+    public async Task Latency_InitializeSucceedsWhenMinMsEqualsMaxMs()
+    {
+        var config = PluginConfig.FromJson("""
+            { "minMs": 100, "maxMs": 100 }
+            """);
+        var plugin = new LatencyPlugin(
+            SharedHttpClient,
+            NullLogger<LatencyPlugin>.Instance,
+            KestrelProxyHarness.BuildUrlsToWatch("localhost"),
+            ProxyConfig,
+            config);
+
+        using var host = new PluginTestHost(ProxyConfig);
+        await plugin.InitializeAsync(host.CreateInitArgs(), CancellationToken.None);
+
+        Assert.True(plugin.Enabled);
+    }
+
+    [Fact]
     public async Task RateLimiting_ThrottlesOnceResourcesAreExhausted()
     {
         await using var origin = await FakeOrigin.StartAsync();
