@@ -321,6 +321,89 @@ public sealed class ManipulationAndMockingIntegrationTests
     }
 
     [Theory]
+    [InlineData("/get")]
+    [InlineData("/ge*")]
+    public async Task MockResponse_Nth_CountsInterceptedRequestsWithoutFallbackMock(string mockPath)
+    {
+        await using var origin = await FakeOrigin.StartAsync();
+        var urls = KestrelProxyHarness.BuildUrlsToWatch(origin.Host);
+
+        var config = PluginConfig.FromJson($$"""
+            {
+              "mocks": [
+                {
+                  "request": { "url": "http://{{origin.Host}}{{mockPath}}", "method": "GET", "nth": 2 },
+                  "response": { "statusCode": 201, "body": "mocked-by-test" }
+                }
+              ]
+            }
+            """);
+        var plugin = new MockResponsePlugin(
+            SharedHttpClient,
+            NullLogger<MockResponsePlugin>.Instance,
+            urls,
+            ProxyConfig,
+            config);
+
+        await using var proxy = await KestrelProxyHarness.StartAsync(
+            origin.Host, [plugin]);
+        using var client = proxy.CreateHttpClient();
+        var uri = new Uri($"http://{origin.Host}/get");
+
+        using var first = await client.GetAsync(uri);
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+
+        using var second = await client.GetAsync(uri);
+        Assert.Equal(HttpStatusCode.Created, second.StatusCode);
+        Assert.Contains("mocked-by-test", await second.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+
+        using var third = await client.GetAsync(uri);
+        Assert.Equal(HttpStatusCode.OK, third.StatusCode);
+    }
+
+    [Fact]
+    public async Task MockResponse_Nth_WithFallbackMock_AppliesOnNthRequest()
+    {
+        await using var origin = await FakeOrigin.StartAsync();
+        var urls = KestrelProxyHarness.BuildUrlsToWatch(origin.Host);
+
+        var config = PluginConfig.FromJson($$"""
+            {
+              "mocks": [
+                {
+                  "request": { "url": "http://{{origin.Host}}/get", "method": "GET", "nth": 2 },
+                  "response": { "statusCode": 201, "body": "nth-mock" }
+                },
+                {
+                  "request": { "url": "http://{{origin.Host}}/get", "method": "GET" },
+                  "response": { "statusCode": 202, "body": "fallback-mock" }
+                }
+              ]
+            }
+            """);
+        var plugin = new MockResponsePlugin(
+            SharedHttpClient,
+            NullLogger<MockResponsePlugin>.Instance,
+            urls,
+            ProxyConfig,
+            config);
+
+        await using var proxy = await KestrelProxyHarness.StartAsync(
+            origin.Host, [plugin]);
+        using var client = proxy.CreateHttpClient();
+        var uri = new Uri($"http://{origin.Host}/get");
+
+        using var first = await client.GetAsync(uri);
+        Assert.Equal(HttpStatusCode.Accepted, first.StatusCode);
+
+        using var second = await client.GetAsync(uri);
+        Assert.Equal(HttpStatusCode.Created, second.StatusCode);
+
+        using var third = await client.GetAsync(uri);
+        Assert.Equal(HttpStatusCode.Accepted, third.StatusCode);
+    }
+
+    [Theory]
     [InlineData("/Get")]
     [InlineData("/Ge*")]
     public async Task MockResponse_MatchesUrlCaseInsensitively(string mockPath)

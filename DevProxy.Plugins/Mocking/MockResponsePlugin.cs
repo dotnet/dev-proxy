@@ -55,9 +55,9 @@ public class MockResponsePlugin(
     private const string _mocksFileOptionName = "--mocks-file";
 
     private readonly IProxyConfiguration _proxyConfiguration = proxyConfiguration;
-    // tracks the number of times a mock has been applied
+    // tracks the number of intercepted requests matching each mock URL
     // used in combination with mocks that have an Nth property
-    private readonly ConcurrentDictionary<string, int> _appliedMocks = [];
+    private readonly ConcurrentDictionary<string, int> _requestCounts = [];
 
     private MockResponsesLoader? _loader;
     private Argument<IEnumerable<string>>? _httpResponseFilesArgument;
@@ -292,58 +292,51 @@ public class MockResponsePlugin(
             return null;
         }
 
-        var mockResponse = Configuration.Mocks.FirstOrDefault(mockResponse =>
+        var matchingMocks = Configuration.Mocks
+            .Where(mockResponse => MatchesRequest(mockResponse, request))
+            .ToList();
+
+        // count the intercepted request once for each mock URL it matches,
+        // regardless of whether a mock is eventually applied, so that
+        // mocks with an Nth property fire on the nth matching request
+        var requestCounts = new Dictionary<string, int>();
+        foreach (var url in matchingMocks.Select(m => m.Request!.Url).Distinct())
         {
-            if (mockResponse.Request is null)
-            {
-                return false;
-            }
-
-            if (mockResponse.Request.Method != request.Method)
-            {
-                return false;
-            }
-
-            if (string.Equals(mockResponse.Request.Url, request.Url, StringComparison.OrdinalIgnoreCase) &&
-                HasMatchingBody(mockResponse, request) &&
-                IsNthRequest(mockResponse))
-            {
-                return true;
-            }
-
-            // check if the URL contains a wildcard
-            // if it doesn't, it's not a match for the current request for sure
-            if (!mockResponse.Request.Url.Contains('*', StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            // turn mock URL with wildcard into a regex and match against the request URL
-            return Regex.IsMatch(request.Url, ProxyUtils.PatternToRegex(mockResponse.Request.Url), RegexOptions.IgnoreCase) &&
-                HasMatchingBody(mockResponse, request) &&
-                IsNthRequest(mockResponse);
-        });
-
-        if (mockResponse is not null && mockResponse.Request is not null)
-        {
-            _ = _appliedMocks.AddOrUpdate(mockResponse.Request.Url, 1, (_, value) => ++value);
+            requestCounts[url] = _requestCounts.AddOrUpdate(url, 1, (_, value) => value + 1);
         }
 
-        return mockResponse;
+        return matchingMocks.FirstOrDefault(mockResponse =>
+            mockResponse.Request!.Nth is null ||
+            mockResponse.Request.Nth == requestCounts[mockResponse.Request.Url]);
     }
 
-    private bool IsNthRequest(MockResponse mockResponse)
+    private static bool MatchesRequest(MockResponse mockResponse, IHttpRequest request)
     {
-        if (mockResponse.Request?.Nth is null)
+        if (mockResponse.Request is null)
         {
-            // mock doesn't define an Nth property so it always qualifies
-            return true;
+            return false;
         }
 
-        _ = _appliedMocks.TryGetValue(mockResponse.Request.Url, out var nth);
-        nth++;
+        if (mockResponse.Request.Method != request.Method)
+        {
+            return false;
+        }
 
-        return mockResponse.Request.Nth == nth;
+        if (string.Equals(mockResponse.Request.Url, request.Url, StringComparison.OrdinalIgnoreCase))
+        {
+            return HasMatchingBody(mockResponse, request);
+        }
+
+        // check if the URL contains a wildcard
+        // if it doesn't, it's not a match for the current request for sure
+        if (!mockResponse.Request.Url.Contains('*', StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        // turn mock URL with wildcard into a regex and match against the request URL
+        return Regex.IsMatch(request.Url, ProxyUtils.PatternToRegex(mockResponse.Request.Url), RegexOptions.IgnoreCase) &&
+            HasMatchingBody(mockResponse, request);
     }
 
     private void ProcessMockResponseInternal(ProxyRequestArgs e, MockResponse matchingResponse)
