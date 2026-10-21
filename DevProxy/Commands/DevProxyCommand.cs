@@ -231,14 +231,20 @@ sealed class DevProxyCommand : RootCommand
                 return field;
             }
 
-            var args = Environment.GetCommandLineArgs();
-            field = args.Contains(NoColorOptionName) ||
-                Environment.GetEnvironmentVariable("NO_COLOR") is not null ||
-                string.Equals(Environment.GetEnvironmentVariable("TERM"), "dumb", StringComparison.OrdinalIgnoreCase);
+            field = ShouldDisableColor(
+                Environment.GetCommandLineArgs(),
+                Environment.GetEnvironmentVariable("NO_COLOR"),
+                Environment.GetEnvironmentVariable("TERM"));
             _noColorResolved = true;
             return field;
         }
     }
+
+    // Per https://no-color.org, NO_COLOR disables color only when present and not empty.
+    internal static bool ShouldDisableColor(string[] args, string? noColorEnv, string? termEnv) =>
+        args.Contains(NoColorOptionName) ||
+        !string.IsNullOrEmpty(noColorEnv) ||
+        string.Equals(termEnv, "dumb", StringComparison.OrdinalIgnoreCase);
 
     public DevProxyCommand(
         IEnumerable<IPlugin> plugins,
