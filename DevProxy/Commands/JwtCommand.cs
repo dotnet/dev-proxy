@@ -10,6 +10,15 @@ namespace DevProxy.Commands;
 
 sealed class JwtCommand : Command
 {
+    private Option<string>? _nameOption;
+    private Option<IEnumerable<string>>? _audiencesOption;
+    private Option<string>? _issuerOption;
+    private Option<IEnumerable<string>>? _rolesOption;
+    private Option<IEnumerable<string>>? _scopesOption;
+    private Option<Dictionary<string, string>>? _claimsOption;
+    private Option<double?>? _validForOption;
+    private Option<string>? _signingKeyOption;
+
     public JwtCommand() :
         base("jwt", "Manage JSON Web Tokens")
     {
@@ -78,7 +87,7 @@ sealed class JwtCommand : Command
             }
         };
 
-        var jwtValidForOption = new Option<double>("--valid-for", "-v")
+        var jwtValidForOption = new Option<double?>("--valid-for", "-v")
         {
             Description = "The duration for which the token is valid. Duration is set in minutes."
         };
@@ -122,27 +131,40 @@ sealed class JwtCommand : Command
             "devproxy jwt create --claims \"dept:eng\"              Custom claims",
         ]);
 
-        jwtCreateCommand.SetAction(parseResult =>
-        {
-            var jwtOptions = new JwtOptions
-            {
-                Name = parseResult.GetValue(jwtNameOption),
-                Audiences = parseResult.GetValue(jwtAudiencesOption),
-                Issuer = parseResult.GetValue(jwtIssuerOption),
-                Roles = parseResult.GetValue(jwtRolesOption),
-                Scopes = parseResult.GetValue(jwtScopesOption),
-                Claims = parseResult.GetValue(jwtClaimsOption),
-                ValidFor = parseResult.GetValue(jwtValidForOption),
-                SigningKey = parseResult.GetValue(jwtSigningKeyOption)
-            };
+        _nameOption = jwtNameOption;
+        _audiencesOption = jwtAudiencesOption;
+        _issuerOption = jwtIssuerOption;
+        _rolesOption = jwtRolesOption;
+        _scopesOption = jwtScopesOption;
+        _claimsOption = jwtClaimsOption;
+        _validForOption = jwtValidForOption;
+        _signingKeyOption = jwtSigningKeyOption;
 
-            GetToken(jwtOptions);
-        });
+        jwtCreateCommand.SetAction(parseResult => GetToken(GetJwtOptions(parseResult)));
 
         this.AddCommands(new List<Command>
         {
             jwtCreateCommand
         }.OrderByName());
+    }
+
+    internal JwtOptions GetJwtOptions(ParseResult parseResult)
+    {
+        var audiences = parseResult.GetValue(_audiencesOption!);
+
+        // Leave omitted options null so that JwtCreatorOptions applies the
+        // same defaults as the API (60 minutes, default audience).
+        return new JwtOptions
+        {
+            Name = parseResult.GetValue(_nameOption!),
+            Audiences = audiences?.Any() == true ? audiences : null,
+            Issuer = parseResult.GetValue(_issuerOption!),
+            Roles = parseResult.GetValue(_rolesOption!),
+            Scopes = parseResult.GetValue(_scopesOption!),
+            Claims = parseResult.GetValue(_claimsOption!),
+            ValidFor = parseResult.GetValue(_validForOption!),
+            SigningKey = parseResult.GetValue(_signingKeyOption!)
+        };
     }
 
     private static void GetToken(JwtOptions jwtOptions)
