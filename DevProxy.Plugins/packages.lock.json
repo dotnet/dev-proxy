@@ -534,7 +534,7 @@
           "Microsoft.OpenApi.YamlReader": "[3.10.2, )",
           "Newtonsoft.Json.Schema": "[4.0.2, )",
           "Scriban": "[7.5.0, )",
-          "System.CommandLine": "[2.0.12, )",
+          "System.CommandLine": "[2.0.13, )",
           "YamlDotNet": "[18.1.0, )"
         }
       }
