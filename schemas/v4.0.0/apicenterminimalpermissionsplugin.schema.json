@@ -7,6 +7,14 @@
       "type": "string",
       "description": "The JSON schema reference for validation."
     },
+    "permissionsToExclude": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The scopes to ignore and not include in the report. Default: ['profile', 'openid', 'offline_access', 'email'].",
+      "default": ["profile", "openid", "offline_access", "email"]
+    },
     "resourceGroupName": {
       "type": "string",
       "description": "Name of the resource group where the Azure API Center is located."

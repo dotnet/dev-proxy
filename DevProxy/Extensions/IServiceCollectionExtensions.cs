@@ -60,7 +60,8 @@ static class IServiceCollectionExtensions
             sp.GetRequiredService<IProxyState>().GlobalData,
             sp.GetRequiredService<ILoggerFactory>(),
             sp.GetRequiredService<IRootCertificateTrust>(),
-            sp.GetRequiredService<ISystemProxyManager>()));
+            sp.GetRequiredService<ISystemProxyManager>(),
+            sp.GetRequiredService<IHostApplicationLifetime>()));
 
         return services;
     }
@@ -71,6 +72,7 @@ static class IServiceCollectionExtensions
         DevProxyConfigOptions options)
     {
         _ = services
+            .AddSingleton(options)
             .AddSingleton((IConfigurationRoot)configuration)
             .AddSingleton<IProxyConfiguration, ProxyConfiguration>()
             .AddSingleton<IProxyStateController, ProxyStateController>()

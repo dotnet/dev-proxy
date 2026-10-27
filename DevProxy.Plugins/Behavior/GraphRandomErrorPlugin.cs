@@ -193,11 +193,16 @@ public sealed class GraphRandomErrorPlugin(
         }
         if (ProxyUtils.IsGraphBatchUrl(e.ProxySession.Request.RequestUri))
         {
-            FailBatch(e);
+            if (!FailBatch(e))
+            {
+                Logger.LogRequest("No allowed errors for one or more batch request methods", MessageType.Skipped, new LoggingContext(e.ProxySession));
+                return Task.CompletedTask;
+            }
         }
-        else
+        else if (!FailResponse(e))
         {
-            FailResponse(e);
+            Logger.LogRequest($"No allowed errors for {e.ProxySession.Request.Method} requests", MessageType.Skipped, new LoggingContext(e.ProxySession));
+            return Task.CompletedTask;
         }
         state.HasBeenSet = true;
 
@@ -208,15 +213,24 @@ public sealed class GraphRandomErrorPlugin(
     // uses config to determine if a request should be failed
     private GraphRandomErrorFailMode ShouldFail() => _random.Next(0, 100) < Configuration.Rate ? GraphRandomErrorFailMode.Random : GraphRandomErrorFailMode.PassThru;
 
-    private void FailResponse(ProxyRequestArgs e)
+    private bool HasAllowedErrors(string method) =>
+        _methodStatusCode.TryGetValue(method, out var statusCodes) && statusCodes.Length > 0;
+
+    private bool FailResponse(ProxyRequestArgs e)
     {
+        if (!HasAllowedErrors(e.ProxySession.Request.Method))
+        {
+            return false;
+        }
+
         // pick a random error response for the current request method
         var methodStatusCodes = _methodStatusCode[e.ProxySession.Request.Method];
         var errorStatus = methodStatusCodes[_random.Next(0, methodStatusCodes.Length)];
         UpdateProxyResponse(e, errorStatus);
+        return true;
     }
 
-    private void FailBatch(ProxyRequestArgs e)
+    private bool FailBatch(ProxyRequestArgs e)
     {
         var batchResponse = new GraphBatchResponsePayload();
 
@@ -224,7 +238,14 @@ public sealed class GraphRandomErrorPlugin(
         if (batch == null)
         {
             UpdateProxyBatchResponse(e, batchResponse);
-            return;
+            return true;
+        }
+
+        // a batch response must contain a response for every request, so if
+        // any request can't be failed, pass the whole batch through
+        if (batch.Requests.Any(r => !HasAllowedErrors(r.Method)))
+        {
+            return false;
         }
 
         var responses = new List<GraphBatchResponsePayloadResponse>();
@@ -276,6 +297,7 @@ public sealed class GraphRandomErrorPlugin(
         batchResponse.Responses = [.. responses];
 
         UpdateProxyBatchResponse(e, batchResponse);
+        return true;
     }
 
     private ThrottlingInfo ShouldThrottle(IHttpRequest request, string throttlingKey)

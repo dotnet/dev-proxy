@@ -115,12 +115,12 @@ public sealed class TypeSpecGeneratorPlugin(
             cancellationToken.ThrowIfCancellationRequested();
 
             var fileName = $"{typeSpecFile.Name}-{DateTime.Now:yyyyMMddHHmmss}.tsp";
-            Logger.LogDebug("Writing OpenAPI spec to {FileName}...", fileName);
+            Logger.LogDebug("Writing TypeSpec file to {FileName}...", fileName);
             await File.WriteAllTextAsync(fileName, typeSpecFile.ToString(), cancellationToken);
 
             generatedTypeSpecFiles.Add(typeSpecFile.Service.Servers.First().Url, fileName);
 
-            Logger.LogInformation("Created OpenAPI spec file {FileName}", fileName);
+            Logger.LogInformation("Created TypeSpec file {FileName}", fileName);
         }
 
         StoreReport(new TypeSpecGeneratorPluginReport(

@@ -53,9 +53,9 @@ public class MockStdioResponsePlugin(
 
     private readonly IProxyConfiguration _proxyConfiguration = proxyConfiguration;
 
-    // tracks the number of times a mock has been applied
+    // tracks the number of intercepted messages matching each mock key
     // used in combination with mocks that have an Nth property
-    private readonly ConcurrentDictionary<string, int> _appliedMocks = [];
+    private readonly ConcurrentDictionary<string, int> _requestCounts = [];
 
     // tracks whether we've applied startup mocks (mocks without stdin patterns)
     private bool _startupMocksApplied;
@@ -217,11 +217,11 @@ public class MockStdioResponsePlugin(
             var mockKey = "startup_mock";
             if (mock.Request?.Nth is not null)
             {
-                _ = _appliedMocks.TryGetValue(mockKey, out var nth);
+                _ = _requestCounts.TryGetValue(mockKey, out var nth);
                 nth++;
                 if (mock.Request.Nth != nth)
                 {
-                    _ = _appliedMocks.AddOrUpdate(mockKey, 1, (_, v) => ++v);
+                    _ = _requestCounts.AddOrUpdate(mockKey, 1, (_, v) => ++v);
                     continue;
                 }
             }
@@ -229,7 +229,7 @@ public class MockStdioResponsePlugin(
             Logger.LogInformation("Applying startup mock response");
             SendMockResponse(e, mock);
 
-            _ = _appliedMocks.AddOrUpdate(mockKey, 1, (_, v) => ++v);
+            _ = _requestCounts.AddOrUpdate(mockKey, 1, (_, v) => ++v);
         }
     }
 
@@ -242,85 +242,78 @@ public class MockStdioResponsePlugin(
             return null;
         }
 
-        var mockResponse = Configuration.Mocks.FirstOrDefault(mockResponse =>
+        var matchingMocks = Configuration.Mocks
+            .Where(mockResponse => MatchesStdin(mockResponse, stdinBody))
+            .ToList();
+
+        // count the intercepted message once for each mock key it matches,
+        // regardless of whether a mock is eventually applied, so that
+        // mocks with an Nth property fire on the nth matching message
+        var requestCounts = new Dictionary<string, int>();
+        foreach (var mockKey in matchingMocks.Select(GetMockKey).Distinct())
         {
-            if (mockResponse.Request is null)
-            {
-                // Mocks without request patterns are startup mocks, skip them here
-                return false;
-            }
-
-            var hasBodyFragment = !string.IsNullOrEmpty(mockResponse.Request.BodyFragment);
-            var hasBodyRegex = !string.IsNullOrEmpty(mockResponse.Request.BodyRegex);
-
-            if (!hasBodyFragment && !hasBodyRegex)
-            {
-                // No body fragment or regex means startup mock, handled separately
-                return false;
-            }
-
-            // Use bodyRegex if specified, otherwise use bodyFragment (either/or)
-            if (hasBodyRegex)
-            {
-                try
-                {
-                    if (!Regex.IsMatch(stdinBody, mockResponse.Request.BodyRegex!, RegexOptions.IgnoreCase, TimeSpan.FromSeconds(5)))
-                    {
-                        return false;
-                    }
-                }
-                catch (RegexMatchTimeoutException ex)
-                {
-                    Logger.LogError(ex, "Regex match timed out for body regex pattern '{Pattern}'. Treating as non-matching mock.", mockResponse.Request.BodyRegex);
-                    return false;
-                }
-                catch (ArgumentException ex)
-                {
-                    Logger.LogError(ex, "Invalid body regex pattern '{Pattern}'. Treating as non-matching mock.", mockResponse.Request.BodyRegex);
-                    return false;
-                }
-            }
-            else if (hasBodyFragment)
-            {
-                if (!stdinBody.Contains(mockResponse.Request.BodyFragment!, StringComparison.OrdinalIgnoreCase))
-                {
-                    return false;
-                }
-            }
-
-            // Check Nth condition
-            return IsNthRequest(mockResponse);
-        });
-
-        if (mockResponse?.Request is not null)
-        {
-            var mockKey = GetMockKey(mockResponse);
-            _ = _appliedMocks.AddOrUpdate(mockKey, 1, (_, value) => ++value);
+            requestCounts[mockKey] = _requestCounts.AddOrUpdate(mockKey, 1, (_, value) => value + 1);
         }
 
-        return mockResponse;
+        return matchingMocks.FirstOrDefault(mockResponse =>
+            mockResponse.Request!.Nth is null ||
+            mockResponse.Request.Nth == requestCounts[GetMockKey(mockResponse)]);
     }
 
-    private bool IsNthRequest(MockStdioResponse mockResponse)
+    private bool MatchesStdin(MockStdioResponse mockResponse, string stdinBody)
     {
-        if (mockResponse.Request?.Nth is null)
+        if (mockResponse.Request is null)
         {
-            // mock doesn't define an Nth property so it always qualifies
-            return true;
+            // Mocks without request patterns are startup mocks, skip them here
+            return false;
         }
 
-        var mockKey = GetMockKey(mockResponse);
-        _ = _appliedMocks.TryGetValue(mockKey, out var nth);
-        nth++;
+        var hasBodyFragment = !string.IsNullOrEmpty(mockResponse.Request.BodyFragment);
+        var hasBodyRegex = !string.IsNullOrEmpty(mockResponse.Request.BodyRegex);
 
-        return mockResponse.Request.Nth == nth;
+        if (!hasBodyFragment && !hasBodyRegex)
+        {
+            // No body fragment or regex means startup mock, handled separately
+            return false;
+        }
+
+        // Use bodyRegex if specified, otherwise use bodyFragment (either/or)
+        if (hasBodyRegex)
+        {
+            try
+            {
+                if (!Regex.IsMatch(stdinBody, mockResponse.Request.BodyRegex!, RegexOptions.IgnoreCase, TimeSpan.FromSeconds(5)))
+                {
+                    return false;
+                }
+            }
+            catch (RegexMatchTimeoutException ex)
+            {
+                Logger.LogError(ex, "Regex match timed out for body regex pattern '{Pattern}'. Treating as non-matching mock.", mockResponse.Request.BodyRegex);
+                return false;
+            }
+            catch (ArgumentException ex)
+            {
+                Logger.LogError(ex, "Invalid body regex pattern '{Pattern}'. Treating as non-matching mock.", mockResponse.Request.BodyRegex);
+                return false;
+            }
+        }
+        else if (hasBodyFragment)
+        {
+            if (!stdinBody.Contains(mockResponse.Request.BodyFragment!, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static string GetMockKey(MockStdioResponse mockResponse)
     {
-        return mockResponse.Request?.BodyRegex
-            ?? mockResponse.Request?.BodyFragment
-            ?? "default";
+        return !string.IsNullOrEmpty(mockResponse.Request?.BodyRegex)
+            ? $"regex:{mockResponse.Request.BodyRegex}"
+            : $"fragment:{mockResponse.Request?.BodyFragment}";
     }
 
     private void ProcessMockResponse(StdioRequestArgs e, MockStdioResponse matchingResponse)

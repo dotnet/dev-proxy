@@ -28,10 +28,11 @@ internal sealed class StatusCommand : Command
                     devproxy status --pid 12345
                     devproxy status --output json
 
-                Uses the current user's instance credentials. Tokens are included unless CI is set.
+                Uses the current user's instance credentials. Tokens are included unless CI is set
+                for this command or token output is suppressed by the running instance.
                 JSON output: one result event per instance, with pid, apiUrl, token, apiStatus,
                 port, recording, asSystemProxy, configFile, logFile and startedAt.
-                An empty result has running: false. Token is omitted in CI.
+                An empty result has running: false. Token is omitted when output is suppressed.
                 Exit codes: 0 = matching instance found; 1 = no matching instance.
                 API errors are reported in the output without changing the instance's running status.
                 """)
@@ -100,7 +101,7 @@ internal sealed class StatusCommand : Command
         try
         {
             using var httpClient = await ApiSecurity.CreateClientAsync(state, TimeSpan.FromSeconds(5), cancellationToken);
-            token = ApiSecurity.ShouldDisplayToken ? httpClient.DefaultRequestHeaders.Authorization!.Parameter : null;
+            token = ApiSecurity.ShouldDisplayTokenFor(state) ? httpClient.DefaultRequestHeaders.Authorization!.Parameter : null;
             using var response = await httpClient.GetAsync("/proxy", cancellationToken);
 
             if (response.IsSuccessStatusCode)

@@ -104,6 +104,19 @@ public static class ProxyUtils
         JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
     }
 
+    /// <summary>
+    /// Converts a configured response body to the string sent to the client.
+    /// String bodies are returned as-is; other values are serialized as JSON.
+    /// </summary>
+    public static string SerializeBody(object? body) => body switch
+    {
+        null => string.Empty,
+        string s => s,
+        JsonElement { ValueKind: JsonValueKind.String } el => el.GetString() ?? string.Empty,
+        JValue { Type: JTokenType.String } jv => jv.Value<string>() ?? string.Empty,
+        _ => JsonSerializer.Serialize(body, JsonSerializerOptions)
+    };
+
     public static bool IsGraphRequest(IHttpRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);

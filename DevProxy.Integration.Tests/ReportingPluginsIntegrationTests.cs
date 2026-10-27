@@ -21,7 +21,8 @@ namespace DevProxy.Integration.Tests;
 ///
 /// NOT hermetic (deferred): GraphMinimalPermissions(+Guidance) call Microsoft Graph permission
 /// endpoints; MinimalCsomPermissions needs the shipped CSOM types definition + CSOM bodies;
-/// ApiCenter* require Azure API Center. Those are integration-with-live-backend (Bucket 3).
+/// ApiCenter* require Azure API Center. Those are integration-with-live-backend (Bucket 3); only
+/// their backend-independent logic (permission exclusion, report rendering) is covered here.
 /// </summary>
 public sealed class ReportingPluginsIntegrationTests
 {
@@ -149,5 +150,42 @@ public sealed class ReportingPluginsIntegrationTests
         {
             dir.Delete(recursive: true);
         }
+    }
+
+    [Fact]
+    public void ApiCenterMinimalPermissions_ExcludesOidcScopesFromExcessivePermissions()
+    {
+        var excessive = ApiCenterMinimalPermissionsPlugin.GetExcessivePermissions(
+            tokenPermissions: ["User.Read", "User.Write", "openid", "profile", "offline_access", "email"],
+            minimalPermissions: ["User.Read"],
+            permissionsToExclude: ["profile", "openid", "offline_access", "email"]);
+
+        Assert.Equal(["User.Write"], excessive);
+    }
+
+    [Fact]
+    public void ApiCenterMinimalPermissions_WithoutExclusionsReportsAllExcessivePermissions()
+    {
+        var excessive = ApiCenterMinimalPermissionsPlugin.GetExcessivePermissions(
+            tokenPermissions: ["User.Read", "openid"],
+            minimalPermissions: ["User.Read"],
+            permissionsToExclude: null);
+
+        Assert.Equal(["openid"], excessive);
+    }
+
+    [Fact]
+    public void ApiCenterMinimalPermissionsReport_ListsExcludedPermissions()
+    {
+        var report = new ApiCenterMinimalPermissionsPluginReport
+        {
+            Results = [],
+            UnmatchedRequests = [],
+            Errors = [],
+            ExcludedPermissions = ["openid", "profile"],
+        };
+
+        Assert.Contains("- `openid`", report.ToMarkdown(), StringComparison.Ordinal);
+        Assert.Contains("openid, profile", report.ToPlainText(), StringComparison.Ordinal);
     }
 }

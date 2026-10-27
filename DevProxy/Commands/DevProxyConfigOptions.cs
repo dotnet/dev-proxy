@@ -7,16 +7,7 @@ namespace DevProxy.Commands;
 
 sealed class DevProxyConfigOptions : RootCommand
 {
-    public string? ConfigFile
-    {
-        get
-        {
-            var configFile = _parseResult?.GetValueOrDefault<string?>(DevProxyCommand.ConfigFileOptionName);
-            return configFile is not null ?
-                Path.GetFullPath(ProxyUtils.ReplacePathTokens(configFile)) :
-                null;
-        }
-    }
+    public string? ConfigFile { get; private set; }
 
     public int? ApiPort => _parseResult?.GetValueOrDefault<int?>(DevProxyCommand.ApiPortOptionName);
     public string? ApiIpAddress => _parseResult?.GetValueOrDefault<string?>(DevProxyCommand.ApiIpAddressOptionName);
@@ -27,6 +18,29 @@ sealed class DevProxyConfigOptions : RootCommand
     public bool IsStdioMode => _parseResult?.CommandResult.Command.Name == "stdio";
     public OutputFormat? Output => _parseResult?.GetValueOrDefault<OutputFormat?>(DevProxyCommand.OutputOptionName);
     public LogLevel? LogLevel => _parseResult?.GetValueOrDefault<LogLevel?>(DevProxyCommand.LogLevelOptionName);
+
+    public Dictionary<string, string>? Env => ParseEnv(_parseResult?.GetValueOrDefault<string[]?>(DevProxyCommand.EnvOptionName));
+
+    internal static Dictionary<string, string>? ParseEnv(string[]? env)
+    {
+        if (env is null || env.Length == 0)
+        {
+            return null;
+        }
+
+        var result = new Dictionary<string, string>();
+        foreach (var e in env)
+        {
+            // Split on first '=' only
+            var parts = e.Split('=', 2);
+            if (parts.Length == 2 && parts[0].Length > 0)
+            {
+                result[parts[0]] = parts[1];
+            }
+        }
+
+        return result;
+    }
 
     public List<string>? UrlsToWatch
     {
@@ -154,6 +168,12 @@ sealed class DevProxyConfigOptions : RootCommand
             Arity = ArgumentArity.Zero
         };
 
+        var envOption = new Option<string[]?>(DevProxyCommand.EnvOptionName, "-e")
+        {
+            AllowMultipleArgumentsPerToken = true,
+            Arity = ArgumentArity.ZeroOrMore
+        };
+
         var options = new List<Option>
         {
             apiPortOption,
@@ -166,6 +186,7 @@ sealed class DevProxyConfigOptions : RootCommand
             logLevelOption,
             outputOption,
             discoverOption,
+            envOption,
             noColorOption
         };
         this.AddOptions(options.OrderByName());
@@ -214,5 +235,7 @@ sealed class DevProxyConfigOptions : RootCommand
     public void ParseOptions(string[] args)
     {
         _parseResult = Parse(args);
+        var configFile = _parseResult.GetValueOrDefault<string?>(DevProxyCommand.ConfigFileOptionName);
+        ConfigFile = configFile is not null ? Path.GetFullPath(configFile) : null;
     }
 }

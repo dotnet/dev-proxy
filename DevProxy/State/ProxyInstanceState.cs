@@ -35,4 +35,7 @@ internal sealed class ProxyInstanceState
 
     [JsonPropertyName("asSystemProxy")]
     public bool AsSystemProxy { get; set; } = true;
+
+    [JsonPropertyName("suppressTokenOutput")]
+    public bool SuppressTokenOutput { get; set; }
 }

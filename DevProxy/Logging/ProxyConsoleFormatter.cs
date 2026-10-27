@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Console;
 using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Text;
 
 namespace DevProxy.Logging;
@@ -201,9 +202,17 @@ sealed class ProxyConsoleFormatter : ConsoleFormatter
         WriteLabel(textWriter, label, bgColor, fgColor);
         textWriter.Write($"{_labelSpacing}{_boxSpacing}");
 
-        if (logLevel <= LogLevel.Debug)
+        if (_options.IncludeFullTimestamps)
+        {
+            WriteTimestamp(textWriter, DateTimeOffset.UtcNow);
+        }
+        else if (logLevel <= LogLevel.Debug)
         {
             textWriter.Write($"[{DateTime.Now:HH:mm:ss.fffffff}] ");
+        }
+
+        if (logLevel <= LogLevel.Debug)
+        {
             textWriter.Write($"{category.Split('.').Last()}: ");
         }
 
@@ -236,9 +245,16 @@ sealed class ProxyConsoleFormatter : ConsoleFormatter
 
         WriteLabel(textWriter, label, bgColor, fgColor);
         textWriter.Write($"{GetLabelPadding(label)}{_labelSpacing}{boxChar}");
+        if (_options.IncludeFullTimestamps)
+        {
+            WriteTimestamp(textWriter, log.Timestamp);
+        }
         WritePluginName(textWriter, log.Category);
         textWriter.WriteLine(log.Message);
     }
+
+    private static void WriteTimestamp(TextWriter textWriter, DateTimeOffset timestamp) =>
+        textWriter.Write($"[{timestamp.ToString("O", CultureInfo.InvariantCulture)}] ");
 
     private void WritePluginName(TextWriter textWriter, string? categoryOrPluginName)
     {

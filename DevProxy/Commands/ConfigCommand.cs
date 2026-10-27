@@ -137,10 +137,7 @@ sealed class ConfigCommand : Command
         {
             var configId = parseResult.GetValue(configIdArgument);
             var outputFormat = parseResult.GetValueOrDefault<OutputFormat?>(DevProxyCommand.OutputOptionName) ?? OutputFormat.Text;
-            if (configId != null)
-            {
-                await DownloadConfigAsync(configId, outputFormat);
-            }
+            return configId is null ? 1 : await DownloadConfigAsync(configId, outputFormat);
         });
 
         var configNewCommand = new Command("new", "Create new Dev Proxy configuration file");
@@ -160,7 +157,7 @@ sealed class ConfigCommand : Command
             var format = parseResult.GetValue(formatOption);
             var name = parseResult.GetValue(nameArgument) ?? GetDefaultConfigFileName(format);
             var outputFormat = parseResult.GetValueOrDefault<OutputFormat?>(DevProxyCommand.OutputOptionName) ?? OutputFormat.Text;
-            await CreateConfigFileAsync(name, format, outputFormat);
+            return await CreateConfigFileAsync(name, format, outputFormat);
         });
 
         var configOpenCommand = new Command("open", "Open devproxyrc.json");
@@ -205,7 +202,7 @@ sealed class ConfigCommand : Command
         ]);
     }
 
-    private async Task DownloadConfigAsync(string configId, OutputFormat outputFormat)
+    private async Task<int> DownloadConfigAsync(string configId, OutputFormat outputFormat)
     {
         try
         {
@@ -237,7 +234,7 @@ sealed class ConfigCommand : Command
                 {
                     _logger.LogError("Config {ConfigId} not found in the samples repo", configId);
                 }
-                return;
+                return 1;
             }
             foreach (var sampleFile in sampleFiles)
             {
@@ -256,14 +253,14 @@ sealed class ConfigCommand : Command
                     mockFiles = configInfo.MockFiles
                 }, ProxyUtils.JsonSerializerOptions);
                 _logger.LogStructuredOutput(json);
-                return;
+                return 0;
             }
 
             _logger.LogInformation("Config saved in {TargetFolderPath}\r\n", targetFolderPath);
 
             if (!configInfo.ConfigFiles.Any() && !configInfo.MockFiles.Any())
             {
-                return;
+                return 0;
             }
 
             if (configInfo.ConfigFiles.Any())
@@ -288,6 +285,8 @@ sealed class ConfigCommand : Command
                     }
                 }
             }
+
+            return 0;
         }
         catch (Exception ex)
         {
@@ -295,6 +294,7 @@ sealed class ConfigCommand : Command
             {
                 _logger.LogError(ex, "Error downloading config");
             }
+            return 1;
         }
     }
 
@@ -441,7 +441,7 @@ sealed class ConfigCommand : Command
         }
     }
 
-    private async Task CreateConfigFileAsync(string name, ConfigFileFormat? format, OutputFormat outputFormat)
+    private async Task<int> CreateConfigFileAsync(string name, ConfigFileFormat? format, OutputFormat outputFormat)
     {
         try
         {
@@ -466,6 +466,7 @@ sealed class ConfigCommand : Command
             {
                 _logger.LogInformation("Config file created at {TargetFileName}", targetFileName);
             }
+            return 0;
         }
         catch (Exception ex)
         {
@@ -473,6 +474,7 @@ sealed class ConfigCommand : Command
             {
                 _logger.LogError(ex, "Error creating config");
             }
+            return 1;
         }
     }
 

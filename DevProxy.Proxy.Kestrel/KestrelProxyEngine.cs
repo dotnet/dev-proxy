@@ -30,7 +30,8 @@ public sealed class KestrelProxyEngine(
     Dictionary<string, object> globalData,
     ILoggerFactory loggerFactory,
     IRootCertificateTrust? rootCertificateTrust = null,
-    ISystemProxyManager? systemProxyManager = null) : BackgroundService
+    ISystemProxyManager? systemProxyManager = null,
+    IHostApplicationLifetime? hostApplicationLifetime = null) : BackgroundService
 {
     private readonly ILogger _logger = loggerFactory.CreateLogger<KestrelProxyEngine>();
 
@@ -65,7 +66,20 @@ public sealed class KestrelProxyEngine(
             configuration,
             globalData,
             loggerFactory.CreateLogger<KestrelProxyEngine>());
-        var handler = new ProxyConnectionHandler(ca, forwarder, pipeline, watchList, processFilter, _logger);
+        // --timeout / timeoutSeconds: stop Dev Proxy after a period without intercepted
+        // requests. Each incoming proxy request resets the countdown.
+        using var inactivityTimer = configuration.TimeoutSeconds is { } timeoutSeconds && hostApplicationLifetime is not null
+            ? new InactivityTimer(timeoutSeconds, () =>
+            {
+                _logger.LogInformation(
+                    "No requests received in {TimeoutSeconds} seconds. Stopping Dev Proxy...",
+                    timeoutSeconds.ToString(CultureInfo.InvariantCulture));
+                hostApplicationLifetime.StopApplication();
+            })
+            : null;
+        var handler = new ProxyConnectionHandler(
+            ca, forwarder, pipeline, watchList, processFilter, _logger,
+            inactivityTimer is null ? null : inactivityTimer.Reset);
 
         var builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions());
         _ = builder.WebHost.UseKestrelCore();
@@ -81,6 +95,7 @@ public sealed class KestrelProxyEngine(
         await using var app = builder.Build();
 
         await app.StartAsync(stoppingToken).ConfigureAwait(false);
+        inactivityTimer?.Reset();
         // When --port 0 is used the OS assigns a free port; Kestrel rewrites the
         // ListenOptions endpoint to the bound port after StartAsync, so log THAT
         // (not the configured 0) so the user can actually connect.

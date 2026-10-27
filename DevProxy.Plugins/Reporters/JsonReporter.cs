@@ -14,7 +14,8 @@ public class JsonReporter(
     ILogger<JsonReporter> logger,
     ISet<UrlToWatch> urlsToWatch) : BaseReporter(logger, urlsToWatch)
 {
-    private string _fileExtension = ".json";
+    private const string DefaultFileExtension = ".json";
+    private string _fileExtension = DefaultFileExtension;
 
     public override string Name => nameof(JsonReporter);
     public override string FileExtension => _fileExtension;
@@ -22,6 +23,9 @@ public class JsonReporter(
     protected override string GetReport(KeyValuePair<string, object> report)
     {
         Logger.LogDebug("Serializing report {ReportKey}...", report.Key);
+
+        // Determine the extension per report so that one report's extension doesn't leak into the next
+        _fileExtension = DefaultFileExtension;
 
         var reportData = report.Value;
         if (reportData is IJsonReport jsonReport)
