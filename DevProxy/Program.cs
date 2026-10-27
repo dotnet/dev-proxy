@@ -55,23 +55,6 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
 {
     var isJsonOutput = IsJsonOutputRequested(args);
 
-    // The daemon validates the effective token too, but its output goes to a log file,
-    // so check here to report an invalid --env or inherited token directly.
-    if (!DevProxyCommand.HasGlobalOptions)
-    {
-        var tokenOptions = new DevProxyConfigOptions();
-        tokenOptions.ParseOptions(args);
-        var tokenValue = ApiSecurity.GetEffectiveTokenValue(
-            tokenOptions.Env, Environment.GetEnvironmentVariable(ApiSecurity.TokenEnvironmentVariable));
-        if (!ApiSecurity.TryResolveToken(tokenValue, out _, out var tokenError))
-        {
-            await Console.Error.WriteLineAsync(isJsonOutput
-                ? FormatJsonLogEntry("error", tokenError!)
-                : tokenError);
-            return 1;
-        }
-    }
-
     // Recover from a system-proxy registration left behind by a previous
     // instance that crashed before restoring the OS proxy. This must run before
     // any state-loading call below, which prunes (deletes) the stale state files

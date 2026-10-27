@@ -2,7 +2,6 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using DevProxy.Commands;
 using Xunit;
 
 namespace DevProxy.Tests;
@@ -73,40 +72,21 @@ public class ApiSecurityTokenTests
         Assert.Contains(ApiSecurity.TokenEnvironmentVariable, error, StringComparison.Ordinal);
     }
 
-    private static readonly string ValidToken = new('a', 64);
+    [Theory]
+    [InlineData("================================")]
+    [InlineData("a===============================")]
+    public void TryResolveToken_PaddingNotCountedTowardMinimum_Fails(string value)
+    {
+        Assert.False(ApiSecurity.TryResolveToken(value, out _, out var error));
+        Assert.Contains("padding", error, StringComparison.Ordinal);
+    }
 
     [Fact]
-    public void GetEffectiveTokenValue_EnvOptionOverride_WinsOverInherited()
+    public void TryResolveToken_MinimumLengthWithPadding_Accepted()
     {
-        var options = new DevProxyConfigOptions();
-        options.ParseOptions(["--detach", "--env", $"{ApiSecurity.TokenEnvironmentVariable}={ValidToken}"]);
+        var value = new string('a', 32) + "==";
 
-        var value = ApiSecurity.GetEffectiveTokenValue(options.Env, "short");
-
-        Assert.Equal(ValidToken, value);
         Assert.True(ApiSecurity.TryResolveToken(value, out var token, out _));
-        Assert.Equal(ValidToken, token);
-    }
-
-    [Fact]
-    public void GetEffectiveTokenValue_InvalidEnvOptionOverride_IsRejected()
-    {
-        var options = new DevProxyConfigOptions();
-        options.ParseOptions(["--detach", "-e", $"{ApiSecurity.TokenEnvironmentVariable}=short"]);
-
-        var value = ApiSecurity.GetEffectiveTokenValue(options.Env, ValidToken);
-
-        Assert.Equal("short", value);
-        Assert.False(ApiSecurity.TryResolveToken(value, out _, out _));
-    }
-
-    [Fact]
-    public void GetEffectiveTokenValue_NoEnvOptionOverride_UsesInherited()
-    {
-        var options = new DevProxyConfigOptions();
-        options.ParseOptions(["--detach", "--env", "OTHER=value"]);
-
-        Assert.Equal(ValidToken, ApiSecurity.GetEffectiveTokenValue(options.Env, ValidToken));
-        Assert.Null(ApiSecurity.GetEffectiveTokenValue(null, null));
+        Assert.Equal(value, token);
     }
 }

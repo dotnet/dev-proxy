@@ -144,7 +144,7 @@ Plugin-specific override:
 
 Every API request requires `Authorization: Bearer <token>`. Startup and `devproxy status` show the per-process token in text and JSON, including redirected output and daemon logs. Tokens survive configuration reloads but change on process restart.
 
-To use a known token, for example when an orchestrator starts Dev Proxy and calls its API, set the `DEV_PROXY_API_TOKEN` environment variable before starting the proxy, or pass it with `--env` or the config `env` section. The value must be at least 32 characters and use only ASCII letters, digits, `-`, `.`, `_`, `~`, `+`, `/`, and trailing `=`; surrounding whitespace is trimmed. Invalid values stop startup with an error. The token is still saved for `devproxy status`, `devproxy api token`, and `devproxy stop`.
+To use a known token, for example when an orchestrator starts Dev Proxy and calls its API, set the `DEV_PROXY_API_TOKEN` environment variable before starting the proxy, or pass it with `--env` or the config `env` section. The value must be at least 32 characters, not counting trailing `=` padding, and use only ASCII letters, digits, `-`, `.`, `_`, `~`, `+`, `/`, and trailing `=`; surrounding whitespace is trimmed. Invalid values stop startup with an error. The token is still saved for `devproxy status`, `devproxy api token`, and `devproxy stop`.
 
 When the `CI` environment variable is set, automatic token output is suppressed. Explicit retrieval remains available:
 

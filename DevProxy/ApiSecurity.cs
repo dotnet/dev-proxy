@@ -31,9 +31,9 @@ internal static class ApiSecurity
         }
 
         token = environmentValue.Trim();
-        if (token.Length < MinimumTokenLength)
+        if (token.TrimEnd('=').Length < MinimumTokenLength)
         {
-            error = $"{TokenEnvironmentVariable} must be at least {MinimumTokenLength} characters long.";
+            error = $"{TokenEnvironmentVariable} must be at least {MinimumTokenLength} characters long, not counting trailing = padding.";
             return false;
         }
 
@@ -73,15 +73,6 @@ internal static class ApiSecurity
             return true;
         }
     }
-
-    /// <summary>
-    /// Returns the token value a detached parent should validate: an explicit
-    /// <c>--env DEV_PROXY_API_TOKEN=...</c> override wins over the inherited value.
-    /// </summary>
-    internal static string? GetEffectiveTokenValue(IReadOnlyDictionary<string, string>? envOverrides, string? inheritedValue) =>
-        envOverrides is not null && envOverrides.TryGetValue(TokenEnvironmentVariable, out var value)
-            ? value
-            : inheritedValue;
 
     private static (string Token, byte[] TokenBytes) EnsureToken()
     {
