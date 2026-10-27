@@ -10,13 +10,11 @@ internal static class ApiSecurity
     internal const string TokenEnvironmentVariable = "DEV_PROXY_API_TOKEN";
     internal const int MinimumTokenLength = 32;
 
-    private static readonly Lazy<string> LazyToken = new(() =>
-        TryResolveToken(Environment.GetEnvironmentVariable(TokenEnvironmentVariable), out var token, out var error)
-            ? token
-            : throw new InvalidOperationException(error));
-    private static readonly Lazy<byte[]> LazyTokenBytes = new(() => Encoding.UTF8.GetBytes(Token));
-    private static string Token => LazyToken.Value;
-    private static byte[] TokenBytes => LazyTokenBytes.Value;
+    private static readonly Lock TokenLock = new();
+    private static string? _token;
+    private static byte[]? _tokenBytes;
+    private static string Token => EnsureToken().Token;
+    private static byte[] TokenBytes => EnsureToken().TokenBytes;
     private static bool _tokenDisplayed;
 
     /// <summary>
@@ -51,10 +49,49 @@ internal static class ApiSecurity
     }
 
     /// <summary>
-    /// Validates <c>DEV_PROXY_API_TOKEN</c> so startup can fail with a clear error.
+    /// Resolves the API token from the current (effective) value of <c>DEV_PROXY_API_TOKEN</c>.
+    /// Call after environment overrides are applied. Once resolved, the token is kept for the
+    /// lifetime of the process, so it survives configuration reloads.
     /// </summary>
-    public static bool TryValidateTokenEnvironment(out string? error) =>
-        TryResolveToken(Environment.GetEnvironmentVariable(TokenEnvironmentVariable), out _, out error);
+    public static bool TryInitializeToken(out string? error)
+    {
+        lock (TokenLock)
+        {
+            error = null;
+            if (_token is not null)
+            {
+                return true;
+            }
+
+            if (!TryResolveToken(Environment.GetEnvironmentVariable(TokenEnvironmentVariable), out var token, out error))
+            {
+                return false;
+            }
+
+            _tokenBytes = Encoding.UTF8.GetBytes(token);
+            _token = token;
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Returns the token value a detached parent should validate: an explicit
+    /// <c>--env DEV_PROXY_API_TOKEN=...</c> override wins over the inherited value.
+    /// </summary>
+    internal static string? GetEffectiveTokenValue(IReadOnlyDictionary<string, string>? envOverrides, string? inheritedValue) =>
+        envOverrides is not null && envOverrides.TryGetValue(TokenEnvironmentVariable, out var value)
+            ? value
+            : inheritedValue;
+
+    private static (string Token, byte[] TokenBytes) EnsureToken()
+    {
+        if (!TryInitializeToken(out var error))
+        {
+            throw new InvalidOperationException(error);
+        }
+
+        return (_token!, _tokenBytes!);
+    }
 
     public static bool ShouldDisplayToken => Environment.GetEnvironmentVariable("CI") is null;
     public static string? DisplayToken => ShouldDisplayToken ? Token : null;

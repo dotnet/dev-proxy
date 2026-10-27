@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Commands;
 using Xunit;
 
 namespace DevProxy.Tests;
@@ -70,5 +71,64 @@ public class ApiSecurityTokenTests
     {
         Assert.False(ApiSecurity.TryResolveToken(value, out _, out var error));
         Assert.Contains(ApiSecurity.TokenEnvironmentVariable, error, StringComparison.Ordinal);
+    }
+
+    private static readonly string ValidToken = new('a', 64);
+
+    [Fact]
+    public void GetEffectiveTokenValue_EnvOptionOverride_WinsOverInherited()
+    {
+        var options = new DevProxyConfigOptions();
+        options.ParseOptions(["--detach", "--env", $"{ApiSecurity.TokenEnvironmentVariable}={ValidToken}"]);
+
+        var value = ApiSecurity.GetEffectiveTokenValue(options.Env, "short");
+
+        Assert.Equal(ValidToken, value);
+        Assert.True(ApiSecurity.TryResolveToken(value, out var token, out _));
+        Assert.Equal(ValidToken, token);
+    }
+
+    [Fact]
+    public void GetEffectiveTokenValue_InvalidEnvOptionOverride_IsRejected()
+    {
+        var options = new DevProxyConfigOptions();
+        options.ParseOptions(["--detach", "-e", $"{ApiSecurity.TokenEnvironmentVariable}=short"]);
+
+        var value = ApiSecurity.GetEffectiveTokenValue(options.Env, ValidToken);
+
+        Assert.Equal("short", value);
+        Assert.False(ApiSecurity.TryResolveToken(value, out _, out _));
+    }
+
+    [Fact]
+    public void GetEffectiveTokenValue_NoEnvOptionOverride_UsesInherited()
+    {
+        var options = new DevProxyConfigOptions();
+        options.ParseOptions(["--detach", "--env", "OTHER=value"]);
+
+        Assert.Equal(ValidToken, ApiSecurity.GetEffectiveTokenValue(options.Env, ValidToken));
+        Assert.Null(ApiSecurity.GetEffectiveTokenValue(null, null));
+    }
+
+    [Theory]
+    [InlineData("--detach")]
+    [InlineData("-d", "--port", "0", "--api-port", "0")]
+    [InlineData("--detach", "--env", "DEV_PROXY_API_TOKEN=short")]
+    public void ShouldPreflightApiToken_ProxyStart_ReturnsTrue(params string[] args)
+    {
+        Assert.True(DevProxyCommand.ShouldPreflightApiToken(args));
+    }
+
+    [Theory]
+    [InlineData("--detach", "--help")]
+    [InlineData("-d", "-h")]
+    [InlineData("--detach", "--version")]
+    [InlineData("--output", "json", "status", "--detach")]
+    [InlineData("--no-color", "stop", "-d")]
+    [InlineData("--detach", "api", "token")]
+    [InlineData("-d", "stdio", "node", "app.js")]
+    public void ShouldPreflightApiToken_HelpVersionOrSubcommand_ReturnsFalse(params string[] args)
+    {
+        Assert.False(DevProxyCommand.ShouldPreflightApiToken(args));
     }
 }
