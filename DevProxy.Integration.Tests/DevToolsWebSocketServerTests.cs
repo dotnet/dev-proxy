@@ -69,6 +69,15 @@ public sealed class DevToolsWebSocketServerTests
         Assert.Equal(expectedConnectHost, connectHost);
     }
 
+    [Theory]
+    [InlineData(null, "(none)")]
+    [InlineData("https://example.com", "https://example.com")]
+    [InlineData("https://evil\r\n[WS] forged", "https://evil\\u000d\\u000a[WS] forged")]
+    public void SanitizeForLog_EscapesControlCharacters(string? value, string expected)
+    {
+        Assert.Equal(expected, WebSocketServer.SanitizeForLog(value));
+    }
+
     private static WebSocketServer StartServer(out int port)
     {
         port = NetUtil.GetFreePort();

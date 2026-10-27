@@ -60,6 +60,15 @@ public sealed class WebSocketServer(string host, int port, string token, ILogger
         origin is not null &&
         AllowedOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase);
 
+    // Origin is client-controlled and the listener may be reachable from the
+    // network, so escape control characters to prevent log forging.
+    internal static string SanitizeForLog(string? value) =>
+        value is null
+            ? "(none)"
+            : string.Concat(value.Select(c => char.IsControl(c)
+                ? $"\\u{(int)c:x4}"
+                : c.ToString()));
+
     private async Task AcceptConnectionsAsync(HttpListener listener)
     {
         while (listener.IsListening)
@@ -93,7 +102,7 @@ public sealed class WebSocketServer(string host, int port, string token, ILogger
             var origin = context.Request.Headers["Origin"];
             if (!IsAllowedOrigin(origin))
             {
-                _logger.LogWarning("[WS] Rejected DevTools connection from origin {Origin}", origin ?? "(none)");
+                _logger.LogWarning("[WS] Rejected DevTools connection from origin {Origin}", SanitizeForLog(origin));
                 context.Response.StatusCode = 403;
                 context.Response.Close();
                 continue;
