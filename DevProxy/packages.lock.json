@@ -70,9 +70,9 @@
       },
       "System.CommandLine": {
         "type": "Direct",
-        "requested": "[2.0.12, )",
-        "resolved": "2.0.12",
-        "contentHash": "FpW672e6qqrTd1EfKqsvUtFZaJWlTlszUR1o8tdakXhkzKbnEZVndtpfd4K3fUPCFcIs9UmcswMyYGJP1zp/rg=="
+        "requested": "[2.0.13, )",
+        "resolved": "2.0.13",
+        "contentHash": "TIO2lMV+sSP7WW7pD/oCRHD9ENWY+jqwXmYzgks3R46cEdDzwjQOAhsiBn+M3EegfGjgTpa2h+eIrcU+AM2k6A=="
       },
       "System.IdentityModel.Tokens.Jwt": {
         "type": "Direct",
@@ -339,7 +339,7 @@
           "Microsoft.OpenApi.YamlReader": "[3.10.2, )",
           "Newtonsoft.Json.Schema": "[4.0.2, )",
           "Scriban": "[7.5.0, )",
-          "System.CommandLine": "[2.0.12, )",
+          "System.CommandLine": "[2.0.13, )",
           "YamlDotNet": "[18.1.0, )"
         }
       },
