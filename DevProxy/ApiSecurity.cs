@@ -14,6 +14,9 @@ internal static class ApiSecurity
     public static bool ShouldDisplayToken => Environment.GetEnvironmentVariable("CI") is null;
     public static string? DisplayToken => ShouldDisplayToken ? Token : null;
 
+    public static bool ShouldDisplayTokenFor(ProxyInstanceState state) =>
+        ShouldDisplayToken && !state.SuppressTokenOutput;
+
     public static void LogTokenOnce(ILogger logger)
     {
         if (!ShouldDisplayToken || _tokenDisplayed)

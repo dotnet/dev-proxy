@@ -50,8 +50,10 @@ internal sealed class RootCertificateTrust(
         switch (action)
         {
             case RootTrustAction.TrustMacKeychain:
-                MacCertificateHelper.TrustCertificate(rootCertificate, logger);
-                logger.LogInformation("Certificate trusted successfully.");
+                if (MacCertificateHelper.TrustCertificate(rootCertificate, logger))
+                {
+                    logger.LogInformation("Certificate trusted successfully.");
+                }
                 break;
 
             case RootTrustAction.TrustWindowsStore:
@@ -75,12 +77,18 @@ internal sealed class RootCertificateTrust(
 
         if (OperatingSystem.IsMacOS())
         {
-            MacCertificateHelper.TrustCertificate(rootCertificate, logger);
+            if (!MacCertificateHelper.TrustCertificate(rootCertificate, logger))
+            {
+                throw new InvalidOperationException("Failed to trust the root certificate in the macOS keychain.");
+            }
             logger.LogInformation("Certificate trusted successfully.");
         }
         else if (OperatingSystem.IsWindows())
         {
-            InstallIntoWindowsRootStore(rootCertificate);
+            if (!InstallIntoWindowsRootStore(rootCertificate))
+            {
+                throw new InvalidOperationException("Failed to install the root certificate into the Windows root store.");
+            }
         }
         else
         {
@@ -124,11 +132,11 @@ internal sealed class RootCertificateTrust(
         return Console.ReadLine()?.Trim();
     }
 
-    private void InstallIntoWindowsRootStore(X509Certificate2 rootCertificate)
+    private bool InstallIntoWindowsRootStore(X509Certificate2 rootCertificate)
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            return false;
         }
 
         try
@@ -147,10 +155,12 @@ internal sealed class RootCertificateTrust(
 #pragma warning restore CA5380
                 logger.LogInformation("Certificate installed into the current user's root store.");
             }
+            return true;
         }
         catch (Exception ex) when (ex is System.Security.Cryptography.CryptographicException or IOException or UnauthorizedAccessException)
         {
             logger.LogError(ex, "Failed to install the root certificate into the Windows root store.");
+            return false;
         }
     }
 

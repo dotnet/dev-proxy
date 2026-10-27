@@ -14,6 +14,9 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+// Keep management files discoverable even when env overrides change user data paths.
+_ = StateManager.GetConfigFolder();
+
 // Handle detached mode - spawn a child process and exit
 // Only applies to root command (starting the proxy), not subcommands
 if (DevProxyCommand.IsRootCommand &&
@@ -187,7 +190,7 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
             if (state is { Port: > 0 } && !string.IsNullOrEmpty(state.ApiUrl) && !state.ApiUrl.EndsWith(":0", StringComparison.Ordinal))
             {
                 var proxyUrl = state.ProxyUrl;
-                var token = ApiSecurity.ShouldDisplayToken ?
+                var token = ApiSecurity.ShouldDisplayTokenFor(state) ?
                     (await File.ReadAllTextAsync(ApiSecurity.GetTokenFilePath(state.Pid))).Trim() : null;
 
                 if (isJsonOutput)
@@ -356,7 +359,8 @@ static string EscapeArgument(string arg)
     return arg;
 }
 
-static WebApplication BuildApplication(DevProxyConfigOptions options)
+static WebApplication BuildApplication(
+    DevProxyConfigOptions options, ProcessEnvironment environment, HttpProxyEnvironment proxyEnvironment)
 {
     // Don't pass command-line args to WebApplication.CreateBuilder because:
     // 1. Dev Proxy uses System.CommandLine for CLI parsing, not ASP.NET Core's CommandLineConfigurationProvider
@@ -364,6 +368,9 @@ static WebApplication BuildApplication(DevProxyConfigOptions options)
     var builder = WebApplication.CreateBuilder();
 
     _ = builder.Configuration.ConfigureDevProxyConfig(options);
+    environment.Apply(builder.Configuration, options.Env);
+    var changedProxyVariables = proxyEnvironment.GetChangedVariables();
+    _ = Announcement.ShowOnceAsync();
     _ = builder.Logging.ConfigureDevProxyLogging(builder.Configuration, options);
     var allowedOrigins = ApiSecurity.GetAllowedOrigins(builder.Configuration);
     _ = builder.Services.ConfigureDevProxyServices(builder.Configuration, options, allowedOrigins);
@@ -383,6 +390,13 @@ static WebApplication BuildApplication(DevProxyConfigOptions options)
 
     var app = builder.Build();
 
+    if (changedProxyVariables.Length > 0)
+    {
+        app.Logger.LogWarning(
+            "Proxy-routing environment variables changed ({EnvironmentVariables}). HTTP proxy settings are cached and cannot be refreshed by hot reload. Stop Dev Proxy and start it again to apply these changes.",
+            string.Join(", ", changedProxyVariables));
+    }
+
     _ = app.Use((context, next) => ApiSecurity.CheckOriginAsync(context, next, allowedOrigins));
     _ = app.UseCors();
     _ = app.Use(ApiSecurity.AuthenticateAsync);
@@ -391,9 +405,11 @@ static WebApplication BuildApplication(DevProxyConfigOptions options)
     return app;
 }
 
-static async Task<int> RunProxyAsync(string[] args, DevProxyConfigOptions options)
+static async Task<int> RunProxyAsync(string[] args, DevProxyConfigOptions options, HttpProxyEnvironment proxyEnvironment)
 {
-    var app = BuildApplication(options);
+    // Keep overrides through host shutdown, but restore inherited values before a hot reload.
+    using var environment = new ProcessEnvironment();
+    var app = BuildApplication(options, environment, proxyEnvironment);
     try
     {
         var devProxyCommand = app.Services.GetRequiredService<DevProxyCommand>();
@@ -405,12 +421,11 @@ static async Task<int> RunProxyAsync(string[] args, DevProxyConfigOptions option
     }
 }
 
-_ = Announcement.ShowAsync();
-
 // Handle 'config validate' early to allow validation of broken configs
 // without requiring the full DI container to be built
 if (DevProxyCommand.IsConfigValidateCommand)
 {
+    _ = Announcement.ShowOnceAsync();
     var validateExitCode = await ConfigCommand.RunValidateStandaloneAsync(args);
     Environment.Exit(validateExitCode);
     return;
@@ -421,6 +436,7 @@ options.ParseOptions(args);
 
 int exitCode;
 bool shouldRestart;
+var proxyEnvironment = new HttpProxyEnvironment();
 do
 {
     try
@@ -430,7 +446,7 @@ do
         // RunProxyAsync only returns after the host has fully stopped, which
         // means the proxy engine's shutdown (including system proxy
         // deregistration) has completed — so it's safe to start a new instance.
-        exitCode = await RunProxyAsync(args, options);
+        exitCode = await RunProxyAsync(args, options, proxyEnvironment);
 
         shouldRestart = ConfigFileWatcher.IsRestarting;
     }

@@ -55,9 +55,11 @@ public class MockResponsePlugin(
     private const string _mocksFileOptionName = "--mocks-file";
 
     private readonly IProxyConfiguration _proxyConfiguration = proxyConfiguration;
-    // tracks the number of times a mock has been applied
+    // tracks the number of intercepted requests matching each effective matcher
     // used in combination with mocks that have an Nth property
-    private readonly ConcurrentDictionary<string, int> _appliedMocks = [];
+    private readonly ConcurrentDictionary<MockRequestKey, int> _requestCounts = [];
+
+    private readonly record struct MockRequestKey(string Method, string Url, string? BodyFragment);
 
     private MockResponsesLoader? _loader;
     private Argument<IEnumerable<string>>? _httpResponseFilesArgument;
@@ -292,58 +294,57 @@ public class MockResponsePlugin(
             return null;
         }
 
-        var mockResponse = Configuration.Mocks.FirstOrDefault(mockResponse =>
+        var matchingMocks = Configuration.Mocks
+            .Where(mockResponse => MatchesRequest(mockResponse, request))
+            .ToList();
+
+        // count the intercepted request once for each effective matcher,
+        // regardless of whether a mock is eventually applied, so that
+        // mocks with an Nth property fire on the nth matching request
+        var requestCounts = new Dictionary<MockRequestKey, int>();
+        foreach (var key in matchingMocks.Select(GetMockKey).Distinct())
         {
-            if (mockResponse.Request is null)
-            {
-                return false;
-            }
-
-            if (mockResponse.Request.Method != request.Method)
-            {
-                return false;
-            }
-
-            if (string.Equals(mockResponse.Request.Url, request.Url, StringComparison.OrdinalIgnoreCase) &&
-                HasMatchingBody(mockResponse, request) &&
-                IsNthRequest(mockResponse))
-            {
-                return true;
-            }
-
-            // check if the URL contains a wildcard
-            // if it doesn't, it's not a match for the current request for sure
-            if (!mockResponse.Request.Url.Contains('*', StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            // turn mock URL with wildcard into a regex and match against the request URL
-            return Regex.IsMatch(request.Url, ProxyUtils.PatternToRegex(mockResponse.Request.Url), RegexOptions.IgnoreCase) &&
-                HasMatchingBody(mockResponse, request) &&
-                IsNthRequest(mockResponse);
-        });
-
-        if (mockResponse is not null && mockResponse.Request is not null)
-        {
-            _ = _appliedMocks.AddOrUpdate(mockResponse.Request.Url, 1, (_, value) => ++value);
+            requestCounts[key] = _requestCounts.AddOrUpdate(key, 1, (_, value) => value + 1);
         }
 
-        return mockResponse;
+        return matchingMocks.FirstOrDefault(mockResponse =>
+            mockResponse.Request!.Nth is null ||
+            mockResponse.Request.Nth == requestCounts[GetMockKey(mockResponse)]);
     }
 
-    private bool IsNthRequest(MockResponse mockResponse)
+    private static MockRequestKey GetMockKey(MockResponse mockResponse)
     {
-        if (mockResponse.Request?.Nth is null)
+        var request = mockResponse.Request!;
+        return new(request.Method, request.Url, request.Method == "GET" ? null : request.BodyFragment);
+    }
+
+    private static bool MatchesRequest(MockResponse mockResponse, IHttpRequest request)
+    {
+        if (mockResponse.Request is null)
         {
-            // mock doesn't define an Nth property so it always qualifies
-            return true;
+            return false;
         }
 
-        _ = _appliedMocks.TryGetValue(mockResponse.Request.Url, out var nth);
-        nth++;
+        if (mockResponse.Request.Method != request.Method)
+        {
+            return false;
+        }
 
-        return mockResponse.Request.Nth == nth;
+        if (string.Equals(mockResponse.Request.Url, request.Url, StringComparison.OrdinalIgnoreCase))
+        {
+            return HasMatchingBody(mockResponse, request);
+        }
+
+        // check if the URL contains a wildcard
+        // if it doesn't, it's not a match for the current request for sure
+        if (!mockResponse.Request.Url.Contains('*', StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        // turn mock URL with wildcard into a regex and match against the request URL
+        return Regex.IsMatch(request.Url, ProxyUtils.PatternToRegex(mockResponse.Request.Url), RegexOptions.IgnoreCase) &&
+            HasMatchingBody(mockResponse, request);
     }
 
     private void ProcessMockResponseInternal(ProxyRequestArgs e, MockResponse matchingResponse)
@@ -380,16 +381,14 @@ public class MockResponsePlugin(
 
         if (matchingResponse.Response?.Body is not null)
         {
-            var bodyString = JsonSerializer.Serialize(matchingResponse.Response.Body, ProxyUtils.JsonSerializerOptions) as string;
-            // we get a JSON string so need to start with the opening quote
-            if (bodyString?.StartsWith("\"@", StringComparison.OrdinalIgnoreCase) ?? false)
+            string bodyString = ProxyUtils.SerializeBody(matchingResponse.Response.Body);
+            if (bodyString.StartsWith('@'))
             {
                 // we've got a mock body starting with @-token which means we're sending
                 // a response from a file on disk
                 // if we can read the file, we can immediately send the response and
                 // skip the rest of the logic in this method
-                // remove the surrounding quotes and the @-token
-                var filePath = Path.Combine(Path.GetDirectoryName(Configuration.MocksFile) ?? "", ProxyUtils.ReplacePathTokens(bodyString.Trim('"')[1..]));
+                var filePath = Path.Combine(Path.GetDirectoryName(Configuration.MocksFile) ?? "", ProxyUtils.ReplacePathTokens(bodyString[1..]));
                 if (!File.Exists(filePath))
                 {
 
@@ -426,7 +425,7 @@ public class MockResponsePlugin(
         Logger.LogRequest($"{matchingResponse.Response?.StatusCode ?? 200} {matchingResponse.Request?.Url}", MessageType.Mocked, new LoggingContext(e.ProxySession));
     }
 
-    private async Task GenerateMocksFromHttpResponsesAsync(ParseResult parseResult)
+    private async Task<int> GenerateMocksFromHttpResponsesAsync(ParseResult parseResult)
     {
         Logger.LogTrace("{Method} called", nameof(GenerateMocksFromHttpResponsesAsync));
 
@@ -443,14 +442,14 @@ public class MockResponsePlugin(
         if (string.IsNullOrEmpty(outputFilePath))
         {
             Logger.LogError("No output file path provided for mock responses.");
-            return;
+            return 1;
         }
 
         var httpResponseFiles = parseResult.GetValue(_httpResponseFilesArgument);
         if (httpResponseFiles is null || !httpResponseFiles.Any())
         {
             Logger.LogError("No HTTP response files provided.");
-            return;
+            return 1;
         }
 
         var matcher = new Matcher();
@@ -460,7 +459,7 @@ public class MockResponsePlugin(
         if (!matchingFiles.Any())
         {
             Logger.LogError("No matching HTTP response files found.");
-            return;
+            return 1;
         }
 
         if (Logger.IsEnabled(LogLevel.Information))
@@ -473,16 +472,19 @@ public class MockResponsePlugin(
         }
 
         var mockResponses = new List<MockResponse>();
+        var hasErrors = false;
         foreach (var file in matchingFiles)
         {
             Logger.LogInformation("Processing file: {File}", Path.GetRelativePath(".", file));
             try
             {
-                mockResponses.Add(MockResponse.FromHttpResponse(await File.ReadAllTextAsync(file), Logger));
+                mockResponses.Add(MockResponse.FromHttpResponse(await File.ReadAllTextAsync(file), Logger, out var hasParseErrors));
+                hasErrors |= hasParseErrors;
             }
             catch (Exception ex)
             {
                 Logger.LogError(ex, "Error processing file {File}", file);
+                hasErrors = true;
                 continue;
             }
         }
@@ -499,6 +501,7 @@ public class MockResponsePlugin(
         Logger.LogInformation("Generated mock responses saved to {OutputFile}", outputFilePath);
 
         Logger.LogTrace("Left {Method}", nameof(GenerateMocksFromHttpResponsesAsync));
+        return hasErrors ? 1 : 0;
     }
 
     private static bool HasMatchingBody(MockResponse mockResponse, IHttpRequest request)

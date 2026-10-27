@@ -5,6 +5,7 @@
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Commands;
 using DevProxy.Jwt;
+using DevProxy.Logging;
 using DevProxy.Proxy;
 using Microsoft.AspNetCore.Mvc;
 using System.ComponentModel.DataAnnotations;
@@ -190,17 +191,14 @@ public sealed class ProxyController(IProxyStateController proxyStateController, 
 
     private async Task StreamLogsAsync(string logFile, int initialLines, string? since, bool useJson, CancellationToken cancellationToken)
     {
-        // Write initial lines
-        var allLines = await ReadAllLinesAsync(logFile, cancellationToken);
-        var filteredLines = FilterLines(allLines, since).TakeLast(initialLines).ToList();
+        using var process = System.Diagnostics.Process.GetCurrentProcess();
+        using var reader = new LogFileReader(logFile, process.StartTime, LogSinceFilter.ParseSinceOption(since));
+        var filteredLines = (await reader.ReadLinesAsync(cancellationToken)).TakeLast(initialLines);
 
         foreach (var line in filteredLines)
         {
             await WriteSseEventAsync(line, useJson, cancellationToken);
         }
-
-        // Follow new lines
-        var lastPosition = new FileInfo(logFile).Length;
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -208,19 +206,9 @@ public sealed class ProxyController(IProxyStateController proxyStateController, 
 
             try
             {
-                using var fs = new FileStream(logFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                if (fs.Length > lastPosition)
+                foreach (var line in await reader.ReadLinesAsync(cancellationToken))
                 {
-                    _ = fs.Seek(lastPosition, SeekOrigin.Begin);
-                    using var reader = new StreamReader(fs);
-
-                    string? line;
-                    while ((line = await reader.ReadLineAsync(cancellationToken)) != null)
-                    {
-                        await WriteSseEventAsync(line, useJson, cancellationToken);
-                    }
-
-                    lastPosition = fs.Length;
+                    await WriteSseEventAsync(line, useJson, cancellationToken);
                 }
             }
             catch (IOException)
@@ -246,76 +234,21 @@ public sealed class ProxyController(IProxyStateController proxyStateController, 
         await Response.Body.FlushAsync(cancellationToken);
     }
 
-    private static IEnumerable<string> FilterLines(IList<string> lines, string? since)
+    private static IEnumerable<string> FilterLines(List<string> lines, string? since)
     {
         if (string.IsNullOrEmpty(since))
         {
             return lines;
         }
 
-        var sinceTime = ParseSinceOption(since);
+        var sinceTime = LogSinceFilter.ParseSinceOption(since);
         if (sinceTime == null)
         {
             return lines;
         }
 
-        return lines.Where(line => LineMatchesSince(line, sinceTime.Value));
-    }
-
-    private static DateTime? ParseSinceOption(string? since)
-    {
-        if (string.IsNullOrEmpty(since))
-        {
-            return null;
-        }
-
-        // Try parsing as a duration (e.g., "5m", "1h", "30s")
-        if (since.Length >= 2)
-        {
-            var unit = since[^1];
-            if (int.TryParse(since[..^1], out var value))
-            {
-                return unit switch
-                {
-                    's' => DateTime.Now.AddSeconds(-value),
-                    'm' => DateTime.Now.AddMinutes(-value),
-                    'h' => DateTime.Now.AddHours(-value),
-                    'd' => DateTime.Now.AddDays(-value),
-                    _ => null
-                };
-            }
-        }
-
-        // Try parsing as a datetime
-        if (DateTime.TryParse(since, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var dateTime))
-        {
-            return dateTime;
-        }
-
-        return null;
-    }
-
-    private static bool LineMatchesSince(string line, DateTime sinceTime)
-    {
-        // Parse timestamp from line format: [HH:mm:ss.fff] ...
-        if (line.Length < 14 || line[0] != '[' || line[13] != ']')
-        {
-            return true;
-        }
-
-        var timestampStr = line[1..13];
-        if (TimeSpan.TryParseExact(timestampStr, "hh\\:mm\\:ss\\.fff", System.Globalization.CultureInfo.InvariantCulture, out var timeOfDay))
-        {
-            var lineTime = DateTime.Today.Add(timeOfDay);
-            if (lineTime > DateTime.Now)
-            {
-                lineTime = lineTime.AddDays(-1);
-            }
-
-            return lineTime >= sinceTime;
-        }
-
-        return true;
+        using var process = System.Diagnostics.Process.GetCurrentProcess();
+        return LogSinceFilter.Filter(lines, process.StartTime, sinceTime.Value);
     }
 
     private static LogEntryDto ParseLogLine(string line)

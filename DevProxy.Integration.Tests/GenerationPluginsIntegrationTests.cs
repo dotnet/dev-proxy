@@ -90,6 +90,113 @@ public sealed class GenerationPluginsIntegrationTests
     }
 
     [Fact]
+    public async Task HarGenerator_RedactsCookiesAndSensitiveQueryParameters()
+    {
+        var plugin = new HarGeneratorPlugin(
+            TestDefaults.HttpClient,
+            NullLogger<HarGeneratorPlugin>.Instance,
+            Watch,
+            new TestProxyConfiguration(),
+            PluginConfig.Empty());
+
+        var entry = await GenerateSingleHarEntryAsync(plugin, CookieAndSecretsExchange());
+        var request = entry.GetProperty("request");
+        var response = entry.GetProperty("response");
+
+        Assert.All(request.GetProperty("cookies").EnumerateArray(), c => Assert.Equal("REDACTED", c.GetProperty("value").GetString()));
+        Assert.All(response.GetProperty("cookies").EnumerateArray(), c => Assert.Equal("REDACTED", c.GetProperty("value").GetString()));
+        Assert.Equal("session", response.GetProperty("cookies")[0].GetProperty("name").GetString());
+
+        var url = request.GetProperty("url").GetString()!;
+        Assert.DoesNotContain("s3cr3t", url, StringComparison.Ordinal);
+        Assert.DoesNotContain("abc123", url, StringComparison.Ordinal);
+        Assert.Contains("access_token=REDACTED", url, StringComparison.Ordinal);
+        Assert.Contains("sig=REDACTED", url, StringComparison.Ordinal);
+        Assert.Contains("page=2", url, StringComparison.Ordinal);
+
+        var query = request.GetProperty("queryString").EnumerateArray()
+            .ToDictionary(q => q.GetProperty("name").GetString()!, q => q.GetProperty("value").GetString());
+        Assert.Equal("REDACTED", query["access_token"]);
+        Assert.Equal("REDACTED", query["sig"]);
+        Assert.Equal("2", query["page"]);
+    }
+
+    [Theory]
+    [InlineData("?page")]
+    [InlineData("??page")]
+    [InlineData("?access_token")]
+    public async Task HarGenerator_PreservesParameterLeadingQuestionMarks(string parameterName)
+    {
+        var plugin = new HarGeneratorPlugin(
+            TestDefaults.HttpClient,
+            NullLogger<HarGeneratorPlugin>.Instance,
+            Watch,
+            new TestProxyConfiguration(),
+            PluginConfig.Empty());
+
+        var log = TestExchange
+            .Request("GET", $"https://api.contoso.com/users?{parameterName}=2&access_token=secret")
+            .WithResponse(HttpStatusCode.OK)
+            .AsRequestLog(MessageType.InterceptedResponse);
+
+        var entry = await GenerateSingleHarEntryAsync(plugin, log);
+        var request = entry.GetProperty("request");
+
+        Assert.Equal($"https://api.contoso.com/users?{parameterName}=2&access_token=REDACTED",
+            request.GetProperty("url").GetString());
+        var query = request.GetProperty("queryString").EnumerateArray()
+            .ToDictionary(q => q.GetProperty("name").GetString()!, q => q.GetProperty("value").GetString());
+        Assert.Equal("2", query[parameterName]);
+        Assert.Equal("REDACTED", query["access_token"]);
+    }
+
+    [Fact]
+    public async Task HarGenerator_KeepsCookiesAndQueryParametersWhenIncludingSensitiveInformation()
+    {
+        var plugin = new HarGeneratorPlugin(
+            TestDefaults.HttpClient,
+            NullLogger<HarGeneratorPlugin>.Instance,
+            Watch,
+            new TestProxyConfiguration(),
+            PluginConfig.FromJson("""{ "includeSensitiveInformation": true }"""));
+
+        var entry = await GenerateSingleHarEntryAsync(plugin, CookieAndSecretsExchange());
+        var request = entry.GetProperty("request");
+        var response = entry.GetProperty("response");
+
+        Assert.Equal("abc123", request.GetProperty("cookies")[0].GetProperty("value").GetString());
+        Assert.Equal("xyz789", response.GetProperty("cookies")[0].GetProperty("value").GetString());
+        Assert.Contains("access_token=s3cr3t", request.GetProperty("url").GetString(), StringComparison.Ordinal);
+    }
+
+    private static RequestLog CookieAndSecretsExchange() =>
+        TestExchange
+            .Request(
+                "GET",
+                "https://api.contoso.com/users?access_token=s3cr3t&page=2&sig=s3cr3t",
+                headers: [("Cookie", "sid=abc123; theme=dark")])
+            .WithResponse(
+                HttpStatusCode.OK,
+                headers: [("Content-Type", "application/json"), ("Set-Cookie", "session=xyz789; Path=/; HttpOnly")],
+                body: "[]")
+            .AsRequestLog(MessageType.InterceptedResponse);
+
+    private static async Task<JsonElement> GenerateSingleHarEntryAsync(HarGeneratorPlugin plugin, RequestLog log)
+    {
+        var dir = await InTempCwdAsync(() => plugin.AfterRecordingStopAsync(Recording([log]), CancellationToken.None));
+        try
+        {
+            var har = dir.GetFiles("devproxy-*.har").Single();
+            using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(har.FullName));
+            return doc.RootElement.GetProperty("log").GetProperty("entries").EnumerateArray().Single().Clone();
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task HarGenerator_WritesWebSocketMessages()
     {
         var plugin = new HarGeneratorPlugin(

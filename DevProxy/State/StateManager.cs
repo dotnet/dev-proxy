@@ -21,18 +21,22 @@ internal static class StateManager
     private const string LogsFolderName = "logs";
     private const string ProxyConfigurationFolderName = "dev-proxy";
 
+    private static readonly string _configFolder = ResolveConfigFolder();
+
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         WriteIndented = true
     };
 
     /// <summary>
-    /// Gets the path to the Dev Proxy configuration folder.
+    /// Gets the path to the Dev Proxy configuration folder, retained from the inherited environment.
     /// On macOS: ~/Library/Application Support/dev-proxy/
     /// On Linux: ~/.config/dev-proxy/ (or $XDG_CONFIG_HOME/dev-proxy/)
     /// On Windows: %LocalAppData%\dev-proxy\
     /// </summary>
-    public static string GetConfigFolder()
+    public static string GetConfigFolder() => _configFolder;
+
+    private static string ResolveConfigFolder()
     {
         string basePath;
 
