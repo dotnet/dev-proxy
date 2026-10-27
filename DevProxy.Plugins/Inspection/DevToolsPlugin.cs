@@ -946,18 +946,19 @@ public sealed class DevToolsPlugin(
         var token = Guid.NewGuid().ToString();
         var (listenerHost, connectHost) = GetWebSocketHosts(ProxyConfiguration.IPAddress);
 
-        _webSocket = new(listenerHost, port, token, Logger);
-        _webSocket.MessageReceived += SocketMessageReceived;
-        _webSocket.ClientConnected += OnWebSocketClientConnected;
-        try
+        _webSocket = TryStartWebSocketServer(listenerHost, port, token, out var startException);
+        if (_webSocket is null && listenerHost == "*")
         {
-            _webSocket.Start();
+            // on Windows, listening on all interfaces requires admin rights
+            // or a URL ACL; fall back to loopback so the plugin keeps working
+            Logger.LogWarning(startException, "{Plugin} couldn't listen for DevTools connections on all interfaces. Listening on 127.0.0.1 instead, so DevTools can only connect from this machine", Name);
+            listenerHost = "127.0.0.1";
+            _webSocket = TryStartWebSocketServer(listenerHost, port, token, out startException);
         }
-        catch (Exception ex) when (ex is HttpListenerException or SocketException)
+
+        if (_webSocket is null)
         {
-            Logger.LogError(ex, "Error starting {Plugin}. Couldn't listen for DevTools connections on {Host}:{Port}", Name, listenerHost, port);
-            _webSocket.Dispose();
-            _webSocket = null;
+            Logger.LogError(startException, "Error starting {Plugin}. Couldn't listen for DevTools connections on {Host}:{Port}", Name, listenerHost, port);
             return;
         }
 
@@ -1111,6 +1112,26 @@ public sealed class DevToolsPlugin(
     /// Gets the host to listen on for DevTools connections, matching the
     /// proxy's IP address, and the host DevTools should connect to.
     /// </summary>
+    private WebSocketServer? TryStartWebSocketServer(string host, int port, string token, out Exception? exception)
+    {
+        var server = new WebSocketServer(host, port, token, Logger);
+        try
+        {
+            server.Start();
+        }
+        catch (Exception ex) when (ex is HttpListenerException or SocketException)
+        {
+            server.Dispose();
+            exception = ex;
+            return null;
+        }
+
+        server.MessageReceived += SocketMessageReceived;
+        server.ClientConnected += OnWebSocketClientConnected;
+        exception = null;
+        return server;
+    }
+
     internal static (string ListenerHost, string ConnectHost) GetWebSocketHosts(string? ipAddress)
     {
         if (string.IsNullOrWhiteSpace(ipAddress))
