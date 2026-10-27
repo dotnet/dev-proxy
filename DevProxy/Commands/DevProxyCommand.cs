@@ -239,7 +239,7 @@ sealed class DevProxyCommand : RootCommand
         IServiceProvider serviceProvider,
         UpdateNotification updateNotification,
         DevProxyConfigOptions options,
-        ILogger<DevProxyCommand> logger) : base($"Start Dev Proxy\n\nAPI:\n  Dev Proxy exposes an authenticated REST API for runtime management.\n  Use --api-port (default: {proxyConfiguration.ApiPort}) and --api-ip-address (default: 127.0.0.1).\n  The API bind address is independent of --ip-address.\n  Run 'devproxy status' for the API URL and token, or 'devproxy api show' for endpoints.")
+        ILogger<DevProxyCommand> logger) : base($"Start Dev Proxy\n\nAPI:\n  Dev Proxy exposes an authenticated REST API for runtime management.\n  Use --api-port (default: {proxyConfiguration.ApiPort}) and --api-ip-address (default: 127.0.0.1).\n  The API bind address is independent of --ip-address.\n  Run 'devproxy status' for the API URL and token, or 'devproxy api show' for endpoints.\n  Set the DEV_PROXY_API_TOKEN environment variable (at least 32 characters) to use a fixed API token instead of a generated one.")
     {
         _serviceProvider = serviceProvider;
         _plugins = plugins;

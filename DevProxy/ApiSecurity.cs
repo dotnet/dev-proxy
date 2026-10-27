@@ -7,9 +7,54 @@ namespace DevProxy;
 
 internal static class ApiSecurity
 {
-    private static readonly string Token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-    private static readonly byte[] TokenBytes = Encoding.UTF8.GetBytes(Token);
+    internal const string TokenEnvironmentVariable = "DEV_PROXY_API_TOKEN";
+    internal const int MinimumTokenLength = 32;
+
+    private static readonly Lazy<string> LazyToken = new(() =>
+        TryResolveToken(Environment.GetEnvironmentVariable(TokenEnvironmentVariable), out var token, out var error)
+            ? token
+            : throw new InvalidOperationException(error));
+    private static readonly Lazy<byte[]> LazyTokenBytes = new(() => Encoding.UTF8.GetBytes(Token));
+    private static string Token => LazyToken.Value;
+    private static byte[] TokenBytes => LazyTokenBytes.Value;
     private static bool _tokenDisplayed;
+
+    /// <summary>
+    /// Resolves the API token from the value of <c>DEV_PROXY_API_TOKEN</c>.
+    /// When the value is null or whitespace, a random token is generated.
+    /// </summary>
+    internal static bool TryResolveToken(string? environmentValue, out string token, out string? error)
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(environmentValue))
+        {
+            token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+            return true;
+        }
+
+        token = environmentValue.Trim();
+        if (token.Length < MinimumTokenLength)
+        {
+            error = $"{TokenEnvironmentVariable} must be at least {MinimumTokenLength} characters long.";
+            return false;
+        }
+
+        // RFC 6750 b64token characters, so the value can be sent as a Bearer credential
+        if (!token.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '.' or '_' or '~' or '+' or '/' or '=') ||
+            token.TrimEnd('=').Contains('=', StringComparison.Ordinal))
+        {
+            error = $"{TokenEnvironmentVariable} may contain only ASCII letters, digits, and the characters - . _ ~ + / (optionally followed by trailing = padding).";
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Validates <c>DEV_PROXY_API_TOKEN</c> so startup can fail with a clear error.
+    /// </summary>
+    public static bool TryValidateTokenEnvironment(out string? error) =>
+        TryResolveToken(Environment.GetEnvironmentVariable(TokenEnvironmentVariable), out _, out error);
 
     public static bool ShouldDisplayToken => Environment.GetEnvironmentVariable("CI") is null;
     public static string? DisplayToken => ShouldDisplayToken ? Token : null;

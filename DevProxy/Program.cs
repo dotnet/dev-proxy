@@ -17,6 +17,17 @@ using System.Text.Json.Serialization;
 // Keep management files discoverable even when env overrides change user data paths.
 _ = StateManager.GetConfigFolder();
 
+// Fail fast on an invalid API token override before starting the proxy
+if ((DevProxyCommand.IsRootCommand || DevProxyCommand.IsStdioCommand) &&
+    !ApiSecurity.TryValidateTokenEnvironment(out var tokenError))
+{
+    await Console.Error.WriteLineAsync(IsJsonOutputRequested(args)
+        ? FormatJsonLogEntry("error", tokenError!)
+        : tokenError);
+    Environment.Exit(1);
+    return;
+}
+
 // Handle detached mode - spawn a child process and exit
 // Only applies to root command (starting the proxy), not subcommands
 if (DevProxyCommand.IsRootCommand &&
