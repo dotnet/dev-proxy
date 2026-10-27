@@ -57,7 +57,7 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
 
     // The daemon validates the effective token too, but its output goes to a log file,
     // so check here to report an invalid --env or inherited token directly.
-    if (DevProxyCommand.ShouldPreflightApiToken(args))
+    if (!DevProxyCommand.HasGlobalOptions)
     {
         var tokenOptions = new DevProxyConfigOptions();
         tokenOptions.ParseOptions(args);

@@ -53,8 +53,6 @@ sealed class DevProxyCommand : RootCommand
 
     private static readonly string[] globalOptions = ["--version"];
     private static readonly string[] helpOptions = ["--help", "-h", "/h", "-?", "/?"];
-    private static readonly string[] builtInCommandNames =
-        ["api", "cert", "config", "jwt", "logs", "msgraphdb", "outdated", "status", "stdio", "stop"];
 
     private static bool _hasGlobalOptionsResolved;
     private static bool _isStdioCommandResolved;
@@ -149,14 +147,6 @@ sealed class DevProxyCommand : RootCommand
             return field;
         }
     }
-
-    /// <summary>
-    /// Determines whether the detached parent should validate the API token before
-    /// spawning the daemon. Help, version, and subcommands (including ones after
-    /// leading options) don't start the API, so they're skipped.
-    /// </summary>
-    internal static bool ShouldPreflightApiToken(IEnumerable<string> args) =>
-        !args.Any(arg => globalOptions.Contains(arg) || helpOptions.Contains(arg) || builtInCommandNames.Contains(arg));
 
     /// <summary>
     /// Determines if the root command (proxy itself) is being invoked.

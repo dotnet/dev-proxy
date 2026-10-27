@@ -109,26 +109,4 @@ public class ApiSecurityTokenTests
         Assert.Equal(ValidToken, ApiSecurity.GetEffectiveTokenValue(options.Env, ValidToken));
         Assert.Null(ApiSecurity.GetEffectiveTokenValue(null, null));
     }
-
-    [Theory]
-    [InlineData("--detach")]
-    [InlineData("-d", "--port", "0", "--api-port", "0")]
-    [InlineData("--detach", "--env", "DEV_PROXY_API_TOKEN=short")]
-    public void ShouldPreflightApiToken_ProxyStart_ReturnsTrue(params string[] args)
-    {
-        Assert.True(DevProxyCommand.ShouldPreflightApiToken(args));
-    }
-
-    [Theory]
-    [InlineData("--detach", "--help")]
-    [InlineData("-d", "-h")]
-    [InlineData("--detach", "--version")]
-    [InlineData("--output", "json", "status", "--detach")]
-    [InlineData("--no-color", "stop", "-d")]
-    [InlineData("--detach", "api", "token")]
-    [InlineData("-d", "stdio", "node", "app.js")]
-    public void ShouldPreflightApiToken_HelpVersionOrSubcommand_ReturnsFalse(params string[] args)
-    {
-        Assert.False(DevProxyCommand.ShouldPreflightApiToken(args));
-    }
 }
