@@ -21,7 +21,7 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.13">
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
@@ -37,11 +37,11 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.OpenApi" Version="3.10.2">
+    <PackageReference Include="Microsoft.OpenApi" Version="3.11.0">
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.OpenApi.YamlReader" Version="3.10.2">
+    <PackageReference Include="Microsoft.OpenApi.YamlReader" Version="3.11.0">
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
