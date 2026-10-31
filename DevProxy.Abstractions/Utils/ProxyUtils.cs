@@ -34,7 +34,7 @@ public static class ProxyUtils
     // all alpha must include 2 to allow for oauth2PermissionScopes
     private static readonly Regex allAlphaRegex = new("^[a-z2]+$", RegexOptions.IgnoreCase);
     private static readonly Regex deprecationRegex = new("^[a-z]+_v2$", RegexOptions.IgnoreCase);
-    private static readonly Regex functionCallRegex = new(@"^[a-z]+\(.*\)$", RegexOptions.IgnoreCase);
+    private static readonly Regex functionCallRegex = new(@"^[a-z][a-z0-9_.]*\(.*\)$", RegexOptions.IgnoreCase);
 
     private static Assembly? _assembly;
     private static string _productVersion = string.Empty;
@@ -264,12 +264,12 @@ public static class ProxyUtils
             });
             // Split requestUrl into segments that can be sanitized individually
             var urlSegments = resourceUrl.Split('/');
+            var sanitizedSegments = new string[urlSegments.Length];
             for (var i = 0; i < urlSegments.Length; i++)
             {
-                var segment = urlSegments[i];
-                var sanitizedSegment = SanitizePathSegment(i < 1 ? "" : urlSegments[i - 1], segment);
-                resourceUrl = resourceUrl.Replace(segment, sanitizedSegment, StringComparison.OrdinalIgnoreCase);
+                sanitizedSegments[i] = SanitizePathSegment(i < 1 ? "" : urlSegments[i - 1], urlSegments[i]);
             }
+            resourceUrl = string.Join('/', sanitizedSegments);
         }
         return $"{uri.GetLeftPart(UriPartial.Authority)}/{parsedSample.QueryVersion}/{resourceUrl}{queryString}";
     }
@@ -680,25 +680,25 @@ public static class ProxyUtils
         }
 
         // Check if segment is in this form: users('<some-id>|<UPN>') and transform to users(<value>)
+        // or getOffice365ActiveUserDetail(period='D7') and transform to getOffice365ActiveUserDetail(period=<value>)
         if (IsFunctionCall(segment))
         {
-            var openingBracketIndex = segment.IndexOf('(', StringComparison.OrdinalIgnoreCase);
-            var textWithinBrackets = segment.Substring(
-                openingBracketIndex + 1,
-                segment.Length - 2
-            );
-            var sanitizedText = string.Join(',', textWithinBrackets
-                .Split(',')
-                .Select(text =>
-                {
-                    if (text.Contains('=', StringComparison.OrdinalIgnoreCase))
+            var openingBracketIndex = segment.IndexOf('(', StringComparison.Ordinal);
+            var textWithinBrackets = segment[(openingBracketIndex + 1)..^1];
+            var sanitizedText = string.IsNullOrWhiteSpace(textWithinBrackets)
+                ? string.Empty
+                : string.Join(',', SplitOutsideQuotes(textWithinBrackets, ',')
+                    .Select(text =>
                     {
-                        var key = text.Split('=')[0];
-                        key = !IsAllAlpha(key) ? "<key>" : key;
-                        return $"{key}=<value>";
-                    }
-                    return "<value>";
-                }));
+                        var keyValue = SplitOutsideQuotes(text, '=');
+                        if (keyValue.Count > 1)
+                        {
+                            var key = keyValue[0].Trim();
+                            key = !IsAllAlpha(key) ? "<key>" : key;
+                            return $"{key}=<value>";
+                        }
+                        return "<value>";
+                    }));
 
             return $"{segment[..openingBracketIndex]}({sanitizedText})";
         }
@@ -730,6 +730,29 @@ public static class ProxyUtils
     private static bool IsDeprecation(string value) => deprecationRegex.IsMatch(value);
 
     private static bool IsFunctionCall(string value) => functionCallRegex.IsMatch(value);
+
+    // Splits on the separator, ignoring separators inside OData single-quoted
+    // string literals (where a quote is escaped by doubling it)
+    private static List<string> SplitOutsideQuotes(string value, char separator)
+    {
+        var parts = new List<string>();
+        var inQuotes = false;
+        var start = 0;
+        for (var i = 0; i < value.Length; i++)
+        {
+            if (value[i] == '\'')
+            {
+                inQuotes = !inQuotes;
+            }
+            else if (value[i] == separator && !inQuotes)
+            {
+                parts.Add(value[start..i]);
+                start = i + 1;
+            }
+        }
+        parts.Add(value[start..]);
+        return parts;
+    }
 
     private static bool IsPlaceHolderSegment(string segment)
     {

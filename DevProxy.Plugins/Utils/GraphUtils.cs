@@ -57,7 +57,9 @@ sealed class GraphUtils(
 
     internal async Task<IEnumerable<string>> UpdateUserScopesAsync(IEnumerable<string> minimalScopes, IEnumerable<MethodAndUrl> endpoints, GraphPermissionsType permissionsType)
     {
-        var userEndpoints = endpoints.Where(e => e.Url.Contains("/users/{", StringComparison.OrdinalIgnoreCase));
+        var userEndpoints = endpoints.Where(e =>
+            e.Url.Contains("/users/{", StringComparison.OrdinalIgnoreCase) ||
+            e.Url.Contains("/users(", StringComparison.OrdinalIgnoreCase));
         if (!userEndpoints.Any())
         {
             return minimalScopes;
