@@ -15,6 +15,10 @@ public abstract class BaseLanguageModelClient(LanguageModelConfiguration configu
     protected ILogger Logger { get; } = logger;
 
     private bool? _lmAvailable;
+    private readonly Lazy<string?> _apiKey = new(() => ResolveApiKey(configuration, logger));
+
+    // Never log this value
+    protected string? ApiKey => _apiKey.Value;
 
     private readonly ConcurrentDictionary<string, (IEnumerable<ILanguageModelChatCompletionMessage>?, CompletionOptions?)> _promptCache = new();
 
@@ -128,6 +132,65 @@ public abstract class BaseLanguageModelClient(LanguageModelConfiguration configu
         }
 
         return (messages, options);
+    }
+
+    protected string? RedactApiKey(string? value)
+    {
+        if (string.IsNullOrEmpty(value) || string.IsNullOrEmpty(ApiKey))
+        {
+            return value;
+        }
+
+        return value.Replace(ApiKey, "***", StringComparison.Ordinal);
+    }
+
+    protected void AddAuthenticationHeader(HttpRequestMessage request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (string.IsNullOrEmpty(ApiKey))
+        {
+            return;
+        }
+
+        if (Configuration.Client == LanguageModelClient.AzureOpenAI)
+        {
+            _ = request.Headers.TryAddWithoutValidation("api-key", ApiKey);
+        }
+        else
+        {
+            request.Headers.Authorization = new("Bearer", ApiKey);
+        }
+    }
+
+    private static string? ResolveApiKey(LanguageModelConfiguration? configuration, ILogger logger)
+    {
+        var apiKey = configuration?.ApiKey;
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return null;
+        }
+
+        if (!apiKey.StartsWith(LanguageModelConfiguration.EnvVarPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return apiKey;
+        }
+
+        var envVarName = apiKey[LanguageModelConfiguration.EnvVarPrefix.Length..].Trim();
+        if (string.IsNullOrEmpty(envVarName))
+        {
+            logger.LogWarning("Language model API key is set to {Prefix} but no environment variable name was specified", LanguageModelConfiguration.EnvVarPrefix);
+            return null;
+        }
+
+        var value = Environment.GetEnvironmentVariable(envVarName);
+        if (string.IsNullOrEmpty(value))
+        {
+            logger.LogWarning("Environment variable {EnvVarName} for the language model API key is not set", envVarName);
+            return null;
+        }
+
+        return value;
     }
 
     private static string GetPromptCacheKey(string promptFileName, Dictionary<string, object> parameters)

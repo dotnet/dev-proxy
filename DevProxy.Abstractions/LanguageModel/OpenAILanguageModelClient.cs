@@ -6,7 +6,9 @@ using DevProxy.Abstractions.Prompty;
 using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
+using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 
 namespace DevProxy.Abstractions.LanguageModel;
 
@@ -28,7 +30,7 @@ public sealed class OpenAILanguageModelClient(
         }
         if (response.ErrorMessage is not null)
         {
-            _logger.LogError("Error: {Error}", response.ErrorMessage);
+            _logger.LogError("Error: {Error}", RedactApiKey(response.ErrorMessage));
             return null;
         }
         var openAIResponse = (OpenAIChatCompletionResponse)response;
@@ -76,7 +78,7 @@ public sealed class OpenAILanguageModelClient(
         }
         if (response.Error is not null)
         {
-            _logger.LogError("Error: {Error}. Code: {Code}", response.Error.Message, response.Error.Code);
+            _logger.LogError("Error: {Error}. Code: {Code}", RedactApiKey(response.Error.Message), response.Error.Code);
             return null;
         }
         else
@@ -120,18 +122,37 @@ public sealed class OpenAILanguageModelClient(
             return false;
         }
 
+        if (Configuration.Client == LanguageModelClient.AzureOpenAI && string.IsNullOrEmpty(ApiKey))
+        {
+            _logger.LogError("API key is not set. Azure OpenAI requires an API key. Language model will be disabled");
+            return false;
+        }
+
         _logger.LogDebug("Checking LM availability at {Url}...", Configuration.Url);
 
         try
         {
+            var modelsCheck = await CheckModelsEndpointAsync(cancellationToken);
+            if (modelsCheck.HasValue)
+            {
+                return modelsCheck.Value;
+            }
+
+            // Fall back to a completion request when /models isn't supported
+            // or doesn't list the configured model
             var testCompletion = await GenerateChatCompletionInternalAsync([new()
             {
                 Content = "Are you there? Reply with a yes or no.",
                 Role = "user"
             }], null, cancellationToken);
-            if (testCompletion?.ErrorMessage is not null)
+            if (testCompletion is null)
             {
-                _logger.LogError("Error: {Error}", testCompletion.ErrorMessage);
+                _logger.LogError("Language model at {Url} didn't return a valid completion. Language model will be disabled", Configuration.Url);
+                return false;
+            }
+            if (testCompletion.ErrorMessage is not null)
+            {
+                _logger.LogError("Error: {Error}", RedactApiKey(testCompletion.ErrorMessage));
                 return false;
             }
 
@@ -142,6 +163,90 @@ public sealed class OpenAILanguageModelClient(
             _logger.LogError(ex, "Couldn't reach language model at {Url}", Configuration.Url);
             return false;
         }
+    }
+
+    // Returns true/false when the /models endpoint gives a definitive answer,
+    // null when availability couldn't be determined this way
+    private async Task<bool?> CheckModelsEndpointAsync(CancellationToken cancellationToken)
+    {
+        var url = $"{Configuration.Url?.TrimEnd('/')}/models";
+        _logger.LogDebug("Checking available models at {Url}...", url);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        AddAuthenticationHeader(request);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(request, cancellationToken);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Couldn't reach language model at {Url}", Configuration.Url);
+            return false;
+        }
+
+        using (response)
+        {
+            _logger.LogDebug("Response: {Response}", response.StatusCode);
+
+            if (response.StatusCode is HttpStatusCode.Unauthorized)
+            {
+                _logger.LogError("Language model at {Url} rejected the request ({StatusCode}). Check the configured API key", Configuration.Url, (int)response.StatusCode);
+                return false;
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogDebug("Models endpoint returned {StatusCode}. Falling back to a completion request", (int)response.StatusCode);
+                return null;
+            }
+
+            // Azure OpenAI lists base models rather than deployments, so the
+            // configured deployment name can't be matched against the list
+            if (Configuration.Client == LanguageModelClient.AzureOpenAI)
+            {
+                return true;
+            }
+
+            try
+            {
+                using var json = await JsonDocument.ParseAsync(
+                    await response.Content.ReadAsStreamAsync(cancellationToken),
+                    cancellationToken: cancellationToken);
+                if (json.RootElement.ValueKind == JsonValueKind.Object &&
+                    json.RootElement.TryGetProperty("data", out var data) &&
+                    data.ValueKind == JsonValueKind.Array &&
+                    data.EnumerateArray().Any(m =>
+                        m.ValueKind == JsonValueKind.Object &&
+                        m.TryGetProperty("id", out var id) &&
+                        id.ValueKind == JsonValueKind.String &&
+                        IsConfiguredModel(id.GetString())))
+                {
+                    return true;
+                }
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogDebug(ex, "Couldn't parse models response");
+                return null;
+            }
+
+            _logger.LogDebug("Model {Model} not found in the models list. Falling back to a completion request", Configuration.Model);
+            return null;
+        }
+    }
+
+    private bool IsConfiguredModel(string? modelId)
+    {
+        if (string.IsNullOrEmpty(modelId))
+        {
+            return false;
+        }
+
+        return string.Equals(modelId, Configuration.Model, StringComparison.Ordinal) ||
+            // Ollama lists models with their tag, eg. llama3.2:latest
+            string.Equals(modelId, $"{Configuration.Model}:latest", StringComparison.Ordinal);
     }
 
     private async Task<OpenAIChatCompletionResponse?> GenerateChatCompletionInternalAsync(OpenAIChatCompletionMessage[] messages, CompletionOptions? options, CancellationToken cancellationToken = default)
@@ -164,13 +269,19 @@ public sealed class OpenAILanguageModelClient(
                 Temperature = options?.Temperature
             };
 
-            var response = await _httpClient.PostAsJsonAsync(url, payload, ProxyUtils.JsonSerializerOptions, cancellationToken);
+            using var request = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = JsonContent.Create(payload, options: ProxyUtils.JsonSerializerOptions)
+            };
+            AddAuthenticationHeader(request);
+
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
             _logger.LogDebug("Response: {Response}", response.StatusCode);
 
             if (!response.IsSuccessStatusCode)
             {
                 var errorResponse = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogDebug("LM error: {ErrorResponse}", errorResponse);
+                _logger.LogDebug("LM error: {ErrorResponse}", RedactApiKey(errorResponse));
                 return null;
             }
 

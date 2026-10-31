@@ -36,7 +36,7 @@ public sealed class OllamaLanguageModelClient(
 
         if (response.Error is not null)
         {
-            Logger.LogError("{Error}", response.Error);
+            Logger.LogError("{Error}", RedactApiKey(response.Error));
             return null;
         }
 
@@ -68,7 +68,7 @@ public sealed class OllamaLanguageModelClient(
         }
         if (response.Error is not null)
         {
-            Logger.LogError("{Error}", response.Error);
+            Logger.LogError("{Error}", RedactApiKey(response.Error));
             return null;
         }
         else
@@ -117,7 +117,7 @@ public sealed class OllamaLanguageModelClient(
             var testCompletion = await GenerateCompletionInternalAsync("Are you there? Reply with a yes or no.", null, cancellationToken);
             if (testCompletion?.Error is not null)
             {
-                Logger.LogError("Error: {Error}", testCompletion.Error);
+                Logger.LogError("Error: {Error}", RedactApiKey(testCompletion.Error));
                 return false;
             }
 
@@ -139,22 +139,25 @@ public sealed class OllamaLanguageModelClient(
             var url = $"{Configuration.Url?.TrimEnd('/')}/api/generate";
             Logger.LogDebug("Requesting completion. Prompt: {Prompt}", prompt);
 
-            var response = await _httpClient.PostAsJsonAsync(url,
-                new
+            using var request = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = JsonContent.Create(new
                 {
                     prompt,
                     model = Configuration.Model,
                     stream = false,
                     options
-                },
-                cancellationToken
-            );
+                })
+            };
+            AddAuthenticationHeader(request);
+
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
             Logger.LogDebug("Response status: {Response}", response.StatusCode);
 
             if (!response.IsSuccessStatusCode)
             {
                 var errorResponse = await response.Content.ReadAsStringAsync(cancellationToken);
-                Logger.LogDebug("LM error: {ErrorResponse}", errorResponse);
+                Logger.LogDebug("LM error: {ErrorResponse}", RedactApiKey(errorResponse));
                 return null;
             }
 
@@ -189,21 +192,25 @@ public sealed class OllamaLanguageModelClient(
                 Logger.LogDebug("Requesting chat completion. Message: {LastMessage}", messages.Last().Content);
             }
 
-            var response = await _httpClient.PostAsJsonAsync(url,
-                new
+            using var request = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = JsonContent.Create(new
                 {
                     messages,
                     model = Configuration.Model,
                     stream = false,
                     options
-                }
-            );
+                })
+            };
+            AddAuthenticationHeader(request);
+
+            using var response = await _httpClient.SendAsync(request);
             Logger.LogDebug("Response: {Response}", response.StatusCode);
 
             if (!response.IsSuccessStatusCode)
             {
                 var errorResponse = await response.Content.ReadAsStringAsync();
-                Logger.LogDebug("LM error: {ErrorResponse}", errorResponse);
+                Logger.LogDebug("LM error: {ErrorResponse}", RedactApiKey(errorResponse));
                 return null;
             }
 
