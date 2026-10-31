@@ -100,10 +100,17 @@ The first time Dev Proxy starts, it requires certificate trust and (on some plat
 2. When the certificate warning appears for "Dev Proxy CA", select "Yes" to install.
 3. When the Windows Firewall warning appears, select "Allow access".
 
-### Linux (Ubuntu)
+### Linux
 
-1. Run `devproxy` and press Enter.
-2. In a separate terminal, trust the certificate:
+Trust the certificate (requires sudo, so Dev Proxy doesn't do it automatically on first run):
+
+```bash
+devproxy cert ensure
+```
+
+This adds the certificate to the system certificate store on Debian/Ubuntu (`update-ca-certificates`), Fedora/RHEL and Arch (`update-ca-trust`). If `certutil` is installed (`libnss3-tools` on Debian/Ubuntu, `nss-tools` on Fedora/RHEL, `nss` on Arch), it also adds it to the NSS database used by Chrome (`~/.pki/nssdb` if it exists, otherwise `~/.local/share/pki/nssdb`). Without a terminal, if sudo needs a password, `cert ensure` creates the certificate but skips trusting it and shows a warning. If the system store is trusted but the NSS step fails (for example, the database has a password), it shows a warning. To undo, run `devproxy cert remove`, which also removes the certificate from both NSS databases. If it can't update the system store (for example, sudo needs a password and there's no terminal) or delete the certificate from an NSS database, it exits with an error.
+
+On other distributions, `cert ensure` saves the public certificate to `devproxy-ca.crt` in the current directory; add it to your system's CA anchors. To do it fully by hand, for example on Ubuntu:
 
 ```bash
 # Export Dev Proxy root certificate
@@ -113,8 +120,6 @@ sudo cp dev-proxy-ca.crt /usr/local/share/ca-certificates/
 # Update certificates
 sudo update-ca-certificates
 ```
-
-For non-Ubuntu distributions, the certificate trust steps may differ.
 
 ## Verify Installation
 
