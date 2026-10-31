@@ -14,6 +14,12 @@ namespace Microsoft.Extensions.Configuration;
 /// </summary>
 public sealed class YamlConfigurationSource : FileConfigurationSource
 {
+    /// <summary>
+    /// Variables used to resolve environment variable placeholders. They take precedence over
+    /// the <c>env</c> configuration section and process environment variables.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? EnvironmentVariables { get; set; }
+
     /// <inheritdoc/>
     public override IConfigurationProvider Build(IConfigurationBuilder builder)
     {
@@ -25,8 +31,14 @@ public sealed class YamlConfigurationSource : FileConfigurationSource
 /// <summary>
 /// A YAML file configuration provider that supports anchors and merge keys.
 /// </summary>
-public sealed class YamlConfigurationProvider : FileConfigurationProvider
+public sealed class YamlConfigurationProvider : FileConfigurationProvider, IEnvironmentVariablePlaceholderProvider
 {
+    /// <inheritdoc/>
+    public string? Path => Source.Path;
+
+    /// <inheritdoc/>
+    public IReadOnlyCollection<string> UnresolvedEnvironmentVariables { get; private set; } = [];
+
     /// <summary>
     /// Initializes a new instance of the <see cref="YamlConfigurationProvider"/> class.
     /// </summary>
@@ -57,6 +69,8 @@ public sealed class YamlConfigurationProvider : FileConfigurationProvider
         {
             FlattenYamlNode(mappingNode, string.Empty);
         }
+
+        UnresolvedEnvironmentVariables = ConfigurationPlaceholderResolver.Resolve(Data, ((YamlConfigurationSource)Source).EnvironmentVariables);
     }
 
     private void FlattenYamlNode(YamlNode node, string prefix)
@@ -250,12 +264,14 @@ public static class YamlConfigurationExtensions
     /// <param name="path">The path to the YAML file.</param>
     /// <param name="optional">Whether the file is optional.</param>
     /// <param name="reloadOnChange">Whether to reload on change.</param>
+    /// <param name="environmentVariables">Variables used to resolve <c>${NAME}</c> placeholders before the <c>env</c> section and process environment variables.</param>
     /// <returns>The configuration builder.</returns>
     public static IConfigurationBuilder AddYamlFile(
         this IConfigurationBuilder builder,
         string path,
         bool optional = false,
-        bool reloadOnChange = false)
+        bool reloadOnChange = false,
+        IReadOnlyDictionary<string, string>? environmentVariables = null)
     {
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentException.ThrowIfNullOrEmpty(path);
@@ -266,6 +282,7 @@ public static class YamlConfigurationExtensions
             s.Path = path;
             s.Optional = optional;
             s.ReloadOnChange = reloadOnChange;
+            s.EnvironmentVariables = environmentVariables;
             s.ResolveFileProvider();
         });
     }
@@ -277,21 +294,32 @@ public static class YamlConfigurationExtensions
     /// <param name="path">The path to the configuration file.</param>
     /// <param name="optional">Whether the file is optional.</param>
     /// <param name="reloadOnChange">Whether to reload on change.</param>
+    /// <param name="environmentVariables">Variables used to resolve <c>${NAME}</c> placeholders before the <c>env</c> section and process environment variables.</param>
     /// <returns>The configuration builder.</returns>
+    /// <remarks>Environment variable placeholders (<c>${NAME}</c>, <c>${env:NAME}</c>) in configuration values are resolved when the file is loaded.</remarks>
     public static IConfigurationBuilder AddConfigFile(
         this IConfigurationBuilder builder,
         string path,
         bool optional = false,
-        bool reloadOnChange = false)
+        bool reloadOnChange = false,
+        IReadOnlyDictionary<string, string>? environmentVariables = null)
     {
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentException.ThrowIfNullOrEmpty(path);
 
         if (ProxyYaml.IsYamlFile(path))
         {
-            return builder.AddYamlFile(path, optional, reloadOnChange);
+            return builder.AddYamlFile(path, optional, reloadOnChange, environmentVariables);
         }
 
-        return builder.AddJsonFile(path, optional, reloadOnChange);
+        return builder.Add<EnvironmentVariableJsonConfigurationSource>(s =>
+        {
+            s.FileProvider = null;
+            s.Path = path;
+            s.Optional = optional;
+            s.ReloadOnChange = reloadOnChange;
+            s.EnvironmentVariables = environmentVariables;
+            s.ResolveFileProvider();
+        });
     }
 }

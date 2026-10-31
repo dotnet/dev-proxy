@@ -24,6 +24,11 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
     private volatile bool _isDisposed;
 
     protected abstract string FilePath { get; }
+    /// <summary>
+    /// Whether to resolve environment variable placeholders (<c>${NAME}</c>, <c>${env:NAME}</c>)
+    /// in string values of the loaded file. Defaults to true.
+    /// </summary>
+    protected virtual bool ResolveEnvironmentVariables => true;
     protected ILogger Logger { get; } = logger;
 
     public async Task InitFileWatcherAsync(CancellationToken cancellationToken)
@@ -136,6 +141,13 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
             else
             {
                 jsonContents = fileContents;
+            }
+
+            if (ResolveEnvironmentVariables)
+            {
+                var unresolvedVariables = new List<string>();
+                jsonContents = EnvironmentVariablePlaceholders.ResolveInJson(jsonContents, unresolvedVariables);
+                EnvironmentVariablePlaceholders.LogUnresolvedVariables(Logger, unresolvedVariables, FilePath);
             }
 
             if (!_validateSchemas || await ValidateFileContentsAsync(jsonContents, cancellationToken))

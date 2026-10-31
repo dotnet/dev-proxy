@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using DevProxy;
+using DevProxy.Abstractions.Utils;
 using DevProxy.Commands;
 using DevProxy.Proxy;
 using DevProxy.State;
@@ -359,6 +360,19 @@ static string EscapeArgument(string arg)
     return arg;
 }
 
+static void WriteUnresolvedEnvironmentVariables(IConfiguration configuration, DevProxyConfigOptions options)
+{
+    var isJson = options.Output == DevProxy.Abstractions.Proxy.OutputFormat.Json || IsJsonOutputRequested(Environment.GetCommandLineArgs());
+    foreach (var provider in ((IConfigurationRoot)configuration).Providers.OfType<IEnvironmentVariablePlaceholderProvider>())
+    {
+        foreach (var name in provider.UnresolvedEnvironmentVariables)
+        {
+            var message = $"Environment variable {name} referenced in {provider.Path ?? "configuration file"} isn't set. Leaving the placeholder as-is";
+            Console.Error.WriteLine(isJson ? FormatJsonLogEntry("warning", message) : message);
+        }
+    }
+}
+
 static WebApplication BuildApplication(
     DevProxyConfigOptions options, ProcessEnvironment environment, HttpProxyEnvironment proxyEnvironment)
 {
@@ -368,6 +382,22 @@ static WebApplication BuildApplication(
     var builder = WebApplication.CreateBuilder();
 
     _ = builder.Configuration.ConfigureDevProxyConfig(options);
+    try
+    {
+        return BuildApplicationCore(builder, options, environment, proxyEnvironment);
+    }
+    catch
+    {
+        // config values with unresolved placeholders can fail startup before
+        // they're logged, so report them to help troubleshoot
+        WriteUnresolvedEnvironmentVariables(builder.Configuration, options);
+        throw;
+    }
+}
+
+static WebApplication BuildApplicationCore(
+    WebApplicationBuilder builder, DevProxyConfigOptions options, ProcessEnvironment environment, HttpProxyEnvironment proxyEnvironment)
+{
     environment.Apply(builder.Configuration, options.Env);
     var changedProxyVariables = proxyEnvironment.GetChangedVariables();
     _ = Announcement.ShowOnceAsync();
@@ -389,6 +419,12 @@ static WebApplication BuildApplication(
     });
 
     var app = builder.Build();
+
+    foreach (var provider in ((IConfigurationRoot)builder.Configuration).Providers.OfType<IEnvironmentVariablePlaceholderProvider>())
+    {
+        EnvironmentVariablePlaceholders.LogUnresolvedVariables(
+            app.Logger, provider.UnresolvedEnvironmentVariables, provider.Path ?? "configuration file");
+    }
 
     if (changedProxyVariables.Length > 0)
     {

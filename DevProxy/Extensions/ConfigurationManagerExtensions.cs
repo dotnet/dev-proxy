@@ -20,7 +20,7 @@ static class ConfigurationManagerExtensions
         {
             if (!string.IsNullOrEmpty(configFile) && File.Exists(configFile))
             {
-                _ = configuration.AddConfigFile(configFile, optional: false, reloadOnChange: true);
+                _ = configuration.AddConfigFile(configFile, optional: false, reloadOnChange: true, environmentVariables: options.Env);
                 return configuration;
             }
         }

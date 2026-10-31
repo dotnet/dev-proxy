@@ -380,14 +380,14 @@ Run `devproxy api show` for endpoint information. All endpoints require `Authori
 
 ## Environment Variables for Azure API Center
 
-Azure API Center plugins support `@ENV_VAR` syntax for CI/CD:
+Reference environment variables in config files with `${ENV_VAR}` (the older `@ENV_VAR` syntax is deprecated):
 
 ```json
 {
   "apiCenterOnboardingPlugin": {
-    "subscriptionId": "@AZURE_SUBSCRIPTION_ID",
-    "resourceGroupName": "@AZURE_RESOURCE_GROUP_NAME",
-    "serviceName": "@AZURE_APIC_INSTANCE_NAME"
+    "subscriptionId": "${AZURE_SUBSCRIPTION_ID}",
+    "resourceGroupName": "${AZURE_RESOURCE_GROUP_NAME}",
+    "serviceName": "${AZURE_APIC_INSTANCE_NAME}"
   }
 }
 ```
