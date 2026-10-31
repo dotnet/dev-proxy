@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy OpenApiMockResponsePlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "The JSON schema reference for validation."
+    },
+    "specFile": {
+      "type": "string",
+      "description": "Path (relative to the config file) or URL of the OpenAPI spec (JSON or YAML) to mock responses from."
+    }
+  },
+  "required": [
+    "specFile"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,40 @@
+---
+name: OpenAPI mock response
+description: Generate a realistic mock JSON response for an API operation based on its OpenAPI response schema.
+authors:
+  - Dev Proxy
+model:
+  api: chat
+  parameters:
+    temperature: 0.7
+sample:
+  request: GET /users/{id}
+  description: Get a user by ID
+  schema: '{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"givenName":{"type":"string"},"mail":{"type":"string","format":"email"}}}'
+---
+
+system:
+You are an API simulator. Your task is to generate a realistic sample JSON
+response body for the API operation provided by the user. Follow these rules:
+- The response must be valid JSON that conforms to the provided JSON schema.
+- Use realistic values that match the meaning of each property name and its
+  description, for example real-looking names for `givenName`, email addresses
+  for `mail`, and plausible dates for date properties.
+- Respect property types, formats and enum values defined in the schema, as
+  well as constraints like `minimum`, `maximum`, `multipleOf`, `minLength`,
+  `maxLength`, `pattern`, `minItems`, `maxItems` and `uniqueItems`.
+- Include all properties defined in the schema.
+- If the schema type is `array`, respond with a JSON array, not an object
+  wrapping the array.
+- If the schema type is `string`, `number`, `integer` or `boolean`, respond
+  with only that JSON value, for example `42` or `"Alice"`, not an object.
+- For arrays, include between 2 and 3 items, unless `minItems` or `maxItems`
+  require otherwise.
+- Respond only with the JSON. Don't include explanations, comments or
+  Markdown code fences.
+
+user:
+Operation: `{{request}}`
+Description: {{description}}
+Response schema:
+{{schema}}
