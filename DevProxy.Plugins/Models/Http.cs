@@ -221,6 +221,7 @@ internal static class Http
     [
         "access-token",
         "api-key",
+        "api_key",
         "auth-token",
         "authorization",
         "authorization-token",
@@ -238,6 +239,17 @@ internal static class Http
         "access-key",
         "apikey",
         "code"
+    ];
+
+    internal static readonly string[] AuthQueryParameters =
+    [
+        "access_token",
+        "api_key",
+        "apikey",
+        "code",
+        "key",
+        "sig",
+        "subscription-key"
     ];
 
     internal static readonly string[] SensitiveQueryParameters =
