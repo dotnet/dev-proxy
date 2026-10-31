@@ -802,6 +802,7 @@ sealed class DevProxyCommand : RootCommand
             ProxyUrl = SystemProxyAddress.ToHttpAuthority(_proxyConfiguration.IPAddress, _proxyConfiguration.Port),
             LogFile = IsInternalDaemon ? DetachedLogFilePath : string.Empty,
             StartedAt = DateTimeOffset.UtcNow,
+            ProcessStartTime = StateManager.GetCurrentProcessStartTime(),
             ConfigFile = _proxyConfiguration.ConfigFile,
             Port = _proxyConfiguration.Port,
             AsSystemProxy = _proxyConfiguration.AsSystemProxy,

@@ -27,6 +27,13 @@ internal sealed class ProxyInstanceState
     [JsonPropertyName("startedAt")]
     public DateTimeOffset StartedAt { get; set; }
 
+    /// <summary>
+    /// Start time (UTC) of the process identified by <see cref="Pid"/>.
+    /// Used to detect PID reuse. Null for state written by older versions.
+    /// </summary>
+    [JsonPropertyName("processStartTime")]
+    public DateTimeOffset? ProcessStartTime { get; set; }
+
     [JsonPropertyName("configFile")]
     public string? ConfigFile { get; set; }
 

@@ -211,7 +211,7 @@ internal sealed class SystemProxyManager(ILogger<SystemProxyManager> logger) : I
 
         foreach (var orphan in orphans)
         {
-            await StateManager.DeleteStateAsync(orphan.Pid, cancellationToken);
+            await StateManager.DeleteStateAsync(orphan, cancellationToken);
         }
 
         return new(orphans, disabled);
