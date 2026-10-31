@@ -196,6 +196,40 @@ internal static class StateManager
     }
 
     /// <summary>
+    /// Loads states of running instances without deleting any state or credential
+    /// files, so it's safe for diagnostics that run before orphaned system-proxy
+    /// registrations have been reconciled.
+    /// </summary>
+    public static async Task<List<ProxyInstanceState>> LoadRunningStatesAsync(CancellationToken cancellationToken = default)
+    {
+        var configFolder = GetConfigFolder();
+        if (!Directory.Exists(configFolder))
+        {
+            return [];
+        }
+
+        var states = new List<ProxyInstanceState>();
+        var seenPids = new HashSet<int>();
+
+        var stateFiles = Directory.GetFiles(configFolder, $"{StateFilePrefix}*{StateFileExtension}");
+        var legacyPath = GetStateFilePath();
+        var paths = File.Exists(legacyPath) ? [.. stateFiles, legacyPath] : stateFiles;
+
+        foreach (var filePath in paths)
+        {
+            var state = await ReadStateFromFileAsync(filePath, cancellationToken);
+            if (state is not null &&
+                IsProcessRunning(state.Pid) &&
+                seenPids.Add(state.Pid))
+            {
+                states.Add(state);
+            }
+        }
+
+        return states;
+    }
+
+    /// <summary>
     /// Finds state records left behind by instances that registered as the
     /// system proxy but whose process is no longer alive (e.g. crashed or killed
     /// before running cleanup). These represent orphaned system-proxy

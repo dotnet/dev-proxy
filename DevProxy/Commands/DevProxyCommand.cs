@@ -2,6 +2,7 @@ using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Proxy;
+using DevProxy.Proxy.Kestrel;
 using DevProxy.State;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
@@ -278,6 +279,15 @@ sealed class DevProxyCommand : RootCommand
         return exitCode;
     }
 
+    internal static void ValidatePort(OptionResult input)
+    {
+        var value = input.Tokens.Count > 0 ? input.Tokens[0].Value : null;
+        if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var port) || port > System.Net.IPEndPoint.MaxPort)
+        {
+            input.AddError($"'{value}' is not a valid port. Specify a number between 0 and {System.Net.IPEndPoint.MaxPort}.");
+        }
+    }
+
     private async Task<int> InvokeAsync(ParseResult parseResult, CancellationToken cancellationToken)
     {
         if (_app is null)
@@ -303,6 +313,16 @@ sealed class DevProxyCommand : RootCommand
         }
 
         ConfigureFromOptions(parseResult);
+
+        var portConflict =
+            await PortConflict.CheckAsync(PortKind.Proxy, _proxyConfiguration.IPAddress, _proxyConfiguration.Port, cancellationToken) ??
+            await PortConflict.CheckAsync(PortKind.Api, _proxyConfiguration.ApiIpAddress, _proxyConfiguration.ApiPort, cancellationToken);
+        if (portConflict is not null)
+        {
+            _logger.LogError("{PortConflict}", portConflict);
+            return 1;
+        }
+
         var optionsLoadedArgs = new OptionsLoadedArgs(parseResult);
         foreach (var plugin in _plugins.Where(p => p.Enabled))
         {
@@ -315,6 +335,25 @@ sealed class DevProxyCommand : RootCommand
         {
             await ApiSecurity.SaveTokenAsync(cancellationToken);
             await _app.StartAsync(cancellationToken);
+
+            // The proxy binds in a background service, so wait for it before
+            // publishing readiness. Otherwise a detached launcher could report a
+            // successful start for a proxy that failed to bind. Don't pass the
+            // cancellation token: a bind failure stops the host, which would cancel
+            // the wait before the failure is reported. The engine always completes
+            // Started once the host stops.
+            var proxyEngines = _app.Services.GetServices<IHostedService>().OfType<KestrelProxyEngine>().ToArray();
+            var proxyStarted = (await Task.WhenAll(proxyEngines.Select(e => e.Started))).All(started => started);
+            if (!proxyStarted)
+            {
+                await _app.WaitForShutdownAsync(cancellationToken);
+                if (proxyEngines.Any(e => e.PortInUse))
+                {
+                    _logger.LogError("{PortConflict}",
+                        await PortConflict.GetMessageAsync(PortKind.Proxy, _proxyConfiguration.IPAddress, _proxyConfiguration.Port, CancellationToken.None));
+                }
+                return 1;
+            }
 
             var serverAddresses = _app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>();
             var serverAddress = serverAddresses?.Addresses.FirstOrDefault();
@@ -343,6 +382,13 @@ sealed class DevProxyCommand : RootCommand
         catch (TaskCanceledException)
         {
             throw;
+        }
+        catch (Exception ex) when (PortConflict.IsAddressInUse(ex))
+        {
+            // The API port was taken between the pre-flight check and binding.
+            _logger.LogError("{PortConflict}",
+                await PortConflict.GetMessageAsync(PortKind.Api, _proxyConfiguration.ApiIpAddress, _proxyConfiguration.ApiPort, CancellationToken.None));
+            return 1;
         }
         catch (Exception ex)
         {
@@ -419,12 +465,14 @@ sealed class DevProxyCommand : RootCommand
             Description = "The port for the proxy to listen on",
             HelpName = "port"
         };
+        portOption.Validators.Add(ValidatePort);
 
         var apiPortOption = new Option<int?>(ApiPortOptionName)
         {
             Description = "The port for the Dev Proxy API to listen on",
             HelpName = "api-port"
         };
+        apiPortOption.Validators.Add(ValidatePort);
         var apiIpAddressOption = new Option<string?>(ApiIpAddressOptionName)
         {
             Description = "The API bind address (default: 127.0.0.1). Use ::1 for IPv6 loopback. Non-loopback binding requires a trusted network",
