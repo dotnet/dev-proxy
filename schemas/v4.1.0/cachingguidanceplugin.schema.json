@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy CachingGuidancePlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "The JSON schema reference for validation."
+    },
+    "cacheThresholdSeconds": {
+      "type": "integer",
+      "description": "The number of seconds between the same request that triggers the guidance warning. Default is 5."
+    }
+  },
+  "additionalProperties": false
+}

@@ -453,6 +453,171 @@ public sealed class ManipulationAndMockingIntegrationTests
     }
 
     [Theory]
+    [InlineData(null)]
+    [InlineData("100")]
+    [InlineData("-5")]
+    [InlineData("150")]
+    public async Task MockResponse_Rate_AlwaysAppliesWhenAbsentFullOrInvalid(string? rate)
+    {
+        await using var origin = await FakeOrigin.StartAsync();
+        var urls = KestrelProxyHarness.BuildUrlsToWatch(origin.Host);
+        var config = PluginConfig.FromJson($$"""
+            {
+              "mocks": [
+                {
+                  "request": { "url": "http://{{origin.Host}}/get", "method": "GET" },
+                  "response": { "statusCode": 201 },
+                  "rate": {{rate ?? "null"}}
+                }
+              ]
+            }
+            """);
+        using var plugin = new MockResponsePlugin(
+            SharedHttpClient, NullLogger<MockResponsePlugin>.Instance, urls, ProxyConfig, config);
+        await using var proxy = await KestrelProxyHarness.StartAsync(origin.Host, [plugin]);
+        using var client = proxy.CreateHttpClient();
+        var uri = new Uri($"http://{origin.Host}/get");
+
+        for (var i = 0; i < 10; i++)
+        {
+            using var response = await client.GetAsync(uri);
+            Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task MockResponse_Rate0_PassesThroughToOrigin()
+    {
+        await using var origin = await FakeOrigin.StartAsync();
+        var urls = KestrelProxyHarness.BuildUrlsToWatch(origin.Host);
+        var config = PluginConfig.FromJson($$"""
+            {
+              "mocks": [
+                {
+                  "request": { "url": "http://{{origin.Host}}/get", "method": "GET" },
+                  "response": { "statusCode": 503 },
+                  "rate": 0
+                }
+              ]
+            }
+            """);
+        using var plugin = new MockResponsePlugin(
+            SharedHttpClient, NullLogger<MockResponsePlugin>.Instance, urls, ProxyConfig, config);
+        await using var proxy = await KestrelProxyHarness.StartAsync(origin.Host, [plugin]);
+        using var client = proxy.CreateHttpClient();
+        var uri = new Uri($"http://{origin.Host}/get");
+
+        for (var i = 0; i < 10; i++)
+        {
+            using var response = await client.GetAsync(uri);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task MockResponse_Rate0_FallsThroughToNextMatchingMock()
+    {
+        await using var origin = await FakeOrigin.StartAsync();
+        var urls = KestrelProxyHarness.BuildUrlsToWatch(origin.Host);
+        var config = PluginConfig.FromJson($$"""
+            {
+              "mocks": [
+                {
+                  "request": { "url": "http://{{origin.Host}}/get", "method": "GET" },
+                  "response": { "statusCode": 503 },
+                  "rate": 0
+                },
+                {
+                  "request": { "url": "http://{{origin.Host}}/get", "method": "GET" },
+                  "response": { "statusCode": 202 }
+                }
+              ]
+            }
+            """);
+        using var plugin = new MockResponsePlugin(
+            SharedHttpClient, NullLogger<MockResponsePlugin>.Instance, urls, ProxyConfig, config);
+        await using var proxy = await KestrelProxyHarness.StartAsync(origin.Host, [plugin]);
+        using var client = proxy.CreateHttpClient();
+        var uri = new Uri($"http://{origin.Host}/get");
+
+        for (var i = 0; i < 10; i++)
+        {
+            using var response = await client.GetAsync(uri);
+            Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task MockResponse_Rate0_WithNth_IsNeverApplied()
+    {
+        await using var origin = await FakeOrigin.StartAsync();
+        var urls = KestrelProxyHarness.BuildUrlsToWatch(origin.Host);
+        var config = PluginConfig.FromJson($$"""
+            {
+              "mocks": [
+                {
+                  "request": { "url": "http://{{origin.Host}}/get", "method": "GET", "nth": 2 },
+                  "response": { "statusCode": 201 },
+                  "rate": 0
+                },
+                {
+                  "request": { "url": "http://{{origin.Host}}/get", "method": "GET" },
+                  "response": { "statusCode": 202 }
+                }
+              ]
+            }
+            """);
+        using var plugin = new MockResponsePlugin(
+            SharedHttpClient, NullLogger<MockResponsePlugin>.Instance, urls, ProxyConfig, config);
+        await using var proxy = await KestrelProxyHarness.StartAsync(origin.Host, [plugin]);
+        using var client = proxy.CreateHttpClient();
+        var uri = new Uri($"http://{origin.Host}/get");
+
+        for (var i = 0; i < 3; i++)
+        {
+            using var response = await client.GetAsync(uri);
+            Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task MockResponse_PartialRate_AppliesSomeOfTheTime()
+    {
+        await using var origin = await FakeOrigin.StartAsync();
+        var urls = KestrelProxyHarness.BuildUrlsToWatch(origin.Host);
+        var config = PluginConfig.FromJson($$"""
+            {
+              "mocks": [
+                {
+                  "request": { "url": "http://{{origin.Host}}/get", "method": "GET" },
+                  "response": { "statusCode": 503 },
+                  "rate": 50
+                },
+                {
+                  "request": { "url": "http://{{origin.Host}}/get", "method": "GET" },
+                  "response": { "statusCode": 202 }
+                }
+              ]
+            }
+            """);
+        using var plugin = new MockResponsePlugin(
+            SharedHttpClient, NullLogger<MockResponsePlugin>.Instance, urls, ProxyConfig, config);
+        await using var proxy = await KestrelProxyHarness.StartAsync(origin.Host, [plugin]);
+        using var client = proxy.CreateHttpClient();
+        var uri = new Uri($"http://{origin.Host}/get");
+
+        var statusCodes = new HashSet<HttpStatusCode>();
+        // the chance of 100 rolls at 50% landing on the same side is ~2^-99
+        for (var i = 0; i < 100; i++)
+        {
+            using var response = await client.GetAsync(uri);
+            _ = statusCodes.Add(response.StatusCode);
+        }
+
+        Assert.Equal([HttpStatusCode.Accepted, HttpStatusCode.ServiceUnavailable], statusCodes.Order());
+    }
+
+    [Theory]
     [InlineData("/Get")]
     [InlineData("/Ge*")]
     public async Task MockResponse_MatchesUrlCaseInsensitively(string mockPath)
