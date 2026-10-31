@@ -403,6 +403,133 @@ public sealed class ProcessSmokeTests
         }
     }
 
+    [Fact]
+    public async Task Stdio_BackToBackJsonRpcMessages_AreMockedIndividually()
+    {
+        var hostDll = LocateHostDll();
+        Assert.True(File.Exists(hostDll), $"DevProxy host not built at {hostDll}. Run `dotnet build DevProxy` first.");
+
+        var workDir = Directory.CreateTempSubdirectory("devproxy-stdio-");
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(workDir.FullName, "stdio-mocks.json"), StdioMocksFile);
+            await File.WriteAllTextAsync(Path.Combine(workDir.FullName, "devproxyrc.json"), StdioConfigFile);
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = "dotnet",
+                WorkingDirectory = workDir.FullName,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            };
+            psi.ArgumentList.Add(hostDll);
+            psi.ArgumentList.Add("stdio");
+            psi.ArgumentList.Add("--config-file");
+            psi.ArgumentList.Add(Path.Combine(workDir.FullName, "devproxyrc.json"));
+            psi.ArgumentList.Add("--");
+            // Any child that stays alive while reading stdin; unmocked messages are blocked
+            // so it never receives input.
+            if (OperatingSystem.IsWindows())
+            {
+                psi.ArgumentList.Add("cmd.exe");
+                psi.ArgumentList.Add("/c");
+                psi.ArgumentList.Add("more");
+            }
+            else
+            {
+                psi.ArgumentList.Add("cat");
+            }
+
+            using var process = new Process { StartInfo = psi };
+            Assert.True(process.Start(), "Failed to start DevProxy stdio process.");
+            try
+            {
+                // Write an id-less notification and an id-bearing request in a single write so
+                // that they arrive in the same stdin read (#1757).
+                await process.StandardInput.WriteAsync(
+                    "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n" +
+                    "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"accept_eula\"}}\n");
+                await process.StandardInput.FlushAsync();
+
+                using var cts = new CancellationTokenSource(s_startupTimeout);
+                var line = await ReadLineAsync(process.StandardOutput, cts.Token);
+                Assert.NotNull(line);
+
+                using var response = JsonDocument.Parse(line);
+                Assert.Equal(2, response.RootElement.GetProperty("id").GetInt32());
+            }
+            finally
+            {
+                StopHost(process);
+            }
+        }
+        finally
+        {
+            workDir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Stdio_LargeMessageThroughStreamingChild_DoesNotDeadlock()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var hostDll = LocateHostDll();
+        Assert.True(File.Exists(hostDll), $"DevProxy host not built at {hostDll}. Run `dotnet build DevProxy` first.");
+
+        var workDir = Directory.CreateTempSubdirectory("devproxy-stdio-large-");
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(workDir.FullName, "stdio-mocks.json"), StdioMocksFile);
+            await File.WriteAllTextAsync(Path.Combine(workDir.FullName, "devproxyrc.json"),
+                StdioConfigFile.Replace("\"blockUnmockedRequests\": true", "\"blockUnmockedRequests\": false", StringComparison.Ordinal));
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = "dotnet",
+                WorkingDirectory = workDir.FullName,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            };
+            psi.ArgumentList.Add(hostDll);
+            psi.ArgumentList.Add("stdio");
+            psi.ArgumentList.Add("--config-file");
+            psi.ArgumentList.Add(Path.Combine(workDir.FullName, "devproxyrc.json"));
+            psi.ArgumentList.Add("--");
+            psi.ArgumentList.Add("cat");
+
+            using var process = new Process { StartInfo = psi };
+            Assert.True(process.Start(), "Failed to start DevProxy stdio process.");
+            try
+            {
+                // Larger than typical pipe buffers so the child blocks writing stdout
+                // while the proxy is still writing the message to its stdin.
+                var line = new string('x', 1024 * 1024);
+                using var cts = new CancellationTokenSource(s_startupTimeout);
+                var readTask = ReadLineAsync(process.StandardOutput, cts.Token);
+                await process.StandardInput.WriteAsync(line + "\n");
+                await process.StandardInput.FlushAsync();
+
+                Assert.Equal(line, await readTask);
+            }
+            finally
+            {
+                StopHost(process);
+            }
+        }
+        finally
+        {
+            workDir.Delete(recursive: true);
+        }
+    }
+
     private static Process StartHost(string hostDll, string workDir)
     {
         var psi = new ProcessStartInfo
@@ -523,6 +650,35 @@ public sealed class ProcessSmokeTests
         // Fall back to a path relative to the repo root guess so the assert message is useful.
         return Path.Combine(AppContext.BaseDirectory, "devproxy.dll");
     }
+
+    private const string StdioConfigFile = """
+        {
+          "plugins": [
+            {
+              "name": "MockStdioResponsePlugin",
+              "enabled": true,
+              "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll",
+              "configSection": "mockStdioResponsePlugin"
+            }
+          ],
+          "mockStdioResponsePlugin": {
+            "mocksFile": "stdio-mocks.json",
+            "blockUnmockedRequests": true
+          },
+          "validateSchemas": false
+        }
+        """;
+
+    private const string StdioMocksFile = """
+        {
+          "mocks": [
+            {
+              "request": { "bodyFragment": "accept_eula" },
+              "response": { "stdout": "{\"jsonrpc\":\"2.0\",\"id\":@stdin.body.id,\"result\":{}}\n" }
+            }
+          ]
+        }
+        """;
 
     private const string ConfigFile = """
         {
