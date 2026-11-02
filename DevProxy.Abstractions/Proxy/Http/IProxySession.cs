@@ -50,6 +50,12 @@ public interface IProxySession
     bool HasResponse { get; }
 
     /// <summary>
+    /// True when the current <see cref="Response"/> was produced by a plugin (for
+    /// example a mock) rather than received from the origin.
+    /// </summary>
+    bool RespondedByPlugin { get; }
+
+    /// <summary>
     /// Produces a mocked text response and short-circuits the exchange: no
     /// request is sent upstream and <see cref="Response"/> becomes non-null. This
     /// is the canonical mocking primitive (the replacement for
