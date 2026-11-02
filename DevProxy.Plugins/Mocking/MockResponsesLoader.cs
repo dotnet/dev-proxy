@@ -34,6 +34,15 @@ internal sealed class MockResponsesLoader(
                 {
                     Logger.LogInformation("Mock responses for {ConfigResponseCount} url patterns loaded from {MockFile}", configResponses.Count(), _configuration.MocksFile);
                 }
+
+                foreach (var mock in configResponses.Where(m => m.Rate is not null && !MockResponsePlugin.IsValidRate(m.Rate.Value)))
+                {
+                    Logger.LogWarning(
+                        "Mock for {Method} {Url} has an invalid rate {Rate}. Rate must be between 0 and 100. Ignoring rate and always applying the mock",
+                        mock.Request?.Method,
+                        mock.Request?.Url,
+                        mock.Rate);
+                }
             }
         }
         catch (Exception ex)
