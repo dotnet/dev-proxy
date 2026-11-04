@@ -83,7 +83,7 @@ OpenAI | `openai-throttling`
 Anthropic | `anthropic-throttling`
 Microsoft Graph | `microsoft-graph-rate-limiting`
 
-The first time you start Dev Proxy, trust its certificate so that it can intercept HTTPS requests. On Linux, you need to trust the certificate manually. Our [tutorial](https://aka.ms/devproxy/start) walks you through these steps.
+The first time you start Dev Proxy, trust its certificate so that it can intercept HTTPS requests. On Linux, run `devproxy cert ensure` to trust it (requires sudo). Our [tutorial](https://aka.ms/devproxy/start) walks you through these steps.
 
 Then, run your app as usual. It keeps calling the real API URLs, and Dev Proxy simulates the API's rate limits and errors. Find presets for other APIs in the [samples gallery](https://aka.ms/devproxy/samples).
 

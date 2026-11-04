@@ -16,7 +16,9 @@ public enum RootTrustAction
     /// <summary>Install the root into the Windows CurrentUser root store.</summary>
     TrustWindowsStore,
 
-    /// <summary>Trust can't be automated on Linux; tell the user to trust manually.</summary>
+    /// <summary>
+    /// Linux trust needs sudo, so it's opt-in via <c>cert ensure</c>; tell the user to run it.
+    /// </summary>
     ManualLinux,
 }
 
@@ -24,7 +26,7 @@ public enum RootTrustAction
 /// Pure decision table for OS-trust installation, factored out of the platform I/O so it
 /// can be exhaustively unit-tested. Mirrors today's behavior: Windows installs into the
 /// user root store whenever cert install is enabled; macOS trusts via the keychain only on
-/// first run (and only if the user doesn't decline); Linux is manual.
+/// first run (and only if the user doesn't decline); Linux is opt-in via <c>cert ensure</c>.
 ///
 /// <code>
 ///                 installCert == false ─────────────────────► Skip
