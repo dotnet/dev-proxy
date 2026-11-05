@@ -350,18 +350,25 @@ public sealed class ProcessSmokeTests
             using var process = new Process { StartInfo = startInfo };
             Assert.True(process.Start());
             process.StandardInput.Close();
-            var stdout = process.StandardOutput.ReadToEndAsync();
+            // Collect stdout line by line so the PID is available for cleanup even if EOF never comes.
+            var stdoutLines = new ConcurrentQueue<string>();
+            var stdout = Task.Run(async () =>
+            {
+                while (await process.StandardOutput.ReadLineAsync() is { } line)
+                {
+                    stdoutLines.Enqueue(line);
+                }
+            });
             var stderr = process.StandardError.ReadToEndAsync();
+            Task? completed = null;
+            var eof = Task.WhenAll(stdout, stderr);
             try
             {
                 using var exitTimeout = new CancellationTokenSource(s_startupTimeout);
                 await process.WaitForExitAsync(exitTimeout.Token);
 
                 // The parent has exited; if the daemon inherited our pipes, EOF never comes.
-                var eof = Task.WhenAll(stdout, stderr);
-                var completed = await Task.WhenAny(eof, Task.Delay(TimeSpan.FromSeconds(15)));
-                Assert.True(completed == eof,
-                    "`devproxy --detach` exited but its captured output didn't reach EOF; the daemon is holding the caller's pipes.");
+                completed = await Task.WhenAny(eof, Task.Delay(TimeSpan.FromSeconds(15)));
             }
             finally
             {
@@ -372,7 +379,7 @@ public sealed class ProcessSmokeTests
             }
 
             Assert.Equal(0, process.ExitCode);
-            var standardOutput = await stdout;
+            var standardOutput = string.Join('\n', stdoutLines);
             if (output == "json")
             {
                 var started = GetResultData(standardOutput);
@@ -382,13 +389,16 @@ public sealed class ProcessSmokeTests
             else
             {
                 Assert.Contains("Dev Proxy started in background.", standardOutput, StringComparison.Ordinal);
-                var pidLine = standardOutput.Split('\n').Select(line => line.Trim())
+                var pidLine = stdoutLines.Select(line => line.Trim())
                     .Single(line => line.StartsWith("PID:", StringComparison.Ordinal));
                 pid = int.Parse(pidLine["PID:".Length..].Trim(), System.Globalization.CultureInfo.InvariantCulture);
-                var logLine = standardOutput.Split('\n').Select(line => line.Trim())
+                var logLine = stdoutLines.Select(line => line.Trim())
                     .Single(line => line.StartsWith("Log file:", StringComparison.Ordinal));
                 logFile = logLine["Log file:".Length..].Trim();
             }
+
+            Assert.True(completed == eof,
+                "`devproxy --detach` exited but its captured output didn't reach EOF; the daemon is holding the caller's pipes.");
 
             using var daemon = Process.GetProcessById(pid.Value);
             Assert.False(daemon.HasExited, "The detached Dev Proxy daemon should keep running after the parent exits.");
