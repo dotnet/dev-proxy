@@ -490,8 +490,8 @@ sealed class DevProxyCommand : RootCommand
         {
             try
             {
-                var asSystemProxy = input.GetValue(asSystemProxyOption) ?? true;
-                var installCert = input.GetValue(installCertOption) ?? true;
+                var asSystemProxy = input.GetValue(asSystemProxyOption) ?? _proxyConfiguration.AsSystemProxy;
+                var installCert = input.GetValue(installCertOption) ?? _proxyConfiguration.InstallCert;
                 if (asSystemProxy && !installCert)
                 {
                     input.AddError($"Requires option '{AsSystemProxyOptionName}' to be 'false'");
@@ -746,6 +746,7 @@ sealed class DevProxyCommand : RootCommand
         {
             _proxyConfiguration.InstallCert = installCert.Value;
         }
+        LogCiDefaults(asSystemProxy, installCert);
         var timeout = parseResult.GetValueOrDefault<long?>(TimeoutOptionName);
         if (timeout is not null)
         {
@@ -770,6 +771,26 @@ sealed class DevProxyCommand : RootCommand
             _proxyConfiguration.Output = output.Value;
         }
     }
+
+    private void LogCiDefaults(bool? asSystemProxyOption, bool? installCertOption)
+    {
+        if (_proxyConfiguration is not ProxyConfiguration proxyConfiguration ||
+            !ShouldLogCiDefaults(proxyConfiguration, asSystemProxyOption, installCertOption))
+        {
+            return;
+        }
+
+        _logger.LogInformation(
+            "CI environment detected. Using asSystemProxy: {AsSystemProxy}, installCert: {InstallCert}. To change, use {AsSystemProxyOption} and {InstallCertOption} or set asSystemProxy and installCert in the config file.",
+            proxyConfiguration.AsSystemProxy.ToString().ToLowerInvariant(),
+            proxyConfiguration.InstallCert.ToString().ToLowerInvariant(),
+            AsSystemProxyOptionName,
+            InstallCertOptionName);
+    }
+
+    internal static bool ShouldLogCiDefaults(ProxyConfiguration proxyConfiguration, bool? asSystemProxyOption, bool? installCertOption) =>
+        (proxyConfiguration.AsSystemProxyDefaultedForCi && asSystemProxyOption is null) ||
+        (proxyConfiguration.InstallCertDefaultedForCi && installCertOption is null);
 
     private async Task CheckForNewVersionAsync()
     {
