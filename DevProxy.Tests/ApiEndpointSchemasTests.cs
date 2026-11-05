@@ -55,7 +55,7 @@ public class ApiEndpointSchemasTests
             .Where(p => p.GetCustomAttribute<FromQueryAttribute>() is not null)
             .ToDictionary(p => p.Name!, p => p.GetCustomAttribute<RequiredAttribute>() is not null);
 
-        var query = ApiEndpointSchemas.Get(method, path)!.Query ?? [];
+        var query = ApiEndpointSchemas.Get(method, path)!.Parameters ?? [];
         var actual = query.ToDictionary(p => p!["name"]!.GetValue<string>(), p => p!["required"]!.GetValue<bool>());
 
         Assert.Equal(expected.OrderBy(kv => kv.Key), actual.OrderBy(kv => kv.Key));
@@ -107,12 +107,15 @@ public class ApiEndpointSchemasTests
     public void Get_UpdateProxyRequestBody_OnlyAllowsWritableProperties()
     {
         Assert.Equal(["recording"], GetRequestBodyProperties("POST", "/proxy"));
+        var schema = ApiEndpointSchemas.Get("POST", "/proxy")!.RequestBody!["content"]![ApiEndpointSchemas.JsonContentType]!["schema"]!;
+        Assert.False(schema["additionalProperties"]!.GetValue<bool>());
     }
 
     [Theory]
     [InlineData("POST", "/proxy/stopProxy", "202")]
     [InlineData("POST", "/proxy/mockRequest", "202")]
     [InlineData("GET", "/proxy/rootCertificate", "400")]
+    [InlineData("GET", "/proxy/logs", "400")]
     public void Get_DocumentsNonDefaultStatusCodes(string method, string path, string statusCode)
     {
         Assert.True(ApiEndpointSchemas.Get(method, path)!.Responses.ContainsKey(statusCode));

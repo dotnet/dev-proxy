@@ -19,7 +19,7 @@ static class ApiEndpointSchemas
 
     internal sealed class EndpointSchema
     {
-        public JsonArray? Query { get; init; }
+        public JsonArray? Parameters { get; init; }
         public JsonObject? RequestBody { get; init; }
         public required JsonObject Responses { get; init; }
     }
@@ -44,6 +44,7 @@ static class ApiEndpointSchemas
                         ["description"] = "true to start recording, false to stop recording. Omit to leave unchanged."
                     }
                 },
+                ["additionalProperties"] = false,
                 ["examples"] = new JsonArray(new JsonObject { ["recording"] = true })
             }),
             Responses = Responses(
@@ -77,7 +78,7 @@ static class ApiEndpointSchemas
         },
         ("GET", "/proxy/rootCertificate") => new()
         {
-            Query = new JsonArray(
+            Parameters = new JsonArray(
                 QueryParameter("format", "Certificate format. Only crt (PEM-encoded) is supported.", required: true, new JsonObject
                 {
                     ["type"] = "string",
@@ -89,7 +90,7 @@ static class ApiEndpointSchemas
         },
         ("GET", "/proxy/logs") => new()
         {
-            Query = new JsonArray(
+            Parameters = new JsonArray(
                 QueryParameter("lines", "Number of most recent log lines to return", required: false, new JsonObject
                 {
                     ["type"] = "integer",
@@ -122,6 +123,7 @@ static class ApiEndpointSchemas
                         ["text/event-stream"] = new JsonObject { ["schema"] = new JsonObject { ["type"] = "string" } }
                     }
                 }),
+                ("400", Response("A query parameter has an invalid value, for example follow=invalid", ProblemContentType, ValidationProblemSchema())),
                 ("404", Response("Dev Proxy isn't running in detached mode, or the log file wasn't found", "text/plain", new JsonObject { ["type"] = "string" })))
         },
         _ => null
@@ -240,6 +242,7 @@ static class ApiEndpointSchemas
     private static JsonObject QueryParameter(string name, string description, bool required, JsonObject schema) => new()
     {
         ["name"] = name,
+        ["in"] = "query",
         ["description"] = description,
         ["required"] = required,
         ["schema"] = schema

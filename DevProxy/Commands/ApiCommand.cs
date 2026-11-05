@@ -148,7 +148,7 @@ sealed class ApiCommand : Command
                         method = e.Method,
                         path = e.Path,
                         description = e.Description,
-                        query = schema?.Query,
+                        parameters = schema?.Parameters,
                         requestBody = schema?.RequestBody,
                         responses = schema?.Responses
                     };
