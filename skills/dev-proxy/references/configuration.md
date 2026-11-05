@@ -262,7 +262,7 @@ You can run multiple detached instances simultaneously when using `--as-system-p
 | `devproxy config new myconfig` | Create named config file |
 | `devproxy config get <id>` | Download preset from gallery |
 | `devproxy cert ensure` | Ensure SSL cert exists and is trusted |
-| `devproxy cert export` | Write the root certificate to a file (PEM, CRT, or DER) |
+| `devproxy cert export` | Write the root certificate to a file (PEM, CRT, or DER; versions later than v4.0.0) |
 | `devproxy jwt create` | Create a JWT for testing |
 | `devproxy stdio <command>` | Proxy STDIO communication |
 | `devproxy status` | Show running detached instances |
