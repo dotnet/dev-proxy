@@ -304,6 +304,117 @@ public sealed class ProcessSmokeTests
         }
     }
 
+    [Theory]
+    [InlineData("text")]
+    [InlineData("json")]
+    public async Task Detach_WithCapturedOutput_ParentOutputReachesEofWhileDaemonKeepsRunning(string output)
+    {
+        var host = Path.Combine(Path.GetDirectoryName(LocateHostDll())!,
+            OperatingSystem.IsWindows() ? "devproxy.exe" : "devproxy");
+        Assert.True(File.Exists(host), "Build DevProxy before running process smoke tests.");
+
+        var workDir = Directory.CreateTempSubdirectory("devproxy-detach-capture-");
+        int? pid = null;
+        string? logFile = null;
+        try
+        {
+            var config = JsonNode.Parse(ConfigFile)!.AsObject();
+            config["installCert"] = false;
+            config["noFirstRun"] = true;
+            config["validateSchemas"] = false;
+            config["mocksPlugin"]!["mocksFile"] = Path.Combine(workDir.FullName, "mocks.json");
+            await File.WriteAllTextAsync(Path.Combine(workDir.FullName, "mocks.json"), MocksFile);
+            await File.WriteAllTextAsync(Path.Combine(workDir.FullName, "devproxyrc.json"), config.ToJsonString());
+
+            // Mirrors callers such as `devproxy --detach | Out-String`, `$(devproxy --detach)`,
+            // or subprocess/execSync with pipes: they read our stdout/stderr until EOF, which only
+            // arrives once every process holding the pipe's write end has closed it.
+            var startInfo = new ProcessStartInfo(host)
+            {
+                WorkingDirectory = workDir.FullName,
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            startInfo.Environment.Remove("CI");
+            foreach (var arg in new[]
+            {
+                "--detach", "--as-system-proxy", "false", "--port", "0", "--api-port", "0",
+                "--install-cert", "false", "--no-first-run", "--output", output,
+            })
+            {
+                startInfo.ArgumentList.Add(arg);
+            }
+
+            using var process = new Process { StartInfo = startInfo };
+            Assert.True(process.Start());
+            process.StandardInput.Close();
+            var stdout = process.StandardOutput.ReadToEndAsync();
+            var stderr = process.StandardError.ReadToEndAsync();
+            try
+            {
+                using var exitTimeout = new CancellationTokenSource(s_startupTimeout);
+                await process.WaitForExitAsync(exitTimeout.Token);
+
+                // The parent has exited; if the daemon inherited our pipes, EOF never comes.
+                var eof = Task.WhenAll(stdout, stderr);
+                var completed = await Task.WhenAny(eof, Task.Delay(TimeSpan.FromSeconds(15)));
+                Assert.True(completed == eof,
+                    "`devproxy --detach` exited but its captured output didn't reach EOF; the daemon is holding the caller's pipes.");
+            }
+            finally
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+
+            Assert.Equal(0, process.ExitCode);
+            var standardOutput = await stdout;
+            if (output == "json")
+            {
+                var started = GetResultData(standardOutput);
+                pid = started.GetProperty("pid").GetInt32();
+                logFile = started.GetProperty("logFile").GetString();
+            }
+            else
+            {
+                Assert.Contains("Dev Proxy started in background.", standardOutput, StringComparison.Ordinal);
+                var pidLine = standardOutput.Split('\n').Select(line => line.Trim())
+                    .Single(line => line.StartsWith("PID:", StringComparison.Ordinal));
+                pid = int.Parse(pidLine["PID:".Length..].Trim(), System.Globalization.CultureInfo.InvariantCulture);
+                var logLine = standardOutput.Split('\n').Select(line => line.Trim())
+                    .Single(line => line.StartsWith("Log file:", StringComparison.Ordinal));
+                logFile = logLine["Log file:".Length..].Trim();
+            }
+
+            using var daemon = Process.GetProcessById(pid.Value);
+            Assert.False(daemon.HasExited, "The detached Dev Proxy daemon should keep running after the parent exits.");
+        }
+        finally
+        {
+            try
+            {
+                if (pid.HasValue)
+                {
+                    var stopped = await RunCommandAsync(host, workDir.FullName,
+                        ["stop", "--pid", pid.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)]);
+                    Assert.Equal(0, stopped.ExitCode);
+                }
+            }
+            finally
+            {
+                if (logFile is not null)
+                {
+                    File.Delete(logFile);
+                }
+                workDir.Delete(recursive: true);
+            }
+        }
+    }
+
     private static JsonElement GetResultData(string output)
     {
         foreach (var line in output.Split('\n').Where(line => line.StartsWith('{')))
