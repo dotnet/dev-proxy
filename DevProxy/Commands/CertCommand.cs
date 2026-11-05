@@ -169,6 +169,12 @@ sealed class CertCommand : Command
                 ? GetDefaultExportFileName(format)
                 : ProxyUtils.ReplacePathTokens(file));
 
+            if (IsSameFile(filePath, _certificateAuthority.RootCertificatePath))
+            {
+                _logger.LogError("Can't export the certificate to {Path} because it would overwrite the stored root certificate and its private key. Choose a different file.", filePath);
+                return 1;
+            }
+
             var directory = Path.GetDirectoryName(filePath);
             if (!string.IsNullOrEmpty(directory))
             {
@@ -217,6 +223,23 @@ sealed class CertCommand : Command
             ".der" => CertExportFormat.Der,
             _ => CertExportFormat.Pem
         };
+    }
+
+    internal static bool IsSameFile(string path1, string path2)
+    {
+        if (string.Equals(
+            Path.GetFullPath(path1),
+            Path.GetFullPath(path2),
+            OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // Different paths can point to the same file through symbolic links
+        // (e.g. /tmp and /private/tmp on macOS), so also compare existing contents.
+        return File.Exists(path1) && File.Exists(path2) &&
+            new FileInfo(path1).Length == new FileInfo(path2).Length &&
+            File.ReadAllBytes(path1).AsSpan().SequenceEqual(File.ReadAllBytes(path2));
     }
 
     internal static string GetDefaultExportFileName(CertExportFormat format) =>

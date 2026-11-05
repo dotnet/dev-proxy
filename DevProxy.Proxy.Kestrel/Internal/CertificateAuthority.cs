@@ -94,6 +94,9 @@ public sealed class CertificateAuthority : IDisposable
     /// <summary>The root CA certificate clients must trust to allow interception.</summary>
     public X509Certificate2 RootCertificate => _ca;
 
+    /// <summary>Path of the PKCS#12 file that stores the root certificate and its private key.</summary>
+    public string RootCertificatePath => _rootPfxPath;
+
     /// <summary>
     /// Whether <see cref="RootCertificate"/> is stored on disk and will be reused by
     /// subsequent runs. <c>false</c> when a newly generated root couldn't be saved.

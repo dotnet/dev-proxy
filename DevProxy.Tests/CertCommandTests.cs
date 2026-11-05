@@ -65,6 +65,42 @@ public sealed class CertCommandTests : IDisposable
     }
 
     [Fact]
+    public void IsSameFile_NormalizesRelativeSegments()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "devproxy", "rootCert.pfx");
+        var relative = Path.Combine(Path.GetTempPath(), "devproxy", "sub", "..", "rootCert.pfx");
+
+        Assert.True(CertCommand.IsSameFile(relative, root));
+        Assert.False(CertCommand.IsSameFile(Path.Combine(Path.GetTempPath(), "devproxy", "ca.pem"), root));
+    }
+
+    [Fact]
+    public void IsSameFile_DetectsSymlinkedPath()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "devproxy-certcmd-" + Guid.NewGuid().ToString("N"));
+        var target = Path.Combine(dir, "target");
+        var link = Path.Combine(dir, "link");
+        _ = Directory.CreateDirectory(target);
+        try
+        {
+            _ = Directory.CreateSymbolicLink(link, target);
+            File.WriteAllBytes(Path.Combine(target, "rootCert.pfx"), [1, 2, 3]);
+            File.WriteAllBytes(Path.Combine(target, "other.pfx"), [4, 5, 6]);
+
+            Assert.True(CertCommand.IsSameFile(Path.Combine(link, "rootCert.pfx"), Path.Combine(target, "rootCert.pfx")));
+            Assert.False(CertCommand.IsSameFile(Path.Combine(link, "other.pfx"), Path.Combine(target, "rootCert.pfx")));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Creating symbolic links may require elevated privileges on Windows.
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void GetCertificateBytes_Der_ReturnsRawCertificate()
     {
         var der = CertCommand.GetCertificateBytes(_certificate, CertExportFormat.Der);
