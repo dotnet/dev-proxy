@@ -7,7 +7,6 @@ using DevProxy.Commands;
 using DevProxy.Jwt;
 using DevProxy.Proxy;
 using Microsoft.AspNetCore.Mvc;
-using System.ComponentModel.DataAnnotations;
 using System.Security.Cryptography.X509Certificates;
 
 namespace DevProxy.ApiControllers;
@@ -102,17 +101,14 @@ public sealed class ProxyController(IProxyStateController proxyStateController, 
     }
 
     [HttpGet("rootCertificate")]
-    public IActionResult GetRootCertificate([FromQuery][Required] string format)
+    public IActionResult GetRootCertificate([FromQuery] string? format = null)
     {
-        if (string.IsNullOrWhiteSpace(format))
+        // pem is an alias of crt because the payload is PEM-encoded
+        if (!string.IsNullOrWhiteSpace(format) &&
+            !format.Equals("crt", StringComparison.OrdinalIgnoreCase) &&
+            !format.Equals("pem", StringComparison.OrdinalIgnoreCase))
         {
-            ModelState.AddModelError("format", "Format is required.");
-            return ValidationProblem(ModelState);
-        }
-
-        if (!format.Equals("crt", StringComparison.OrdinalIgnoreCase))
-        {
-            ModelState.AddModelError("format", "Invalid format. Supported format is 'crt'.");
+            ModelState.AddModelError("format", "Invalid format. Supported formats are 'crt' (default) and 'pem'. See https://go.devproxy.net?go=api");
             return ValidationProblem(ModelState);
         }
 

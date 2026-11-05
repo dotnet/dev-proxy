@@ -374,7 +374,7 @@ done
 | `/proxy/stopProxy` | POST | Graceful shutdown |
 | `/proxy/jwtToken` | POST | Generate JWT for testing |
 | `/proxy/mockRequest` | POST | Trigger mock request (equivalent of pressing `w`) |
-| `/proxy/rootCertificate?format=crt` | GET | Download root cert in PEM format |
+| `/proxy/rootCertificate` | GET | Download root cert in PEM format (optional `format`: `crt` (default) or `pem`) |
 
 Run `devproxy api show` for endpoint information. All endpoints require `Authorization: Bearer <token>`; browser origins must also be explicitly allowed with `apiAllowedOrigins`.
 
