@@ -82,6 +82,90 @@ public sealed class ReportingPluginsIntegrationTests
         Assert.NotEmpty(report.Data);
     }
 
+    // Engine-shaped log stream for a single passed-through request, including the
+    // proxy-internal lifecycle messages (timestamp, intercepted response, finished)
+    // that must never surface as summary categories.
+    private static RequestLog[] PassedThroughRequestLogs()
+    {
+        var exchange = TestExchange.Request("GET", "https://api.contoso.com/users");
+        var context = new LoggingContext(exchange.Session);
+        return
+        [
+            exchange.AsRequestLog(),
+            new("2026-11-03T15:42:24.7350485+00:00", MessageType.Timestamp, context),
+            new("URL not matched", MessageType.Skipped, context),
+            new("Passed through", MessageType.PassedThrough, context),
+            new("GET https://api.contoso.com/users", MessageType.InterceptedResponse, context),
+            new("GET https://api.contoso.com/users", MessageType.FinishedProcessingRequest, context),
+        ];
+    }
+
+    private static ExecutionSummaryPlugin CreateExecutionSummaryPlugin(string groupBy) =>
+        new(
+            TestDefaults.HttpClient,
+            NullLogger<ExecutionSummaryPlugin>.Instance,
+            KestrelProxyHarness.BuildUrlsToWatch("api.contoso.com"),
+            new TestProxyConfiguration(),
+            PluginConfig.FromJson($$"""{ "groupBy": "{{groupBy}}" }"""));
+
+    [Fact]
+    public async Task ExecutionSummary_ByUrl_ExcludesInternalMessageTypes()
+    {
+        var plugin = CreateExecutionSummaryPlugin("url");
+        var args = Recording(PassedThroughRequestLogs());
+
+        await plugin.AfterRecordingStopAsync(args, CancellationToken.None);
+
+        var report = GetReport<ExecutionSummaryPluginReportByUrl>(args, plugin.Name);
+        var request = Assert.Single(report.Data);
+        Assert.Equal("GET https://api.contoso.com/users", request.Key);
+        var category = Assert.Single(request.Value);
+        Assert.Equal("Requests passed through", category.Key);
+        Assert.Equal(new Dictionary<string, int> { ["Passed through"] = 1 }, category.Value);
+
+        var markdown = report.ToMarkdown();
+        Assert.DoesNotContain("Unknown", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("2026-11-03", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("Unknown", report.ToPlainText(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ExecutionSummary_ByUrl_HandlesLogWithoutPrecedingInterceptedRequest()
+    {
+        var plugin = CreateExecutionSummaryPlugin("url");
+        var exchange = TestExchange.Request("GET", "https://api.contoso.com/users");
+        var args = Recording([exchange.AsRequestLog(MessageType.PassedThrough)]);
+
+        await plugin.AfterRecordingStopAsync(args, CancellationToken.None);
+
+        var report = GetReport<ExecutionSummaryPluginReportByUrl>(args, plugin.Name);
+        var request = Assert.Single(report.Data);
+        Assert.Equal("GET https://api.contoso.com/users", request.Key);
+        var category = Assert.Single(request.Value);
+        Assert.Equal("Requests passed through", category.Key);
+        Assert.Equal(new Dictionary<string, int> { ["GET https://api.contoso.com/users"] = 1 }, category.Value);
+    }
+
+    [Fact]
+    public async Task ExecutionSummary_ByMessageType_ExcludesInternalMessageTypes()
+    {
+        var plugin = CreateExecutionSummaryPlugin("messageType");
+        var args = Recording(PassedThroughRequestLogs());
+
+        await plugin.AfterRecordingStopAsync(args, CancellationToken.None);
+
+        var report = GetReport<ExecutionSummaryPluginReportByMessageType>(args, plugin.Name);
+        Assert.Equal(
+            ["Requests intercepted", "Requests passed through"],
+            report.Data.Keys.Order());
+        Assert.Equal(
+            new Dictionary<string, int> { ["GET https://api.contoso.com/users"] = 1 },
+            report.Data["Requests passed through"]["Requests passed through"]);
+
+        Assert.DoesNotContain("Unknown", report.ToMarkdown(), StringComparison.Ordinal);
+        Assert.DoesNotContain("Unknown", report.ToPlainText(), StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task MinimalPermissions_ReportsPermissionsFromApiSpec()
     {
