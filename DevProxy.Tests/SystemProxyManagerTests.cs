@@ -143,3 +143,23 @@ public class SystemProxySnapshotStoreTests
         }
     }
 }
+
+public class SystemProxyResetDetectionTests
+{
+    [Theory]
+    [InlineData("system-proxy", "reset")]
+    [InlineData("system-proxy", "reset", "--force")]
+    [InlineData("--output=json", "system-proxy", "reset")]
+    [InlineData("system-proxy", "--no-color", "reset")]
+    [InlineData("--log-level", "debug", "system-proxy", "reset", "--bogus")]
+    public void IsResetInvocation_ReturnsTrue(params string[] args) =>
+        Assert.True(DevProxy.Commands.SystemProxyCommand.IsResetInvocation(args));
+
+    [Theory]
+    [InlineData("system-proxy")]
+    [InlineData("reset")]
+    [InlineData("stop")]
+    [InlineData]
+    public void IsResetInvocation_ReturnsFalse(params string[] args) =>
+        Assert.False(DevProxy.Commands.SystemProxyCommand.IsResetInvocation(args));
+}

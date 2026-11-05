@@ -41,20 +41,38 @@ sealed class SystemProxyCommand : Command
         ResetCoreAsync(parseResult.GetValue(_forceOption), _systemProxyLogger, cancellationToken);
 
     /// <summary>
-    /// Runs <c>system-proxy reset</c> without building the application host, so a broken
-    /// configuration or plugin can't prevent restoring network access.
+    /// Builds a minimal command tree mirroring the registered <c>system-proxy reset</c>
+    /// command and the global options, so the standalone path parses arguments the same way.
     /// </summary>
-    internal static async Task<int> RunResetStandaloneAsync(string[] args)
+    private static (RootCommand RootCommand, Option<bool> ForceOption) CreateStandaloneResetParser()
     {
-        // Parse with a minimal command tree mirroring the registered command so values
-        // like '--force false' and invalid arguments are handled the same way.
         var forceOption = new Option<bool>("--force", "-f");
         var resetCommand = new Command("reset") { forceOption };
         var rootCommand = new RootCommand { new Command("system-proxy") { resetCommand } };
         rootCommand.Options.Add(new Option<OutputFormat?>(DevProxyCommand.OutputOptionName) { Recursive = true });
         rootCommand.Options.Add(new Option<LogLevel?>(DevProxyCommand.LogLevelOptionName) { Recursive = true });
         rootCommand.Options.Add(new Option<bool>(DevProxyCommand.NoColorOptionName) { Recursive = true, Arity = ArgumentArity.Zero });
+        return (rootCommand, forceOption);
+    }
 
+    /// <summary>
+    /// Returns whether the arguments (without the executable) invoke <c>system-proxy reset</c>,
+    /// wherever global options appear and however their values are attached.
+    /// </summary>
+    internal static bool IsResetInvocation(string[] args)
+    {
+        var commandResult = CreateStandaloneResetParser().RootCommand.Parse(args).CommandResult;
+        return commandResult.Command.Name == "reset" &&
+            commandResult.Parent is System.CommandLine.Parsing.CommandResult { Command.Name: "system-proxy" };
+    }
+
+    /// <summary>
+    /// Runs <c>system-proxy reset</c> without building the application host, so a broken
+    /// configuration or plugin can't prevent restoring network access.
+    /// </summary>
+    internal static async Task<int> RunResetStandaloneAsync(string[] args)
+    {
+        var (rootCommand, forceOption) = CreateStandaloneResetParser();
         var parseResult = rootCommand.Parse(args);
         if (parseResult.Errors.Count > 0)
         {
