@@ -288,7 +288,7 @@ internal static class StateManager
     /// <summary>
     /// Checks if a process with the given PID is running.
     /// </summary>
-    private static bool IsProcessRunning(int pid)
+    internal static bool IsProcessRunning(int pid)
     {
         try
         {

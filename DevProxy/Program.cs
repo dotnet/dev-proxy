@@ -51,20 +51,28 @@ if (DevProxyCommand.IsInternalDaemon)
     Console.SetError(_detachedLogWriter);
 }
 
-static async Task<int> StartDetachedProcessAsync(string[] args)
+static async Task ReconcileOrphanedSystemProxiesAsync(bool isJsonOutput)
 {
-    var isJsonOutput = IsJsonOutputRequested(args);
-
-    // Recover from a system-proxy registration left behind by a previous
-    // instance that crashed before restoring the OS proxy. This must run before
-    // any state-loading call below, which prunes (deletes) the stale state files
-    // it depends on without restoring the proxy.
     var reconciliation = await SystemProxyManager.ReconcileOrphanedSystemProxiesAsync();
-    foreach (var orphan in reconciliation.Orphans)
+    if (reconciliation.Outcome is SystemProxyManager.OrphanRestoreOutcome.Failed)
     {
-        var message = reconciliation.SystemProxyDisabled
-            ? $"Recovered system proxy left by a crashed Dev Proxy instance (PID: {orphan.Pid})."
-            : $"Removed stale system-proxy registration left by a crashed Dev Proxy instance (PID: {orphan.Pid}) while keeping the current system proxy owner unchanged.";
+        var error = $"Couldn't restore the system proxy left by a crashed Dev Proxy instance (PID: {string.Join(", ", reconciliation.OrphanedPids)}). Run 'devproxy system-proxy reset' or see https://go.devproxy.net?go=proxy-reset.";
+        if (isJsonOutput)
+        {
+            await Console.Out.WriteLineAsync(FormatJsonLogEntry("error", error));
+        }
+        else
+        {
+            await Console.Error.WriteLineAsync(error);
+        }
+        return;
+    }
+
+    foreach (var pid in reconciliation.OrphanedPids)
+    {
+        var message = reconciliation.Outcome is SystemProxyManager.OrphanRestoreOutcome.Restored
+            ? $"Recovered system proxy left by a crashed Dev Proxy instance (PID: {pid})."
+            : $"Removed stale system-proxy registration left by a crashed Dev Proxy instance (PID: {pid}) while keeping the current system proxy owner unchanged.";
         if (isJsonOutput)
         {
             await Console.Out.WriteLineAsync(FormatJsonLogEntry("info", message));
@@ -74,6 +82,17 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
             await Console.Out.WriteLineAsync(message);
         }
     }
+}
+
+static async Task<int> StartDetachedProcessAsync(string[] args)
+{
+    var isJsonOutput = IsJsonOutputRequested(args);
+
+    // Recover from a system-proxy registration left behind by a previous
+    // instance that crashed before restoring the OS proxy. This must run before
+    // any state-loading call below, which prunes (deletes) the stale state files
+    // it depends on without restoring the proxy.
+    await ReconcileOrphanedSystemProxiesAsync(isJsonOutput);
 
     // Check if an instance is already running as system proxy
     var systemProxyInstance = await StateManager.FindSystemProxyInstanceAsync();
@@ -429,6 +448,25 @@ if (DevProxyCommand.IsConfigValidateCommand)
     var validateExitCode = await ConfigCommand.RunValidateStandaloneAsync(args);
     Environment.Exit(validateExitCode);
     return;
+}
+
+// Handle 'system-proxy reset' early so a broken configuration or plugin can't
+// prevent restoring network access.
+if (DevProxyCommand.IsSystemProxyResetCommand)
+{
+    var resetExitCode = await SystemProxyCommand.RunResetStandaloneAsync(args);
+    Environment.Exit(resetExitCode);
+    return;
+}
+
+// Recover from a system-proxy registration left behind by a previous instance
+// that was killed or crashed. Detached daemons skip this because the parent
+// process that spawned them already did it.
+if (DevProxyCommand.IsRootCommand &&
+    !DevProxyCommand.IsInternalDaemon &&
+    !args.Any(a => a is "-h" or "-?" or "--help" or "--version"))
+{
+    await ReconcileOrphanedSystemProxiesAsync(IsJsonOutputRequested(args));
 }
 
 var options = new DevProxyConfigOptions();
