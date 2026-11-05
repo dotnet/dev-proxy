@@ -59,6 +59,7 @@ sealed class DevProxyCommand : RootCommand
     private static bool _isJwtCommandResolved;
     private static bool _isRootCommandResolved;
     private static bool _isConfigValidateCommandResolved;
+    private static bool _isSystemProxyResetCommandResolved;
     private static bool _isDetachedModeResolved;
     private static bool _isInternalDaemonResolved;
     private static bool _stdioLogFilePathResolved;
@@ -128,6 +129,25 @@ sealed class DevProxyCommand : RootCommand
                 string.Equals(args[2], "validate", StringComparison.OrdinalIgnoreCase) &&
                 !args.Any(arg => helpOptions.Contains(arg));
             _isConfigValidateCommandResolved = true;
+            return field;
+        }
+    }
+
+    public static bool IsSystemProxyResetCommand
+    {
+        get
+        {
+            if (_isSystemProxyResetCommandResolved)
+            {
+                return field;
+            }
+
+            var args = Environment.GetCommandLineArgs();
+            field = args.Length > 2 &&
+                string.Equals(args[1], "system-proxy", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(args[2], "reset", StringComparison.OrdinalIgnoreCase) &&
+                !args.Any(arg => helpOptions.Contains(arg));
+            _isSystemProxyResetCommandResolved = true;
             return field;
         }
     }

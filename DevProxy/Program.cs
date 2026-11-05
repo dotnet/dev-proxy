@@ -436,6 +436,15 @@ if (DevProxyCommand.IsConfigValidateCommand)
     return;
 }
 
+// Handle 'system-proxy reset' early so a broken configuration or plugin can't
+// prevent restoring network access.
+if (DevProxyCommand.IsSystemProxyResetCommand)
+{
+    var resetExitCode = await SystemProxyCommand.RunResetStandaloneAsync(args);
+    Environment.Exit(resetExitCode);
+    return;
+}
+
 // Recover from a system-proxy registration left behind by a previous instance
 // that was killed or crashed. Detached daemons skip this because the parent
 // process that spawned them already did it.

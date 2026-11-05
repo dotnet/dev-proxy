@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Logging;
 using DevProxy.Proxy;
 using DevProxy.State;
 using System.CommandLine;
@@ -35,9 +36,43 @@ sealed class SystemProxyCommand : Command
         ]);
     }
 
-    private async Task<int> ResetAsync(ParseResult parseResult, CancellationToken cancellationToken)
+    private Task<int> ResetAsync(ParseResult parseResult, CancellationToken cancellationToken) =>
+        ResetCoreAsync(parseResult.GetValue(_forceOption), _systemProxyLogger, cancellationToken);
+
+    /// <summary>
+    /// Runs <c>system-proxy reset</c> without building the application host, so a broken
+    /// configuration or plugin can't prevent restoring network access.
+    /// </summary>
+    internal static async Task<int> RunResetStandaloneAsync(string[] args)
     {
-        var force = parseResult.GetValue(_forceOption);
+        var force = args.Any(a => a is "--force" or "-f");
+
+        using var loggerFactory = LoggerFactory.Create(builder =>
+        {
+            _ = builder
+                .SetMinimumLevel(LogLevel.Information)
+                .AddConsole(consoleOptions =>
+                {
+                    consoleOptions.FormatterName = ProxyConsoleFormatter.DefaultCategoryName;
+                    consoleOptions.LogToStandardErrorThreshold = LogLevel.Warning;
+                })
+                .AddConsoleFormatter<ProxyConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
+                {
+                    formatterOptions.IncludeScopes = false;
+                    formatterOptions.ShowTimestamps = false;
+                });
+        });
+
+        return await ResetCoreAsync(force, loggerFactory.CreateLogger<SystemProxyManager>(), CancellationToken.None);
+    }
+
+    private static async Task<int> ResetCoreAsync(bool force, ILogger<SystemProxyManager> logger, CancellationToken cancellationToken)
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsMacOS())
+        {
+            Console.WriteLine("Dev Proxy doesn't change the system proxy settings on this operating system. Nothing to reset.");
+            return 0;
+        }
 
         var liveOwner = await SystemProxyManager.FindLiveSystemProxyOwnerAsync(cancellationToken);
         if (liveOwner is not null && !force)
@@ -47,7 +82,7 @@ sealed class SystemProxyCommand : Command
             return 1;
         }
 
-        var result = new SystemProxyManager(_systemProxyLogger).Restore();
+        var result = new SystemProxyManager(logger).Restore();
         if (result is SystemProxyRestoreResult.Failed)
         {
             await Console.Error.WriteLineAsync("Couldn't restore the system proxy settings. To reset them manually, see https://go.devproxy.net?go=proxy-reset.");
@@ -61,18 +96,9 @@ sealed class SystemProxyCommand : Command
             await StateManager.DeleteStateAsync(orphan.Pid, cancellationToken);
         }
 
-        switch (result)
-        {
-            case SystemProxyRestoreResult.RestoredPrevious:
-                Console.WriteLine("Restored the system proxy settings from before Dev Proxy started.");
-                return 0;
-            case SystemProxyRestoreResult.Disabled:
-                Console.WriteLine("Turned off the system proxy.");
-                return 0;
-            case SystemProxyRestoreResult.NotSupported:
-            default:
-                Console.WriteLine("Dev Proxy doesn't change the system proxy settings on this operating system. Nothing to reset.");
-                return 0;
-        }
+        Console.WriteLine(result is SystemProxyRestoreResult.RestoredPrevious
+            ? "Restored the system proxy settings from before Dev Proxy started."
+            : "Turned off the system proxy.");
+        return 0;
     }
 }

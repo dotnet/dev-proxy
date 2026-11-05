@@ -68,6 +68,7 @@ internal sealed class SystemProxyManager : ISystemProxyManager
 
     private readonly ILogger<SystemProxyManager> _logger;
     private readonly string _snapshotPath;
+    private bool _savedSnapshot;
 
     public SystemProxyManager(ILogger<SystemProxyManager> logger) :
         this(logger, SystemProxySnapshotStore.DefaultPath)
@@ -104,7 +105,22 @@ internal sealed class SystemProxyManager : ISystemProxyManager
         }
     }
 
-    public void Disable() => _ = Restore();
+    public void Disable()
+    {
+        if (_savedSnapshot)
+        {
+            _savedSnapshot = false;
+            // The snapshot is gone or belongs to another process when 'system-proxy reset'
+            // already restored the settings or another instance took over. Restoring now
+            // would undo that, so leave the settings alone.
+            if (SystemProxySnapshotStore.Load(_snapshotPath)?.Pid != Environment.ProcessId)
+            {
+                return;
+            }
+        }
+
+        _ = Restore();
+    }
 
     /// <summary>
     /// Puts back the OS proxy settings recorded before Dev Proxy registered itself, or turns
@@ -167,6 +183,7 @@ internal sealed class SystemProxyManager : ISystemProxyManager
             }
             snapshot.Pid = Environment.ProcessId;
             SystemProxySnapshotStore.Save(_snapshotPath, snapshot);
+            _savedSnapshot = true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
@@ -288,12 +305,12 @@ internal sealed class SystemProxyManager : ISystemProxyManager
     private static void CaptureMacOS(SystemProxySnapshot snapshot)
     {
         var services = MacOSNetworkSetup.ParseNetworkServices(
-            RunNetworkSetup("-listallnetworkservices") ?? string.Empty);
+            RunNetworkSetup("-listallnetworkservices"));
         snapshot.MacOS = [.. services.Select(service => new MacOSServiceProxySettings
         {
             Service = service,
-            Web = MacOSNetworkSetup.ParseProxyEndpoint(RunNetworkSetup("-getwebproxy", service) ?? string.Empty),
-            SecureWeb = MacOSNetworkSetup.ParseProxyEndpoint(RunNetworkSetup("-getsecurewebproxy", service) ?? string.Empty),
+            Web = MacOSNetworkSetup.ParseProxyEndpoint(RunNetworkSetup("-getwebproxy", service)),
+            SecureWeb = MacOSNetworkSetup.ParseProxyEndpoint(RunNetworkSetup("-getsecurewebproxy", service)),
         })];
     }
 
@@ -314,7 +331,7 @@ internal sealed class SystemProxyManager : ISystemProxyManager
         }
     }
 
-    private static string? RunNetworkSetup(params string[] arguments)
+    private static string RunNetworkSetup(params string[] arguments)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -344,10 +361,14 @@ internal sealed class SystemProxyManager : ISystemProxyManager
         if (!process.WaitForExit(TimeSpan.FromSeconds(10)))
         {
             process.Kill();
-            return null;
+            throw new InvalidOperationException($"networksetup {arguments[0]} timed out.");
         }
         // Flush the asynchronous output readers.
         process.WaitForExit();
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException($"networksetup {arguments[0]} exited with code {process.ExitCode}.");
+        }
         return output.ToString();
     }
 
@@ -369,6 +390,12 @@ internal sealed class SystemProxyManager : ISystemProxyManager
             if (!process.WaitForExit(TimeSpan.FromSeconds(10)))
             {
                 process.Kill();
+                _logger.LogError("Timed out toggling the system proxy via toggle-proxy.sh.");
+                return false;
+            }
+            if (process.ExitCode != 0)
+            {
+                _logger.LogError("toggle-proxy.sh exited with code {ExitCode}.", process.ExitCode);
                 return false;
             }
             return true;
