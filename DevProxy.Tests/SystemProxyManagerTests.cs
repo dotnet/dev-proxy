@@ -159,6 +159,7 @@ public class SystemProxyResetDetectionTests
     [InlineData("system-proxy")]
     [InlineData("reset")]
     [InlineData("stop")]
+    [InlineData("system-proxy", "reset", "--force", "--help")]
     [InlineData]
     public void IsResetInvocation_ReturnsFalse(params string[] args) =>
         Assert.False(DevProxy.Commands.SystemProxyCommand.IsResetInvocation(args));

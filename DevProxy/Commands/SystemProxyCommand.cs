@@ -61,7 +61,13 @@ sealed class SystemProxyCommand : Command
     /// </summary>
     internal static bool IsResetInvocation(string[] args)
     {
-        var commandResult = CreateStandaloneResetParser().RootCommand.Parse(args).CommandResult;
+        var parseResult = CreateStandaloneResetParser().RootCommand.Parse(args);
+        // Leave help (including help in a response file) to the full command tree.
+        if (parseResult.Action is System.CommandLine.Help.HelpAction)
+        {
+            return false;
+        }
+        var commandResult = parseResult.CommandResult;
         return commandResult.Command.Name == "reset" &&
             commandResult.Parent is System.CommandLine.Parsing.CommandResult { Command.Name: "system-proxy" };
     }
