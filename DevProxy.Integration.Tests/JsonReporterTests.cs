@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Reporters;
 using DevProxy.Plugins.Reporting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -27,5 +28,51 @@ public sealed class JsonReporterTests
 
         _ = reporter.Report("OtherPlugin", new { Value = 1 });
         Assert.Equal(".json", reporter.FileExtension);
+    }
+
+    [Fact]
+    public async Task AfterRecordingStop_RecordsAbsolutePathsOfWrittenReports()
+    {
+        var reporter = new TestJsonReporter();
+        var args = new RecordingArgs([])
+        {
+            GlobalData = new()
+            {
+                [ProxyUtils.ReportsKey] = new Dictionary<string, object>
+                {
+                    ["SomePlugin"] = new { Value = 1 },
+                    ["OtherPlugin"] = new { Value = 2 },
+                },
+            },
+        };
+
+        var dir = Directory.CreateTempSubdirectory("devproxy-reporter-");
+        var originalCwd = Directory.GetCurrentDirectory();
+        Directory.SetCurrentDirectory(dir.FullName);
+        try
+        {
+            await reporter.AfterRecordingStopAsync(args, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(originalCwd);
+        }
+
+        try
+        {
+            var reportFiles = args.ReportFiles;
+            Assert.Equal(2, reportFiles.Count);
+            Assert.All(reportFiles, f =>
+            {
+                Assert.True(Path.IsPathFullyQualified(f));
+                Assert.True(File.Exists(f));
+            });
+            Assert.Contains(reportFiles, f => Path.GetFileName(f) == "SomePlugin_JsonReporter.json");
+            Assert.Contains(reportFiles, f => Path.GetFileName(f) == "OtherPlugin_JsonReporter.json");
+        }
+        finally
+        {
+            dir.Delete(true);
+        }
     }
 }
