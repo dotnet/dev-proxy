@@ -29,6 +29,7 @@ sealed class DevProxyCommand : RootCommand
     internal const string IpAddressOptionName = "--ip-address";
     internal const string LogLevelOptionName = "--log-level";
     internal const string RecordOptionName = "--record";
+    internal const string ReportDirOptionName = "--report-dir";
     internal const string WatchPidsOptionName = "--watch-pids";
     internal const string WatchProcessNamesOptionName = "--watch-process-names";
     internal const string WatchProcessTreeOptionName = "--watch-process-tree";
@@ -227,6 +228,9 @@ sealed class DevProxyCommand : RootCommand
         Environment.GetEnvironmentVariable("TERM"));
 
     // Per https://no-color.org, NO_COLOR disables color only when present and not empty.
+    internal static string ResolveReportDirOption(string value) =>
+        Path.GetFullPath(ProxyUtils.ReplacePathTokens(value));
+
     internal static bool ShouldDisableColor(string[] args, string? noColorEnv, string? termEnv) =>
         args.Contains(NoColorOptionName) ||
         !string.IsNullOrEmpty(noColorEnv) ||
@@ -443,6 +447,31 @@ sealed class DevProxyCommand : RootCommand
             Description = "Use this option to record all request logs"
         };
 
+        var reportDirOption = new Option<string?>(ReportDirOptionName)
+        {
+            Description = "Folder where reporters write report files. Overrides reportsFolder from the config file. Relative paths resolve against the current working directory. Default: the current working directory",
+            HelpName = "path"
+        };
+        reportDirOption.Validators.Add(input =>
+        {
+            if (input.Tokens.Count == 0)
+            {
+                return;
+            }
+
+            var value = input.Tokens[0].Value;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                input.AddError("The report directory path can't be empty.");
+                return;
+            }
+
+            if (File.Exists(ResolveReportDirOption(value)))
+            {
+                input.AddError($"The report directory path '{value}' points to a file. Specify a folder.");
+            }
+        });
+
         var watchPidsOption = new Option<IEnumerable<int>>(WatchPidsOptionName)
         {
             AllowMultipleArgumentsPerToken = true,
@@ -612,6 +641,7 @@ sealed class DevProxyCommand : RootCommand
             outputOption,
             portOption,
             recordOption,
+            reportDirOption,
             timeoutOption,
             urlsToWatchOption,
             watchPidsOption,
@@ -709,6 +739,11 @@ sealed class DevProxyCommand : RootCommand
         if (record is not null)
         {
             _proxyConfiguration.Record = record.Value;
+        }
+        var reportDir = parseResult.GetValueOrDefault<string?>(ReportDirOptionName);
+        if (!string.IsNullOrWhiteSpace(reportDir))
+        {
+            _proxyConfiguration.ReportsFolder = ResolveReportDirOption(reportDir);
         }
         var watchPids = parseResult.GetValueOrDefault<IEnumerable<int>>(WatchPidsOptionName);
         if (watchPids is not null && watchPids.Any())
