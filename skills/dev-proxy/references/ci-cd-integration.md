@@ -376,7 +376,7 @@ done
 | `/proxy/mockRequest` | POST | Trigger mock request (equivalent of pressing `w`) |
 | `/proxy/rootCertificate?format=crt` | GET | Download root cert in PEM format |
 
-Run `devproxy api show` for endpoint information. All endpoints require `Authorization: Bearer <token>`; browser origins must also be explicitly allowed with `apiAllowedOrigins`.
+Run `devproxy api show` for endpoint information, or `devproxy api show --output json` for query parameters, request body schemas, and response codes per endpoint. All endpoints require `Authorization: Bearer <token>`; browser origins must also be explicitly allowed with `apiAllowedOrigins`.
 
 ## Environment Variables for Azure API Center
 

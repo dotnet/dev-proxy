@@ -140,11 +140,18 @@ sealed class ApiCommand : Command
             {
                 baseUrl,
                 authentication = new { scheme = "Bearer", header = "Authorization", tokenFilePattern },
-                endpoints = endpoints.Select(e => new
+                endpoints = endpoints.Select(e =>
                 {
-                    method = e.Method,
-                    path = e.Path,
-                    description = e.Description
+                    var schema = ApiEndpointSchemas.Get(e.Method, e.Path);
+                    return new
+                    {
+                        method = e.Method,
+                        path = e.Path,
+                        description = e.Description,
+                        query = schema?.Query,
+                        requestBody = schema?.RequestBody,
+                        responses = schema?.Responses
+                    };
                 })
             }, ProxyUtils.JsonSerializerOptions);
             _logger.LogStructuredOutput(json);
