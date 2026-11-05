@@ -127,8 +127,8 @@
       },
       "Markdig": {
         "type": "Transitive",
-        "resolved": "1.5.0",
-        "contentHash": "oEm6N4PYFPUZiJ5e89993AE6hfC8EWRGD5M8nyoSJbwD4GgW818mjlQCk++SdTV4godaN50Ybcmm4j2Dp76oIQ=="
+        "resolved": "1.5.1",
+        "contentHash": "NtHwU5t5yKr6Gnylhs8/hlR0mOAftTFQURDz2ID8bkunxps1neOzKw0dYKKlwNuwiYIGLHjJTXK91f809Ko1ww=="
       },
       "Microsoft.Bcl.AsyncInterfaces": {
         "type": "Transitive",
@@ -523,7 +523,7 @@
       "devproxy.abstractions": {
         "type": "Project",
         "dependencies": {
-          "Markdig": "[1.5.0, )",
+          "Markdig": "[1.5.1, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.13, )",
           "Microsoft.Extensions.Configuration": "[10.0.14, )",
           "Microsoft.Extensions.Configuration.Binder": "[10.0.13, )",
