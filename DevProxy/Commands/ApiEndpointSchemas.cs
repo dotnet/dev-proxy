@@ -166,6 +166,7 @@ static class ApiEndpointSchemas
             ["validFor"] = new JsonObject
             {
                 ["type"] = "number",
+                ["exclusiveMinimum"] = 0,
                 ["description"] = "Token lifetime in minutes. Default: 60"
             },
             ["signingKey"] = new JsonObject
