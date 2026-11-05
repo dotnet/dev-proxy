@@ -45,7 +45,7 @@ internal sealed class StopCommand : Command
         var reconciliation = await SystemProxyManager.ReconcileOrphanedSystemProxiesAsync(cancellationToken);
 
         var states = await StateManager.LoadAllStatesAsync(cancellationToken);
-        if (states.Count == 0 && reconciliation.Orphans.Count == 0)
+        if (states.Count == 0 && reconciliation.OrphanedPids.Count == 0)
         {
             Console.WriteLine("Dev Proxy is not running.");
             return 1;
@@ -102,11 +102,11 @@ internal sealed class StopCommand : Command
 
     private static void ReportReconciledOrphans(SystemProxyManager.OrphanReconciliation reconciliation)
     {
-        foreach (var orphan in reconciliation.Orphans)
+        foreach (var pid in reconciliation.OrphanedPids)
         {
-            Console.WriteLine(reconciliation.SystemProxyDisabled
-                ? $"Restored system proxy left by crashed Dev Proxy (PID: {orphan.Pid})."
-                : $"Removed stale record for crashed Dev Proxy (PID: {orphan.Pid}); system proxy is owned by a running instance.");
+            Console.WriteLine(reconciliation.SystemProxyRestored
+                ? $"Restored system proxy left by crashed Dev Proxy (PID: {pid})."
+                : $"Removed stale record for crashed Dev Proxy (PID: {pid}); system proxy is owned by a running instance.");
         }
     }
 

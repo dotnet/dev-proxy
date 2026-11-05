@@ -636,6 +636,7 @@ sealed class DevProxyCommand : RootCommand
             ActivatorUtilities.CreateInstance<StdioCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<StatusCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<StopCommand>(_serviceProvider),
+            ActivatorUtilities.CreateInstance<SystemProxyCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<LogsCommand>(_serviceProvider)
         };
         var pluginCommands = _plugins.SelectMany(p => p.GetCommands());

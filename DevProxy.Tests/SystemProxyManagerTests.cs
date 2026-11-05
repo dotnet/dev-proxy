@@ -24,3 +24,122 @@ public class SystemProxyManagerTests
             startInfo.ArgumentList);
     }
 }
+
+public class MacOSNetworkSetupTests
+{
+    [Fact]
+    public void ParseNetworkServices_SkipsHeaderBlankAndDisabledServices()
+    {
+        var output = "An asterisk (*) denotes that a network service is disabled.\nWi-Fi\n*Thunderbolt Bridge\nUSB 10/100/1000 LAN\n\n";
+
+        var services = MacOSNetworkSetup.ParseNetworkServices(output);
+
+        Assert.Equal(["Wi-Fi", "USB 10/100/1000 LAN"], services);
+    }
+
+    [Fact]
+    public void ParseProxyEndpoint_ReadsEnabledServerAndPort()
+    {
+        var output = "Enabled: Yes\nServer: proxy.contoso.com\nPort: 3128\nAuthenticated Proxy Enabled: 0\n";
+
+        var endpoint = MacOSNetworkSetup.ParseProxyEndpoint(output);
+
+        Assert.True(endpoint.Enabled);
+        Assert.Equal("proxy.contoso.com", endpoint.Server);
+        Assert.Equal(3128, endpoint.Port);
+    }
+
+    [Fact]
+    public void ParseProxyEndpoint_EmptyServer()
+    {
+        var endpoint = MacOSNetworkSetup.ParseProxyEndpoint("Enabled: No\nServer: \nPort: 0\n");
+
+        Assert.False(endpoint.Enabled);
+        Assert.Equal(string.Empty, endpoint.Server);
+        Assert.Equal(0, endpoint.Port);
+    }
+
+    [Fact]
+    public void GetRestoreCommands_RestoresServerAndTurnsDisabledEndpointsOff()
+    {
+        var settings = new MacOSServiceProxySettings
+        {
+            Service = "Wi-Fi",
+            Web = new() { Enabled = true, Server = "proxy.contoso.com", Port = 3128 },
+            SecureWeb = new() { Enabled = false, Server = "secure.contoso.com", Port = 3129 },
+        };
+
+        var commands = MacOSNetworkSetup.GetRestoreCommands(settings);
+
+        Assert.Equal(3, commands.Count);
+        Assert.Equal(["-setwebproxy", "Wi-Fi", "proxy.contoso.com", "3128"], commands[0]);
+        Assert.Equal(["-setsecurewebproxy", "Wi-Fi", "secure.contoso.com", "3129"], commands[1]);
+        Assert.Equal(["-setsecurewebproxystate", "Wi-Fi", "off"], commands[2]);
+    }
+
+    [Fact]
+    public void GetRestoreCommands_NoPreviousServer_ReturnsNoCommands()
+    {
+        var settings = new MacOSServiceProxySettings
+        {
+            Service = "Wi-Fi",
+            Web = new() { Enabled = false, Server = string.Empty, Port = 0 },
+            SecureWeb = null,
+        };
+
+        Assert.Empty(MacOSNetworkSetup.GetRestoreCommands(settings));
+    }
+}
+
+public class SystemProxySnapshotStoreTests
+{
+    [Fact]
+    public void SaveLoadDelete_RoundTripsSnapshot()
+    {
+        var folder = Directory.CreateTempSubdirectory("devproxy-snapshot-");
+        try
+        {
+            var path = Path.Combine(folder.FullName, "system-proxy-backup.json");
+            var snapshot = new SystemProxySnapshot
+            {
+                Pid = 1234,
+                CreatedAt = DateTimeOffset.UnixEpoch,
+                Windows = new() { ProxyEnable = 1, ProxyServer = "corp:8080" },
+                MacOS = [new() { Service = "Wi-Fi", Web = new() { Enabled = true, Server = "corp", Port = 8080 } }],
+            };
+
+            SystemProxySnapshotStore.Save(path, snapshot);
+            var loaded = SystemProxySnapshotStore.Load(path);
+
+            Assert.NotNull(loaded);
+            Assert.Equal(1234, loaded.Pid);
+            Assert.Equal(1, loaded.Windows?.ProxyEnable);
+            Assert.Equal("corp:8080", loaded.Windows?.ProxyServer);
+            var service = Assert.Single(loaded.MacOS!);
+            Assert.Equal("Wi-Fi", service.Service);
+            Assert.Equal(8080, service.Web?.Port);
+
+            SystemProxySnapshotStore.Delete(path);
+            Assert.Null(SystemProxySnapshotStore.Load(path));
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Load_CorruptFile_ReturnsNull()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path, "{ not json");
+            Assert.Null(SystemProxySnapshotStore.Load(path));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+}
