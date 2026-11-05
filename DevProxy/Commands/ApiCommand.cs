@@ -145,7 +145,8 @@ sealed class ApiCommand : Command
                     method = e.Method,
                     path = e.Path,
                     description = e.Description
-                })
+                }),
+                docs = DocsLinks.Api
             }, ProxyUtils.JsonSerializerOptions);
             _logger.LogStructuredOutput(json);
         }
@@ -161,6 +162,8 @@ sealed class ApiCommand : Command
             {
                 _logger.LogInformation("  {Method,-6} {Path,-30} {Description}", endpoint.Method, endpoint.Path, endpoint.Description);
             }
+            _logger.LogInformation("");
+            _logger.LogInformation("Docs: {DocsUrl}", DocsLinks.Api);
         }
     }
 }
