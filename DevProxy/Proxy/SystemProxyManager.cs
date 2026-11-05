@@ -148,9 +148,11 @@ internal sealed class SystemProxyManager : ISystemProxyManager
         {
             succeeded = RunToggleScript("off");
             restoredPrevious = snapshot?.MacOS is not null;
-            if (succeeded && restoredPrevious)
+            // Restore even if turning off failed for some services, so the services that
+            // did turn off get their previous proxy back. Either failure keeps the snapshot.
+            if (restoredPrevious && !RestoreMacOS(snapshot!.MacOS!))
             {
-                succeeded = RestoreMacOS(snapshot!.MacOS!);
+                succeeded = false;
             }
         }
 

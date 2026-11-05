@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Abstractions.Proxy;
 using DevProxy.Logging;
 using DevProxy.Proxy;
 using DevProxy.State;
@@ -50,10 +51,8 @@ sealed class SystemProxyCommand : Command
         var forceOption = new Option<bool>("--force", "-f");
         var resetCommand = new Command("reset") { forceOption };
         var rootCommand = new RootCommand { new Command("system-proxy") { resetCommand } };
-        foreach (var name in new[] { DevProxyCommand.OutputOptionName, DevProxyCommand.LogLevelOptionName })
-        {
-            rootCommand.Options.Add(new Option<string>(name) { Recursive = true });
-        }
+        rootCommand.Options.Add(new Option<OutputFormat?>(DevProxyCommand.OutputOptionName) { Recursive = true });
+        rootCommand.Options.Add(new Option<LogLevel?>(DevProxyCommand.LogLevelOptionName) { Recursive = true });
         rootCommand.Options.Add(new Option<bool>(DevProxyCommand.NoColorOptionName) { Recursive = true, Arity = ArgumentArity.Zero });
 
         var parseResult = rootCommand.Parse(args);

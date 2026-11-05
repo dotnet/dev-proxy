@@ -143,9 +143,23 @@ sealed class DevProxyCommand : RootCommand
             }
 
             var args = Environment.GetCommandLineArgs();
-            field = args.Length > 2 &&
-                string.Equals(args[1], "system-proxy", StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(args[2], "reset", StringComparison.OrdinalIgnoreCase) &&
+            // Global options can appear anywhere, so skip them (and their values) to find
+            // the command path.
+            var tokens = new List<string>();
+            for (var i = 1; i < args.Length; i++)
+            {
+                if (args[i] is OutputOptionName or LogLevelOptionName)
+                {
+                    i++;
+                }
+                else if (args[i] is not NoColorOptionName)
+                {
+                    tokens.Add(args[i]);
+                }
+            }
+            field = tokens.Count > 1 &&
+                string.Equals(tokens[0], "system-proxy", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(tokens[1], "reset", StringComparison.OrdinalIgnoreCase) &&
                 !args.Any(arg => helpOptions.Contains(arg));
             _isSystemProxyResetCommandResolved = true;
             return field;
