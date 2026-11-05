@@ -11,36 +11,12 @@ public sealed class UrlDiscoveryPluginReport : IJsonReport, IMarkdownReport, IPl
 {
     public required IEnumerable<string> Data { get; init; }
 
-    public string FileExtension => ".jsonc";
+    public string FileExtension => ".json";
 
-    public object ToJson()
+    public object ToJson() => new Dictionary<string, IEnumerable<string>>
     {
-        var sb = new StringBuilder();
-        _ = sb.AppendLine("{")
-            .AppendLine("  // Wildcards")
-            .AppendLine("  // ")
-            .AppendLine("  // You can use wildcards to catch multiple URLs with the same pattern.")
-            .AppendLine("  // For example, you can use the following URL pattern to catch all API requests to")
-            .AppendLine("  // JSON Placeholder API:")
-            .AppendLine("  // ")
-            .AppendLine("  // https://jsonplaceholder.typicode.com/*")
-            .AppendLine("  // ")
-            .AppendLine("  // Excluding URLs")
-            .AppendLine("  // ")
-            .AppendLine("  // You can exclude URLs with ! to prevent them from being intercepted.")
-            .AppendLine("  // For example, you can exclude the URL https://jsonplaceholder.typicode.com/authors")
-            .AppendLine("  // by using the following URL pattern:")
-            .AppendLine("  // ")
-            .AppendLine("  // !https://jsonplaceholder.typicode.com/authors")
-            .AppendLine("  // https://jsonplaceholder.typicode.com/*")
-            .AppendLine("  \"urlsToWatch\": [")
-            .AppendJoin($",{Environment.NewLine}", Data.Select(u => $"    \"{u}\""))
-            .AppendLine("")
-            .AppendLine("  ]")
-            .AppendLine("}");
-
-        return sb.ToString();
-    }
+        ["urlsToWatch"] = Data
+    };
 
     public string? ToMarkdown()
     {
