@@ -101,6 +101,12 @@ static class ILoggingBuilderExtensions
         // For other subcommands (cert, config, outdated, msgraphdb), use rich logging
         // but with plugin messages filtered out
 
+        // cert export prints the exported file path to stdout for scripts to capture,
+        // so all diagnostics go to stderr
+        var logToStandardErrorThreshold = DevProxyCommand.IsCertExportCommand
+            ? LogLevel.Trace
+            : LogLevel.Warning;
+
         _ = builder
             .AddFilter("Microsoft.Hosting.*", LogLevel.Error)
             .AddFilter("Microsoft.AspNetCore.*", LogLevel.Error)
@@ -110,7 +116,7 @@ static class ILoggingBuilderExtensions
             .AddConsole(consoleOptions =>
                 {
                     consoleOptions.FormatterName = formatterName;
-                    consoleOptions.LogToStandardErrorThreshold = LogLevel.Warning;
+                    consoleOptions.LogToStandardErrorThreshold = logToStandardErrorThreshold;
                 }
             )
             .AddConsoleFormatter<ProxyConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>

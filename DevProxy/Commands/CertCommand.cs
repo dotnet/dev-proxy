@@ -4,8 +4,8 @@
 
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
-using DevProxy.Logging;
 using DevProxy.Proxy;
+using DevProxy.Proxy.Kestrel.Internal;
 using System.CommandLine;
 using System.CommandLine.Parsing;
 using System.Security.Cryptography.X509Certificates;
@@ -25,6 +25,7 @@ sealed class CertCommand : Command
 {
     private readonly ILogger _logger;
     private readonly X509Certificate2 _rootCertificate;
+    private readonly CertificateAuthority _certificateAuthority;
     private readonly IRootCertificateTrust _rootCertificateTrust;
     private readonly Option<bool> _forceOption = new("--force", "-f")
     {
@@ -46,11 +47,13 @@ sealed class CertCommand : Command
     public CertCommand(
         ILogger<CertCommand> logger,
         X509Certificate2 rootCertificate,
+        CertificateAuthority certificateAuthority,
         IRootCertificateTrust rootCertificateTrust) :
         base("cert", "Manage the Dev Proxy certificate")
     {
         _logger = logger;
         _rootCertificate = rootCertificate;
+        _certificateAuthority = certificateAuthority;
         _rootCertificateTrust = rootCertificateTrust;
 
         ConfigureCommand();
@@ -153,6 +156,13 @@ sealed class CertCommand : Command
 
         try
         {
+            if (!_certificateAuthority.IsRootPersisted)
+            {
+                // An unsaved root is replaced on the next run, so an exported copy wouldn't be trusted.
+                _logger.LogError("The root certificate couldn't be saved to disk, so it would change on the next Dev Proxy run. Fix the permissions of the Dev Proxy configuration folder (or DEV_PROXY_CERT_PATH) and try again.");
+                return 1;
+            }
+
             var file = parseResult.GetValue(_exportFileOption);
             var format = ResolveExportFormat(parseResult.GetValue(_exportFormatOption), file);
             var filePath = Path.GetFullPath(string.IsNullOrWhiteSpace(file)
@@ -174,11 +184,10 @@ sealed class CertCommand : Command
                     path = filePath,
                     format = format.ToString().ToLowerInvariant()
                 }, ProxyUtils.JsonSerializerOptions);
-                _logger.LogStructuredOutput(json);
+                Console.WriteLine(json);
             }
             else
             {
-                // Print only the path to stdout so scripts can capture it.
                 Console.WriteLine(filePath);
             }
 

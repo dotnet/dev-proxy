@@ -46,6 +46,31 @@ public sealed class CertificateAuthorityTests : IDisposable
     }
 
     [Fact]
+    public void IsRootPersisted_TrueForNewSavedRootAndReloadedRoot()
+    {
+        using (var first = new CertificateAuthority(_rootPath, _leafDir))
+        {
+            Assert.True(first.IsRootPersisted);
+        }
+
+        using var second = new CertificateAuthority(_rootPath, _leafDir);
+        Assert.True(second.IsRootPersisted);
+    }
+
+    [Fact]
+    public void IsRootPersisted_FalseWhenRootCannotBeSaved()
+    {
+        // A file where the root's parent directory should be makes the save fail.
+        var blocker = Path.Combine(_dir, "blocker");
+        File.WriteAllText(blocker, string.Empty);
+
+        using var ca = new CertificateAuthority(Path.Combine(blocker, "rootCert.pfx"), _leafDir);
+
+        Assert.NotNull(ca.RootCertificate);
+        Assert.False(ca.IsRootPersisted);
+    }
+
+    [Fact]
     public void FirstRun_CreatesValidRoot_AndPersistsToDisk()
     {
         using var ca = new CertificateAuthority(_rootPath, _leafDir);

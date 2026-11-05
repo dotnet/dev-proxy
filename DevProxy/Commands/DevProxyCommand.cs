@@ -57,6 +57,7 @@ sealed class DevProxyCommand : RootCommand
     private static bool _hasGlobalOptionsResolved;
     private static bool _isStdioCommandResolved;
     private static bool _isJwtCommandResolved;
+    private static bool _isCertExportCommandResolved;
     private static bool _isRootCommandResolved;
     private static bool _isConfigValidateCommandResolved;
     private static bool _isDetachedModeResolved;
@@ -110,6 +111,24 @@ sealed class DevProxyCommand : RootCommand
             var args = Environment.GetCommandLineArgs();
             field = args.Length > 1 && string.Equals(args[1], "jwt", StringComparison.OrdinalIgnoreCase);
             _isJwtCommandResolved = true;
+            return field;
+        }
+    }
+
+    public static bool IsCertExportCommand
+    {
+        get
+        {
+            if (_isCertExportCommandResolved)
+            {
+                return field;
+            }
+
+            var args = Environment.GetCommandLineArgs();
+            field = args.Length > 2 &&
+                string.Equals(args[1], "cert", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(args[2], "export", StringComparison.OrdinalIgnoreCase);
+            _isCertExportCommandResolved = true;
             return field;
         }
     }
