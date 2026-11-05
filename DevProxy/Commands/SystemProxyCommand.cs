@@ -45,7 +45,27 @@ sealed class SystemProxyCommand : Command
     /// </summary>
     internal static async Task<int> RunResetStandaloneAsync(string[] args)
     {
-        var force = args.Any(a => a is "--force" or "-f");
+        // Parse with a minimal command tree mirroring the registered command so values
+        // like '--force false' and invalid arguments are handled the same way.
+        var forceOption = new Option<bool>("--force", "-f");
+        var resetCommand = new Command("reset") { forceOption };
+        var rootCommand = new RootCommand { new Command("system-proxy") { resetCommand } };
+        foreach (var name in new[] { DevProxyCommand.OutputOptionName, DevProxyCommand.LogLevelOptionName })
+        {
+            rootCommand.Options.Add(new Option<string>(name) { Recursive = true });
+        }
+        rootCommand.Options.Add(new Option<bool>(DevProxyCommand.NoColorOptionName) { Recursive = true, Arity = ArgumentArity.Zero });
+
+        var parseResult = rootCommand.Parse(args);
+        if (parseResult.Errors.Count > 0)
+        {
+            foreach (var error in parseResult.Errors)
+            {
+                await Console.Error.WriteLineAsync(error.Message);
+            }
+            return 1;
+        }
+        var force = parseResult.GetValue(forceOption);
 
         using var loggerFactory = LoggerFactory.Create(builder =>
         {
@@ -87,6 +107,15 @@ sealed class SystemProxyCommand : Command
         {
             await Console.Error.WriteLineAsync("Couldn't restore the system proxy settings. To reset them manually, see https://go.devproxy.net?go=proxy-reset.");
             return 1;
+        }
+
+        // A forced reset took the system proxy away from live detached instances. Record
+        // that, so stopping them or recovering after they crash doesn't change the
+        // restored settings again.
+        foreach (var state in (await StateManager.LoadAllStatesAsync(cancellationToken)).Where(s => s.AsSystemProxy))
+        {
+            state.AsSystemProxy = false;
+            await StateManager.SaveStateAsync(state, cancellationToken);
         }
 
         // The settings are restored, so records of dead instances that registered as the

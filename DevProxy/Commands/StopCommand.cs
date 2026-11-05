@@ -42,7 +42,7 @@ internal sealed class StopCommand : Command
         // Reconcile any system-proxy registrations left behind by crashed
         // instances first — this must run before LoadAllStatesAsync, which prunes
         // (deletes) the stale state files it depends on.
-        var reconciliation = await SystemProxyManager.ReconcileOrphanedSystemProxiesAsync(cancellationToken);
+        var reconciliation = await SystemProxyManager.ReconcileOrphanedSystemProxiesAsync(cancellationToken: cancellationToken);
 
         var states = await StateManager.LoadAllStatesAsync(cancellationToken);
         if (states.Count == 0 && reconciliation.OrphanedPids.Count == 0)
@@ -61,7 +61,10 @@ internal sealed class StopCommand : Command
             }
         }
 
-        ReportReconciledOrphans(reconciliation);
+        if (!ReportReconciledOrphans(reconciliation))
+        {
+            exitCode = 1;
+        }
 
         return exitCode;
     }
@@ -84,7 +87,12 @@ internal sealed class StopCommand : Command
             var liveOwner = await StateManager.FindSystemProxyInstanceAsync(cancellationToken);
             if (liveOwner is null)
             {
-                new SystemProxyManager(NullLogger<SystemProxyManager>.Instance).Disable();
+                if (new SystemProxyManager(NullLogger<SystemProxyManager>.Instance).Restore() is SystemProxyRestoreResult.Failed)
+                {
+                    // Keep the state record so a later stop or start retries.
+                    await Console.Error.WriteLineAsync($"Couldn't restore the system proxy left by crashed Dev Proxy (PID: {pid}). Run 'devproxy system-proxy reset' or see https://go.devproxy.net?go=proxy-reset.");
+                    return 1;
+                }
                 Console.WriteLine($"Restored system proxy left by crashed Dev Proxy (PID: {pid}).");
             }
             else
@@ -100,14 +108,21 @@ internal sealed class StopCommand : Command
         return 1;
     }
 
-    private static void ReportReconciledOrphans(SystemProxyManager.OrphanReconciliation reconciliation)
+    private static bool ReportReconciledOrphans(SystemProxyManager.OrphanReconciliation reconciliation)
     {
+        if (reconciliation.Outcome is SystemProxyManager.OrphanRestoreOutcome.Failed)
+        {
+            Console.Error.WriteLine($"Couldn't restore the system proxy left by crashed Dev Proxy (PID: {string.Join(", ", reconciliation.OrphanedPids)}). Run 'devproxy system-proxy reset' or see https://go.devproxy.net?go=proxy-reset.");
+            return false;
+        }
+
         foreach (var pid in reconciliation.OrphanedPids)
         {
-            Console.WriteLine(reconciliation.SystemProxyRestored
+            Console.WriteLine(reconciliation.Outcome is SystemProxyManager.OrphanRestoreOutcome.Restored
                 ? $"Restored system proxy left by crashed Dev Proxy (PID: {pid})."
                 : $"Removed stale record for crashed Dev Proxy (PID: {pid}); system proxy is owned by a running instance.");
         }
+        return true;
     }
 
     private static async Task<int> StopInstanceAsync(ProxyInstanceState state, bool force, CancellationToken cancellationToken)

@@ -316,19 +316,22 @@ internal sealed class SystemProxyManager : ISystemProxyManager
 
     private bool RestoreMacOS(IEnumerable<MacOSServiceProxySettings> services)
     {
-        try
+        // Keep going after a failure so one broken service (for example, one that was
+        // removed while Dev Proxy was running) doesn't leave the others without a proxy.
+        var succeeded = true;
+        foreach (var command in services.SelectMany(MacOSNetworkSetup.GetRestoreCommands))
         {
-            foreach (var command in services.SelectMany(MacOSNetworkSetup.GetRestoreCommands))
+            try
             {
                 _ = RunNetworkSetup(command);
             }
-            return true;
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+            {
+                _logger.LogError(ex, "Failed to restore the system proxy via networksetup {Arguments}.", string.Join(' ', command));
+                succeeded = false;
+            }
         }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
-        {
-            _logger.LogError(ex, "Failed to restore the system proxy via networksetup.");
-            return false;
-        }
+        return succeeded;
     }
 
     private static string RunNetworkSetup(params string[] arguments)
@@ -429,13 +432,26 @@ internal sealed class SystemProxyManager : ISystemProxyManager
     // ------------------------------------------------------------------
 
     /// <summary>
+    /// What happened to the OS proxy settings while reconciling orphaned registrations.
+    /// </summary>
+    internal enum OrphanRestoreOutcome
+    {
+        /// <summary>The OS proxy settings were restored.</summary>
+        Restored,
+        /// <summary>A live instance owns the system proxy, so the settings were left alone.</summary>
+        OwnedByLiveInstance,
+        /// <summary>Restoring the settings failed. The recovery records were kept for a retry.</summary>
+        Failed
+    }
+
+    /// <summary>
     /// The outcome of reconciling orphaned system-proxy registrations.
     /// </summary>
     /// <param name="OrphanedPids">PIDs of dead instances that left a system-proxy registration behind.</param>
-    /// <param name="SystemProxyRestored">Whether the OS proxy settings were restored.</param>
+    /// <param name="Outcome">What happened to the OS proxy settings.</param>
     internal readonly record struct OrphanReconciliation(
         IReadOnlyList<int> OrphanedPids,
-        bool SystemProxyRestored);
+        OrphanRestoreOutcome Outcome);
 
     /// <summary>
     /// Finds the PID of a live process that owns the system proxy: a running detached
@@ -461,7 +477,7 @@ internal sealed class SystemProxyManager : ISystemProxyManager
     /// Restores the OS proxy (unless a live instance still owns it) and removes
     /// the stale state records. Safe to call when there are no orphans.
     /// </summary>
-    public static async Task<OrphanReconciliation> ReconcileOrphanedSystemProxiesAsync(CancellationToken cancellationToken = default)
+    public static async Task<OrphanReconciliation> ReconcileOrphanedSystemProxiesAsync(ILogger<SystemProxyManager>? logger = null, CancellationToken cancellationToken = default)
     {
         var orphanedPids = (await StateManager.GetOrphanedSystemProxyStatesAsync(cancellationToken))
             .Select(o => o.Pid)
@@ -475,14 +491,18 @@ internal sealed class SystemProxyManager : ISystemProxyManager
 
         if (orphanedPids.Count == 0)
         {
-            return new([], false);
+            return new([], OrphanRestoreOutcome.Restored);
         }
 
-        var restored = false;
+        var outcome = OrphanRestoreOutcome.OwnedByLiveInstance;
         if (await FindLiveSystemProxyOwnerAsync(cancellationToken) is null)
         {
-            restored = new SystemProxyManager(NullLogger<SystemProxyManager>.Instance).Restore()
-                is SystemProxyRestoreResult.RestoredPrevious or SystemProxyRestoreResult.Disabled;
+            if (new SystemProxyManager(logger ?? NullLogger<SystemProxyManager>.Instance).Restore() is SystemProxyRestoreResult.Failed)
+            {
+                // Keep the state records (and the snapshot) so the next start or stop retries.
+                return new(orphanedPids, OrphanRestoreOutcome.Failed);
+            }
+            outcome = OrphanRestoreOutcome.Restored;
         }
 
         foreach (var pid in orphanedPids)
@@ -490,6 +510,6 @@ internal sealed class SystemProxyManager : ISystemProxyManager
             await StateManager.DeleteStateAsync(pid, cancellationToken);
         }
 
-        return new(orphanedPids, restored);
+        return new(orphanedPids, outcome);
     }
 }

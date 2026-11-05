@@ -5,7 +5,11 @@ ip=$2
 port=$3
 
 # Skip the header line and disabled services (prefixed with *), which networksetup can't configure.
-network_services=$(networksetup -listallnetworkservices | tail -n +2 | grep -v '^\*')
+if ! all_services=$(networksetup -listallnetworkservices); then
+  echo "Failed to list network services."
+  exit 1
+fi
+network_services=$(echo "$all_services" | tail -n +2 | grep -v '^\*')
 
 status=0
 

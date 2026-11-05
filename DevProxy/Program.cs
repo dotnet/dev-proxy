@@ -54,9 +54,23 @@ if (DevProxyCommand.IsInternalDaemon)
 static async Task ReconcileOrphanedSystemProxiesAsync(bool isJsonOutput)
 {
     var reconciliation = await SystemProxyManager.ReconcileOrphanedSystemProxiesAsync();
+    if (reconciliation.Outcome is SystemProxyManager.OrphanRestoreOutcome.Failed)
+    {
+        var error = $"Couldn't restore the system proxy left by a crashed Dev Proxy instance (PID: {string.Join(", ", reconciliation.OrphanedPids)}). Run 'devproxy system-proxy reset' or see https://go.devproxy.net?go=proxy-reset.";
+        if (isJsonOutput)
+        {
+            await Console.Out.WriteLineAsync(FormatJsonLogEntry("error", error));
+        }
+        else
+        {
+            await Console.Error.WriteLineAsync(error);
+        }
+        return;
+    }
+
     foreach (var pid in reconciliation.OrphanedPids)
     {
-        var message = reconciliation.SystemProxyRestored
+        var message = reconciliation.Outcome is SystemProxyManager.OrphanRestoreOutcome.Restored
             ? $"Recovered system proxy left by a crashed Dev Proxy instance (PID: {pid})."
             : $"Removed stale system-proxy registration left by a crashed Dev Proxy instance (PID: {pid}) while keeping the current system proxy owner unchanged.";
         if (isJsonOutput)
