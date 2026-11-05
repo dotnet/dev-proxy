@@ -3,12 +3,23 @@
 // See the LICENSE file in the project root for more information.
 
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Utils;
+using DevProxy.Logging;
 using DevProxy.Proxy;
 using System.CommandLine;
 using System.CommandLine.Parsing;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
+using System.Text.Json;
 
 namespace DevProxy.Commands;
+
+enum CertExportFormat
+{
+    Pem,
+    Crt,
+    Der
+}
 
 sealed class CertCommand : Command
 {
@@ -19,6 +30,18 @@ sealed class CertCommand : Command
     {
         Description = "Don't prompt for confirmation when removing the certificate. Required for non-interactive use (CI, piped stdin, automation)."
     };
+    private readonly Option<CertExportFormat?> _exportFormatOption = new("--format")
+    {
+        Description = "Certificate format: pem, crt (PEM-encoded) or der (binary). Defaults to the format matching the --file extension, or pem.",
+        HelpName = "pem|crt|der"
+    };
+    private readonly Option<string?> _exportFileOption = new("--file")
+    {
+        Description = "Path of the file to write the certificate to. Defaults to dev-proxy-ca.<format> in the current directory. Overwrites existing files.",
+        HelpName = "path"
+    };
+
+    internal const string DefaultExportFileName = "dev-proxy-ca";
 
     public CertCommand(
         ILogger<CertCommand> logger,
@@ -42,14 +65,21 @@ sealed class CertCommand : Command
         certRemoveCommand.SetAction(RemoveCert);
         certRemoveCommand.AddOptions(new[] { _forceOption }.OrderByName());
 
+        var certExportCommand = new Command("export", "Write the public root certificate to a file (creates root if required). Doesn't require a running Dev Proxy instance.");
+        certExportCommand.SetAction(ExportCert);
+        certExportCommand.AddOptions(new Option[] { _exportFormatOption, _exportFileOption }.OrderByName());
+
         this.AddCommands(new List<Command>
         {
             certEnsureCommand,
+            certExportCommand,
             certRemoveCommand,
         }.OrderByName());
 
         HelpExamples.Add(this, [
             "devproxy cert ensure                                Install and trust certificate",
+            "devproxy cert export                                Write root certificate to dev-proxy-ca.pem",
+            "devproxy cert export --format crt --file ca.crt     Write root certificate as PEM to ca.crt",
             "devproxy cert remove --force                        Remove certificate (no prompt)",
         ]);
     }
@@ -113,6 +143,83 @@ sealed class CertCommand : Command
         {
             _logger.LogTrace("RemoveCert() finished");
         }
+    }
+
+    public int ExportCert(ParseResult parseResult)
+    {
+        _logger.LogTrace("ExportCert() called");
+
+        var outputFormat = parseResult.GetValueOrDefault<OutputFormat?>(DevProxyCommand.OutputOptionName) ?? OutputFormat.Text;
+
+        try
+        {
+            var file = parseResult.GetValue(_exportFileOption);
+            var format = ResolveExportFormat(parseResult.GetValue(_exportFormatOption), file);
+            var filePath = Path.GetFullPath(string.IsNullOrWhiteSpace(file)
+                ? GetDefaultExportFileName(format)
+                : ProxyUtils.ReplacePathTokens(file));
+
+            var directory = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                _ = Directory.CreateDirectory(directory);
+            }
+
+            File.WriteAllBytes(filePath, GetCertificateBytes(_rootCertificate, format));
+
+            if (outputFormat == OutputFormat.Json)
+            {
+                var json = JsonSerializer.Serialize(new
+                {
+                    path = filePath,
+                    format = format.ToString().ToLowerInvariant()
+                }, ProxyUtils.JsonSerializerOptions);
+                _logger.LogStructuredOutput(json);
+            }
+            else
+            {
+                // Print only the path to stdout so scripts can capture it.
+                Console.WriteLine(filePath);
+            }
+
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error exporting certificate");
+            return 1;
+        }
+        finally
+        {
+            _logger.LogTrace("ExportCert() finished");
+        }
+    }
+
+    internal static CertExportFormat ResolveExportFormat(CertExportFormat? format, string? file)
+    {
+        if (format is not null)
+        {
+            return format.Value;
+        }
+
+        return Path.GetExtension(file ?? string.Empty).ToLowerInvariant() switch
+        {
+            ".crt" => CertExportFormat.Crt,
+            ".der" => CertExportFormat.Der,
+            _ => CertExportFormat.Pem
+        };
+    }
+
+    internal static string GetDefaultExportFileName(CertExportFormat format) =>
+        $"{DefaultExportFileName}.{format.ToString().ToLowerInvariant()}";
+
+    internal static byte[] GetCertificateBytes(X509Certificate2 certificate, CertExportFormat format)
+    {
+        ArgumentNullException.ThrowIfNull(certificate);
+
+        return format == CertExportFormat.Der
+            ? certificate.Export(X509ContentType.Cert)
+            : Encoding.ASCII.GetBytes(certificate.ExportCertificatePem() + "\n");
     }
 
     private static bool PromptConfirmation(string message, bool acceptByDefault)

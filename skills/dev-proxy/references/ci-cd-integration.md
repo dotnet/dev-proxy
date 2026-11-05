@@ -262,7 +262,7 @@ steps:
         sleep 1
       done
       echo "Exporting root certificate"
-      openssl pkcs12 -in ~/.config/dev-proxy/rootCert.pfx -clcerts -nokeys -out dev-proxy-ca.crt -passin pass:""
+      ./devproxy/devproxy cert export --format crt --file dev-proxy-ca.crt
       sudo cp dev-proxy-ca.crt /usr/local/share/ca-certificates/
       sudo update-ca-certificates
     displayName: Start Dev Proxy
@@ -329,8 +329,10 @@ done
 
 ### 4. Trust the Root Certificate
 
+`devproxy cert export` writes the public root certificate to a file without needing a running instance or an API token (`--format pem|crt|der`, `--file <path>`). It prints the path of the written file.
+
 ```bash
-openssl pkcs12 -in ~/.config/dev-proxy/rootCert.pfx -clcerts -nokeys -out dev-proxy-ca.crt -passin pass:""
+./devproxy/devproxy cert export --format crt --file dev-proxy-ca.crt
 sudo cp dev-proxy-ca.crt /usr/local/share/ca-certificates/
 sudo update-ca-certificates
 ```
@@ -409,7 +411,7 @@ while true; do
   sleep 1
 done
 
-openssl pkcs12 -in ~/.config/dev-proxy/rootCert.pfx -clcerts -nokeys -out dev-proxy-ca.crt -passin pass:""
+./devproxy/devproxy cert export --format crt --file dev-proxy-ca.crt
 sudo cp dev-proxy-ca.crt /usr/local/share/ca-certificates/
 sudo update-ca-certificates
 
