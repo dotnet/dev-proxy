@@ -4,7 +4,6 @@
 
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
-using DevProxy.Abstractions.Utils;
 using DevProxy.Commands;
 
 namespace DevProxy.Proxy;
@@ -54,8 +53,6 @@ sealed class ProxyStateController(
         {
             GlobalData = ProxyState.GlobalData
         };
-        var reportFiles = new List<string>();
-        ProxyState.GlobalData[ProxyUtils.ReportFilesKey] = reportFiles;
         foreach (var plugin in _plugins.Where(p => p.Enabled))
         {
             try
@@ -67,10 +64,9 @@ sealed class ProxyStateController(
                 ExceptionHandler(ex);
             }
         }
-        _ = ProxyState.GlobalData.Remove(ProxyUtils.ReportFilesKey);
         _logger.LogInformation("DONE");
 
-        return reportFiles;
+        return [.. recordingArgs.ReportFiles];
     }
 
     public async Task MockRequestAsync(CancellationToken cancellationToken)

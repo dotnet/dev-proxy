@@ -34,7 +34,6 @@ public sealed class JsonReporterTests
     public async Task AfterRecordingStop_RecordsAbsolutePathsOfWrittenReports()
     {
         var reporter = new TestJsonReporter();
-        var reportFiles = new List<string>();
         var args = new RecordingArgs([])
         {
             GlobalData = new()
@@ -44,7 +43,6 @@ public sealed class JsonReporterTests
                     ["SomePlugin"] = new { Value = 1 },
                     ["OtherPlugin"] = new { Value = 2 },
                 },
-                [ProxyUtils.ReportFilesKey] = reportFiles,
             },
         };
 
@@ -62,6 +60,7 @@ public sealed class JsonReporterTests
 
         try
         {
+            var reportFiles = args.ReportFiles;
             Assert.Equal(2, reportFiles.Count);
             Assert.All(reportFiles, f =>
             {
