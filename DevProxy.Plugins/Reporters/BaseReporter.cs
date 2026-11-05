@@ -56,6 +56,14 @@ public abstract class BaseReporter(
 
             Logger.LogInformation("Writing report {ReportKey} to {FileName}...", report.Key, fileName);
             await File.WriteAllTextAsync(fileName, reportContents, cancellationToken);
+
+            if (!e.GlobalData.TryGetValue(ProxyUtils.ReportFilesKey, out var reportFilesValue) ||
+                reportFilesValue is not List<string> reportFiles)
+            {
+                reportFiles = [];
+                e.GlobalData[ProxyUtils.ReportFilesKey] = reportFiles;
+            }
+            reportFiles.Add(Path.GetFullPath(fileName));
         }
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));

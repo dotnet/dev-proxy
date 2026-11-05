@@ -40,6 +40,9 @@ public static class ProxyUtils
     private static string _productVersion = string.Empty;
 
     public static readonly string ReportsKey = "Reports";
+    // List<string> of absolute paths of report files written by reporters
+    // while processing the current recording
+    public static readonly string ReportFilesKey = "ReportFiles";
 
     // doesn't end with a path separator
     public static string? AppFolder => Path.GetDirectoryName(AppContext.BaseDirectory);

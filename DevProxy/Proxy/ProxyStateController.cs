@@ -4,6 +4,7 @@
 
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Utils;
 using DevProxy.Commands;
 
 namespace DevProxy.Proxy;
@@ -34,11 +35,11 @@ sealed class ProxyStateController(
         PrintRecordingIndicator(ProxyState.IsRecording);
     }
 
-    public async Task StopRecordingAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<string>> StopRecordingAsync(CancellationToken cancellationToken)
     {
         if (!ProxyState.IsRecording)
         {
-            return;
+            return [];
         }
 
         ProxyState.IsRecording = false;
@@ -53,6 +54,8 @@ sealed class ProxyStateController(
         {
             GlobalData = ProxyState.GlobalData
         };
+        var reportFiles = new List<string>();
+        ProxyState.GlobalData[ProxyUtils.ReportFilesKey] = reportFiles;
         foreach (var plugin in _plugins.Where(p => p.Enabled))
         {
             try
@@ -64,7 +67,10 @@ sealed class ProxyStateController(
                 ExceptionHandler(ex);
             }
         }
+        _ = ProxyState.GlobalData.Remove(ProxyUtils.ReportFilesKey);
         _logger.LogInformation("DONE");
+
+        return reportFiles;
     }
 
     public async Task MockRequestAsync(CancellationToken cancellationToken)
