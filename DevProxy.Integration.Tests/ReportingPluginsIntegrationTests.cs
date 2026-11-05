@@ -129,6 +129,23 @@ public sealed class ReportingPluginsIntegrationTests
     }
 
     [Fact]
+    public async Task ExecutionSummary_ByUrl_HandlesLogWithoutPrecedingInterceptedRequest()
+    {
+        var plugin = CreateExecutionSummaryPlugin("url");
+        var exchange = TestExchange.Request("GET", "https://api.contoso.com/users");
+        var args = Recording([exchange.AsRequestLog(MessageType.PassedThrough)]);
+
+        await plugin.AfterRecordingStopAsync(args, CancellationToken.None);
+
+        var report = GetReport<ExecutionSummaryPluginReportByUrl>(args, plugin.Name);
+        var request = Assert.Single(report.Data);
+        Assert.Equal("GET https://api.contoso.com/users", request.Key);
+        var category = Assert.Single(request.Value);
+        Assert.Equal("Requests passed through", category.Key);
+        Assert.Equal(new Dictionary<string, int> { ["GET https://api.contoso.com/users"] = 1 }, category.Value);
+    }
+
+    [Fact]
     public async Task ExecutionSummary_ByMessageType_ExcludesInternalMessageTypes()
     {
         var plugin = CreateExecutionSummaryPlugin("messageType");
