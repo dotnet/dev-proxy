@@ -61,8 +61,9 @@ static class ILoggingBuilderExtensions
             ? JsonConsoleFormatter.FormatterName
             : ProxyConsoleFormatter.DefaultCategoryName;
 
-        // For root command (proxy itself), use rich logging
-        if (DevProxyCommand.IsRootCommand)
+        // For root command (proxy itself), use rich logging. IsRootCommand is also true
+        // when options precede a subcommand, so exclude cert export explicitly.
+        if (DevProxyCommand.IsRootCommand && !DevProxyCommand.IsCertExportCommand)
         {
             _ = builder
                 .AddFilter("Microsoft.Hosting.*", LogLevel.Error)

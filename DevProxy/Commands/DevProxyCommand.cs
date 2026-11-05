@@ -124,10 +124,12 @@ sealed class DevProxyCommand : RootCommand
                 return field;
             }
 
+            // Options may precede or follow the subcommands, e.g.
+            // devproxy --log-level debug cert --output json export
             var args = Environment.GetCommandLineArgs();
-            field = args.Length > 2 &&
-                string.Equals(args[1], "cert", StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(args[2], "export", StringComparison.OrdinalIgnoreCase);
+            var certIndex = Array.FindIndex(args, 1, arg => string.Equals(arg, "cert", StringComparison.OrdinalIgnoreCase));
+            field = certIndex > 0 &&
+                args.Skip(certIndex + 1).Any(arg => string.Equals(arg, "export", StringComparison.OrdinalIgnoreCase));
             _isCertExportCommandResolved = true;
             return field;
         }
