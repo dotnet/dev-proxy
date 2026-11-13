@@ -22,7 +22,7 @@ public class PluginCommandTests
             .Where(p => p.Name.StartsWith("PluginCommandTest", StringComparison.Ordinal))];
 
     [Fact]
-    public void GetPlugins_ReturnsOnlyPublicNonAbstractPlugins()
+    public void GetPlugins_ReturnsOnlyPublicNonAbstractNonGenericPlugins()
     {
         var plugins = GetTestPlugins();
 
@@ -121,4 +121,10 @@ internal sealed class PluginCommandTestInternalPlugin(ILogger logger, ISet<UrlTo
     BasePlugin(logger, urlsToWatch)
 {
     public override string Name => nameof(PluginCommandTestInternalPlugin);
+}
+
+public sealed class PluginCommandTestGenericPlugin<T>(ILogger logger, ISet<UrlToWatch> urlsToWatch) :
+    BasePlugin(logger, urlsToWatch)
+{
+    public override string Name => nameof(PluginCommandTestGenericPlugin<T>);
 }

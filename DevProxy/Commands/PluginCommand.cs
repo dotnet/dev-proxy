@@ -109,6 +109,15 @@ sealed class PluginCommand : Command
             error.WriteLine($"Could not load plugin assembly '{fullPath}': {ex.Message}");
             return 1;
         }
+        catch (ReflectionTypeLoadException ex)
+        {
+            error.WriteLine($"Could not load types from plugin assembly '{fullPath}':");
+            foreach (var message in ex.LoaderExceptions.Select(e => e?.Message).Where(m => m is not null).Distinct())
+            {
+                error.WriteLine($"  {message}");
+            }
+            return 1;
+        }
 
         WritePlugins(plugins, fullPath, configuredPath, outputFormat, output);
         return 0;
@@ -154,18 +163,9 @@ sealed class PluginCommand : Command
 
     internal static IReadOnlyList<PluginInfo> GetPlugins(Assembly assembly, string pluginPath)
     {
-        Type[] types;
-        try
-        {
-            types = assembly.GetTypes();
-        }
-        catch (ReflectionTypeLoadException ex)
-        {
-            types = [.. ex.Types.Where(t => t is not null).Cast<Type>()];
-        }
-
-        return [.. types
-            .Where(t => t.IsClass && t.IsVisible && !t.IsAbstract && typeof(IPlugin).IsAssignableFrom(t))
+        // like the runtime loader, fail if any type can't be loaded
+        return [.. assembly.GetTypes()
+            .Where(t => t.IsClass && t.IsVisible && !t.IsAbstract && !t.ContainsGenericParameters && typeof(IPlugin).IsAssignableFrom(t))
             .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
             .Select(t => new PluginInfo
             {
