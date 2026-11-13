@@ -431,6 +431,15 @@ if (DevProxyCommand.IsConfigValidateCommand)
     return;
 }
 
+// Handle 'plugin' commands early so that plugins can be listed without
+// a valid config file and without loading any configured plugins
+if (DevProxyCommand.IsPluginCommand)
+{
+    var pluginExitCode = await PluginCommand.RunStandaloneAsync(args);
+    Environment.Exit(pluginExitCode);
+    return;
+}
+
 var options = new DevProxyConfigOptions();
 options.ParseOptions(args);
 
