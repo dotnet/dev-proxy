@@ -10,6 +10,7 @@ using DevProxy.Plugins;
 using System.CommandLine;
 using System.CommandLine.Parsing;
 using System.Diagnostics;
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Reflection;
 using System.Text.Json;
@@ -647,7 +648,7 @@ sealed class ConfigCommand : Command
             }
 
             string? schemaUrl = null;
-            if (configDoc.RootElement.TryGetProperty("$schema", out var schemaProp))
+            if (TryGetPropertyIgnoreCase(configDoc.RootElement, "$schema", out var schemaProp))
             {
                 if (schemaProp.ValueKind == JsonValueKind.String)
                 {
@@ -687,7 +688,7 @@ sealed class ConfigCommand : Command
 
             var configFileDirectory = Path.GetDirectoryName(resolvedConfigFile) ?? ".";
 
-            if (configDoc.RootElement.TryGetProperty("plugins", out var pluginsElement) &&
+            if (TryGetPropertyIgnoreCase(configDoc.RootElement, "plugins", out var pluginsElement) &&
                 pluginsElement.ValueKind == JsonValueKind.Array)
             {
                 ValidatePlugins(pluginsElement, configFileDirectory, errors, pluginNames);
@@ -697,7 +698,7 @@ sealed class ConfigCommand : Command
                 errors.Add(new("plugins", "No plugins configured"));
             }
 
-            if (configDoc.RootElement.TryGetProperty("urlsToWatch", out var urlsElement) &&
+            if (TryGetPropertyIgnoreCase(configDoc.RootElement, "urlsToWatch", out var urlsElement) &&
                 urlsElement.ValueKind == JsonValueKind.Array)
             {
                 ValidateUrls(urlsElement, errors, warnings, urlPatterns);
@@ -744,9 +745,9 @@ sealed class ConfigCommand : Command
             string? pluginPath;
             try
             {
-                name = plugin.TryGetProperty("name", out var nameProp) ? nameProp.GetString() : null;
-                enabled = !plugin.TryGetProperty("enabled", out var enabledProp) || enabledProp.GetBoolean();
-                pluginPath = plugin.TryGetProperty("pluginPath", out var pathProp) ? pathProp.GetString() : null;
+                name = TryGetPropertyIgnoreCase(plugin, "name", out var nameProp) ? nameProp.GetString() : null;
+                enabled = !TryGetPropertyIgnoreCase(plugin, "enabled", out var enabledProp) || enabledProp.GetBoolean();
+                pluginPath = TryGetPropertyIgnoreCase(plugin, "pluginPath", out var pathProp) ? pathProp.GetString() : null;
             }
             catch (InvalidOperationException ex)
             {
@@ -834,25 +835,25 @@ sealed class ConfigCommand : Command
         List<ValidationMessage> warnings,
         CancellationToken cancellationToken)
     {
-        var validateSchemas = !rootElement.TryGetProperty("validateSchemas", out var validateSchemasProp) ||
-            validateSchemasProp.ValueKind != JsonValueKind.False;
+        var validateSchemas = !TryGetPropertyIgnoreCase(rootElement, "validateSchemas", out var validateSchemasProp) ||
+            !IsFalse(validateSchemasProp);
         var i = -1;
 
         foreach (var plugin in pluginsElement.EnumerateArray())
         {
             i++;
             if (plugin.ValueKind != JsonValueKind.Object ||
-                !plugin.TryGetProperty("name", out var nameProp) ||
+                !TryGetPropertyIgnoreCase(plugin, "name", out var nameProp) ||
                 nameProp.ValueKind != JsonValueKind.String ||
                 string.IsNullOrEmpty(nameProp.GetString()) ||
-                (plugin.TryGetProperty("enabled", out var enabledProp) && enabledProp.ValueKind == JsonValueKind.False))
+                (TryGetPropertyIgnoreCase(plugin, "enabled", out var enabledProp) && IsFalse(enabledProp)))
             {
                 continue;
             }
 
             var name = nameProp.GetString();
 
-            var hasPluginUrls = plugin.TryGetProperty("urlsToWatch", out var pluginUrlsProp) &&
+            var hasPluginUrls = TryGetPropertyIgnoreCase(plugin, "urlsToWatch", out var pluginUrlsProp) &&
                 pluginUrlsProp.ValueKind == JsonValueKind.Array &&
                 pluginUrlsProp.GetArrayLength() > 0;
             if (!hasPluginUrls && !hasGlobalUrls)
@@ -861,7 +862,7 @@ sealed class ConfigCommand : Command
                     $"Plugin '{name}' has no URLs to watch and won't be loaded. Add URLs to the global or plugin-level urlsToWatch, or pass --urls-to-watch when starting Dev Proxy"));
             }
 
-            if (!plugin.TryGetProperty("configSection", out var configSectionProp) ||
+            if (!TryGetPropertyIgnoreCase(plugin, "configSection", out var configSectionProp) ||
                 configSectionProp.ValueKind != JsonValueKind.String ||
                 string.IsNullOrEmpty(configSectionProp.GetString()))
             {
@@ -878,14 +879,23 @@ sealed class ConfigCommand : Command
 
             if (!validateSchemas ||
                 configSection.ValueKind != JsonValueKind.Object ||
-                !configSection.TryGetProperty("$schema", out var sectionSchemaProp) ||
-                sectionSchemaProp.ValueKind != JsonValueKind.String ||
-                string.IsNullOrEmpty(sectionSchemaProp.GetString()))
+                !TryGetPropertyIgnoreCase(configSection, "$schema", out var sectionSchemaProp) ||
+                sectionSchemaProp.ValueKind == JsonValueKind.Null)
             {
                 continue;
             }
 
+            if (sectionSchemaProp.ValueKind != JsonValueKind.String)
+            {
+                errors.Add(new($"{configSectionName}.$schema", $"Expected a string but got {sectionSchemaProp.ValueKind}"));
+                continue;
+            }
+
             var sectionSchemaUrl = sectionSchemaProp.GetString()!;
+            if (string.IsNullOrEmpty(sectionSchemaUrl))
+            {
+                continue;
+            }
             try
             {
                 var (isValid, validationErrors) = await ProxyUtils.ValidateJsonAsync(
@@ -913,35 +923,57 @@ sealed class ConfigCommand : Command
 
     /// <summary>
     /// Resolves a config section using the same semantics as IConfiguration:
-    /// case-insensitive keys and ':' as the path separator.
+    /// case-insensitive keys, ':' as the path separator and numeric array indices.
     /// </summary>
     private static bool TryGetConfigSection(JsonElement rootElement, string sectionName, out JsonElement section)
     {
         section = rootElement;
         foreach (var key in sectionName.Split(':'))
         {
-            if (section.ValueKind != JsonValueKind.Object)
+            if (section.ValueKind == JsonValueKind.Array &&
+                int.TryParse(key, NumberStyles.None, CultureInfo.InvariantCulture, out var index) &&
+                index < section.GetArrayLength())
             {
-                return false;
+                section = section[index];
+                continue;
             }
 
-            var found = false;
-            foreach (var property in section.EnumerateObject())
-            {
-                if (string.Equals(property.Name, key, StringComparison.OrdinalIgnoreCase))
-                {
-                    section = property.Value;
-                    found = true;
-                    // IConfiguration uses the last value when keys differ only by case
-                }
-            }
-            if (!found)
+            if (!TryGetPropertyIgnoreCase(section, key, out section))
             {
                 return false;
             }
         }
         return true;
     }
+
+    /// <summary>
+    /// Gets a property case-insensitively, like IConfiguration does. When keys
+    /// differ only by case, the last one wins.
+    /// </summary>
+    private static bool TryGetPropertyIgnoreCase(JsonElement element, string name, out JsonElement value)
+    {
+        value = default;
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        var found = false;
+        foreach (var property in element.EnumerateObject())
+        {
+            if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                found = true;
+            }
+        }
+        return found;
+    }
+
+    private static bool IsFalse(JsonElement element) =>
+        element.ValueKind == JsonValueKind.False ||
+        (element.ValueKind == JsonValueKind.String &&
+            bool.TryParse(element.GetString(), out var value) && !value);
 
     private static void ValidateUrls(
         JsonElement urlsElement,

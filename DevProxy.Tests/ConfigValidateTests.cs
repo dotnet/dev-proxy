@@ -101,7 +101,7 @@ public sealed class ConfigValidateTests : IDisposable
                 { "name": "Plugin", "enabled": true, "pluginPath": "plugin.dll", "configSection": "mySection" }
               ],
               "urlsToWatch": ["https://api.example.com/*"],
-              "validateSchemas": false,
+              "ValidateSchemas": "False",
               "mySection": { "$schema": "{{SectionSchemaUrl}}", "rate": "high" }
             }
             """);
@@ -115,15 +115,48 @@ public sealed class ConfigValidateTests : IDisposable
         var result = await ValidateAsync($$"""
             {
               "plugins": [
-                { "name": "Plugin", "enabled": true, "pluginPath": "plugin.dll", "configSection": "Parent:MySection" }
+                { "Name": "Plugin", "Enabled": true, "pluginPath": "plugin.dll", "ConfigSection": "Parent:MySection", "UrlsToWatch": ["https://api.example.com/*"] }
               ],
-              "urlsToWatch": ["https://api.example.com/*"],
-              "parent": { "mysection": { "$schema": "{{SectionSchemaUrl}}", "rate": "high" } }
+              "parent": { "mysection": { "$Schema": "{{SectionSchemaUrl}}", "rate": "high" } }
             }
             """);
 
         Assert.DoesNotContain("plugins[0].configSection", GetPaths(result, "warnings"));
+        Assert.DoesNotContain("plugins[0].urlsToWatch", GetPaths(result, "warnings"));
         Assert.Contains("Parent:MySection", GetPaths(result, "errors"));
+    }
+
+    [Fact]
+    public async Task ResolvesConfigSectionWithArrayIndex()
+    {
+        var result = await ValidateAsync($$"""
+            {
+              "plugins": [
+                { "name": "Plugin", "enabled": true, "pluginPath": "plugin.dll", "configSection": "profiles:1:settings" }
+              ],
+              "urlsToWatch": ["https://api.example.com/*"],
+              "profiles": [{}, { "settings": { "$schema": "{{SectionSchemaUrl}}", "rate": "high" } }]
+            }
+            """);
+
+        Assert.DoesNotContain("plugins[0].configSection", GetPaths(result, "warnings"));
+        Assert.Contains("profiles:1:settings", GetPaths(result, "errors"));
+    }
+
+    [Fact]
+    public async Task ReportsNonStringConfigSectionSchema()
+    {
+        var result = await ValidateAsync("""
+            {
+              "plugins": [
+                { "name": "Plugin", "enabled": true, "pluginPath": "plugin.dll", "configSection": "mySection" }
+              ],
+              "urlsToWatch": ["https://api.example.com/*"],
+              "mySection": { "$schema": 42 }
+            }
+            """);
+
+        Assert.Contains("mySection.$schema", GetPaths(result, "errors"));
     }
 
     [Fact]
