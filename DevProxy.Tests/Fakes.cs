@@ -22,11 +22,13 @@ internal sealed class FakeProxyStateController : IProxyStateController
 
     public void StartRecording() => StartRecordingCalls++;
 
-    public Task StopRecordingAsync(CancellationToken cancellationToken)
+    public Task<IReadOnlyList<string>> StopRecordingAsync(CancellationToken cancellationToken)
     {
         StopRecordingCalls++;
-        return Task.CompletedTask;
+        return Task.FromResult(ReportFiles);
     }
+
+    public IReadOnlyList<string> ReportFiles { get; set; } = [];
 
     public Task MockRequestAsync(CancellationToken cancellationToken)
     {

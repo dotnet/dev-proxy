@@ -4,6 +4,7 @@
 
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Proxy;
+using System.Text.Json.Serialization;
 
 namespace DevProxy.ApiControllers;
 
@@ -13,6 +14,12 @@ public sealed class ProxyInfo
 {
     public bool? Recording { get; set; }
     public string? ConfigFile { get; init; }
+    /// <summary>
+    /// Absolute paths of the report files written after recording stopped.
+    /// Only returned in response to stopping recording.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? Reports { get; set; }
 
     public static ProxyInfo From(IProxyState proxyState, IProxyConfiguration proxyConfiguration)
     {
