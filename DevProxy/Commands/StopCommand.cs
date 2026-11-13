@@ -92,7 +92,7 @@ internal sealed class StopCommand : Command
                 Console.WriteLine($"Removed stale record for crashed Dev Proxy (PID: {pid}); system proxy is owned by a running instance (PID: {liveOwner.Pid}).");
             }
 
-            await StateManager.DeleteStateAsync(pid, cancellationToken);
+            await StateManager.DeleteStateAsync(orphan, cancellationToken);
             return 0;
         }
 
@@ -129,45 +129,22 @@ internal sealed class StopCommand : Command
 
                 // Wait for process to exit
                 var stopwatch = Stopwatch.StartNew();
-                while (stopwatch.Elapsed < TimeSpan.FromSeconds(10))
+                while (stopwatch.Elapsed < TimeSpan.FromSeconds(10) &&
+                    StateManager.IsInstanceAlive(state))
                 {
-                    try
-                    {
-                        var process = Process.GetProcessById(state.Pid);
-                        if (process.HasExited)
-                        {
-                            break;
-                        }
-                    }
-                    catch (ArgumentException)
-                    {
-                        // Process has exited
-                        break;
-                    }
-
                     await Task.Delay(200, cancellationToken);
                 }
 
-                // Verify the process actually exited before cleaning up state
-                var exited = false;
-                try
-                {
-                    var proc = Process.GetProcessById(state.Pid);
-                    exited = proc.HasExited;
-                }
-                catch (ArgumentException)
-                {
-                    exited = true;
-                }
-
-                if (!exited)
+                // Verify the process actually exited before cleaning up state.
+                // A PID reused by an unrelated process counts as exited.
+                if (StateManager.IsInstanceAlive(state))
                 {
                     Console.WriteLine($"Dev Proxy (PID: {state.Pid}) did not stop in time.");
                     Console.WriteLine($"Use --force --pid {state.Pid} to forcefully terminate the process.");
                     return 1;
                 }
 
-                await StateManager.DeleteStateAsync(state.Pid, cancellationToken);
+                await StateManager.DeleteStateAsync(state, cancellationToken);
                 Console.WriteLine($"Dev Proxy (PID: {state.Pid}) stopped.");
                 return 0;
             }
@@ -192,19 +169,66 @@ internal sealed class StopCommand : Command
 
     private static async Task<int> ForceStopAsync(ProxyInstanceState state, CancellationToken cancellationToken)
     {
-        // A killed process can't run its own cleanup, so restore the system proxy
-        // on its behalf before terminating it.
+        var identity = GetProcessIdentity(state);
+        if (identity == ProcessIdentity.Unverifiable)
+        {
+            Console.WriteLine($"Cannot verify that PID {state.Pid} is Dev Proxy; refusing to terminate it.");
+            return 1;
+        }
+
+        // null: process gone; Mismatch: PID reused by an unrelated process.
+        var isAlive = identity is ProcessIdentity.Match or ProcessIdentity.NotRecorded;
+
         if (state.AsSystemProxy)
         {
-            new SystemProxyManager(NullLogger<SystemProxyManager>.Instance).Disable();
+            // A killed process can't run its own cleanup, so restore the system
+            // proxy on its behalf before terminating it. If the instance is
+            // already gone, treat it as an orphan and leave the system proxy
+            // alone when another live instance owns it.
+            if (isAlive || await StateManager.FindSystemProxyInstanceAsync(cancellationToken) is null)
+            {
+                new SystemProxyManager(NullLogger<SystemProxyManager>.Instance).Disable();
+            }
+        }
+
+        if (!isAlive)
+        {
+            Console.WriteLine("Dev Proxy process not found (already stopped).");
+            await StateManager.DeleteStateAsync(state, cancellationToken);
+            return 0;
         }
 
         try
         {
-            var process = Process.GetProcessById(state.Pid);
-            process.Kill();
+            using var process = Process.GetProcessById(state.Pid);
+            // Re-verify on the handle we're about to kill.
+            identity = StateManager.VerifyProcessIdentity(process, state);
+            if (identity == ProcessIdentity.Unverifiable)
+            {
+                Console.WriteLine($"Cannot verify that PID {state.Pid} is Dev Proxy; refusing to terminate it.");
+                return 1;
+            }
 
-            Console.WriteLine($"Forcefully terminated Dev Proxy (PID: {state.Pid}).");
+            if (identity == ProcessIdentity.Mismatch)
+            {
+                Console.WriteLine("Dev Proxy process not found (already stopped).");
+            }
+            else
+            {
+                process.Kill();
+                // Let the process exit so its PID-keyed token can be removed.
+                using var exitTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                exitTimeout.CancelAfter(TimeSpan.FromSeconds(5));
+                try
+                {
+                    await process.WaitForExitAsync(exitTimeout.Token);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    // Token is cleaned up later by the stale-credential sweep
+                }
+                Console.WriteLine($"Forcefully terminated Dev Proxy (PID: {state.Pid}).");
+            }
         }
         catch (ArgumentException)
         {
@@ -220,7 +244,20 @@ internal sealed class StopCommand : Command
             return 1;
         }
 
-        await StateManager.DeleteStateAsync(state.Pid, cancellationToken);
+        await StateManager.DeleteStateAsync(state, cancellationToken);
         return 0;
+    }
+
+    private static ProcessIdentity? GetProcessIdentity(ProxyInstanceState state)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(state.Pid);
+            return StateManager.VerifyProcessIdentity(process, state);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            return null;
+        }
     }
 }
