@@ -70,25 +70,23 @@ sealed class ConfigCommand : Command
     /// </summary>
     internal static async Task<int> RunValidateStandaloneAsync(string[] args)
     {
-        string? configFile = null;
-        var isJsonOutput = false;
+        var parseResult = ParseValidateArgs(args, out var configFileOptions, out var outputOption);
 
-        for (var i = 0; i < args.Length; i++)
+        OutputFormat? output = null;
+        try
         {
-            if ((string.Equals(args[i], "--config-file", StringComparison.OrdinalIgnoreCase) ||
-                 string.Equals(args[i], "-c", StringComparison.OrdinalIgnoreCase)) &&
-                i + 1 < args.Length)
-            {
-                configFile = args[i + 1];
-                i++;
-            }
-            else if (string.Equals(args[i], DevProxyCommand.OutputOptionName, StringComparison.OrdinalIgnoreCase) &&
-                     i + 1 < args.Length)
-            {
-                isJsonOutput = string.Equals(args[i + 1], "json", StringComparison.OrdinalIgnoreCase);
-                i++;
-            }
+            output = parseResult.GetValue(outputOption);
         }
+        catch (InvalidOperationException)
+        {
+            // invalid --output value, reported as a parse error below
+        }
+        var isJsonOutput = output == OutputFormat.Json;
+        var configFile = parseResult.Errors.Count == 0
+            ? configFileOptions
+                .Select(o => parseResult.GetValue(o))
+                .FirstOrDefault(v => v is not null)
+            : null;
 
         using var httpClient = new HttpClient();
         httpClient.DefaultRequestHeaders.UserAgent.Add(
@@ -122,7 +120,43 @@ sealed class ConfigCommand : Command
         });
         var logger = loggerFactory.CreateLogger<ConfigCommand>();
 
+        if (parseResult.Errors.Count > 0)
+        {
+            foreach (var error in parseResult.Errors)
+            {
+                logger.LogError("{Error}", error.Message);
+            }
+            return 2;
+        }
+
         return await ValidateConfigCoreAsync(configFile, isJsonOutput, httpClient, logger, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Parses 'validate' and 'config validate' arguments with a lightweight
+    /// command tree that doesn't require loading the config or plugins.
+    /// </summary>
+    internal static ParseResult ParseValidateArgs(
+        string[] args,
+        out IReadOnlyList<Option<string?>> configFileOptions,
+        out Option<OutputFormat?> outputOption)
+    {
+        outputOption = new Option<OutputFormat?>(DevProxyCommand.OutputOptionName) { Recursive = true };
+        var validateConfigFileOption = CreateValidateConfigFileOption();
+        var configValidateConfigFileOption = CreateValidateConfigFileOption();
+        configFileOptions = [validateConfigFileOption, configValidateConfigFileOption];
+
+        var rootCommand = new RootCommand
+        {
+            new Command("validate") { validateConfigFileOption },
+            new Command("config") { new Command("validate") { configValidateConfigFileOption } }
+        };
+        rootCommand.Options.Add(outputOption);
+        // accepted for consistency with the main command, but not used by validation
+        rootCommand.Options.Add(new Option<string?>(DevProxyCommand.LogLevelOptionName) { Recursive = true });
+        rootCommand.Options.Add(new Option<bool>(DevProxyCommand.NoColorOptionName) { Arity = ArgumentArity.Zero, Recursive = true });
+
+        return rootCommand.Parse(args);
     }
 
     internal static Option<string?> CreateValidateConfigFileOption() => new("--config-file", "-c")
@@ -605,9 +639,26 @@ sealed class ConfigCommand : Command
 
         using (configDoc)
         {
-            var schemaUrl = configDoc.RootElement.TryGetProperty("$schema", out var schemaProp)
-                ? schemaProp.GetString()
-                : null;
+            if (configDoc.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                errors.Add(new("configFile", $"Expected the configuration to be an object but got {configDoc.RootElement.ValueKind}"));
+                WriteResults(isJsonOutput, resolvedConfigFile, errors, warnings, pluginNames, urlPatterns, logger);
+                return 2;
+            }
+
+            string? schemaUrl = null;
+            if (configDoc.RootElement.TryGetProperty("$schema", out var schemaProp))
+            {
+                if (schemaProp.ValueKind == JsonValueKind.String)
+                {
+                    schemaUrl = schemaProp.GetString();
+                }
+                else
+                {
+                    errors.Add(new("$schema", $"Expected a string but got {schemaProp.ValueKind}"));
+                }
+            }
+
             if (!string.IsNullOrEmpty(schemaUrl))
             {
                 try
@@ -629,7 +680,7 @@ sealed class ConfigCommand : Command
 
                 ValidateSchemaVersion(schemaUrl, warnings);
             }
-            else
+            else if (schemaProp.ValueKind is JsonValueKind.Undefined or JsonValueKind.String)
             {
                 warnings.Add(new("$schema", "No schema URL found, skipping schema validation"));
             }
@@ -818,7 +869,7 @@ sealed class ConfigCommand : Command
             }
 
             var configSectionName = configSectionProp.GetString()!;
-            if (!rootElement.TryGetProperty(configSectionName, out var configSection))
+            if (!TryGetConfigSection(rootElement, configSectionName, out var configSection))
             {
                 warnings.Add(new($"plugins[{i}].configSection",
                     $"Config section '{configSectionName}' for plugin '{name}' not found. The plugin will use its default configuration"));
@@ -858,6 +909,38 @@ sealed class ConfigCommand : Command
                 warnings.Add(new($"{configSectionName}.$schema", versionWarning));
             }
         }
+    }
+
+    /// <summary>
+    /// Resolves a config section using the same semantics as IConfiguration:
+    /// case-insensitive keys and ':' as the path separator.
+    /// </summary>
+    private static bool TryGetConfigSection(JsonElement rootElement, string sectionName, out JsonElement section)
+    {
+        section = rootElement;
+        foreach (var key in sectionName.Split(':'))
+        {
+            if (section.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            var found = false;
+            foreach (var property in section.EnumerateObject())
+            {
+                if (string.Equals(property.Name, key, StringComparison.OrdinalIgnoreCase))
+                {
+                    section = property.Value;
+                    found = true;
+                    // IConfiguration uses the last value when keys differ only by case
+                }
+            }
+            if (!found)
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static void ValidateUrls(
@@ -941,7 +1024,7 @@ sealed class ConfigCommand : Command
         };
 
         var json = JsonSerializer.Serialize(result, ProxyUtils.JsonSerializerOptions);
-        logger.LogInformation("{Result}", json);
+        logger.LogStructuredOutput(json);
     }
 
     private static void WriteTextResults(

@@ -109,18 +109,92 @@ public sealed class ConfigValidateTests : IDisposable
         Assert.DoesNotContain("mySection", GetPaths(result, "errors"));
     }
 
-    private async Task<JsonElement> ValidateAsync(string config)
+    [Fact]
+    public async Task ResolvesConfigSectionCaseInsensitivelyWithColonPath()
+    {
+        var result = await ValidateAsync($$"""
+            {
+              "plugins": [
+                { "name": "Plugin", "enabled": true, "pluginPath": "plugin.dll", "configSection": "Parent:MySection" }
+              ],
+              "urlsToWatch": ["https://api.example.com/*"],
+              "parent": { "mysection": { "$schema": "{{SectionSchemaUrl}}", "rate": "high" } }
+            }
+            """);
+
+        Assert.DoesNotContain("plugins[0].configSection", GetPaths(result, "warnings"));
+        Assert.Contains("Parent:MySection", GetPaths(result, "errors"));
+    }
+
+    [Fact]
+    public async Task ReportsNonObjectRoot()
+    {
+        var (exitCode, result) = await ValidateWithExitCodeAsync("[]");
+
+        Assert.Equal(2, exitCode);
+        Assert.Contains("configFile", GetPaths(result, "errors"));
+    }
+
+    [Fact]
+    public async Task ReportsNonStringSchema()
+    {
+        var (exitCode, result) = await ValidateWithExitCodeAsync("""
+            {
+              "$schema": 42,
+              "plugins": [{ "name": "Plugin", "enabled": true, "pluginPath": "plugin.dll" }],
+              "urlsToWatch": ["https://api.example.com/*"]
+            }
+            """);
+
+        Assert.Equal(2, exitCode);
+        Assert.Contains("$schema", GetPaths(result, "errors"));
+    }
+
+    [Theory]
+    [InlineData(new[] { "validate" }, true)]
+    [InlineData(new[] { "config", "validate" }, true)]
+    [InlineData(new[] { "--output", "json", "validate" }, true)]
+    [InlineData(new[] { "--output=json", "config", "validate" }, true)]
+    [InlineData(new[] { "validate", "--help" }, false)]
+    [InlineData(new[] { "config", "get", "validate" }, false)]
+    [InlineData(new[] { "--config-file", "validate" }, false)]
+    public void DetectsValidateInvocation(string[] args, bool expected) =>
+        Assert.Equal(expected, DevProxyCommand.IsValidateInvocation(args));
+
+    [Theory]
+    [InlineData(new[] { "validate", "--config-file=my.json" }, "my.json")]
+    [InlineData(new[] { "--output", "json", "config", "validate", "-c", "my.json" }, "my.json")]
+    public void ParsesValidateArgs(string[] args, string expectedConfigFile)
+    {
+        var parseResult = ConfigCommand.ParseValidateArgs(args, out var configFileOptions, out _);
+
+        Assert.Empty(parseResult.Errors);
+        Assert.Contains(expectedConfigFile, configFileOptions.Select(o => parseResult.GetValue(o)));
+    }
+
+    [Fact]
+    public void ReportsParseErrorForMissingConfigFileValue()
+    {
+        var parseResult = ConfigCommand.ParseValidateArgs(["validate", "-c"], out _, out _);
+
+        Assert.NotEmpty(parseResult.Errors);
+    }
+
+    private async Task<JsonElement> ValidateAsync(string config) =>
+        (await ValidateWithExitCodeAsync(config)).Result;
+
+    private async Task<(int ExitCode, JsonElement Result)> ValidateWithExitCodeAsync(string config)
     {
         var configFile = Path.Combine(_tempDir, "devproxyrc.json");
         await File.WriteAllTextAsync(configFile, config);
 
         var logger = new CapturingLogger();
         using var httpClient = new HttpClient(new SchemaHandler());
-        _ = await ConfigCommand.ValidateConfigCoreAsync(configFile, true, httpClient, logger, CancellationToken.None);
+        var exitCode = await ConfigCommand.ValidateConfigCoreAsync(configFile, true, httpClient, logger, CancellationToken.None);
 
         var json = Assert.Single(logger.Messages);
         using var doc = JsonDocument.Parse(json);
-        return doc.RootElement.Clone();
+        return (exitCode, doc.RootElement.Clone());
     }
 
     private static List<string> GetPaths(JsonElement result, string property) =>

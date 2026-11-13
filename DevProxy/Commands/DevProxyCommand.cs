@@ -123,17 +123,54 @@ sealed class DevProxyCommand : RootCommand
             }
 
             var args = Environment.GetCommandLineArgs();
-            // matches both 'devproxy config validate' and 'devproxy validate'
-            var isValidate = args.Length > 1 &&
-                string.Equals(args[1], "validate", StringComparison.OrdinalIgnoreCase);
-            var isConfigValidate = args.Length > 2 &&
-                string.Equals(args[1], "config", StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(args[2], "validate", StringComparison.OrdinalIgnoreCase);
-            field = (isValidate || isConfigValidate) &&
-                !args.Any(arg => helpOptions.Contains(arg));
+            field = IsValidateInvocation(args.Skip(1).ToArray());
             _isConfigValidateCommandResolved = true;
             return field;
         }
+    }
+
+    /// <summary>
+    /// Returns true when args invoke 'validate' or 'config validate', allowing
+    /// global options (like --output) before the command. Help is excluded so
+    /// it's rendered by the full command tree.
+    /// </summary>
+    internal static bool IsValidateInvocation(string[] args)
+    {
+        if (args.Any(arg => helpOptions.Contains(arg)))
+        {
+            return false;
+        }
+
+        var commandTokens = new List<string>(2);
+        for (var i = 0; i < args.Length && commandTokens.Count < 2; i++)
+        {
+            var arg = args[i];
+            if (string.Equals(arg, OutputOptionName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(arg, LogLevelOptionName, StringComparison.OrdinalIgnoreCase))
+            {
+                i++;
+                continue;
+            }
+            if (arg.StartsWith(OutputOptionName + "=", StringComparison.OrdinalIgnoreCase) ||
+                arg.StartsWith(LogLevelOptionName + "=", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(arg, NoColorOptionName, StringComparison.OrdinalIgnoreCase) ||
+                (commandTokens.Count > 0 && arg.StartsWith('-')))
+            {
+                continue;
+            }
+            if (arg.StartsWith('-'))
+            {
+                // other root options may take values, so we can't tell what follows
+                break;
+            }
+            commandTokens.Add(arg);
+        }
+
+        return commandTokens.Count > 0 &&
+            (string.Equals(commandTokens[0], "validate", StringComparison.OrdinalIgnoreCase) ||
+             (commandTokens.Count > 1 &&
+              string.Equals(commandTokens[0], "config", StringComparison.OrdinalIgnoreCase) &&
+              string.Equals(commandTokens[1], "validate", StringComparison.OrdinalIgnoreCase)));
     }
 
     public static bool IsDetachedMode
