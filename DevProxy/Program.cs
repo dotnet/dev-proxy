@@ -421,7 +421,7 @@ static async Task<int> RunProxyAsync(string[] args, DevProxyConfigOptions option
     }
 }
 
-// Handle 'config validate' early to allow validation of broken configs
+// Handle 'validate' and 'config validate' early to allow validation of broken configs
 // without requiring the full DI container to be built
 if (DevProxyCommand.IsConfigValidateCommand)
 {
