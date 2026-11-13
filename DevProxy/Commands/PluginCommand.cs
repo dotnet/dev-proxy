@@ -63,9 +63,16 @@ sealed class PluginCommand : Command
             HelpName = "format",
             Recursive = true
         };
+        var noColorOption = new Option<bool>(DevProxyCommand.NoColorOptionName)
+        {
+            Description = "Disable colored output",
+            Arity = ArgumentArity.Zero,
+            Recursive = true
+        };
         var rootCommand = new RootCommand("Dev Proxy")
         {
             outputOption,
+            noColorOption,
             new PluginCommand()
         };
         HelpExamples.Install(rootCommand);
@@ -83,7 +90,14 @@ sealed class PluginCommand : Command
     internal static int ListPlugins(string? pluginPath, OutputFormat outputFormat, TextWriter output, TextWriter error)
     {
         var configuredPath = string.IsNullOrWhiteSpace(pluginPath) ? DefaultPluginPath : pluginPath;
-        var fullPath = Path.GetFullPath(ProxyUtils.ReplacePathTokens(configuredPath));
+        var expandedPath = ProxyUtils.ReplacePathTokens(configuredPath);
+        var fullPath = Path.GetFullPath(expandedPath);
+        // config resolves relative plugin paths against the config file, not
+        // the current directory, so report relative paths as absolute
+        if (!Path.IsPathRooted(expandedPath))
+        {
+            configuredPath = fullPath;
+        }
 
         IReadOnlyList<PluginInfo> plugins;
         try
@@ -123,7 +137,7 @@ sealed class PluginCommand : Command
                 : $"  {plugin.Name}");
         }
         output.WriteLine();
-        output.WriteLine($"To use a plugin, add it to the plugins array in your config with \"name\": \"<plugin name>\" and \"pluginPath\": \"{pluginPath}\".");
+        output.WriteLine($"To use a plugin, add it to the plugins array in your config with \"name\": \"<plugin name>\" and \"pluginPath\": {JsonSerializer.Serialize(pluginPath, ProxyUtils.JsonSerializerOptions)}.");
     }
 
     internal static IReadOnlyList<PluginInfo> GetPlugins(string assemblyPath, string pluginPath)

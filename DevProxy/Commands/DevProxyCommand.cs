@@ -143,7 +143,27 @@ sealed class DevProxyCommand : RootCommand
             }
 
             var args = Environment.GetCommandLineArgs();
-            field = args.Length > 1 && string.Equals(args[1], "plugin", StringComparison.OrdinalIgnoreCase);
+            // skip global options supported by the standalone plugin command
+            // so that e.g. `devproxy --output json plugin list` is detected too
+            var i = 1;
+            while (i < args.Length)
+            {
+                if (string.Equals(args[i], OutputOptionName, StringComparison.OrdinalIgnoreCase))
+                {
+                    i += 2;
+                }
+                else if (args[i].StartsWith($"{OutputOptionName}=", StringComparison.OrdinalIgnoreCase) ||
+                    args[i].StartsWith($"{OutputOptionName}:", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(args[i], NoColorOptionName, StringComparison.OrdinalIgnoreCase))
+                {
+                    i++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            field = i < args.Length && string.Equals(args[i], "plugin", StringComparison.OrdinalIgnoreCase);
             _isPluginCommandResolved = true;
             return field;
         }

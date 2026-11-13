@@ -78,6 +78,16 @@ public class PluginCommandTests
         Assert.Contains("  PluginCommandTestSimplePlugin" + Environment.NewLine, text, StringComparison.Ordinal);
         Assert.Contains($"\"pluginPath\": \"{PluginPath}\"", text, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void WritePlugins_TextOutput_EscapesPluginPathInUsageHint()
+    {
+        using var output = new StringWriter();
+
+        PluginCommand.WritePlugins(GetTestPlugins(), "/full/DevProxy.Tests.dll", @"C:\plugins\MyPlugins.dll", OutputFormat.Text, output);
+
+        Assert.Contains(@"""pluginPath"": ""C:\\plugins\\MyPlugins.dll""", output.ToString(), StringComparison.Ordinal);
+    }
 }
 
 public sealed class PluginCommandTestSimplePlugin(ILogger logger, ISet<UrlToWatch> urlsToWatch) :
