@@ -130,7 +130,15 @@ static class PluginServiceExtensions
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Failed to load plugin {PluginName}: {ErrorMessage}", pluginRef.Name, ex.Message);
+                var docsLink = DocsLinks.IsBuiltInPluginAssembly(assembly) ? DocsLinks.Get(pluginRef.Name) : null;
+                if (docsLink is null)
+                {
+                    logger.LogError(ex, "Failed to load plugin {PluginName}: {ErrorMessage}", pluginRef.Name, ex.Message);
+                }
+                else
+                {
+                    logger.LogError(ex, "Failed to load plugin {PluginName}: {ErrorMessage}. Docs: {DocsUrl}", pluginRef.Name, ex.Message.TrimEnd('.'), docsLink);
+                }
             }
         }
 
@@ -165,7 +173,15 @@ static class PluginServiceExtensions
         // communicate through STDIO (JSON-RPC) rather than HTTP
         if (urlsToWatch.Count == 0 && !isStdioMode)
         {
-            logger.LogError("Plugin {PluginName} must have at least one URL to watch. Please add a URL to watch in the configuration file or use the --urls-to-watch option.", pluginRef.Name);
+            var docsLink = DocsLinks.ForPlugin(pluginType);
+            if (docsLink is null)
+            {
+                logger.LogError("Plugin {PluginName} must have at least one URL to watch. Please add a URL to watch in the configuration file or use the --urls-to-watch option.", pluginRef.Name);
+            }
+            else
+            {
+                logger.LogError("Plugin {PluginName} must have at least one URL to watch. Please add a URL to watch in the configuration file or use the --urls-to-watch option. Docs: {DocsUrl}", pluginRef.Name, docsLink);
+            }
             return;
         }
 
@@ -177,12 +193,7 @@ static class PluginServiceExtensions
             {
                 var plugin = (IPlugin)ActivatorUtilities.CreateInstance(sp, pluginType, urlsToWatch) ??
                     throw new InvalidOperationException($"Failed to create instance of plugin type {pluginType}");
-                // we don't have a cancellation token right now, because this
-                // stage is synchronous, but if the implementation changes
-                // in the future then we won't need to change the interface
-#pragma warning disable VSTHRD002
-                plugin.InitializeAsync(new() { ServiceProvider = sp, IsProxyCommand = DevProxyCommand.IsRootCommand }, CancellationToken.None).Wait();
-#pragma warning restore VSTHRD002
+                InitializePlugin(plugin, sp, logger);
                 return plugin;
             });
             logger.LogDebug("Registered plugin {PluginName}.", pluginRef.Name);
@@ -196,15 +207,33 @@ static class PluginServiceExtensions
         {
             var plugin = (IPlugin)ActivatorUtilities.CreateInstance(sp, pluginType, configSection, urlsToWatch) ??
                 throw new InvalidOperationException($"Failed to create instance of plugin type {pluginType}");
+            InitializePlugin(plugin, sp, logger);
+            return plugin;
+        });
+        logger.LogDebug("Registered plugin {PluginName}.", pluginRef.Name);
+    }
+
+    private static void InitializePlugin(IPlugin plugin, IServiceProvider serviceProvider, ILogger logger)
+    {
+        try
+        {
             // we don't have a cancellation token right now, because this
             // stage is synchronous, but if the implementation changes
             // in the future then we won't need to change the interface
 #pragma warning disable VSTHRD002
-            plugin.InitializeAsync(new() { ServiceProvider = sp, IsProxyCommand = DevProxyCommand.IsRootCommand }, CancellationToken.None).Wait();
+            plugin.InitializeAsync(new() { ServiceProvider = serviceProvider, IsProxyCommand = DevProxyCommand.IsRootCommand }, CancellationToken.None).Wait();
 #pragma warning restore VSTHRD002
-            return plugin;
-        });
-        logger.LogDebug("Registered plugin {PluginName}.", pluginRef.Name);
+        }
+        catch (Exception ex)
+        {
+            var docsLink = DocsLinks.ForPlugin(plugin.GetType());
+            if (docsLink is not null)
+            {
+                var message = (ex is AggregateException { InnerException: { } inner } ? inner.Message : ex.Message).TrimEnd('.');
+                logger.LogError("Failed to initialize plugin {PluginName}: {ErrorMessage}. Docs: {DocsUrl}", plugin.Name, message, docsLink);
+            }
+            throw;
+        }
     }
 
     /// <summary>
