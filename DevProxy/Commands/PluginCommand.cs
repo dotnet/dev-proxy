@@ -90,7 +90,7 @@ sealed class PluginCommand : Command
     internal static int ListPlugins(string? pluginPath, OutputFormat outputFormat, TextWriter output, TextWriter error)
     {
         var configuredPath = string.IsNullOrWhiteSpace(pluginPath) ? DefaultPluginPath : pluginPath;
-        var expandedPath = ProxyUtils.ReplacePathTokens(configuredPath);
+        var expandedPath = ProxyUtils.ReplacePathTokens(configuredPath.Replace('\\', Path.DirectorySeparatorChar));
         var fullPath = Path.GetFullPath(expandedPath);
         // config resolves relative plugin paths against the config file, not
         // the current directory, so report relative paths as absolute
