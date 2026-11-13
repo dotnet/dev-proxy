@@ -634,6 +634,18 @@ public sealed class OpenApiSpecGeneratorPlugin(
                     In = apiKey.In == DetectedApiKeyLocation.Query ? ParameterLocation.Query : ParameterLocation.Header
                 },
                 []),
+            // Swagger 2.0 has no HTTP bearer scheme, so describe the
+            // Authorization header as an API key with the Bearer prefix
+            DetectedBearerAuth when Configuration.SpecVersion == SpecVersion.v2_0 => (
+                BearerSchemeName,
+                new OpenApiSecurityScheme
+                {
+                    Type = SecuritySchemeType.ApiKey,
+                    Name = "Authorization",
+                    In = ParameterLocation.Header,
+                    Description = "Bearer token. Use the format: Bearer {token}"
+                },
+                []),
             DetectedBearerAuth => (
                 BearerSchemeName,
                 new OpenApiSecurityScheme
@@ -670,7 +682,8 @@ public sealed class OpenApiSpecGeneratorPlugin(
         {
             MergeOAuth2Flow(scheme, oauth2Auth);
         }
-        else if (detectedAuth is DetectedBearerAuth { IsJwt: true })
+        else if (detectedAuth is DetectedBearerAuth { IsJwt: true } &&
+            scheme.Type == SecuritySchemeType.Http)
         {
             scheme.BearerFormat = "JWT";
         }

@@ -12,6 +12,8 @@ using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Generation;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.OpenApi;
+using Microsoft.OpenApi.Reader;
 using Xunit;
 
 namespace DevProxy.Integration.Tests;
@@ -61,7 +63,7 @@ public sealed class GenerationAuthIntegrationTests
         return new JwtSecurityTokenHandler().WriteToken(new JwtSecurityToken(issuer, claims: claims));
     }
 
-    private static async Task<string> GenerateOpenApiAsync(IEnumerable<RequestLog> logs, IConfigurationSection? config = null)
+    private static async Task<string> GenerateOpenApiAsync(IEnumerable<RequestLog> logs, IConfigurationSection? config = null, string pattern = "*.json")
     {
         var plugin = new OpenApiSpecGeneratorPlugin(
             TestDefaults.HttpClient,
@@ -70,7 +72,7 @@ public sealed class GenerationAuthIntegrationTests
             new DisabledLanguageModelClient(),
             new TestProxyConfiguration(),
             config ?? PluginConfig.Empty());
-        return await GenerateAsync(plugin.AfterRecordingStopAsync, logs, "*.json");
+        return await GenerateAsync(plugin.AfterRecordingStopAsync, logs, pattern);
     }
 
     private static async Task<JsonNode> GenerateOpenApiJsonAsync(IEnumerable<RequestLog> logs, IConfigurationSection? config = null) =>
@@ -379,6 +381,47 @@ public sealed class GenerationAuthIntegrationTests
         Assert.Equal("oauth2", scheme["type"]!.GetValue<string>());
         Assert.Equal("accessCode", scheme["flow"]!.GetValue<string>());
         Assert.Equal(["User.Read"], RequirementScopes(Operation(doc), "EntraOAuth2Auth"));
+    }
+
+    [Theory]
+    [InlineData("json", false)]
+    [InlineData("yaml", false)]
+    [InlineData("json", true)]
+    [InlineData("yaml", true)]
+    public async Task OpenApiSpecGenerator_V2_Bearer_EmitsApiKeyAuthorizationHeaderScheme(string format, bool jwt)
+    {
+        var token = jwt ? Jwt("https://auth.contoso.com/", scp: "read") : "opaque-token";
+        var spec = await GenerateOpenApiAsync(
+            [Exchange("https://api.contoso.com/users", ("Authorization", $"Bearer {token}"))],
+            PluginConfig.FromJson($$"""{ "specVersion": "v2_0", "specFormat": "{{format}}" }"""),
+            $"*.{format}");
+
+        var settings = new OpenApiReaderSettings();
+        settings.AddYamlReader();
+        var doc = OpenApiDocument.Parse(spec, format, settings).Document!;
+
+        var scheme = doc.Components!.SecuritySchemes!["BearerAuth"];
+        Assert.Equal(SecuritySchemeType.ApiKey, scheme.Type);
+        Assert.Equal("Authorization", scheme.Name);
+        Assert.Equal(ParameterLocation.Header, scheme.In);
+        Assert.Contains("Bearer {token}", scheme.Description, StringComparison.Ordinal);
+        Assert.Null(scheme.BearerFormat);
+        var requirement = Assert.Single(doc.Paths["/users"].Operations![HttpMethod.Get].Security!);
+        Assert.Equal("BearerAuth", Assert.Single(requirement).Key.Reference.Id);
+    }
+
+    [Fact]
+    public async Task OpenApiSpecGenerator_V2_Bearer_EmitsRequiredSecurityDefinitionFields()
+    {
+        var doc = await GenerateOpenApiJsonAsync(
+            [Exchange("https://api.contoso.com/users", ("Authorization", "Bearer opaque-token"))],
+            PluginConfig.FromJson("""{ "specVersion": "v2_0" }"""));
+
+        var scheme = doc["securityDefinitions"]!["BearerAuth"]!;
+        Assert.Equal("apiKey", scheme["type"]!.GetValue<string>());
+        Assert.Equal("Authorization", scheme["name"]!.GetValue<string>());
+        Assert.Equal("header", scheme["in"]!.GetValue<string>());
+        Assert.Empty(RequirementScopes(Operation(doc), "BearerAuth"));
     }
 
     [Fact]
