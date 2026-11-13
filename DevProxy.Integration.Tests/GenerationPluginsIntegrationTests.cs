@@ -365,6 +365,252 @@ public sealed class GenerationPluginsIntegrationTests
         }
     }
 
+    private static async Task<JsonDocument> GenerateOpenApiSpecAsync(params RequestLog[] logs)
+    {
+        var plugin = new OpenApiSpecGeneratorPlugin(
+            TestDefaults.HttpClient,
+            NullLogger<OpenApiSpecGeneratorPlugin>.Instance,
+            Watch,
+            new DisabledLanguageModelClient(),
+            new TestProxyConfiguration(),
+            PluginConfig.Empty());
+
+        var args = Recording(logs);
+        var dir = await InTempCwdAsync(() => plugin.AfterRecordingStopAsync(args, CancellationToken.None));
+        try
+        {
+            var spec = dir.GetFiles("*.json").Single();
+            return JsonDocument.Parse(await File.ReadAllTextAsync(spec.FullName));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    private static string[] ParameterNames(JsonElement element, string location) =>
+        [.. element.GetProperty("parameters").EnumerateArray()
+            .Where(p => p.GetProperty("in").GetString() == location)
+            .Select(p => p.GetProperty("name").GetString()!)];
+
+    [Fact]
+    public async Task OpenApiSpecGenerator_IncludesParametersAndResponseHeaders()
+    {
+        var exchange = TestExchange
+            .Request(
+                "GET",
+                "https://api.contoso.com/users/123?$select=name",
+                headers: [("Accept", "application/json"), ("X-Custom-Request", "foo")])
+            .WithResponse(
+                HttpStatusCode.OK,
+                headers: [("Content-Type", "application/json"), ("X-Custom-Response", "bar")],
+                body: """{ "id": 123, "name": "alpha" }""")
+            .AsRequestLog(MessageType.InterceptedResponse);
+
+        using var spec = await GenerateOpenApiSpecAsync(exchange);
+
+        var pathItem = spec.RootElement.GetProperty("paths").GetProperty("/users/{users-id}");
+        Assert.Equal(["users-id"], ParameterNames(pathItem, "path"));
+
+        var operation = pathItem.GetProperty("get");
+        Assert.Equal(["$select"], ParameterNames(operation, "query"));
+        Assert.Equal(["X-Custom-Request"], ParameterNames(operation, "header"));
+
+        var response = operation.GetProperty("responses").GetProperty("200");
+        var responseHeaders = response.GetProperty("headers").EnumerateObject().Select(h => h.Name).ToArray();
+        Assert.Equal(["X-Custom-Response"], responseHeaders);
+        Assert.True(response.GetProperty("content").TryGetProperty("application/json", out _));
+    }
+
+    [Fact]
+    public async Task OpenApiSpecGenerator_MergesParametersAcrossRequests()
+    {
+        static RequestLog Exchange(string url) =>
+            TestExchange
+                .Request("GET", url)
+                .WithResponse(HttpStatusCode.OK, headers: [("Content-Type", "application/json")], body: """[]""")
+                .AsRequestLog(MessageType.InterceptedResponse);
+
+        using var spec = await GenerateOpenApiSpecAsync(
+            Exchange("https://api.contoso.com/users?$top=1"),
+            Exchange("https://api.contoso.com/users?$top=2&$skip=1"));
+
+        var operation = spec.RootElement.GetProperty("paths").GetProperty("/users").GetProperty("get");
+        Assert.Equal(["$top", "$skip"], ParameterNames(operation, "query"));
+    }
+
+    [Fact]
+    public async Task OpenApiSpecGenerator_DeduplicatesRepeatedHeaders()
+    {
+        var exchange = TestExchange
+            .Request("GET", "https://api.contoso.com/users", headers: [("X-Custom-Request", "a"), ("x-custom-request", "b")])
+            .WithResponse(
+                HttpStatusCode.OK,
+                headers: [("Content-Type", "application/json"), ("X-Custom-Response", "a"), ("x-custom-response", "b")],
+                body: """[]""")
+            .AsRequestLog(MessageType.InterceptedResponse);
+
+        using var spec = await GenerateOpenApiSpecAsync(exchange);
+
+        var operation = spec.RootElement.GetProperty("paths").GetProperty("/users").GetProperty("get");
+        Assert.Equal(["X-Custom-Request"], ParameterNames(operation, "header"));
+        var responseHeaders = operation.GetProperty("responses").GetProperty("200").GetProperty("headers").EnumerateObject().Select(h => h.Name).ToArray();
+        Assert.Equal(["X-Custom-Response"], responseHeaders);
+    }
+
+    [Fact]
+    public async Task OpenApiSpecGenerator_GeneratesUniquePathParameterNames()
+    {
+        var exchange = TestExchange
+            .Request("GET", "https://api.contoso.com/tiles/12/3456/7890")
+            .WithResponse(HttpStatusCode.NoContent)
+            .AsRequestLog(MessageType.InterceptedResponse);
+
+        using var spec = await GenerateOpenApiSpecAsync(exchange);
+
+        var pathItem = spec.RootElement.GetProperty("paths").GetProperty("/tiles/{tiles-id}/{tiles-id-2}/{tiles-id-3}");
+        Assert.Equal(["tiles-id", "tiles-id-2", "tiles-id-3"], ParameterNames(pathItem, "path"));
+    }
+
+    [Fact]
+    public async Task OpenApiSpecGenerator_MergesHeadersAcrossRequests()
+    {
+        static RequestLog Exchange(string requestHeader, (string Name, string Value)[] responseHeaders) =>
+            TestExchange
+                .Request("GET", "https://api.contoso.com/users", headers: [(requestHeader, "a")])
+                .WithResponse(HttpStatusCode.NoContent, headers: responseHeaders)
+                .AsRequestLog(MessageType.InterceptedResponse);
+
+        using var spec = await GenerateOpenApiSpecAsync(
+            Exchange("X-Custom-Request", []),
+            Exchange("x-custom-request", [("X-Custom-Response", "a")]),
+            Exchange("X-Custom-Request", [("x-custom-response", "b")]));
+
+        var operation = spec.RootElement.GetProperty("paths").GetProperty("/users").GetProperty("get");
+        Assert.Equal(["X-Custom-Request"], ParameterNames(operation, "header"));
+        var responseHeaders = operation.GetProperty("responses").GetProperty("204").GetProperty("headers").EnumerateObject().Select(h => h.Name).ToArray();
+        Assert.Equal(["X-Custom-Response"], responseHeaders);
+    }
+
+    [Fact]
+    public async Task OpenApiSpecGenerator_MergesBodySchemasAcrossRequests()
+    {
+        static RequestLog Exchange(string requestBody, string responseBody) =>
+            TestExchange
+                .Request("POST", "https://api.contoso.com/users", headers: [("Content-Type", "application/json")], body: requestBody)
+                .WithResponse(HttpStatusCode.OK, headers: [("Content-Type", "application/json")], body: responseBody)
+                .AsRequestLog(MessageType.InterceptedResponse);
+
+        using var spec = await GenerateOpenApiSpecAsync(
+            Exchange("""{ "id": 1 }""", """{ "id": 1 }"""),
+            Exchange("""{ "id": 2, "name": "alpha" }""", """{ "id": 2, "name": "alpha" }"""));
+
+        var operation = spec.RootElement.GetProperty("paths").GetProperty("/users").GetProperty("post");
+        static string[] PropertyNames(JsonElement content) =>
+            [.. content.GetProperty("application/json").GetProperty("schema").GetProperty("properties").EnumerateObject().Select(p => p.Name)];
+
+        Assert.Equal(["id", "name"], PropertyNames(operation.GetProperty("requestBody").GetProperty("content")));
+        Assert.Equal(["id", "name"], PropertyNames(operation.GetProperty("responses").GetProperty("200").GetProperty("content")));
+    }
+
+    [Fact]
+    public async Task OpenApiSpecGenerator_MergesArraySchemasAcrossRequests()
+    {
+        static RequestLog Exchange(string responseBody) =>
+            TestExchange
+                .Request("GET", "https://api.contoso.com/users")
+                .WithResponse(HttpStatusCode.OK, headers: [("Content-Type", "application/json")], body: responseBody)
+                .AsRequestLog(MessageType.InterceptedResponse);
+
+        using var spec = await GenerateOpenApiSpecAsync(
+            Exchange("""[ { "id": 1, "tags": [ { "id": 1 } ] } ]"""),
+            Exchange("""[ { "id": 2, "name": "alpha", "tags": [ { "id": 2, "label": "beta" } ] } ]"""));
+
+        var items = spec.RootElement.GetProperty("paths").GetProperty("/users").GetProperty("get")
+            .GetProperty("responses").GetProperty("200").GetProperty("content").GetProperty("application/json")
+            .GetProperty("schema").GetProperty("items");
+        static string[] PropertyNames(JsonElement schema) =>
+            [.. schema.GetProperty("properties").EnumerateObject().Select(p => p.Name)];
+
+        Assert.Equal(["id", "tags", "name"], PropertyNames(items));
+        Assert.Equal(["id", "label"], PropertyNames(items.GetProperty("properties").GetProperty("tags").GetProperty("items")));
+    }
+
+    [Theory]
+    [InlineData("[]", """[ { "id": 1, "name": "alpha" } ]""", "items")]
+    [InlineData("{}", """{ "id": 1, "name": "alpha" }""", null)]
+    public async Task OpenApiSpecGenerator_MergesIntoEmptySchemaRecordedFirst(string firstBody, string secondBody, string? itemsProperty)
+    {
+        static RequestLog Exchange(string responseBody) =>
+            TestExchange
+                .Request("GET", "https://api.contoso.com/users")
+                .WithResponse(HttpStatusCode.OK, headers: [("Content-Type", "application/json")], body: responseBody)
+                .AsRequestLog(MessageType.InterceptedResponse);
+
+        using var spec = await GenerateOpenApiSpecAsync(Exchange(firstBody), Exchange(secondBody));
+
+        var schema = spec.RootElement.GetProperty("paths").GetProperty("/users").GetProperty("get")
+            .GetProperty("responses").GetProperty("200").GetProperty("content").GetProperty("application/json")
+            .GetProperty("schema");
+        if (itemsProperty is not null)
+        {
+            schema = schema.GetProperty(itemsProperty);
+        }
+
+        Assert.Equal(["id", "name"], schema.GetProperty("properties").EnumerateObject().Select(p => p.Name).ToArray());
+    }
+
+    [Fact]
+    public async Task OpenApiSpecGenerator_ReplacesUntypedItemsOfEmptyArrayRecordedFirst()
+    {
+        static RequestLog Exchange(string responseBody) =>
+            TestExchange
+                .Request("GET", "https://api.contoso.com/users")
+                .WithResponse(HttpStatusCode.OK, headers: [("Content-Type", "application/json")], body: responseBody)
+                .AsRequestLog(MessageType.InterceptedResponse);
+
+        using var spec = await GenerateOpenApiSpecAsync(
+            Exchange("""{ "tags": [] }"""),
+            Exchange("""{ "tags": [ "a", "b" ] }"""));
+
+        var tags = spec.RootElement.GetProperty("paths").GetProperty("/users").GetProperty("get")
+            .GetProperty("responses").GetProperty("200").GetProperty("content").GetProperty("application/json")
+            .GetProperty("schema").GetProperty("properties").GetProperty("tags");
+        Assert.Equal("array", tags.GetProperty("type").GetString());
+        Assert.Equal("string", tags.GetProperty("items").GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public async Task OpenApiSpecGenerator_EmitsUntypedItemsForEmptyArray()
+    {
+        var exchange = TestExchange
+            .Request("GET", "https://api.contoso.com/users")
+            .WithResponse(HttpStatusCode.OK, headers: [("Content-Type", "application/json")], body: "[]")
+            .AsRequestLog(MessageType.InterceptedResponse);
+
+        using var spec = await GenerateOpenApiSpecAsync(exchange);
+
+        var schema = spec.RootElement.GetProperty("paths").GetProperty("/users").GetProperty("get")
+            .GetProperty("responses").GetProperty("200").GetProperty("content").GetProperty("application/json")
+            .GetProperty("schema");
+        Assert.Equal("array", schema.GetProperty("type").GetString());
+        Assert.Empty(schema.GetProperty("items").EnumerateObject());
+    }
+
+    [Fact]
+    public async Task OpenApiSpecGenerator_SkipsResponseBodyWithoutContentType()
+    {
+        var exchange = TestExchange
+            .Request("GET", "https://api.contoso.com/users")
+            .WithResponse(HttpStatusCode.OK, body: "alpha")
+            .AsRequestLog(MessageType.InterceptedResponse);
+
+        using var spec = await GenerateOpenApiSpecAsync(exchange);
+
+        var response = spec.RootElement.GetProperty("paths").GetProperty("/users").GetProperty("get").GetProperty("responses").GetProperty("200");
+        Assert.False(response.TryGetProperty("content", out _));
+    }
+
     [Fact]
     public async Task TypeSpecGenerator_WritesSpec()
     {
