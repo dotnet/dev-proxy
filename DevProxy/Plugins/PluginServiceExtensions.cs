@@ -210,7 +210,7 @@ static class PluginServiceExtensions
     /// <summary>
     /// Determines if the plugin type is configurable and extracts its config type.
     /// </summary>
-    private static bool IsConfigurablePlugin(Type pluginType, out Type? configType)
+    internal static bool IsConfigurablePlugin(Type pluginType, out Type? configType)
     {
         configType = null;
 

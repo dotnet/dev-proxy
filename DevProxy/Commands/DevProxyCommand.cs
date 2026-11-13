@@ -59,6 +59,7 @@ sealed class DevProxyCommand : RootCommand
     private static bool _isJwtCommandResolved;
     private static bool _isRootCommandResolved;
     private static bool _isConfigValidateCommandResolved;
+    private static bool _isPluginCommandResolved;
     private static bool _isDetachedModeResolved;
     private static bool _isInternalDaemonResolved;
     private static bool _stdioLogFilePathResolved;
@@ -128,6 +129,22 @@ sealed class DevProxyCommand : RootCommand
                 string.Equals(args[2], "validate", StringComparison.OrdinalIgnoreCase) &&
                 !args.Any(arg => helpOptions.Contains(arg));
             _isConfigValidateCommandResolved = true;
+            return field;
+        }
+    }
+
+    public static bool IsPluginCommand
+    {
+        get
+        {
+            if (_isPluginCommandResolved)
+            {
+                return field;
+            }
+
+            var args = Environment.GetCommandLineArgs();
+            field = args.Length > 1 && string.Equals(args[1], "plugin", StringComparison.OrdinalIgnoreCase);
+            _isPluginCommandResolved = true;
             return field;
         }
     }
@@ -636,7 +653,8 @@ sealed class DevProxyCommand : RootCommand
             ActivatorUtilities.CreateInstance<StdioCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<StatusCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<StopCommand>(_serviceProvider),
-            ActivatorUtilities.CreateInstance<LogsCommand>(_serviceProvider)
+            ActivatorUtilities.CreateInstance<LogsCommand>(_serviceProvider),
+            new PluginCommand()
         };
         var pluginCommands = _plugins.SelectMany(p => p.GetCommands());
         foreach (var group in pluginCommands.GroupBy(c => c.Name))

@@ -2,6 +2,8 @@
 
 Complete reference of all Dev Proxy plugins organized by category with configuration properties.
 
+To list the plugins available in the installed Dev Proxy version, run `devproxy plugin list` (add `--output json` for machine-readable output, or `--plugin-path <path>` to inspect a custom plugin assembly). This command doesn't require a config file.
+
 ## Intercepting Plugins
 
 ### MockResponsePlugin
