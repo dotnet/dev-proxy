@@ -258,12 +258,12 @@ sealed class ConfigCommand : Command
 
             _logger.LogInformation("Config saved in {TargetFolderPath}\r\n", targetFolderPath);
 
-            if (!configInfo.ConfigFiles.Any() && !configInfo.MockFiles.Any())
+            if (configInfo.ConfigFiles.Count == 0 && configInfo.MockFiles.Count == 0)
             {
                 return 0;
             }
 
-            if (configInfo.ConfigFiles.Any())
+            if (configInfo.ConfigFiles.Count > 0)
             {
                 _logger.LogInformation("To start Dev Proxy with the config, run:");
                 foreach (var configFile in configInfo.ConfigFiles)
@@ -369,7 +369,7 @@ sealed class ConfigCommand : Command
             _logger.LogDebug("File {ConfigFile} is not a proxy config or mock data", configFile);
         }
 
-        if (configInfo.ConfigFiles.Any())
+        if (configInfo.ConfigFiles.Count > 0)
         {
             if (_logger.IsEnabled(LogLevel.Debug))
             {
