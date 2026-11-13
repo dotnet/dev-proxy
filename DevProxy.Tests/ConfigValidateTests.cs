@@ -228,6 +228,23 @@ public sealed class ConfigValidateTests : IDisposable
         Assert.Contains("configFile", GetPaths(result, "errors"));
     }
 
+    [Fact]
+    public async Task AcceptsCaseInsensitiveKeyCollisionsInYaml()
+    {
+        var result = await ValidateAsync("""
+            plugins:
+              - name: Plugin
+                enabled: true
+                pluginPath: plugin.dll
+            urlsToWatch:
+              - https://api.example.com/*
+            rate: 1
+            Rate: 2
+            """, "devproxyrc.yaml");
+
+        Assert.DoesNotContain("configFile", GetPaths(result, "errors"));
+    }
+
     [Theory]
     [InlineData(new[] { "validate" }, true)]
     [InlineData(new[] { "config", "validate" }, true)]
@@ -258,12 +275,12 @@ public sealed class ConfigValidateTests : IDisposable
         Assert.NotEmpty(parseResult.Errors);
     }
 
-    private async Task<JsonElement> ValidateAsync(string config) =>
-        (await ValidateWithExitCodeAsync(config)).Result;
+    private async Task<JsonElement> ValidateAsync(string config, string fileName = "devproxyrc.json") =>
+        (await ValidateWithExitCodeAsync(config, fileName)).Result;
 
-    private async Task<(int ExitCode, JsonElement Result)> ValidateWithExitCodeAsync(string config)
+    private async Task<(int ExitCode, JsonElement Result)> ValidateWithExitCodeAsync(string config, string fileName = "devproxyrc.json")
     {
-        var configFile = Path.Combine(_tempDir, "devproxyrc.json");
+        var configFile = Path.Combine(_tempDir, fileName);
         await File.WriteAllTextAsync(configFile, config);
 
         var logger = new CapturingLogger();

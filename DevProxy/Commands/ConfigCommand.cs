@@ -649,10 +649,9 @@ sealed class ConfigCommand : Command
 
             try
             {
-                using var configStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(configJson));
-                _ = new ConfigurationBuilder().AddJsonStream(configStream).Build();
+                _ = new ConfigurationBuilder().AddConfigFile(resolvedConfigFile).Build();
             }
-            catch (Exception ex) when (ex is FormatException or InvalidDataException)
+            catch (Exception ex) when (ex is FormatException or InvalidDataException or YamlException)
             {
                 errors.Add(new("configFile", $"Invalid configuration: {ex.Message}"));
             }
