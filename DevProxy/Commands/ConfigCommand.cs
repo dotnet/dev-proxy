@@ -647,6 +647,16 @@ sealed class ConfigCommand : Command
                 return 2;
             }
 
+            try
+            {
+                using var configStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(configJson));
+                _ = new ConfigurationBuilder().AddJsonStream(configStream).Build();
+            }
+            catch (Exception ex) when (ex is FormatException or InvalidDataException)
+            {
+                errors.Add(new("configFile", $"Invalid configuration: {ex.Message}"));
+            }
+
             string? schemaUrl = null;
             if (TryGetPropertyIgnoreCase(configDoc.RootElement, "$schema", out var schemaProp))
             {
@@ -654,13 +664,13 @@ sealed class ConfigCommand : Command
                 {
                     schemaUrl = schemaProp.GetString();
                 }
-                else
+                else if (schemaProp.ValueKind != JsonValueKind.Null)
                 {
                     errors.Add(new("$schema", $"Expected a string but got {schemaProp.ValueKind}"));
                 }
             }
 
-            if (!string.IsNullOrEmpty(schemaUrl))
+            if (!string.IsNullOrWhiteSpace(schemaUrl))
             {
                 try
                 {
@@ -681,7 +691,7 @@ sealed class ConfigCommand : Command
 
                 ValidateSchemaVersion(schemaUrl, warnings);
             }
-            else if (schemaProp.ValueKind is JsonValueKind.Undefined or JsonValueKind.String)
+            else if (schemaProp.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null or JsonValueKind.String)
             {
                 warnings.Add(new("$schema", "No schema URL found, skipping schema validation"));
             }
@@ -892,7 +902,7 @@ sealed class ConfigCommand : Command
             }
 
             var sectionSchemaUrl = sectionSchemaProp.GetString()!;
-            if (string.IsNullOrEmpty(sectionSchemaUrl))
+            if (string.IsNullOrWhiteSpace(sectionSchemaUrl))
             {
                 continue;
             }

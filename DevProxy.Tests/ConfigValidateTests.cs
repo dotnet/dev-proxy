@@ -183,6 +183,51 @@ public sealed class ConfigValidateTests : IDisposable
         Assert.Contains("$schema", GetPaths(result, "errors"));
     }
 
+    [Fact]
+    public async Task TreatsNullSchemaAsAbsent()
+    {
+        var result = await ValidateAsync("""
+            {
+              "$schema": null,
+              "plugins": [{ "name": "Plugin", "enabled": true, "pluginPath": "plugin.dll" }],
+              "urlsToWatch": ["https://api.example.com/*"]
+            }
+            """);
+
+        Assert.DoesNotContain("$schema", GetPaths(result, "errors"));
+        Assert.Contains("$schema", GetPaths(result, "warnings"));
+    }
+
+    [Fact]
+    public async Task TreatsWhitespaceConfigSectionSchemaAsAbsent()
+    {
+        var result = await ValidateAsync("""
+            {
+              "plugins": [
+                { "name": "Plugin", "enabled": true, "pluginPath": "plugin.dll", "configSection": "mySection" }
+              ],
+              "urlsToWatch": ["https://api.example.com/*"],
+              "mySection": { "$schema": "  " }
+            }
+            """);
+
+        Assert.DoesNotContain(GetPaths(result, "errors"), p => p.StartsWith("mySection", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ReportsDuplicateConfigurationKeys()
+    {
+        var result = await ValidateAsync("""
+            {
+              "plugins": [{ "name": "Plugin", "enabled": true, "pluginPath": "plugin.dll" }],
+              "urlsToWatch": ["https://a.example.com/*"],
+              "UrlsToWatch": ["https://b.example.com/*"]
+            }
+            """);
+
+        Assert.Contains("configFile", GetPaths(result, "errors"));
+    }
+
     [Theory]
     [InlineData(new[] { "validate" }, true)]
     [InlineData(new[] { "config", "validate" }, true)]
