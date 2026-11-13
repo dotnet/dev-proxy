@@ -714,6 +714,24 @@ public sealed class OpenApiSpecGeneratorPlugin(
         {
             _ = flow.Scopes.TryAdd(scope, scope);
         }
+
+        MergeAppRolesDescription(scheme, oauth2.AppRoles);
+    }
+
+    private const string AppRolesDescriptionPrefix = "App roles (client credentials): ";
+
+    // app roles can't be requested as scopes, so document them on the scheme
+    private static void MergeAppRolesDescription(OpenApiSecurityScheme scheme, IReadOnlyList<string> appRoles)
+    {
+        if (appRoles.Count == 0)
+        {
+            return;
+        }
+
+        var existingRoles = scheme.Description?.StartsWith(AppRolesDescriptionPrefix, StringComparison.Ordinal) == true ?
+            scheme.Description[AppRolesDescriptionPrefix.Length..].Split(", ", StringSplitOptions.RemoveEmptyEntries) :
+            [];
+        scheme.Description = AppRolesDescriptionPrefix + string.Join(", ", existingRoles.Union(appRoles, StringComparer.Ordinal));
     }
 
     private static Uri? ToAbsoluteUri(string url) =>

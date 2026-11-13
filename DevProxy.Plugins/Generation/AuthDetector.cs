@@ -33,7 +33,8 @@ internal sealed record DetectedOAuth2Auth(
     string AuthorizationUrl,
     string TokenUrl,
     string RefreshUrl,
-    IReadOnlyList<string> Scopes) : DetectedAuth
+    IReadOnlyList<string> Scopes,
+    IReadOnlyList<string> AppRoles) : DetectedAuth
 {
     public const string EntraName = "EntraOAuth2Auth";
 }
@@ -142,12 +143,23 @@ internal static class AuthDetector
         }
         // delegated tokens can also contain roles, so only treat tokens
         // without scopes as app-only
-        var flowType = scopes.Count == 0 && roles.Count != 0 ?
+        var isAppOnly = scopes.Count == 0 && roles.Count != 0;
+        var flowType = isAppOnly ?
             DetectedOAuth2FlowType.ClientCredentials : DetectedOAuth2FlowType.AuthorizationCode;
-        scopes.AddRange(roles);
 
         var version = jwtToken.Claims
             .FirstOrDefault(c => c.Type == "ver")?.Value ?? "1.0";
+        if (isAppOnly)
+        {
+            // app roles aren't requestable scopes. On the v2 endpoint, apps
+            // request all their assigned roles with {resource}/.default. The
+            // v1 endpoint uses the resource parameter instead of scopes.
+            var audience = jwtToken.Audiences.FirstOrDefault();
+            if (version != "1.0" && !string.IsNullOrEmpty(audience))
+            {
+                scopes.Add($"{audience}/.default");
+            }
+        }
         var baseUrl = issuer.Contains("v2.0", StringComparison.OrdinalIgnoreCase) ?
             issuer.Replace("v2.0", "", StringComparison.OrdinalIgnoreCase) : issuer;
         // v1 tokens are issued by sts.windows.net, but the OAuth endpoints
@@ -160,7 +172,8 @@ internal static class AuthDetector
             version == "1.0" ? $"{baseUrl}oauth2/authorize" : $"{baseUrl}oauth2/v2.0/authorize",
             tokenUrl,
             tokenUrl,
-            scopes);
+            scopes,
+            isAppOnly ? roles : []);
 
         logger.LogTrace("Left {Name}", nameof(DetectAuthorizationAuth));
         return auth;

@@ -48,7 +48,7 @@ public sealed class GenerationAuthIntegrationTests
                 body: """[ { "id": 1, "name": "alpha" } ]""")
             .AsRequestLog(MessageType.InterceptedResponse);
 
-    private static string Jwt(string issuer, string? version = null, string? scp = null, params string[] roles)
+    private static string Jwt(string issuer, string? version = null, string? scp = null, string? audience = null, params string[] roles)
     {
         var claims = new List<Claim>();
         if (version is not null)
@@ -60,7 +60,7 @@ public sealed class GenerationAuthIntegrationTests
             claims.Add(new("scp", scp));
         }
         claims.AddRange(roles.Select(r => new Claim("roles", r)));
-        return new JwtSecurityTokenHandler().WriteToken(new JwtSecurityToken(issuer, claims: claims));
+        return new JwtSecurityTokenHandler().WriteToken(new JwtSecurityToken(issuer, audience, claims));
     }
 
     private static async Task<string> GenerateOpenApiAsync(IEnumerable<RequestLog> logs, IConfigurationSection? config = null, string pattern = "*.json")
@@ -199,18 +199,33 @@ public sealed class GenerationAuthIntegrationTests
     }
 
     [Fact]
-    public async Task OpenApiSpecGenerator_EntraAppToken_EmitsClientCredentialsFlow()
+    public async Task OpenApiSpecGenerator_EntraV1AppToken_EmitsClientCredentialsFlowWithoutScopes()
     {
-        var token = Jwt(EntraIssuerV1, roles: ["User.Read.All", "Mail.Read"]);
+        var token = Jwt(EntraIssuerV1, audience: "https://graph.microsoft.com", roles: ["User.Read.All", "Mail.Read"]);
         var doc = await GenerateOpenApiJsonAsync([Exchange("https://api.contoso.com/users", ("Authorization", $"Bearer {token}"))]);
 
         var scheme = SecurityScheme(doc, "EntraOAuth2Auth");
         var flow = scheme["flows"]!["clientCredentials"]!;
         Assert.Null(flow["authorizationUrl"]);
         Assert.Equal($"{EntraBaseUrl}oauth2/token", flow["tokenUrl"]!.GetValue<string>());
-        Assert.Equal(["User.Read.All", "Mail.Read"], flow["scopes"]!.AsObject().Select(s => s.Key));
+        Assert.Empty(flow["scopes"]!.AsObject());
         Assert.Null(scheme["flows"]!["authorizationCode"]);
-        Assert.Equal(["User.Read.All", "Mail.Read"], RequirementScopes(Operation(doc), "EntraOAuth2Auth"));
+        Assert.Equal("App roles (client credentials): User.Read.All, Mail.Read", scheme["description"]!.GetValue<string>());
+        Assert.Empty(RequirementScopes(Operation(doc), "EntraOAuth2Auth"));
+    }
+
+    [Fact]
+    public async Task OpenApiSpecGenerator_EntraV2AppToken_EmitsDefaultScopeForAudience()
+    {
+        var doc = await GenerateOpenApiJsonAsync([
+            Exchange("https://api.contoso.com/users", ("Authorization", $"Bearer {Jwt(EntraIssuerV2, version: "2.0", audience: "api://contoso", roles: ["User.Read.All"])}")),
+            Exchange("https://api.contoso.com/users", ("Authorization", $"Bearer {Jwt(EntraIssuerV2, version: "2.0", audience: "api://contoso", roles: ["User.Read.All", "Mail.Read"])}")),
+        ]);
+
+        var scheme = SecurityScheme(doc, "EntraOAuth2Auth");
+        Assert.Equal(["api://contoso/.default"], scheme["flows"]!["clientCredentials"]!["scopes"]!.AsObject().Select(s => s.Key));
+        Assert.Equal("App roles (client credentials): User.Read.All, Mail.Read", scheme["description"]!.GetValue<string>());
+        Assert.Equal(["api://contoso/.default"], RequirementScopes(Operation(doc), "EntraOAuth2Auth"));
     }
 
     [Fact]
@@ -219,10 +234,13 @@ public sealed class GenerationAuthIntegrationTests
         var token = Jwt(EntraIssuerV2, version: "2.0", scp: "User.Read", roles: ["Admin"]);
         var doc = await GenerateOpenApiJsonAsync([Exchange("https://api.contoso.com/users", ("Authorization", $"Bearer {token}"))]);
 
-        var flows = SecurityScheme(doc, "EntraOAuth2Auth")["flows"]!;
+        var scheme = SecurityScheme(doc, "EntraOAuth2Auth");
+        var flows = scheme["flows"]!;
         Assert.NotNull(flows["authorizationCode"]);
         Assert.Null(flows["clientCredentials"]);
-        Assert.Equal(["User.Read", "Admin"], RequirementScopes(Operation(doc), "EntraOAuth2Auth"));
+        Assert.Equal(["User.Read"], flows["authorizationCode"]!["scopes"]!.AsObject().Select(s => s.Key));
+        Assert.Null(scheme["description"]);
+        Assert.Equal(["User.Read"], RequirementScopes(Operation(doc), "EntraOAuth2Auth"));
     }
 
     [Fact]
@@ -244,17 +262,17 @@ public sealed class GenerationAuthIntegrationTests
     {
         var doc = await GenerateOpenApiJsonAsync([
             Exchange("https://api.contoso.com/users", ("Authorization", $"Bearer {Jwt(EntraIssuerV2, version: "2.0", scp: "User.Read")}")),
-            Exchange("https://api.contoso.com/users", ("Authorization", $"Bearer {Jwt(EntraIssuerV2, version: "2.0", roles: ["User.Read.All"])}")),
+            Exchange("https://api.contoso.com/users", ("Authorization", $"Bearer {Jwt(EntraIssuerV2, version: "2.0", audience: "api://contoso", roles: ["User.Read.All"])}")),
             Exchange("https://api.contoso.com/users", ("Authorization", $"Bearer {Jwt(EntraIssuerV2, version: "2.0", scp: "User.ReadBasic.All")}")),
         ]);
 
         var flows = SecurityScheme(doc, "EntraOAuth2Auth")["flows"]!;
         Assert.Equal(["User.Read", "User.ReadBasic.All"], flows["authorizationCode"]!["scopes"]!.AsObject().Select(s => s.Key));
-        Assert.Equal(["User.Read.All"], flows["clientCredentials"]!["scopes"]!.AsObject().Select(s => s.Key));
+        Assert.Equal(["api://contoso/.default"], flows["clientCredentials"]!["scopes"]!.AsObject().Select(s => s.Key));
         var security = Operation(doc)["security"]!.AsArray();
         Assert.Equal(2, security.Count);
         Assert.Equal(["User.Read", "User.ReadBasic.All"], security[0]!["EntraOAuth2Auth"]!.AsArray().Select(s => s!.GetValue<string>()));
-        Assert.Equal(["User.Read.All"], security[1]!["EntraOAuth2Auth"]!.AsArray().Select(s => s!.GetValue<string>()));
+        Assert.Equal(["api://contoso/.default"], security[1]!["EntraOAuth2Auth"]!.AsArray().Select(s => s!.GetValue<string>()));
     }
 
     [Theory]
@@ -430,18 +448,20 @@ public sealed class GenerationAuthIntegrationTests
         var doc = await GenerateOpenApiJsonAsync(
             [
                 Exchange("https://api.contoso.com/users", ("Authorization", $"Bearer {Jwt(EntraIssuerV2, version: "2.0", scp: "User.Read")}")),
-                Exchange("https://api.contoso.com/users", ("Authorization", $"Bearer {Jwt(EntraIssuerV2, version: "2.0", roles: ["User.Read.All"])}")),
+                Exchange("https://api.contoso.com/users", ("Authorization", $"Bearer {Jwt(EntraIssuerV2, version: "2.0", audience: "api://contoso", roles: ["User.Read.All"])}")),
             ],
             PluginConfig.FromJson("""{ "specVersion": "v2_0" }"""));
 
         var delegated = doc["securityDefinitions"]!["EntraOAuth2Auth"]!;
         Assert.Equal("accessCode", delegated["flow"]!.GetValue<string>());
         Assert.Equal(["User.Read"], delegated["scopes"]!.AsObject().Select(s => s.Key));
+        Assert.Null(delegated["description"]);
         var app = doc["securityDefinitions"]!["EntraOAuth2Auth_clientCredentials"]!;
         Assert.Equal("application", app["flow"]!.GetValue<string>());
-        Assert.Equal(["User.Read.All"], app["scopes"]!.AsObject().Select(s => s.Key));
+        Assert.Equal(["api://contoso/.default"], app["scopes"]!.AsObject().Select(s => s.Key));
+        Assert.Equal("App roles (client credentials): User.Read.All", app["description"]!.GetValue<string>());
         Assert.Equal(["User.Read"], RequirementScopes(Operation(doc), "EntraOAuth2Auth"));
-        Assert.Equal(["User.Read.All"], RequirementScopes(Operation(doc), "EntraOAuth2Auth_clientCredentials"));
+        Assert.Equal(["api://contoso/.default"], RequirementScopes(Operation(doc), "EntraOAuth2Auth_clientCredentials"));
     }
 
     [Theory]
