@@ -109,7 +109,7 @@ static class PluginServiceExtensions
             logger.LogDebug("Loading plugin {PluginName} from: {PluginLocation}", pluginRef.Name, pluginLocation);
             var assembly = pluginLoadContext.LoadFromAssemblyName(new(Path.GetFileNameWithoutExtension(pluginLocation)));
             var pluginUrlsList = pluginRef.UrlsToWatch?.Select(ConvertToRegex);
-            ISet<UrlToWatch>? pluginUrls = null;
+            HashSet<UrlToWatch>? pluginUrls = null;
 
             if (pluginUrlsList is not null)
             {
@@ -121,7 +121,7 @@ static class PluginServiceExtensions
             {
                 RegisterPlugin(
                     pluginRef,
-                    (pluginUrls != null && pluginUrls.Any()) ? pluginUrls : defaultUrlsToWatch,
+                    (pluginUrls != null && pluginUrls.Count > 0) ? pluginUrls : defaultUrlsToWatch,
                     assembly,
                     configuration,
                     services,
@@ -146,7 +146,7 @@ static class PluginServiceExtensions
 
     private static void RegisterPlugin(
         PluginReference pluginRef,
-        ISet<UrlToWatch> urlsToWatch,
+        HashSet<UrlToWatch> urlsToWatch,
         Assembly assembly,
         IConfiguration configuration,
         IServiceCollection services,
