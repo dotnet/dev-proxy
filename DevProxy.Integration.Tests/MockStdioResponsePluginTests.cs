@@ -85,6 +85,31 @@ public sealed class MockStdioResponsePluginTests
         }
     }
 
+    [Fact]
+    public async Task StdinBodyIdPlaceholder_NewlineTerminatedJsonRpcMessage_IsReplaced()
+    {
+        var config = PluginConfig.FromJson("""
+            {
+              "mocks": [
+                {
+                  "request": { "bodyFragment": "accept_eula" },
+                  "response": { "stdout": "{\"jsonrpc\":\"2.0\",\"id\":@stdin.body.id,\"result\":{}}\n" }
+                }
+              ]
+            }
+            """);
+        using var httpClient = new HttpClient();
+        using var plugin = new MockStdioResponsePlugin(
+            httpClient, NullLogger<MockStdioResponsePlugin>.Instance, new HashSet<UrlToWatch>(),
+            new TestProxyConfiguration(), config);
+
+        var request = CreateRequest("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"accept_eula\"}}\n");
+        await plugin.BeforeStdinAsync(request, CancellationToken.None);
+
+        Assert.True(request.ResponseState.HasBeenSet);
+        Assert.Equal("{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{}}\n", request.StdoutResponse);
+    }
+
     private static StdioRequestArgs CreateRequest(string body) => new()
     {
         Body = Encoding.UTF8.GetBytes(body),
