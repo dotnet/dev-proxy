@@ -25,8 +25,10 @@ public interface ISystemProxyManager
     void Enable(string? ipAddress, int port);
 
     /// <summary>
-    /// Removes Dev Proxy as the system proxy, restoring direct connections. Safe to call
-    /// even if the proxy was never enabled (idempotent best-effort cleanup).
+    /// Removes Dev Proxy as the system proxy, restoring the settings that were in place
+    /// before <see cref="Enable(string?, int)"/> when they were recorded, or direct
+    /// connections otherwise. Safe to call even if the proxy was never enabled
+    /// (idempotent best-effort cleanup).
     /// </summary>
     void Disable();
 }
