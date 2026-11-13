@@ -125,6 +125,12 @@ sealed class ConfigCommand : Command
         return await ValidateConfigCoreAsync(configFile, isJsonOutput, httpClient, logger, CancellationToken.None);
     }
 
+    internal static Option<string?> CreateValidateConfigFileOption() => new("--config-file", "-c")
+    {
+        Description = "The path to the configuration file to validate",
+        HelpName = "config-file"
+    };
+
     private void ConfigureCommand()
     {
         var configGetCommand = new Command("get", "Download the specified config from the Sample Solution Gallery");
@@ -170,12 +176,8 @@ sealed class ConfigCommand : Command
             _ = Process.Start(cfgPsi);
         });
 
-        var configValidateCommand = new Command("validate", "Validate a Dev Proxy configuration file");
-        var validateConfigFileOption = new Option<string?>("--config-file", "-c")
-        {
-            Description = "The path to the configuration file to validate",
-            HelpName = "config-file"
-        };
+        var configValidateCommand = new Command("validate", "Validate a Dev Proxy configuration file without starting the proxy");
+        var validateConfigFileOption = CreateValidateConfigFileOption();
         configValidateCommand.Add(validateConfigFileOption);
         configValidateCommand.SetAction(async (parseResult, cancellationToken) =>
         {
@@ -199,6 +201,7 @@ sealed class ConfigCommand : Command
             "devproxy config new myconfig.json                   Create named config file",
             "devproxy config get <config-id>                     Download config from gallery",
             "devproxy config open                                Open config in default editor",
+            "devproxy config validate -c myconfig.json           Validate config without starting",
         ]);
     }
 
@@ -538,7 +541,7 @@ sealed class ConfigCommand : Command
         return null;
     }
 
-    private static async Task<int> ValidateConfigCoreAsync(
+    internal static async Task<int> ValidateConfigCoreAsync(
         string? configFilePath,
         bool isJsonOutput,
         HttpClient httpClient,
@@ -652,6 +655,12 @@ sealed class ConfigCommand : Command
             {
                 warnings.Add(new("urlsToWatch", "No URLs to watch configured"));
             }
+
+            if (pluginsElement.ValueKind == JsonValueKind.Array)
+            {
+                await ValidatePluginSettingsAsync(
+                    configDoc.RootElement, pluginsElement, urlPatterns.Count > 0, httpClient, logger, errors, warnings, cancellationToken);
+            }
         }
 
         var isConfigValid = errors.Count == 0;
@@ -756,6 +765,98 @@ sealed class ConfigCommand : Command
         if (!hasEnabledPlugins)
         {
             errors.Add(new("plugins", "No enabled plugins found"));
+        }
+    }
+
+    /// <summary>
+    /// Validates plugin-level settings that are otherwise only checked when
+    /// the proxy starts: each plugin needs URLs to watch, and plugin config
+    /// sections must exist and match the plugin's schema.
+    /// </summary>
+    private static async Task ValidatePluginSettingsAsync(
+        JsonElement rootElement,
+        JsonElement pluginsElement,
+        bool hasGlobalUrls,
+        HttpClient httpClient,
+        ILogger logger,
+        List<ValidationMessage> errors,
+        List<ValidationMessage> warnings,
+        CancellationToken cancellationToken)
+    {
+        var validateSchemas = !rootElement.TryGetProperty("validateSchemas", out var validateSchemasProp) ||
+            validateSchemasProp.ValueKind != JsonValueKind.False;
+        var i = -1;
+
+        foreach (var plugin in pluginsElement.EnumerateArray())
+        {
+            i++;
+            if (plugin.ValueKind != JsonValueKind.Object ||
+                !plugin.TryGetProperty("name", out var nameProp) ||
+                nameProp.ValueKind != JsonValueKind.String ||
+                string.IsNullOrEmpty(nameProp.GetString()) ||
+                (plugin.TryGetProperty("enabled", out var enabledProp) && enabledProp.ValueKind == JsonValueKind.False))
+            {
+                continue;
+            }
+
+            var name = nameProp.GetString();
+
+            var hasPluginUrls = plugin.TryGetProperty("urlsToWatch", out var pluginUrlsProp) &&
+                pluginUrlsProp.ValueKind == JsonValueKind.Array &&
+                pluginUrlsProp.GetArrayLength() > 0;
+            if (!hasPluginUrls && !hasGlobalUrls)
+            {
+                warnings.Add(new($"plugins[{i}].urlsToWatch",
+                    $"Plugin '{name}' has no URLs to watch and won't be loaded. Add URLs to the global or plugin-level urlsToWatch, or pass --urls-to-watch when starting Dev Proxy"));
+            }
+
+            if (!plugin.TryGetProperty("configSection", out var configSectionProp) ||
+                configSectionProp.ValueKind != JsonValueKind.String ||
+                string.IsNullOrEmpty(configSectionProp.GetString()))
+            {
+                continue;
+            }
+
+            var configSectionName = configSectionProp.GetString()!;
+            if (!rootElement.TryGetProperty(configSectionName, out var configSection))
+            {
+                warnings.Add(new($"plugins[{i}].configSection",
+                    $"Config section '{configSectionName}' for plugin '{name}' not found. The plugin will use its default configuration"));
+                continue;
+            }
+
+            if (!validateSchemas ||
+                configSection.ValueKind != JsonValueKind.Object ||
+                !configSection.TryGetProperty("$schema", out var sectionSchemaProp) ||
+                sectionSchemaProp.ValueKind != JsonValueKind.String ||
+                string.IsNullOrEmpty(sectionSchemaProp.GetString()))
+            {
+                continue;
+            }
+
+            var sectionSchemaUrl = sectionSchemaProp.GetString()!;
+            try
+            {
+                var (isValid, validationErrors) = await ProxyUtils.ValidateJsonAsync(
+                    configSection.GetRawText(), sectionSchemaUrl, httpClient, logger, cancellationToken);
+                if (!isValid)
+                {
+                    foreach (var error in validationErrors)
+                    {
+                        errors.Add(new(configSectionName, error));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                warnings.Add(new($"{configSectionName}.$schema", $"Could not validate schema: {ex.Message}"));
+            }
+
+            var versionWarning = ProxyUtils.GetSchemaVersionMismatchWarning(sectionSchemaUrl);
+            if (versionWarning is not null)
+            {
+                warnings.Add(new($"{configSectionName}.$schema", versionWarning));
+            }
         }
     }
 

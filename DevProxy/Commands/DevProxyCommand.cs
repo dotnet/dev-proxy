@@ -123,9 +123,13 @@ sealed class DevProxyCommand : RootCommand
             }
 
             var args = Environment.GetCommandLineArgs();
-            field = args.Length > 2 &&
+            // matches both 'devproxy config validate' and 'devproxy validate'
+            var isValidate = args.Length > 1 &&
+                string.Equals(args[1], "validate", StringComparison.OrdinalIgnoreCase);
+            var isConfigValidate = args.Length > 2 &&
                 string.Equals(args[1], "config", StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(args[2], "validate", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(args[2], "validate", StringComparison.OrdinalIgnoreCase);
+            field = (isValidate || isConfigValidate) &&
                 !args.Any(arg => helpOptions.Contains(arg));
             _isConfigValidateCommandResolved = true;
             return field;
@@ -636,7 +640,8 @@ sealed class DevProxyCommand : RootCommand
             ActivatorUtilities.CreateInstance<StdioCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<StatusCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<StopCommand>(_serviceProvider),
-            ActivatorUtilities.CreateInstance<LogsCommand>(_serviceProvider)
+            ActivatorUtilities.CreateInstance<LogsCommand>(_serviceProvider),
+            ActivatorUtilities.CreateInstance<ValidateCommand>(_serviceProvider)
         };
         var pluginCommands = _plugins.SelectMany(p => p.GetCommands());
         foreach (var group in pluginCommands.GroupBy(c => c.Name))
