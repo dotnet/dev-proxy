@@ -28,7 +28,7 @@ public sealed class WebSocketMockResponseConfiguration
     public bool NoMocks { get; set; }
 
     [JsonPropertyName("$schema")]
-    public string Schema { get; set; } = "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v4.0.0/websocketmockresponseplugin.mocksfile.schema.json";
+    public string Schema { get; set; } = "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v4.1.0/websocketmockresponseplugin.mocksfile.schema.json";
 }
 
 /// <summary>
