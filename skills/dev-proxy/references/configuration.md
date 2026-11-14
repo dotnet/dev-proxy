@@ -291,6 +291,7 @@ Or filter by request headers:
 |--------|-------------|
 | `GraphBetaSupportGuidancePlugin` | Warns when beta endpoints are used |
 | `GraphClientRequestIdGuidancePlugin` | Recommends client-request-id header |
+| `GraphMissingPermissionsGuidancePlugin` | Explains which permissions are missing when Graph returns 403 Forbidden |
 | `GraphConnectorGuidancePlugin` | Graph connector guidance |
 | `GraphSdkGuidancePlugin` | Recommends official SDKs |
 | `GraphSelectGuidancePlugin` | Warns when $select is missing |

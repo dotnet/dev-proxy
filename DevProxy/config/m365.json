@@ -106,6 +106,21 @@
       ]
     },
     {
+      "name": "GraphMissingPermissionsGuidancePlugin",
+      "enabled": true,
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll",
+      "urlsToWatch": [
+        "https://graph.microsoft.com/v1.0/*",
+        "https://graph.microsoft.com/beta/*",
+        "https://graph.microsoft.us/v1.0/*",
+        "https://graph.microsoft.us/beta/*",
+        "https://dod-graph.microsoft.us/v1.0/*",
+        "https://dod-graph.microsoft.us/beta/*",
+        "https://microsoftgraph.chinacloudapi.cn/v1.0/*",
+        "https://microsoftgraph.chinacloudapi.cn/beta/*"
+      ]
+    },
+    {
       "name": "CachingGuidancePlugin",
       "enabled": true,
       "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll",

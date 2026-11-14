@@ -10,7 +10,6 @@ using DevProxy.Plugins.Utils;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -312,48 +311,7 @@ public sealed class GraphMinimalPermissionsGuidancePlugin(
     private static (GraphPermissionsType type, IEnumerable<string> permissions) GetPermissionsAndType(RequestLog request)
     {
         var authHeader = request.Context?.Session.Request.Headers.GetFirst("Authorization");
-        if (authHeader == null)
-        {
-            return (GraphPermissionsType.Application, []);
-        }
-
-        var token = authHeader.Value.Replace("Bearer ", string.Empty, StringComparison.OrdinalIgnoreCase);
-        var tokenChunks = token.Split('.');
-        if (tokenChunks.Length != 3)
-        {
-            return (GraphPermissionsType.Application, []);
-        }
-
-        try
-        {
-            var handler = new JwtSecurityTokenHandler();
-            var jwtSecurityToken = handler.ReadJwtToken(token);
-
-            var scopeClaim = jwtSecurityToken.Claims.FirstOrDefault(c => c.Type == "scp");
-            if (scopeClaim == null)
-            {
-                // possibly an application token
-                // roles is an array so we need to handle it differently
-                var roles = jwtSecurityToken.Claims
-                  .Where(c => c.Type == "roles")
-                  .Select(c => c.Value);
-                if (!roles.Any())
-                {
-                    return (GraphPermissionsType.Application, []);
-                }
-                else
-                {
-                    return (GraphPermissionsType.Application, roles);
-                }
-            }
-            else
-            {
-                return (GraphPermissionsType.Delegated, scopeClaim.Value.Split(' '));
-            }
-        }
-        catch
-        {
-            return (GraphPermissionsType.Application, []);
-        }
+        var (type, permissions) = GraphUtils.GetPermissionsFromAuthorizationHeader(authHeader?.Value);
+        return (type ?? GraphPermissionsType.Application, permissions);
     }
 }
