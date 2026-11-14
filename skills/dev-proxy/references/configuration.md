@@ -136,7 +136,8 @@ Plugin-specific override:
 | `watchPids` | — | `--watch-pids` | Only intercept from these PIDs |
 | `watchProcessNames` | — | `--watch-process-names` | Only intercept from these processes |
 | `watchProcessTree` | — | `--watch-process-tree` | Also intercept descendants of watched processes |
-| `asSystemProxy` | `true` | `--as-system-proxy` | Register as system proxy |
+| `asSystemProxy` | `true` (`false` when `CI` is set) | `--as-system-proxy` | Register as system proxy |
+| `installCert` | `true` (`false` when `CI` is set) | `--install-cert` | Install and trust the root certificate |
 | — | off | `--detach` | Run in detached (background) mode |
 | — | `text` | `--output` | Output format: `text` or `json` |
 
