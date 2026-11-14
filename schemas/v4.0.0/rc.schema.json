@@ -37,7 +37,7 @@
     },
     "env": {
       "type": "object",
-      "description": "Environment variables to set for the Dev Proxy process. Values are also used to replace {name} placeholders in API spec files used by the MinimalPermissions plugins. Values passed with --env replace these. Changes to HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, or NO_PROXY (including lowercase variants) require a full stop/start; hot reload cannot refresh cached HTTP proxy settings.",
+      "description": "Environment variables to set for the Dev Proxy process. Values can be referenced as ${NAME} placeholders in this config file and in plugin data files. Values are also used to replace {name} placeholders in API spec files used by the MinimalPermissions plugins (deprecated; use ${NAME} instead). Values passed with --env replace these. Changes to HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, or NO_PROXY (including lowercase variants) require a full stop/start; hot reload cannot refresh cached HTTP proxy settings.",
       "propertyNames": {
         "minLength": 1,
         "pattern": "^[^=]+$"

@@ -282,15 +282,15 @@ Use `ApiCenterOnboardingPlugin` to check whether the APIs an app uses are regist
 }
 ```
 
-For CI/CD, use environment variables with `@` prefix:
+For CI/CD, reference environment variables with `${VAR_NAME}` (the older `@VAR_NAME` syntax is deprecated):
 
 ```json
 {
   "apiCenterOnboardingPlugin": {
-    "subscriptionId": "@AZURE_SUBSCRIPTION_ID",
-    "resourceGroupName": "@AZURE_RESOURCE_GROUP_NAME",
-    "serviceName": "@AZURE_APIC_INSTANCE_NAME",
-    "workspace": "@AZURE_APIC_WORKSPACE_NAME",
+    "subscriptionId": "${AZURE_SUBSCRIPTION_ID}",
+    "resourceGroupName": "${AZURE_RESOURCE_GROUP_NAME}",
+    "serviceName": "${AZURE_APIC_INSTANCE_NAME}",
+    "workspace": "${AZURE_APIC_WORKSPACE_NAME}",
     "createApicEntryForNewApis": false
   }
 }
