@@ -82,6 +82,7 @@ static class IServiceCollectionExtensions
             // Share the hosted instance so the command can release its startup-output gate.
             .AddSingleton<InteractiveConsoleService>()
             .AddHostedService(sp => sp.GetRequiredService<InteractiveConsoleService>())
+            .AddKeyedSingleton(LanguageModelClientFactory.HttpClientServiceKey, (_, _) => LanguageModelClientFactory.CreateHttpClient())
             .AddSingleton(sp => LanguageModelClientFactory.Create(sp, configuration))
             .AddSingleton<UpdateNotification>()
             .AddSingleton<DevProxyCommand>()

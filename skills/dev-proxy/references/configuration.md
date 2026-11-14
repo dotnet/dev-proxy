@@ -173,7 +173,7 @@ For the beta image, use `devproxy-beta` instead of `devproxy`. Add `--pid <PID>`
 
 ## Local Language Model
 
-Enable a local LLM (e.g., Ollama) to improve AI-powered plugins:
+Enable a local LLM (e.g., Ollama) or a hosted model to improve AI-powered plugins:
 
 ```json
 {
@@ -183,6 +183,20 @@ Enable a local LLM (e.g., Ollama) to improve AI-powered plugins:
     "url": "http://localhost:11434/v1/",
     "client": "OpenAI",
     "cacheResponses": true
+  }
+}
+```
+
+To use a hosted model, set `url` and `apiKey`. Use `@env:VAR_NAME` to keep the key out of the config file. `OpenAI` works with any OpenAI-compatible endpoint (OpenAI, GitHub Models, OpenRouter) and sends the key as a Bearer token. `AzureOpenAI` sends it in the `api-key` header and expects the v1 endpoint, with `model` set to the deployment name:
+
+```json
+{
+  "languageModel": {
+    "enabled": true,
+    "client": "AzureOpenAI",
+    "model": "gpt-4.1-mini",
+    "url": "https://<resource>.openai.azure.com/openai/v1/",
+    "apiKey": "@env:AZURE_OPENAI_API_KEY"
   }
 }
 ```

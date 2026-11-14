@@ -52,10 +52,11 @@ ollama serve
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `enabled` | Enable local language model | `false` |
-| `client` | Client type: `Ollama` or `OpenAI` | `OpenAI` |
-| `model` | Model name | `llama3.2` |
+| `enabled` | Enable language model | `false` |
+| `client` | Client type: `Ollama`, `OpenAI` (any OpenAI-compatible endpoint), or `AzureOpenAI` | `OpenAI` |
+| `model` | Model name (for Azure OpenAI: deployment name) | `llama3.2` |
 | `url` | Language model endpoint URL | `http://localhost:11434/v1/` |
+| `apiKey` | API key for hosted models. Use `@env:VAR_NAME` to read it from an environment variable | (none) |
 | `cacheResponses` | Cache responses for identical prompts | `true` |
 
 ## Simulate LLM Failures
