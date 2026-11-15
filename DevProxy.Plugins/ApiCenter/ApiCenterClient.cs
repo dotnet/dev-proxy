@@ -81,7 +81,7 @@ internal sealed class ApiCenterClient : IDisposable
 
     private static string ResolveEnvironmentVariable(string value, string settingName)
     {
-        if (!value.StartsWith('@'))
+        if (!value.StartsWith('@', StringComparison.Ordinal))
         {
             return value;
         }

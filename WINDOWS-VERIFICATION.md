@@ -19,7 +19,7 @@ in the **Notes** column. Anything that fails or surprises you is a finding worth
 
 - **Branch under test:** `waldekmastykarz-special-invention`
 - **Tester:** _______________  **Date:** _______________  **Windows build:** _______________
-- **.NET SDK:** `dotnet --version` → _______________ (expect .NET 10.x)
+- **.NET SDK:** `dotnet --version` → _______________ (expect .NET 11.x)
 
 > Conventions used below:
 > - `devproxy` means the built CLI. During verification you can run it from source with
@@ -32,7 +32,7 @@ in the **Notes** column. Anything that fails or surprises you is a finding worth
 
 | # | Step | Expected | Pass | Notes |
 |---|------|----------|------|-------|
-| 0.1 | Install .NET 10 SDK; `dotnet --version` | Prints 10.x | ☐ | |
+| 0.1 | Install .NET 11 SDK; `dotnet --version` | Prints 11.x | ☐ | |
 | 0.2 | `git clone` the repo, `git checkout waldekmastykarz-special-invention` | Branch checked out | ☐ | |
 | 0.3 | Close other proxies/VPNs that set a system proxy | None active | ☐ | |
 | 0.4 | Note current proxy state: `reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v ProxyEnable` | Records baseline (usually `0x0`) | ☐ | |

@@ -862,7 +862,7 @@ public sealed class TypeSpecGeneratorPlugin(
             {
                 singular = noun[0..^2];
             }
-            else if (noun.EndsWith('s') && !noun.EndsWith("ss", StringComparison.OrdinalIgnoreCase))
+            else if (noun.EndsWith('s', StringComparison.Ordinal) && !noun.EndsWith("ss", StringComparison.OrdinalIgnoreCase))
             {
                 singular = noun[0..^1];
             }

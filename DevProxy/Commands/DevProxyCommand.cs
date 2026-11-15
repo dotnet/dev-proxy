@@ -167,7 +167,7 @@ sealed class DevProxyCommand : RootCommand
             // If there are no more arguments, it's the root command
             // If the first argument starts with '-', it's an option (root command)
             // Otherwise, it's a subcommand name
-            field = args.Length <= 1 || args[1].StartsWith('-');
+            field = args.Length <= 1 || args[1].StartsWith('-', StringComparison.Ordinal);
             _isRootCommandResolved = true;
             return field;
         }

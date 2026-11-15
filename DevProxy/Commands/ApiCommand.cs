@@ -80,10 +80,10 @@ sealed class ApiCommand : Command
                 var states = await StateManager.LoadAllStatesAsync(cancellationToken);
                 if (states.Count > 1)
                 {
-                    await Console.Error.WriteLineAsync("Multiple Dev Proxy instances are running. Select one with devproxy api token --pid <PID>:");
+                    await Console.Error.WriteLineAsync("Multiple Dev Proxy instances are running. Select one with devproxy api token --pid <PID>:", cancellationToken);
                     foreach (var instance in states.OrderBy(instance => instance.Pid))
                     {
-                        await Console.Error.WriteLineAsync($"  {instance.Pid}: {instance.ApiUrl}");
+                        await Console.Error.WriteLineAsync($"  {instance.Pid}: {instance.ApiUrl}", cancellationToken);
                     }
                     return 1;
                 }
@@ -95,7 +95,7 @@ sealed class ApiCommand : Command
             {
                 await Console.Error.WriteLineAsync(pid.HasValue
                     ? $"No running Dev Proxy instance with PID {pid.Value}. Run devproxy status to find an instance."
-                    : "Dev Proxy is not running. Start it with devproxy first.");
+                    : "Dev Proxy is not running. Start it with devproxy first.", cancellationToken);
                 return 1;
             }
 
@@ -112,7 +112,7 @@ sealed class ApiCommand : Command
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            await Console.Error.WriteLineAsync("Unable to read the API token. Restart the selected Dev Proxy instance using the current version and the same user account.");
+            await Console.Error.WriteLineAsync("Unable to read the API token. Restart the selected Dev Proxy instance using the current version and the same user account.", cancellationToken);
             return 1;
         }
     }

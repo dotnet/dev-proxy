@@ -22,15 +22,16 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
       with:
-        dotnet-version: 10.0.x
+        dotnet-version: 11.0.x
     - name: Restore workloads
       run: dotnet workload restore
     - name: Restore dependencies
       run: dotnet restore DevProxy.sln --locked-mode
     - name: Build
       run: dotnet build DevProxy.sln --no-restore
-    # We really should have tests, putting these steps here for when we have a build process
-    # - name: Test
+    - name: Test
+      run: dotnet test DevProxy.sln --no-build
+    # - name: Test with coverage
     #   run: dotnet test DevProxy.sln --no-build --verbosity normal --collect:"XPlat Code Coverage"
     # - name: Install report generator
     #   run: dotnet tool install --global dotnet-reportgenerator-globaltool

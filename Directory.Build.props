@@ -1,4 +1,8 @@
 <Project>
+  <PropertyGroup>
+    <!-- Pin the analyzer rule set so that a newer .NET SDK doesn't introduce new build errors -->
+    <AnalysisLevel>11.0</AnalysisLevel>
+  </PropertyGroup>
   <ItemGroup>
     <!-- Suppress until SQLitePCLRaw releases a fix for GHSA-2m69-gcr7-jv3q -->
     <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-2m69-gcr7-jv3q" />
