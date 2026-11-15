@@ -12,6 +12,12 @@ public class MockResponse : ICloneable
 {
     public MockResponseRequest? Request { get; set; }
     public MockResponseResponse? Response { get; set; }
+    /// <summary>
+    /// Probability (0-100) that the mock is applied when it matches a request.
+    /// When not set, the mock is always applied. When the mock isn't applied,
+    /// the request falls through to the next matching mock or the real API.
+    /// </summary>
+    public int? Rate { get; set; }
 
     public object Clone()
     {
