@@ -103,6 +103,11 @@ internal sealed class LogsCommand : Command
 
     internal static DateTimeOffset GetLogStartTime(ProxyInstanceState state)
     {
+        if (state.ProcessStartTime is { } recorded)
+        {
+            return recorded;
+        }
+
         using var process = System.Diagnostics.Process.GetProcessById(state.Pid);
         return process.StartTime;
     }
