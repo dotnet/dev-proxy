@@ -638,7 +638,7 @@ public sealed class ProcessSmokeTests
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null)
         {
-            var candidate = Path.Combine(dir.FullName, "DevProxy", "bin", config, "net10.0", "devproxy.dll");
+            var candidate = Path.Combine(dir.FullName, "DevProxy", "bin", config, "net11.0", "devproxy.dll");
             if (File.Exists(candidate))
             {
                 return candidate;

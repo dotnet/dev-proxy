@@ -98,8 +98,8 @@ sealed class StdioCommand : Command
         if (command == null || command.Length == 0)
         {
             _logger.LogError("No command specified");
-            await Console.Error.WriteLineAsync("Usage: devproxy stdio <command> [args...]");
-            await Console.Error.WriteLineAsync("Example: devproxy stdio npx -y @modelcontextprotocol/server-filesystem");
+            await Console.Error.WriteLineAsync("Usage: devproxy stdio <command> [args...]", cancellationToken);
+            await Console.Error.WriteLineAsync("Example: devproxy stdio npx -y @modelcontextprotocol/server-filesystem", cancellationToken);
             return 1;
         }
 
@@ -129,7 +129,7 @@ sealed class StdioCommand : Command
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error running stdio proxy");
-            await Console.Error.WriteLineAsync($"Error: {ex.Message}");
+            await Console.Error.WriteLineAsync($"Error: {ex.Message}", CancellationToken.None);
             return 1;
         }
         finally

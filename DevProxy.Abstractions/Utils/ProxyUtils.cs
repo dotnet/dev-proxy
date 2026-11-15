@@ -632,7 +632,7 @@ public static class ProxyUtils
                     // For single URLs, use the URL up to the last segment
                     var uri = new Uri(url);
                     var path = uri.AbsolutePath;
-                    var lastSlashIndex = path.LastIndexOf('/');
+                    var lastSlashIndex = path.AsSpan().LastIndexOf('/');
                     return $"{group.Key}{path[..lastSlashIndex]}/*";
                 }
 
@@ -733,7 +733,7 @@ public static class ProxyUtils
 
     private static bool IsPlaceHolderSegment(string segment)
     {
-        return segment.StartsWith('{') && segment.EndsWith('}');
+        return segment is ['{', .., '}'];
     }
 
     private static ParsedSample ParseSampleUrl(string url, string? version = null)
@@ -827,7 +827,7 @@ public static class ProxyUtils
 
         // Find the last complete path segment
         var prefix = firstPath[..commonPrefixLength];
-        var lastSlashIndex = prefix.LastIndexOf('/');
+        var lastSlashIndex = prefix.AsSpan().LastIndexOf('/');
         return lastSlashIndex >= 0 ? prefix[..(lastSlashIndex + 1)] : prefix;
     }
 }

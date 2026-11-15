@@ -406,7 +406,7 @@ public class MockResponsePlugin(
         if (matchingResponse.Response?.Body is not null)
         {
             string bodyString = ProxyUtils.SerializeBody(matchingResponse.Response.Body);
-            if (bodyString.StartsWith('@'))
+            if (bodyString.StartsWith('@', StringComparison.Ordinal))
             {
                 // we've got a mock body starting with @-token which means we're sending
                 // a response from a file on disk
