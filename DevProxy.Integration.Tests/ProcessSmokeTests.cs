@@ -31,7 +31,10 @@ public sealed class ProcessSmokeTests
 {
     private static readonly TimeSpan s_startupTimeout = TimeSpan.FromSeconds(90);
 
-    [Theory]
+    private const string DetachInheritsRedirectedHandlesOnWindows =
+        "On Windows the --detach daemon inherits the caller's redirected output handles, so output never reaches EOF.";
+
+    [SkipOnWindowsTheory(DetachInheritsRedirectedHandlesOnWindows)]
     [InlineData(false)]
     [InlineData(true)]
     public async Task Startup_EnvironmentOverrides_PreserveTildeConfigPathAndApplyBeforeAnnouncement(bool useCommandLine)
@@ -211,7 +214,7 @@ public sealed class ProcessSmokeTests
         }
     }
 
-    [Theory]
+    [SkipOnWindowsTheory(DetachInheritsRedirectedHandlesOnWindows)]
     [InlineData("text", "cli")]
     [InlineData("json", "cli")]
     [InlineData("text", "config")]

@@ -64,11 +64,18 @@ jobs:
     - name: Build
       run: dotnet build DevProxy.sln --no-restore
     - name: Test DevProxy.Abstractions.Tests
-      run: dotnet test DevProxy.Abstractions.Tests/DevProxy.Abstractions.Tests.csproj --no-build --blame-hang-timeout 5m
+      run: dotnet test DevProxy.Abstractions.Tests/DevProxy.Abstractions.Tests.csproj --no-build --blame-hang-timeout 5m --results-directory TestResults
     - name: Test DevProxy.Proxy.Kestrel.Tests
-      run: dotnet test DevProxy.Proxy.Kestrel.Tests/DevProxy.Proxy.Kestrel.Tests.csproj --no-build --blame-hang-timeout 5m
+      run: dotnet test DevProxy.Proxy.Kestrel.Tests/DevProxy.Proxy.Kestrel.Tests.csproj --no-build --blame-hang-timeout 5m --results-directory TestResults
     - name: Test DevProxy.Tests
-      run: dotnet test DevProxy.Tests/DevProxy.Tests.csproj --no-build --blame-hang-timeout 5m
+      run: dotnet test DevProxy.Tests/DevProxy.Tests.csproj --no-build --blame-hang-timeout 5m --results-directory TestResults
+    - name: Upload test results
+      if: failure()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: unit-test-results-${{ matrix.os }}
+        path: TestResults
+        retention-days: 7
 
   integration-tests:
     name: Integration tests (${{ matrix.os }})
@@ -93,4 +100,11 @@ jobs:
     - name: Build
       run: dotnet build DevProxy.sln --no-restore
     - name: Test DevProxy.Integration.Tests
-      run: dotnet test DevProxy.Integration.Tests/DevProxy.Integration.Tests.csproj --no-build --blame-hang-timeout 5m
+      run: dotnet test DevProxy.Integration.Tests/DevProxy.Integration.Tests.csproj --no-build --blame-hang-timeout 5m --results-directory TestResults
+    - name: Upload test results
+      if: failure()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: integration-test-results-${{ matrix.os }}
+        path: TestResults
+        retention-days: 7
