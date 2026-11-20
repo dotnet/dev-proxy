@@ -129,10 +129,56 @@ public sealed class CommandExitCodeTests
             response.GetProperty("body").GetString() == "valid");
     }
 
+    [Theory]
+    [InlineData("--output", "json", "--port", "abc")]
+    [InlineData("--port", "abc", "--output", "json")]
+    [InlineData("--output", "json", "--unknown-option")]
+    [InlineData("jwt", "create", "--valid-for", "abc", "--output", "json")]
+    public async Task ParseError_JsonOutput_WritesJsonErrorsAndReturnsTwo(params string[] args)
+    {
+        using var workDir = new TempDir();
+        await File.WriteAllTextAsync(Path.Combine(workDir.Path, "devproxyrc.json"), ConfigFile);
+
+        var (exitCode, stdout, stderr) = await RunHostWithStreamsAsync(workDir.Path, new Dictionary<string, string>(), args);
+        var output = $"STDOUT:\n{stdout}\nSTDERR:\n{stderr}";
+
+        Assert.True(exitCode == 2, output);
+        var lines = stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        Assert.True(lines.Length > 0, output);
+        foreach (var line in lines)
+        {
+            using var entry = JsonDocument.Parse(line);
+            Assert.Equal("log", entry.RootElement.GetProperty("type").GetString());
+            Assert.Equal("error", entry.RootElement.GetProperty("level").GetString());
+            Assert.False(string.IsNullOrEmpty(entry.RootElement.GetProperty("message").GetString()), output);
+            Assert.True(entry.RootElement.TryGetProperty("timestamp", out _), output);
+        }
+    }
+
+    [Fact]
+    public async Task ParseError_TextOutput_WritesPlainTextAndReturnsTwo()
+    {
+        using var workDir = new TempDir();
+        await File.WriteAllTextAsync(Path.Combine(workDir.Path, "devproxyrc.json"), ConfigFile);
+
+        var (exitCode, stdout, stderr) = await RunHostWithStreamsAsync(workDir.Path, new Dictionary<string, string>(), "--port", "abc");
+        var output = $"STDOUT:\n{stdout}\nSTDERR:\n{stderr}";
+
+        Assert.True(exitCode == 2, output);
+        Assert.Contains("'abc' is not a valid port.", stderr, StringComparison.Ordinal);
+        Assert.DoesNotContain("{", stderr, StringComparison.Ordinal);
+    }
+
     private static Task<(int ExitCode, string Output)> RunHostAsync(string workDir, params string[] args) =>
         RunHostAsync(workDir, new Dictionary<string, string>(), args);
 
     private static async Task<(int ExitCode, string Output)> RunHostAsync(string workDir, Dictionary<string, string> env, params string[] args)
+    {
+        var (exitCode, stdout, stderr) = await RunHostWithStreamsAsync(workDir, env, args);
+        return (exitCode, $"STDOUT:\n{stdout}\nSTDERR:\n{stderr}");
+    }
+
+    private static async Task<(int ExitCode, string StdOut, string StdErr)> RunHostWithStreamsAsync(string workDir, Dictionary<string, string> env, params string[] args)
     {
         var hostDll = LocateHostDll();
         Assert.True(File.Exists(hostDll), $"DevProxy host not built at {hostDll}. Run `dotnet build DevProxy` first.");
@@ -173,8 +219,7 @@ public sealed class CommandExitCodeTests
             throw new TimeoutException($"DevProxy host did not exit within {s_timeout.TotalSeconds}s.");
         }
 
-        var output = $"STDOUT:\n{await stdout}\nSTDERR:\n{await stderr}";
-        return (process.ExitCode, output);
+        return (process.ExitCode, await stdout, await stderr);
     }
 
     private static string LocateHostDll()

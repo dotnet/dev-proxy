@@ -1,6 +1,7 @@
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
+using DevProxy.Logging;
 using DevProxy.Proxy;
 using DevProxy.Proxy.Kestrel;
 using DevProxy.State;
@@ -263,6 +264,12 @@ sealed class DevProxyCommand : RootCommand
 
         if (parseResult.Action is ParseErrorAction parseErrorAction)
         {
+            if (IsJsonOutputRequested(parseResult))
+            {
+                WriteJsonParseErrors(parseResult, Console.Error);
+                return 2;
+            }
+
             parseErrorAction.ShowHelp = false;
         }
 
@@ -277,6 +284,20 @@ sealed class DevProxyCommand : RootCommand
         }
 
         return exitCode;
+    }
+
+    // Reads the raw token rather than the parsed value, because the parsed
+    // value isn't available when the parse result has errors
+    internal static bool IsJsonOutputRequested(ParseResult parseResult) =>
+        parseResult.GetResult(OutputOptionName) is OptionResult { Tokens: [var token, ..] } &&
+        string.Equals(token.Value, nameof(OutputFormat.Json), StringComparison.OrdinalIgnoreCase);
+
+    internal static void WriteJsonParseErrors(ParseResult parseResult, TextWriter writer)
+    {
+        foreach (var error in parseResult.Errors)
+        {
+            writer.WriteLine(JsonConsoleFormatter.FormatLogEntry(LogLevel.Error, error.Message));
+        }
     }
 
     internal static void ValidatePort(OptionResult input)
