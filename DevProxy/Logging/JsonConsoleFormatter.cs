@@ -196,6 +196,23 @@ sealed class JsonConsoleFormatter : ConsoleFormatter
         }
     }
 
+    /// <summary>
+    /// Formats a log entry using the same JSONL envelope as regular log messages,
+    /// for output written outside the logging pipeline.
+    /// </summary>
+    internal static string FormatLogEntry(LogLevel logLevel, string message)
+    {
+        var logObject = new JsonLogEntry
+        {
+            Type = "log",
+            Level = GetLogLevelString(logLevel),
+            Message = message,
+            Timestamp = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture)
+        };
+
+        return JsonSerializer.Serialize(logObject, _jsonOptions);
+    }
+
     private static string GetMessageTypeString(MessageType messageType) =>
         _messageTypeStrings.TryGetValue(messageType, out var str) ? str : "unknown";
 
