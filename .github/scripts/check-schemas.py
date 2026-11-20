@@ -21,7 +21,7 @@ SCHEMAS_DIR = REPO_ROOT / "schemas"
 VERSION_PROJECT = REPO_ROOT / "DevProxy" / "DevProxy.csproj"
 BYPASS_LABEL = "schema-fix"
 SCHEMA_URL_RE = re.compile(
-    r"^https://raw\.githubusercontent\.com/dotnet/dev-proxy/[^/]+/schemas/(?P<path>v[^/]+/[^/]+\.json)$"
+    r"^https://raw\.githubusercontent\.com/dotnet/dev-proxy/.+/schemas/(?P<path>v[^/]+/[^/]+\.json)$"
 )
 # Files intentionally not validated against their schema.
 SKIP_VALIDATION = {
@@ -31,6 +31,10 @@ SKIP_VALIDATION = {
 }
 YAML_MODELINE_RE = re.compile(r"^(?P<indent>\s*)#\s*yaml-language-server:\s*\$schema=(?P<url>\S+)")
 VERSION_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
+# Text that may contain a Dev Proxy schema URL, also with JSON-escaped slashes.
+DEV_PROXY_REF_RE = re.compile(r"dotnet\\?/dev-proxy")
+YAML_INT_RE = re.compile(r"^\s*[+-]?\d+\s*$", re.ASCII)
+YAML_FLOAT_RE = re.compile(r"^\s*[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?\s*$|^\s*[+-]?(infinity|nan)\s*$", re.IGNORECASE | re.ASCII)
 IN_ACTIONS = os.environ.get("GITHUB_ACTIONS") == "true"
 
 
@@ -115,9 +119,54 @@ def cmd_shipped(args: argparse.Namespace) -> int:
     return 1
 
 
+def reject_constant(value: str):
+    raise json.JSONDecodeError(f"{value} isn't valid JSON", value, 0)
+
+
+def parse_json(text: str):
+    return json.loads(text, parse_constant=reject_constant)
+
+
 def load_json(path: Path):
-    with path.open(encoding="utf-8-sig") as file:
-        return json.load(file)
+    return parse_json(path.read_text(encoding="utf-8-sig"))
+
+
+def convert_yaml_node(node):
+    """Converts a composed YAML node the same way as Dev Proxy (ProxyYaml.ConvertNode)."""
+    import yaml
+
+    if isinstance(node, yaml.MappingNode):
+        merged, explicit = {}, {}
+        for key, value in node.value:
+            if not isinstance(key, yaml.ScalarNode):
+                continue
+            if key.value == "<<":
+                sources = value.value if isinstance(value, yaml.SequenceNode) else [value]
+                for source in sources:
+                    if isinstance(source, yaml.MappingNode):
+                        merged.update(convert_yaml_node(source))
+            else:
+                explicit[key.value] = convert_yaml_node(value)
+        return {**merged, **explicit}
+    if isinstance(node, yaml.SequenceNode):
+        return [convert_yaml_node(item) for item in node.value]
+    if isinstance(node, yaml.ScalarNode):
+        value = node.value
+        # Only plain (unquoted) scalars get type inference.
+        if node.style is not None:
+            return value
+        if value in ("", "~") or value.lower() == "null":
+            return None
+        if value.lower() in ("true", "yes", "on"):
+            return True
+        if value.lower() in ("false", "no", "off"):
+            return False
+        if YAML_INT_RE.match(value) and -(2**63) <= int(value) < 2**63:
+            return int(value)
+        if YAML_FLOAT_RE.match(value):
+            return float(value)
+        return value
+    return None
 
 
 def find_schema_refs(node, pointer=""):
@@ -142,7 +191,8 @@ def find_yaml_schema_refs(text: str):
     """
     import yaml
 
-    document = yaml.safe_load(text)
+    root = next(iter(yaml.compose_all(text)), None)
+    document = convert_yaml_node(root) if root is not None else None
     lines = text.splitlines()
     mappings: dict[tuple[int, int], list] = {}
 
@@ -150,12 +200,13 @@ def find_yaml_schema_refs(text: str):
         if isinstance(node, yaml.MappingNode):
             mappings[(node.start_mark.line, node.start_mark.column)] = path
             for key, value in node.value:
-                walk(value, [*path, key.value])
+                if isinstance(key, yaml.ScalarNode) and key.value != "<<":
+                    walk(value, [*path, key.value])
         elif isinstance(node, yaml.SequenceNode):
             for index, value in enumerate(node.value):
                 walk(value, [*path, index])
 
-    walk(yaml.compose(text), [])
+    walk(root, [])
 
     seen = set()
     for pointer, url, instance in find_schema_refs(document):
@@ -218,16 +269,15 @@ def cmd_validate(_: argparse.Namespace) -> int:
     for path in files:
         rel = path.relative_to(REPO_ROOT).as_posix()
         text = path.read_text(encoding="utf-8-sig", errors="replace")
-        # Only files declaring a Dev Proxy schema are in scope.
-        if "raw.githubusercontent.com/dotnet/dev-proxy/" not in text:
-            continue
         try:
             if path.suffix == ".json":
-                refs = list(find_schema_refs(json.loads(text)))
+                refs = list(find_schema_refs(parse_json(text)))
             else:
                 refs = list(find_yaml_schema_refs(text))
         except (json.JSONDecodeError, yaml.YAMLError) as ex:
-            errors.append(f"{rel}: invalid {path.suffix.lstrip('.').upper()}: {ex}")
+            # Only files declaring a Dev Proxy schema are in scope.
+            if DEV_PROXY_REF_RE.search(text):
+                errors.append(f"{rel}: invalid {path.suffix.lstrip('.').upper()}: {ex}")
             continue
         for pointer, url, instance in refs:
             match = SCHEMA_URL_RE.match(url)
