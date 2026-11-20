@@ -2,6 +2,7 @@ using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using System.CommandLine;
 using System.CommandLine.Parsing;
+using System.Globalization;
 
 namespace DevProxy.Commands;
 
@@ -153,10 +154,34 @@ sealed class DevProxyConfigOptions : RootCommand
             }
         };
 
-        var apiPortOption = new Option<int?>(DevProxyCommand.ApiPortOptionName);
+        // Out-of-range ports are ignored here so they don't reach Kestrel
+        // before DevProxyCommand reports them as validation errors
+        static int? ParsePort(ArgumentResult result)
+        {
+            if (result.Tokens.Count == 0)
+            {
+                return null;
+            }
+
+            if (int.TryParse(result.Tokens[0].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var port) &&
+                port <= System.Net.IPEndPoint.MaxPort)
+            {
+                return port;
+            }
+
+            return null;
+        }
+
+        var apiPortOption = new Option<int?>(DevProxyCommand.ApiPortOptionName)
+        {
+            CustomParser = ParsePort
+        };
         var apiIpAddressOption = new Option<string?>(DevProxyCommand.ApiIpAddressOptionName);
         var asSystemProxyOption = new Option<bool?>(DevProxyCommand.AsSystemProxyOptionName);
-        var portOption = new Option<int?>(DevProxyCommand.PortOptionName, "-p");
+        var portOption = new Option<int?>(DevProxyCommand.PortOptionName, "-p")
+        {
+            CustomParser = ParsePort
+        };
 
         var discoverOption = new Option<bool>(DevProxyCommand.DiscoverOptionName, "--discover")
         {
