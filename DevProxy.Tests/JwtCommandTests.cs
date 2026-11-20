@@ -4,8 +4,11 @@
 
 using DevProxy.Commands;
 using DevProxy.Jwt;
+using DevProxy.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System.CommandLine;
 using System.IdentityModel.Tokens.Jwt;
+using System.Text.Json;
 
 using Xunit;
 
@@ -16,7 +19,7 @@ public class JwtCommandTests
     [Fact]
     public void GetJwtOptions_NoValidForOrAudiences_LeavesThemNull()
     {
-        var command = new JwtCommand();
+        var command = new JwtCommand(NullLogger<JwtCommand>.Instance);
 
         var options = command.GetJwtOptions(command.Parse("create"));
 
@@ -27,7 +30,7 @@ public class JwtCommandTests
     [Fact]
     public void GetJwtOptions_ValidForAndAudiences_UsesProvidedValues()
     {
-        var command = new JwtCommand();
+        var command = new JwtCommand(NullLogger<JwtCommand>.Instance);
 
         var options = command.GetJwtOptions(command.Parse("create --valid-for 30 -a api1 -a api2"));
 
@@ -38,7 +41,7 @@ public class JwtCommandTests
     [Fact]
     public void CreateToken_FromDefaultCliOptions_MatchesApiDefaults()
     {
-        var command = new JwtCommand();
+        var command = new JwtCommand(NullLogger<JwtCommand>.Instance);
         var options = command.GetJwtOptions(command.Parse("create"));
 
         var before = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -52,7 +55,7 @@ public class JwtCommandTests
 
     private static Dictionary<string, string>? ParseClaims(params string[] claimArgs)
     {
-        var jwtCommand = new JwtCommand();
+        var jwtCommand = new JwtCommand(NullLogger<JwtCommand>.Instance);
         var createCommand = jwtCommand.Subcommands.Single(c => c.Name == "create");
         var claimsOption = (Option<Dictionary<string, string>>)createCommand.Options.Single(o => o.Name == "--claims");
 
@@ -90,10 +93,27 @@ public class JwtCommandTests
     [Fact]
     public void Claims_MissingSeparator_ReportsError()
     {
-        var jwtCommand = new JwtCommand();
+        var jwtCommand = new JwtCommand(NullLogger<JwtCommand>.Instance);
 
         var parseResult = jwtCommand.Parse(["create", "--claims", "dept"]);
 
         Assert.Contains(parseResult.Errors, e => e.Message.Contains("Invalid claim format", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Create_JsonOutput_EmitsTokenAsStructuredResult()
+    {
+        var logger = new RecordingLogger<JwtCommand>();
+
+        var exitCode = await StopCommandTests.CreateRootCommand(new JwtCommand(logger))
+            .Parse(["jwt", "create", "-n", "John Doe", "--output", "json"])
+            .InvokeAsync();
+
+        Assert.Equal(0, exitCode);
+        var entry = Assert.Single(logger.Entries);
+        Assert.Equal(LogEvents.StructuredOutput, entry.EventId);
+        using var json = JsonDocument.Parse(entry.Message);
+        var token = new JwtSecurityTokenHandler().ReadJwtToken(json.RootElement.GetProperty("token").GetString());
+        Assert.Contains(token.Claims, c => c.Type == JwtRegisteredClaimNames.Sub && c.Value == "John Doe");
     }
 }

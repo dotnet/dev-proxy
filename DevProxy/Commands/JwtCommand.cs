@@ -2,14 +2,18 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Utils;
 using DevProxy.Jwt;
 using System.CommandLine;
 using System.CommandLine.Parsing;
+using System.Text.Json;
 
 namespace DevProxy.Commands;
 
 sealed class JwtCommand : Command
 {
+    private readonly ILogger _logger;
     private Option<string>? _nameOption;
     private Option<IEnumerable<string>>? _audiencesOption;
     private Option<string>? _issuerOption;
@@ -19,15 +23,16 @@ sealed class JwtCommand : Command
     private Option<double?>? _validForOption;
     private Option<string>? _signingKeyOption;
 
-    public JwtCommand() :
+    public JwtCommand(ILogger<JwtCommand> logger) :
         base("jwt", "Manage JSON Web Tokens")
     {
+        _logger = logger;
         ConfigureCommand();
     }
 
     private void ConfigureCommand()
     {
-        var jwtCreateCommand = new Command("create", "Create a new JWT token");
+        var jwtCreateCommand = new Command("create", "Create a new JWT token. JSON output: one result event with token.");
         var jwtNameOption = new Option<string>("--name", "-n")
         {
             Description = "The name of the user to create the token for."
@@ -140,7 +145,9 @@ sealed class JwtCommand : Command
         _validForOption = jwtValidForOption;
         _signingKeyOption = jwtSigningKeyOption;
 
-        jwtCreateCommand.SetAction(parseResult => GetToken(GetJwtOptions(parseResult)));
+        jwtCreateCommand.SetAction(parseResult => GetToken(
+            GetJwtOptions(parseResult),
+            parseResult.GetValueOrDefault<OutputFormat?>(DevProxyCommand.OutputOptionName) ?? OutputFormat.Text));
 
         this.AddCommands(new List<Command>
         {
@@ -167,9 +174,15 @@ sealed class JwtCommand : Command
         };
     }
 
-    private static void GetToken(JwtOptions jwtOptions)
+    private void GetToken(JwtOptions jwtOptions, OutputFormat outputFormat)
     {
         var token = JwtTokenGenerator.CreateToken(jwtOptions);
+
+        if (outputFormat == OutputFormat.Json)
+        {
+            _logger.LogStructuredOutput(JsonSerializer.Serialize(new { token }, ProxyUtils.JsonSerializerOptions));
+            return;
+        }
 
         Console.WriteLine(token);
     }
