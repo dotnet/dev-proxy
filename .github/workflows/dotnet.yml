@@ -8,14 +8,48 @@ on:
   pull_request:
     # The branches below must be a subset of the branches above
     paths-ignore: ['samples/**', '**.md', '.vscode/**', '**.svg']
+  merge_group:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+# Job names are used as required status checks in
+# .github/policies/dev-proxy-branch-protection.yml and must stay in sync with
+# .github/workflows/dotnet-required-workaround.yml.
 jobs:
   build:
-
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Setup .NET
+      uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+      with:
+        dotnet-version: 10.0.x
+    - name: Restore workloads
+      run: dotnet workload restore
+    - name: Restore dependencies
+      run: dotnet restore DevProxy.sln --locked-mode
+    - name: Build
+      run: dotnet build DevProxy.sln --no-restore -warnaserror
+
+  unit-tests:
+    name: Unit tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
 
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -29,14 +63,33 @@ jobs:
       run: dotnet restore DevProxy.sln --locked-mode
     - name: Build
       run: dotnet build DevProxy.sln --no-restore
-    # We really should have tests, putting these steps here for when we have a build process
-    # - name: Test
-    #   run: dotnet test DevProxy.sln --no-build --verbosity normal --collect:"XPlat Code Coverage"
-    # - name: Install report generator
-    #   run: dotnet tool install --global dotnet-reportgenerator-globaltool
-    # - name: Generate coverage report
-    #   run: reportgenerator -reports:**/coverage.cobertura.xml -targetdir:./reports/coverage
-    # - uses: actions/upload-artifact@v3
-    #   with:
-    #     name: coverage
-    #     path: reports/coverage
+    - name: Test DevProxy.Abstractions.Tests
+      run: dotnet test DevProxy.Abstractions.Tests/DevProxy.Abstractions.Tests.csproj --no-build --blame-hang-timeout 5m
+    - name: Test DevProxy.Proxy.Kestrel.Tests
+      run: dotnet test DevProxy.Proxy.Kestrel.Tests/DevProxy.Proxy.Kestrel.Tests.csproj --no-build --blame-hang-timeout 5m
+    - name: Test DevProxy.Tests
+      run: dotnet test DevProxy.Tests/DevProxy.Tests.csproj --no-build --blame-hang-timeout 5m
+
+  integration-tests:
+    name: Integration tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Setup .NET
+      uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+      with:
+        dotnet-version: 10.0.x
+    - name: Restore workloads
+      run: dotnet workload restore
+    - name: Restore dependencies
+      run: dotnet restore DevProxy.sln --locked-mode
+    - name: Build
+      run: dotnet build DevProxy.Integration.Tests/DevProxy.Integration.Tests.csproj --no-restore
+    - name: Test DevProxy.Integration.Tests
+      run: dotnet test DevProxy.Integration.Tests/DevProxy.Integration.Tests.csproj --no-build --blame-hang-timeout 5m
