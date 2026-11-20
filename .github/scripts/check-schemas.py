@@ -9,6 +9,7 @@ Subcommands:
 
 import argparse
 import json
+import math
 import os
 import re
 import subprocess
@@ -21,7 +22,7 @@ SCHEMAS_DIR = REPO_ROOT / "schemas"
 VERSION_PROJECT = REPO_ROOT / "DevProxy" / "DevProxy.csproj"
 BYPASS_LABEL = "schema-fix"
 SCHEMA_URL_RE = re.compile(
-    r"^https://raw\.githubusercontent\.com/dotnet/dev-proxy/.+/schemas/(?P<path>v[^/]+/[^/]+\.json)$"
+    r"^https://raw\.githubusercontent\.com/dotnet/dev-proxy/.+/schemas/(?P<path>.+)$"
 )
 # Files intentionally not validated against their schema.
 SKIP_VALIDATION = {
@@ -164,7 +165,11 @@ def convert_yaml_node(node):
         if YAML_INT_RE.match(value) and -(2**63) <= int(value) < 2**63:
             return int(value)
         if YAML_FLOAT_RE.match(value):
-            return float(value)
+            number = float(value)
+            # System.Text.Json can't serialize these, so Dev Proxy fails to load the file.
+            if not math.isfinite(number):
+                raise yaml.YAMLError(f"non-finite number '{value}' at line {node.start_mark.line + 1}")
+            return number
         return value
     return None
 
@@ -191,7 +196,9 @@ def find_yaml_schema_refs(text: str):
     """
     import yaml
 
-    root = next(iter(yaml.compose_all(text)), None)
+    # Load the whole stream like Dev Proxy does, so errors in later documents are reported.
+    documents = list(yaml.compose_all(text))
+    root = documents[0] if documents else None
     document = convert_yaml_node(root) if root is not None else None
     lines = text.splitlines()
     mappings: dict[tuple[int, int], list] = {}
@@ -251,7 +258,11 @@ def cmd_validate(_: argparse.Namespace) -> int:
         rel = path.relative_to(REPO_ROOT).as_posix()
         try:
             schema = load_json(path)
-            validator_for(schema).check_schema(schema)
+            validator = validator_for(schema, default=None)
+            if validator is None:
+                errors.append(f"{rel}: missing or unrecognized $schema draft: {schema.get('$schema') if isinstance(schema, dict) else None!r}")
+                continue
+            validator.check_schema(schema)
             schemas[path.relative_to(SCHEMAS_DIR).as_posix()] = schema
         except json.JSONDecodeError as ex:
             errors.append(f"{rel}: invalid JSON: {ex}")
