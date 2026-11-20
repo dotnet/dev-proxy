@@ -133,7 +133,8 @@ def find_schema_refs(node, pointer=""):
 
 
 def find_yaml_schema_refs(text: str):
-    """Yields (pointer, url, instance) for `# yaml-language-server: $schema=` modelines.
+    """Yields (pointer, url, instance) for `$schema` keys and
+    `# yaml-language-server: $schema=` modelines.
 
     A modeline without indentation applies to the whole document. An indented
     modeline applies to the mapping that starts on the next line at the same
@@ -156,13 +157,19 @@ def find_yaml_schema_refs(text: str):
 
     walk(yaml.compose(text), [])
 
+    seen = set()
+    for pointer, url, instance in find_schema_refs(document):
+        seen.add((pointer, url))
+        yield pointer, url, instance
+
     for number, line in enumerate(lines):
         match = YAML_MODELINE_RE.match(line)
         if not match:
             continue
         indent = len(match.group("indent"))
         if indent == 0:
-            yield "", match.group("url"), document
+            if ("", match.group("url")) not in seen:
+                yield "", match.group("url"), document
             continue
         next_line = next(
             (n for n in range(number + 1, len(lines)) if lines[n].strip() and not lines[n].lstrip().startswith("#")),
@@ -175,7 +182,9 @@ def find_yaml_schema_refs(text: str):
         instance = document
         for part in path:
             instance = instance[part]
-        yield "".join(f"/{part}" for part in path), match.group("url"), instance
+        pointer = "".join(f"/{part}" for part in path)
+        if (pointer, match.group("url")) not in seen:
+            yield pointer, match.group("url"), instance
 
 
 def cmd_validate(_: argparse.Namespace) -> int:
