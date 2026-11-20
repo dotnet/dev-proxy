@@ -538,7 +538,7 @@ sealed class ConfigCommand : Command
         return null;
     }
 
-    private static async Task<int> ValidateConfigCoreAsync(
+    internal static async Task<int> ValidateConfigCoreAsync(
         string? configFilePath,
         bool isJsonOutput,
         HttpClient httpClient,
@@ -840,7 +840,7 @@ sealed class ConfigCommand : Command
         };
 
         var json = JsonSerializer.Serialize(result, ProxyUtils.JsonSerializerOptions);
-        logger.LogInformation("{Result}", json);
+        logger.LogStructuredOutput(json);
     }
 
     private static void WriteTextResults(
