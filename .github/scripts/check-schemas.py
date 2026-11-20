@@ -24,12 +24,6 @@ BYPASS_LABEL = "schema-fix"
 SCHEMA_URL_RE = re.compile(
     r"^https://raw\.githubusercontent\.com/dotnet/dev-proxy/.+/schemas/(?P<path>.+)$"
 )
-# Files intentionally not validated against their schema.
-SKIP_VALIDATION = {
-    # Scaffold for `devproxy config new`: empty `-` list items are placeholders
-    # for the user to fill in and resolve to null, which the schema rejects.
-    "DevProxy/config-templates/devproxyrc.yaml",
-}
 YAML_MODELINE_RE = re.compile(r"^(?P<indent>\s*)#\s*yaml-language-server:\s*\$schema=(?P<url>\S+)")
 VERSION_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 # Text that may contain a Dev Proxy schema URL, also with JSON-escaped slashes.
@@ -274,7 +268,7 @@ def cmd_validate(_: argparse.Namespace) -> int:
     files = [
         REPO_ROOT / f
         for f in git("ls-files", "-z", "*.json", "*.yaml", "*.yml").split("\0")
-        if f and not f.startswith("schemas/") and f not in SKIP_VALIDATION
+        if f and not f.startswith("schemas/")
     ]
     checked = 0
     for path in files:
