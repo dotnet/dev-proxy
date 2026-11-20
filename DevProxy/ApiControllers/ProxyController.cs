@@ -124,7 +124,7 @@ public sealed class ProxyController(IProxyStateController proxyStateController, 
         var pem = "-----BEGIN CERTIFICATE-----\n" + base64Cert + "\n-----END CERTIFICATE-----";
         var pemBytes = System.Text.Encoding.ASCII.GetBytes(pem);
 
-        return File(pemBytes, "application/x-x509-ca-cert", "devProxy.pem");
+        return File(pemBytes, "application/x-x509-ca-cert", "devProxy.crt");
     }
 
     [HttpGet("logs")]
