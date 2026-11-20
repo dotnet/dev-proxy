@@ -53,6 +53,13 @@ static class DevProxyCli
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
         };
+        // Settings like DEV_PROXY_CERT_PATH from the developer's shell would point the
+        // run back at their real files; only the sandbox decides them.
+        foreach (var name in startInfo.Environment.Keys
+            .Where(n => n.StartsWith("DEV_PROXY_", StringComparison.OrdinalIgnoreCase)).ToList())
+        {
+            _ = startInfo.Environment.Remove(name);
+        }
         foreach (var (name, value) in sandbox.Environment)
         {
             startInfo.Environment[name] = value;
