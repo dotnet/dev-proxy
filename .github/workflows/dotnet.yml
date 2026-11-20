@@ -89,7 +89,8 @@ jobs:
       run: dotnet workload restore
     - name: Restore dependencies
       run: dotnet restore DevProxy.sln --locked-mode
+    # Process smoke tests launch the DevProxy host, so build the whole solution.
     - name: Build
-      run: dotnet build DevProxy.Integration.Tests/DevProxy.Integration.Tests.csproj --no-restore
+      run: dotnet build DevProxy.sln --no-restore
     - name: Test DevProxy.Integration.Tests
       run: dotnet test DevProxy.Integration.Tests/DevProxy.Integration.Tests.csproj --no-build --blame-hang-timeout 5m
