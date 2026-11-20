@@ -44,8 +44,9 @@ static class ILoggingBuilderExtensions
             return builder;
         }
 
-        // For jwt command, suppress all logging to console to avoid interfering with token output
-        if (DevProxyCommand.IsJwtCommand)
+        // For jwt command, suppress all logging to console to avoid interfering with token output.
+        // JSON output is emitted through the logger, so it uses the regular subcommand logging.
+        if (DevProxyCommand.IsJwtCommand && configuredOutput != OutputFormat.Json)
         {
             _ = builder
                 .ClearProviders()
