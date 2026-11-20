@@ -552,6 +552,10 @@ public sealed class ProcessSmokeTests
         psi.ArgumentList.Add("0");
         psi.ArgumentList.Add("--as-system-proxy");
         psi.ArgumentList.Add("false");
+        // Installing the root certificate on Windows shows a modal trust dialog that blocks
+        // headless runs; the smoke test only uses plain HTTP.
+        psi.ArgumentList.Add("--install-cert");
+        psi.ArgumentList.Add("false");
         psi.ArgumentList.Add("--no-first-run");
 
         var process = new Process { StartInfo = psi };
