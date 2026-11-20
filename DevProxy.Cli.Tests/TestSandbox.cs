@@ -8,9 +8,9 @@ namespace DevProxy.Cli.Tests;
 
 /// <summary>
 /// Per-test working folder with a Dev Proxy config that loads a mock plugin, plus
-/// environment overrides that keep the run away from the user's real Dev Proxy data
-/// where the OS allows it (HOME/XDG_CONFIG_HOME on Linux, root certificate path on
-/// every OS). Instances started through <see cref="TrackInstance"/> are stopped by
+/// environment overrides that keep the run away from the user's real Dev Proxy data:
+/// <c>DEV_PROXY_CONFIG_DIR</c> moves state, logs and certificates into the sandbox on
+/// every OS. Instances started through <see cref="TrackInstance"/> are stopped by
 /// PID on dispose, so a test never stops proxies it didn't start.
 /// </summary>
 sealed class TestSandbox : IAsyncDisposable
@@ -21,9 +21,7 @@ sealed class TestSandbox : IAsyncDisposable
     public const string PluginLoadedMessage = "Mock responses for";
 
     private readonly DirectoryInfo _root = Directory.CreateTempSubdirectory("devproxy-cli-");
-    private readonly DateTime _createdUtc = DateTime.UtcNow.AddSeconds(-1);
     private readonly List<int> _pids = [];
-    private readonly List<string> _logFiles = [];
 
     public TestSandbox()
     {
@@ -33,7 +31,7 @@ sealed class TestSandbox : IAsyncDisposable
         {
             ["HOME"] = home,
             ["XDG_CONFIG_HOME"] = Path.Combine(home, ".config"),
-            ["DEV_PROXY_CERT_PATH"] = Path.Combine(home, "rootCert.pfx"),
+            ["DEV_PROXY_CONFIG_DIR"] = Path.Combine(_root.FullName, "data"),
         };
         // Keep update checks and announcements off the network: they fail fast through
         // this unreachable proxy. Loopback stays direct for the Dev Proxy API.
@@ -86,14 +84,10 @@ sealed class TestSandbox : IAsyncDisposable
 
     public IReadOnlyDictionary<string, string> Environment { get; }
 
-    public void TrackInstance(int pid, string? logFile)
-    {
-        _pids.Add(pid);
-        if (!string.IsNullOrEmpty(logFile))
-        {
-            _logFiles.Add(logFile);
-        }
-    }
+    /// <summary>Dev Proxy's state, logs and certificates for this sandbox.</summary>
+    public string DataDir => Environment["DEV_PROXY_CONFIG_DIR"];
+
+    public void TrackInstance(int pid) => _pids.Add(pid);
 
     public static string Pid(int pid) => pid.ToString(CultureInfo.InvariantCulture);
 
@@ -115,42 +109,7 @@ sealed class TestSandbox : IAsyncDisposable
             }
         }
 
-        foreach (var logFile in _logFiles)
-        {
-            TryDelete(() => File.Delete(logFile));
-        }
-        DeleteUntrackedLogs();
         TryDelete(() => _root.Delete(recursive: true));
-    }
-
-    // A detached start that fails before reporting its PID still writes a log to the
-    // shared (non-sandboxed on macOS/Windows) logs folder. Remove the ones that reference
-    // this sandbox so the tests leave no trace in the user's Dev Proxy folder.
-    private void DeleteUntrackedLogs()
-    {
-        var basePath = OperatingSystem.IsWindows()
-            ? System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData)
-            : System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData);
-        var logsDir = new DirectoryInfo(Path.Combine(basePath, "dev-proxy", "logs"));
-        if (!logsDir.Exists)
-        {
-            return;
-        }
-
-        foreach (var log in logsDir.EnumerateFiles("devproxy-*.log"))
-        {
-            if (log.LastWriteTimeUtc < _createdUtc)
-            {
-                continue;
-            }
-            TryDelete(() =>
-            {
-                if (File.ReadAllText(log.FullName).Contains(_root.Name, StringComparison.Ordinal))
-                {
-                    log.Delete();
-                }
-            });
-        }
     }
 
     private static void TryDelete(Action delete)

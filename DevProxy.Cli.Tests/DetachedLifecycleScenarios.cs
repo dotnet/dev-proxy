@@ -30,6 +30,7 @@ public sealed class DetachedLifecycleScenarios
         TrackStartedInstance(sandbox, start);
         Assert.True(start.ExitCode == 0, start.ToString());
         var pid = int.Parse(Field(start, "PID"), CultureInfo.InvariantCulture);
+        AssertInSandbox(sandbox, Field(start, "Log file"), start);
         var proxyUrl = AssertRealPort(Field(start, "Proxy URL"), start);
         var apiUrl = AssertRealPort(Field(start, "API URL"), start);
 
@@ -59,6 +60,7 @@ public sealed class DetachedLifecycleScenarios
         Assert.Equal("result", started.GetProperty("type").GetString());
         var data = started.GetProperty("data");
         var pid = data.GetProperty("pid").GetInt32();
+        AssertInSandbox(sandbox, data.GetProperty("logFile").GetString(), start);
         var proxyUrl = AssertRealPort(data.GetProperty("proxyUrl").GetString(), start);
         var apiUrl = AssertRealPort(data.GetProperty("apiUrl").GetString(), start);
 
@@ -86,19 +88,23 @@ public sealed class DetachedLifecycleScenarios
     }
 
     // Registers the daemon for teardown before any assertion on the start output can fail.
-    // Matches both the text ("PID: 123", "Log file: ...") and JSON ("pid":123, "logFile":"...") forms.
+    // Matches both the text ("PID: 123") and JSON ("pid":123) forms.
     private static void TrackStartedInstance(TestSandbox sandbox, CliResult start)
     {
         var pid = Regex.Match(start.StdOut, @"(?:PID:\s*|""pid"":)(\d+)");
-        if (!pid.Success)
+        if (pid.Success)
         {
-            return;
+            sandbox.TrackInstance(int.Parse(pid.Groups[1].Value, CultureInfo.InvariantCulture));
         }
-        var log = Regex.Match(start.StdOut, @"(?:Log file:\s*(.+?)\s*$|""logFile"":""((?:[^""\\]|\\.)*)"")", RegexOptions.Multiline);
-        var logFile = !log.Success ? null
-            : log.Groups[1].Success ? log.Groups[1].Value
-            : System.Text.Json.JsonSerializer.Deserialize<string>($"\"{log.Groups[2].Value}\"");
-        sandbox.TrackInstance(int.Parse(pid.Groups[1].Value, CultureInfo.InvariantCulture), logFile);
+    }
+
+    // DEV_PROXY_CONFIG_DIR keeps the instance's files out of the user's Dev Proxy folder.
+    private static void AssertInSandbox(TestSandbox sandbox, string? path, CliResult result)
+    {
+        Assert.False(string.IsNullOrEmpty(path), result.ToString());
+        Assert.StartsWith(Path.GetFullPath(sandbox.DataDir), Path.GetFullPath(path),
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+        Assert.True(File.Exists(path), $"Missing {path}\n{result}");
     }
 
     private static async Task StopAndAssertStoppedAsync(TestSandbox sandbox, int pid)
