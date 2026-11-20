@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Abstractions.Utils;
 using System.Diagnostics;
 using System.Security.Cryptography.X509Certificates;
 
@@ -62,9 +63,7 @@ internal static class MacCertificateHelper
             var base64Cert = Convert.ToBase64String(certBytes, Base64FormattingOptions.InsertLineBreaks);
             var pem = $"-----BEGIN CERTIFICATE-----\n{base64Cert}\n-----END CERTIFICATE-----";
 
-            var configDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "dev-proxy");
+            var configDir = ProxyUtils.DataFolder;
             _ = Directory.CreateDirectory(configDir);
             var pemFilePath = Path.Combine(configDir, "dev-proxy-ca.pem");
             File.WriteAllText(pemFilePath, pem);

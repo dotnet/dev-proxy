@@ -1,0 +1,97 @@
+name: PR build and CLI scenarios
+
+# Publishes the build for each OS the same way the release does, uploads it as a
+# downloadable artifact (so reviewers can try a PR without building it) and runs the
+# black-box CLI scenario tests (DevProxy.Cli.Tests) against that published binary.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths-ignore: ['samples/**', '**.md', '.vscode/**', '**.svg']
+  pull_request:
+    paths-ignore: ['samples/**', '**.md', '.vscode/**', '**.svg']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish-and-test:
+    name: ${{ matrix.rid }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: windows-latest
+            rid: win-x64
+          - os: macos-latest
+            rid: osx-arm64
+    defaults:
+      run:
+        shell: bash
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup .NET
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: 10.0.x
+      - name: Set artifact name
+        run: |
+          sha="${{ github.event.pull_request.head.sha || github.sha }}"
+          echo "PACKAGE=dev-proxy-${{ matrix.rid }}-${sha::7}" >> "$GITHUB_ENV"
+      - name: Restore workloads
+        run: dotnet workload restore
+      - name: Restore dependencies
+        run: dotnet restore DevProxy.sln --locked-mode
+      # Same steps as the release (create-release.yml), minus signing and versioning.
+      - name: Publish
+        run: dotnet publish ./DevProxy/DevProxy.csproj -c Release -p:PublishSingleFile=true -r ${{ matrix.rid }} --self-contained -o "./publish/$PACKAGE"
+      - name: Build plugins
+        run: dotnet build ./DevProxy.Plugins/DevProxy.Plugins.csproj -c Release -r ${{ matrix.rid }} --no-self-contained
+      - name: Add plugins to output
+        run: cp -R "./DevProxy/bin/Release/net10.0/${{ matrix.rid }}/plugins" "./publish/$PACKAGE/"
+      - name: Remove unnecessary files
+        working-directory: ./publish
+        run: |
+          find "$PACKAGE" -type f \( -name '*.pdb' -o -name '*.deps.json' -o -name '*.runtimeconfig.json' \
+            -o -name '*.staticwebassets.endpoints.json' -o -name 'web.config' \) -delete
+      - name: Package
+        working-directory: ./publish
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            pwsh -NoProfile -Command "Compress-Archive -Path '$PACKAGE/*' -DestinationPath '$PACKAGE.zip'"
+            echo "ARCHIVE=$PACKAGE.zip" >> "$GITHUB_ENV"
+          else
+            # tar keeps the executable bit, so the binary runs right after extracting
+            tar -czf "$PACKAGE.tar.gz" -C "$PACKAGE" .
+            echo "ARCHIVE=$PACKAGE.tar.gz" >> "$GITHUB_ENV"
+          fi
+      - name: Upload build
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: ./publish/${{ env.ARCHIVE }}
+          archive: false
+          retention-days: 14
+      # Test the archive reviewers download, not the build tree.
+      - name: Extract build
+        run: |
+          mkdir -p "$RUNNER_TEMP/devproxy"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            pwsh -NoProfile -Command "Expand-Archive -Path './publish/$ARCHIVE' -DestinationPath '$RUNNER_TEMP/devproxy'"
+          else
+            tar -xzf "./publish/$ARCHIVE" -C "$RUNNER_TEMP/devproxy"
+          fi
+          echo "DEVPROXY_EXE=$RUNNER_TEMP/devproxy" >> "$GITHUB_ENV"
+      - name: Run CLI scenario tests
+        run: dotnet test ./DevProxy.Cli.Tests/DevProxy.Cli.Tests.csproj -c Release --logger "console;verbosity=normal"

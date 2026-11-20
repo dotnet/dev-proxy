@@ -5,6 +5,7 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -81,7 +82,7 @@ public sealed class CertificateAuthority : IDisposable
     /// </summary>
     public static CertificateAuthority CreateDefault(ILogger? logger = null)
     {
-        var configDirectory = ResolveConfigDirectory();
+        var configDirectory = ResolveConfigDirectory(ProxyUtils.DataFolderOverride);
 
         var rootPfxPath = ResolveRootPfxPath(
             Environment.GetEnvironmentVariable("DEV_PROXY_CERT_PATH"),
@@ -117,8 +118,14 @@ public sealed class CertificateAuthority : IDisposable
 
     // Mirrors Titanium's CertificateDiskCache.GetRootCertificateDirectory: on Windows the
     // root lives next to the executable; on mac/Linux under ApplicationData/dev-proxy.
-    private static string ResolveConfigDirectory()
+    // DEV_PROXY_CONFIG_DIR (passed as overrideDirectory) takes precedence on every OS.
+    internal static string ResolveConfigDirectory(string? overrideDirectory)
     {
+        if (!string.IsNullOrEmpty(overrideDirectory))
+        {
+            return overrideDirectory;
+        }
+
         if (OperatingSystem.IsWindows())
         {
             return AppContext.BaseDirectory;

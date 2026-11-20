@@ -45,15 +45,36 @@ public static class ProxyUtils
     public static string? AppFolder => Path.GetDirectoryName(AppContext.BaseDirectory);
 
     /// <summary>
+    /// Environment variable that overrides the Dev Proxy data folder (state, logs,
+    /// certificates) on every OS, for example to isolate test runs.
+    /// </summary>
+    public const string DataFolderEnvironmentVariable = "DEV_PROXY_CONFIG_DIR";
+
+    /// <summary>
+    /// Gets the full path from <see cref="DataFolderEnvironmentVariable"/>, or
+    /// <see langword="null"/> when it isn't set.
+    /// </summary>
+    public static string? DataFolderOverride =>
+        Environment.GetEnvironmentVariable(DataFolderEnvironmentVariable) is { Length: > 0 } folder
+            ? Path.GetFullPath(folder)
+            : null;
+
+    /// <summary>
     /// Gets the path to the user data folder for Dev Proxy.
     /// On macOS: ~/Library/Application Support/dev-proxy/
     /// On Linux: ~/.config/dev-proxy/ (or $XDG_CONFIG_HOME/dev-proxy/)
     /// On Windows: %LocalAppData%\dev-proxy\
+    /// Overridden on every OS by <see cref="DataFolderEnvironmentVariable"/>.
     /// </summary>
     public static string DataFolder
     {
         get
         {
+            if (DataFolderOverride is { } folder)
+            {
+                return folder;
+            }
+
             var basePath = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
                 ? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
                 : Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);

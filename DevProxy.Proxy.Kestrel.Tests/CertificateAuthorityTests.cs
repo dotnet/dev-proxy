@@ -45,6 +45,24 @@ public sealed class CertificateAuthorityTests : IDisposable
         }
     }
 
+    [Fact]
+    public void ResolveConfigDirectory_Override_IsUsedOnEveryOs()
+    {
+        Assert.Equal(_dir, CertificateAuthority.ResolveConfigDirectory(_dir));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void ResolveConfigDirectory_NoOverride_UsesPlatformDefault(string? overrideDirectory)
+    {
+        var expected = OperatingSystem.IsWindows()
+            ? AppContext.BaseDirectory
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "dev-proxy");
+
+        Assert.Equal(expected, CertificateAuthority.ResolveConfigDirectory(overrideDirectory));
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

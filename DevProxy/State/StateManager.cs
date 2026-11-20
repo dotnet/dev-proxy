@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Abstractions.Utils;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -37,11 +38,17 @@ internal static class StateManager
     /// On macOS: ~/Library/Application Support/dev-proxy/
     /// On Linux: ~/.config/dev-proxy/ (or $XDG_CONFIG_HOME/dev-proxy/)
     /// On Windows: %LocalAppData%\dev-proxy\
+    /// Overridden on every OS by <c>DEV_PROXY_CONFIG_DIR</c>.
     /// </summary>
     public static string GetConfigFolder() => _configFolder;
 
     private static string ResolveConfigFolder()
     {
+        if (ProxyUtils.DataFolderOverride is { } folder)
+        {
+            return folder;
+        }
+
         string basePath;
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
