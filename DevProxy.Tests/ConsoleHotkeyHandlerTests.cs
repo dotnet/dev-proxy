@@ -4,6 +4,7 @@
 
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Proxy;
+using System.Text.Json;
 using Xunit;
 
 namespace DevProxy.Tests;
@@ -127,6 +128,21 @@ public sealed class ConsoleHotkeyHandlerTests
         var result = Assert.Single(console.Lines, line => line.Contains("\"type\":\"result\"", StringComparison.Ordinal));
         Assert.DoesNotContain('\n', result);
         Assert.Contains("\"category\":\"ProxyEngine\"", result, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PrintApiInstructions_WritesOnlyValidJsonLines()
+    {
+        var (handler, _, console) = CreateHandler(OutputFormat.Json);
+
+        handler.PrintApiInstructions();
+
+        Assert.NotEmpty(console.Lines);
+        Assert.All(console.Lines, line =>
+        {
+            using var document = JsonDocument.Parse(line);
+            Assert.Equal(JsonValueKind.Object, document.RootElement.ValueKind);
+        });
     }
 
     [Fact]

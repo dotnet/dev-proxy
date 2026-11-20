@@ -73,13 +73,11 @@ internal sealed class ConsoleHotkeyHandler(
             category = "ProxyEngine",
             timestamp
         }, _jsonOptions));
-        console.WriteLine("");
         console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"All API requests require Authorization: Bearer <token>. In CI, retrieve it explicitly with devproxy api token --pid {Environment.ProcessId}.\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
         console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"Issue web request: POST {baseUrl}/mockRequest\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
         console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"Start recording: POST {baseUrl} with JSON {{\\\"recording\\\":true}}\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
         console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"Stop recording: POST {baseUrl} with JSON {{\\\"recording\\\":false}}\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
         console.WriteLine($"{{\"type\":\"log\",\"level\":\"info\",\"message\":\"Stop Dev Proxy: POST {baseUrl}/stopProxy\",\"category\":\"ProxyEngine\",\"timestamp\":\"{timestamp}\"}}");
-        console.WriteLine("");
     }
 
     /// <summary>
