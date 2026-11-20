@@ -29,12 +29,23 @@ sealed class TestSandbox : IAsyncDisposable
     {
         WorkDir = _root.CreateSubdirectory("work").FullName;
         var home = _root.CreateSubdirectory("home").FullName;
-        Environment = new Dictionary<string, string>
+        var environment = new Dictionary<string, string>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)
         {
             ["HOME"] = home,
             ["XDG_CONFIG_HOME"] = Path.Combine(home, ".config"),
             ["DEV_PROXY_CERT_PATH"] = Path.Combine(home, "rootCert.pfx"),
         };
+        // Keep update checks and announcements off the network: they fail fast through
+        // this unreachable proxy. Loopback stays direct for the Dev Proxy API.
+        foreach (var name in new[] { "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy" })
+        {
+            environment[name] = "http://127.0.0.1:9";
+        }
+        foreach (var name in new[] { "NO_PROXY", "no_proxy" })
+        {
+            environment[name] = "localhost,127.0.0.1,::1";
+        }
+        Environment = environment;
 
         File.WriteAllText(Path.Combine(WorkDir, "devproxyrc.json"), $$"""
             {
@@ -95,7 +106,8 @@ sealed class TestSandbox : IAsyncDisposable
                 var status = await DevProxyCli.RunAsync(this, "status", "--pid", Pid(pid));
                 if (status.ExitCode == 0)
                 {
-                    _ = await DevProxyCli.RunAsync(this, "stop", "--pid", Pid(pid));
+                    // --force doesn't depend on the API shutdown that the tests exercise.
+                    _ = await DevProxyCli.RunAsync(this, "stop", "--force", "--pid", Pid(pid));
                 }
             }
             catch (Exception ex) when (ex is TimeoutException or InvalidOperationException)

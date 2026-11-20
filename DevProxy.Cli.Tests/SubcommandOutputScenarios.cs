@@ -12,14 +12,6 @@ namespace DevProxy.Cli.Tests;
 /// </summary>
 public sealed class SubcommandOutputScenarios
 {
-    // Keeps the version check off the network: it fails fast through this proxy.
-    private static readonly Dictionary<string, string> s_offline = new()
-    {
-        ["HTTPS_PROXY"] = "http://127.0.0.1:9",
-        ["HTTP_PROXY"] = "http://127.0.0.1:9",
-        ["NO_PROXY"] = "",
-    };
-
     [Theory]
     [InlineData("outdated", "--output", "json")]
     [InlineData("api", "show", "--output", "json")]
@@ -28,7 +20,7 @@ public sealed class SubcommandOutputScenarios
     {
         await using var sandbox = new TestSandbox();
 
-        var result = await DevProxyCli.RunAsync(sandbox, args, s_offline);
+        var result = await DevProxyCli.RunAsync(sandbox, args);
 
         Assert.True(result.ExitCode == 0, result.ToString());
         var lines = DevProxyCli.ParseJsonLines(result.StdOutLines, result);
@@ -45,7 +37,7 @@ public sealed class SubcommandOutputScenarios
     {
         await using var sandbox = new TestSandbox();
 
-        var result = await DevProxyCli.RunAsync(sandbox, args, s_offline);
+        var result = await DevProxyCli.RunAsync(sandbox, args);
 
         Assert.True(result.ExitCode == 0, result.ToString());
         AssertNoStartupLogs(result);

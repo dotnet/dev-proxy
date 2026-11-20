@@ -27,9 +27,9 @@ public sealed class DetachedLifecycleScenarios
         await using var sandbox = new TestSandbox();
 
         var start = await DevProxyCli.RunAsync(sandbox, s_startArgs);
+        TrackStartedInstance(sandbox, start);
         Assert.True(start.ExitCode == 0, start.ToString());
         var pid = int.Parse(Field(start, "PID"), CultureInfo.InvariantCulture);
-        sandbox.TrackInstance(pid, Field(start, "Log file"));
         var proxyUrl = AssertRealPort(Field(start, "Proxy URL"), start);
         var apiUrl = AssertRealPort(Field(start, "API URL"), start);
 
@@ -52,13 +52,13 @@ public sealed class DetachedLifecycleScenarios
         await using var sandbox = new TestSandbox();
 
         var start = await DevProxyCli.RunAsync(sandbox, [.. s_startArgs, "--output", "json"]);
+        TrackStartedInstance(sandbox, start);
         Assert.True(start.ExitCode == 0, start.ToString());
         Assert.Empty(start.StdErrLines);
         var started = Assert.Single(DevProxyCli.ParseJsonLines(start.StdOutLines, start));
         Assert.Equal("result", started.GetProperty("type").GetString());
         var data = started.GetProperty("data");
         var pid = data.GetProperty("pid").GetInt32();
-        sandbox.TrackInstance(pid, data.GetProperty("logFile").GetString());
         var proxyUrl = AssertRealPort(data.GetProperty("proxyUrl").GetString(), start);
         var apiUrl = AssertRealPort(data.GetProperty("apiUrl").GetString(), start);
 
@@ -83,6 +83,22 @@ public sealed class DetachedLifecycleScenarios
         var stopped = await DevProxyCli.RunAsync(sandbox, "status", "--pid", TestSandbox.Pid(pid), "--output", "json");
         var stoppedData = Assert.Single(DevProxyCli.ParseJsonLines(stopped.StdOutLines, stopped)).GetProperty("data");
         Assert.False(stoppedData.GetProperty("running").GetBoolean());
+    }
+
+    // Registers the daemon for teardown before any assertion on the start output can fail.
+    // Matches both the text ("PID: 123", "Log file: ...") and JSON ("pid":123, "logFile":"...") forms.
+    private static void TrackStartedInstance(TestSandbox sandbox, CliResult start)
+    {
+        var pid = Regex.Match(start.StdOut, @"(?:PID:\s*|""pid"":)(\d+)");
+        if (!pid.Success)
+        {
+            return;
+        }
+        var log = Regex.Match(start.StdOut, @"(?:Log file:\s*(.+?)\s*$|""logFile"":""((?:[^""\\]|\\.)*)"")", RegexOptions.Multiline);
+        var logFile = !log.Success ? null
+            : log.Groups[1].Success ? log.Groups[1].Value
+            : System.Text.Json.JsonSerializer.Deserialize<string>($"\"{log.Groups[2].Value}\"");
+        sandbox.TrackInstance(int.Parse(pid.Groups[1].Value, CultureInfo.InvariantCulture), logFile);
     }
 
     private static async Task StopAndAssertStoppedAsync(TestSandbox sandbox, int pid)
