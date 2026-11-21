@@ -7,6 +7,19 @@ using DevProxy.Abstractions.Proxy;
 namespace DevProxy.Proxy;
 
 /// <summary>
+/// An <see cref="ISystemProxyManager"/> that reports whether enabling the system proxy
+/// succeeded.
+/// </summary>
+internal interface IConfirmingSystemProxyManager : ISystemProxyManager
+{
+    /// <summary>
+    /// Registers Dev Proxy as the system proxy. Returns false when the settings may not
+    /// have been applied.
+    /// </summary>
+    bool TryEnable(string? ipAddress, int port);
+}
+
+/// <summary>
 /// Keeps the system proxy registered across in-process hot-reload restarts.
 ///
 /// <para>
@@ -15,8 +28,9 @@ namespace DevProxy.Proxy;
 /// </para>
 /// <list type="bullet">
 ///   <item>stopping the host for a restart keeps the system proxy registered,</item>
-///   <item>the next run skips re-registering when the endpoint is unchanged and applies
-///         the new endpoint (without turning the proxy off first) when it changed,</item>
+///   <item>the next run skips re-registering when the endpoint is unchanged and was
+///         applied successfully, and otherwise applies it (without turning the proxy
+///         off first),</item>
 ///   <item>a restarted run that no longer uses the system proxy releases it once it
 ///         has started (<see cref="ReleaseUnclaimed"/>),</item>
 ///   <item>the process releases anything still registered after the restart loop ends
@@ -26,8 +40,11 @@ namespace DevProxy.Proxy;
 internal sealed class SystemProxySession(Func<bool> isRestarting)
 {
     private readonly Lock _lock = new();
-    private ISystemProxyManager? _currentManager;
+    private IConfirmingSystemProxyManager? _currentManager;
+    // Endpoint confirmed as applied; null when not registered or when the last attempt failed.
     private string? _appliedEndpoint;
+    // True when the system proxy may point to Dev Proxy, including after a failed attempt.
+    private bool _registered;
     private bool _claimedInCurrentRun;
 
     public SystemProxySession() : this(() => ConfigFileWatcher.IsRestarting)
@@ -35,7 +52,7 @@ internal sealed class SystemProxySession(Func<bool> isRestarting)
     }
 
     /// <summary>
-    /// The endpoint (host:port) the system proxy currently points to, or null.
+    /// The endpoint (host:port) the system proxy was confirmed to point to, or null.
     /// </summary>
     public string? AppliedEndpoint
     {
@@ -62,7 +79,7 @@ internal sealed class SystemProxySession(Func<bool> isRestarting)
     /// <summary>
     /// Wraps the manager of the current host run so its calls go through this session.
     /// </summary>
-    public ISystemProxyManager Track(ISystemProxyManager manager)
+    public ISystemProxyManager Track(IConfirmingSystemProxyManager manager)
     {
         ArgumentNullException.ThrowIfNull(manager);
 
@@ -82,13 +99,14 @@ internal sealed class SystemProxySession(Func<bool> isRestarting)
     {
         lock (_lock)
         {
-            if (_appliedEndpoint is null || _claimedInCurrentRun || _currentManager is null)
+            if (!_registered || _claimedInCurrentRun || _currentManager is null)
             {
                 return;
             }
 
             _currentManager.Disable();
             _appliedEndpoint = null;
+            _registered = false;
         }
     }
 
@@ -102,17 +120,18 @@ internal sealed class SystemProxySession(Func<bool> isRestarting)
 
         lock (_lock)
         {
-            if (_appliedEndpoint is null)
+            if (!_registered)
             {
                 return;
             }
 
             manager.Disable();
             _appliedEndpoint = null;
+            _registered = false;
         }
     }
 
-    private void Enable(ISystemProxyManager manager, string? ipAddress, int port)
+    private void Enable(IConfirmingSystemProxyManager manager, string? ipAddress, int port)
     {
         var endpoint = SystemProxyAddress.ToHostPort(ipAddress, port);
         lock (_lock)
@@ -123,26 +142,27 @@ internal sealed class SystemProxySession(Func<bool> isRestarting)
                 return;
             }
 
-            manager.Enable(ipAddress, port);
-            _appliedEndpoint = endpoint;
+            _registered = true;
+            _appliedEndpoint = manager.TryEnable(ipAddress, port) ? endpoint : null;
         }
     }
 
-    private void Disable(ISystemProxyManager manager)
+    private void Disable(IConfirmingSystemProxyManager manager)
     {
         lock (_lock)
         {
-            if (_appliedEndpoint is not null && isRestarting())
+            if (_registered && isRestarting())
             {
                 return;
             }
 
             manager.Disable();
             _appliedEndpoint = null;
+            _registered = false;
         }
     }
 
-    private sealed class TrackedSystemProxyManager(SystemProxySession session, ISystemProxyManager manager) : ISystemProxyManager
+    private sealed class TrackedSystemProxyManager(SystemProxySession session, IConfirmingSystemProxyManager manager) : ISystemProxyManager
     {
         public void Enable(string? ipAddress, int port) => session.Enable(manager, ipAddress, port);
 

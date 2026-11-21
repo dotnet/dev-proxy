@@ -34,33 +34,35 @@ namespace DevProxy.Proxy;
 /// it cannot be exercised on non-Windows hosts.
 /// </para>
 /// </summary>
-internal sealed class SystemProxyManager(ILogger<SystemProxyManager> logger) : ISystemProxyManager
+internal sealed class SystemProxyManager(ILogger<SystemProxyManager> logger) : IConfirmingSystemProxyManager
 {
     private const string InternetSettingsKey =
         @"Software\Microsoft\Windows\CurrentVersion\Internet Settings";
     private const int InternetOptionSettingsChanged = 39;
     private const int InternetOptionRefresh = 37;
 
-    public void Enable(string? ipAddress, int port)
+    public void Enable(string? ipAddress, int port) => _ = TryEnable(ipAddress, port);
+
+    public bool TryEnable(string? ipAddress, int port)
     {
         if (OperatingSystem.IsWindows())
         {
-            EnableWindows(SystemProxyAddress.ToHostPort(ipAddress, port));
+            return EnableWindows(SystemProxyAddress.ToHostPort(ipAddress, port));
         }
-        else if (OperatingSystem.IsMacOS())
+
+        if (OperatingSystem.IsMacOS())
         {
-            RunToggleScript(
+            return RunToggleScript(
                 "on",
                 SystemProxyAddress.ResolveHost(ipAddress),
                 port.ToString(CultureInfo.InvariantCulture));
         }
-        else
-        {
-            logger.LogWarning(
-                "Configure your operating system to use this proxy's port and address {Address}:{Port}",
-                SystemProxyAddress.ResolveHost(ipAddress),
-                port);
-        }
+
+        logger.LogWarning(
+            "Configure your operating system to use this proxy's port and address {Address}:{Port}",
+            SystemProxyAddress.ResolveHost(ipAddress),
+            port);
+        return true;
     }
 
     public void Disable()
@@ -71,12 +73,12 @@ internal sealed class SystemProxyManager(ILogger<SystemProxyManager> logger) : I
         }
         else if (OperatingSystem.IsMacOS())
         {
-            RunToggleScript("off");
+            _ = RunToggleScript("off");
         }
     }
 
     [SupportedOSPlatform("windows")]
-    private void EnableWindows(string hostPort)
+    private bool EnableWindows(string hostPort)
     {
         try
         {
@@ -84,16 +86,18 @@ internal sealed class SystemProxyManager(ILogger<SystemProxyManager> logger) : I
             if (key is null)
             {
                 logger.LogError("Could not open the Windows Internet Settings registry key.");
-                return;
+                return false;
             }
 
             key.SetValue("ProxyServer", hostPort, RegistryValueKind.String);
             key.SetValue("ProxyEnable", 1, RegistryValueKind.DWord);
             NotifyWinInetSettingsChanged();
+            return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
         {
             logger.LogError(ex, "Failed to set the system proxy via the Windows registry.");
+            return false;
         }
     }
 
@@ -134,13 +138,15 @@ internal sealed class SystemProxyManager(ILogger<SystemProxyManager> logger) : I
     private static extern bool InternetSetOption(IntPtr hInternet, int dwOption, IntPtr lpBuffer, int dwBufferLength);
 #pragma warning restore SYSLIB1054
 
-    private void RunToggleScript(params string[] arguments)
+    // Returns true when the script exited in time with exit code 0. The script's exit
+    // code reflects its last networksetup call, so this can't detect partial failures.
+    private bool RunToggleScript(params string[] arguments)
     {
         var bashScriptPath = Path.Join(AppContext.BaseDirectory, "toggle-proxy.sh");
         if (!File.Exists(bashScriptPath))
         {
             logger.LogWarning("Could not find {Script} to toggle the system proxy.", "toggle-proxy.sh");
-            return;
+            return false;
         }
 
         var startInfo = CreateToggleScriptStartInfo(bashScriptPath, arguments);
@@ -152,11 +158,14 @@ internal sealed class SystemProxyManager(ILogger<SystemProxyManager> logger) : I
             if (!process.WaitForExit(TimeSpan.FromSeconds(10)))
             {
                 process.Kill();
+                return false;
             }
+            return process.ExitCode == 0;
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
         {
             logger.LogError(ex, "Failed to toggle the system proxy via toggle-proxy.sh.");
+            return false;
         }
     }
 

@@ -2,7 +2,6 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using DevProxy.Abstractions.Proxy;
 using DevProxy.Proxy;
 
 using Xunit;
@@ -114,12 +113,53 @@ public class SystemProxyManagerTests
         Assert.Null(session.AppliedEndpoint);
     }
 
-    private sealed class CountingSystemProxyManager : ISystemProxyManager
+    [Fact]
+    public void SystemProxySession_FailedEnable_RetriesOnRestartAndStillCleansUp()
     {
+        var restarting = false;
+        var manager = new CountingSystemProxyManager { EnableSucceeds = false };
+        var session = new SystemProxySession(() => restarting);
+
+        session.BeginRun();
+        session.Track(manager).Enable("127.0.0.1", 8000);
+        restarting = true;
+        session.Track(manager).Disable();
+
+        restarting = false;
+        manager.EnableSucceeds = true;
+        session.BeginRun();
+        session.Track(manager).Enable("127.0.0.1", 8000);
+
+        Assert.Equal(2, manager.EnableCount);
+        Assert.Equal(0, manager.DisableCount);
+        Assert.Equal("127.0.0.1:8000", session.AppliedEndpoint);
+
+        manager.EnableSucceeds = false;
+        restarting = true;
+        session.Track(manager).Disable();
+        session.BeginRun();
+        session.Track(manager).Enable("127.0.0.1", 8001);
+        Assert.Null(session.AppliedEndpoint);
+
+        var cleanup = new CountingSystemProxyManager();
+        session.Release(cleanup);
+
+        Assert.Equal(1, cleanup.DisableCount);
+    }
+
+    private sealed class CountingSystemProxyManager : IConfirmingSystemProxyManager
+    {
+        public bool EnableSucceeds { get; set; } = true;
         public int EnableCount { get; private set; }
         public int DisableCount { get; private set; }
 
-        public void Enable(string? ipAddress, int port) => EnableCount++;
+        public void Enable(string? ipAddress, int port) => _ = TryEnable(ipAddress, port);
+
+        public bool TryEnable(string? ipAddress, int port)
+        {
+            EnableCount++;
+            return EnableSucceeds;
+        }
 
         public void Disable() => DisableCount++;
     }
