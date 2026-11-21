@@ -31,10 +31,17 @@ internal static class SchemaValidationCache
             : null;
     }
 
-    public static bool HasPassed(Key key, FileVersion? version) =>
-        version is not null &&
+    /// <summary>
+    /// Returns true if the contents read after <paramref name="versionBefore"/> was
+    /// taken already passed validation. Call after reading the contents: the file
+    /// must still match <paramref name="versionBefore"/>, so that an edit made while
+    /// it was being read isn't mistaken for the version that passed.
+    /// </summary>
+    public static bool HasPassed(Key key, FileVersion? versionBefore) =>
+        versionBefore is { } before &&
         _passed.TryGetValue(key, out var passedVersion) &&
-        passedVersion == version;
+        passedVersion == before &&
+        GetFileVersion(key.FilePath, before.ContentHash) == before;
 
     /// <summary>
     /// Records the validation result. A pass is stored only if the file didn't
