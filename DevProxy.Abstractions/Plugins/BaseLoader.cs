@@ -95,17 +95,27 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
 
         var schemaUrl = schemaUrlElement.GetString() ?? "";
         ProxyUtils.ValidateSchemaVersion(schemaUrl, Logger);
-        var (IsValid, ValidationErrors) = await ProxyUtils.ValidateJsonAsync(fileContents, schemaUrl, _httpClient, Logger, cancellationToken);
+        var result = await ProxyUtils.ValidateJsonAgainstSchemaAsync(fileContents, schemaUrl, _httpClient, Logger, cancellationToken);
 
-        if (!IsValid)
+        if (result.Status == SchemaValidationStatus.SchemaUnavailable)
+        {
+            if (Logger.IsEnabled(LogLevel.Warning))
+            {
+                Logger.LogWarning("Skipping schema validation for {File} because the schema {SchemaUrl} could not be retrieved: {Error}", FilePath, schemaUrl, string.Join(", ", result.Errors));
+            }
+            return true;
+        }
+
+        if (result.Status == SchemaValidationStatus.Invalid)
         {
             if (Logger.IsEnabled(LogLevel.Error))
             {
-                Logger.LogError("Schema validation failed for {File} with the following errors: {Errors}", FilePath, string.Join(", ", ValidationErrors));
+                Logger.LogError("Schema validation failed for {File} with the following errors: {Errors}", FilePath, string.Join(", ", result.Errors));
             }
+            return false;
         }
 
-        return IsValid;
+        return true;
     }
 
     private async Task LoadFileContentsAsync(CancellationToken cancellationToken)
