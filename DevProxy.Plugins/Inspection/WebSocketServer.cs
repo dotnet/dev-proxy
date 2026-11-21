@@ -31,7 +31,7 @@ public sealed class WebSocketServer(string host, int port, string token, ILogger
     private readonly string _host = host;
     private readonly int _port = port;
     private readonly string _path = $"/{token}";
-    static readonly SemaphoreSlim _webSocketSemaphore = new(1, 1);
+    private readonly SemaphoreSlim _webSocketSemaphore = new(1, 1);
 
     private HttpListener? _listener;
     private WebSocket? _webSocket;
@@ -135,11 +135,15 @@ public sealed class WebSocketServer(string host, int port, string token, ILogger
         // we need a semaphore to avoid multiple simultaneous writes
         // which aren't allowed
         await _webSocketSemaphore.WaitAsync(cancellationToken);
-
-        var messageBytes = Encoding.UTF8.GetBytes(messageString);
-        await _webSocket.SendAsync(new ArraySegment<byte>(messageBytes), WebSocketMessageType.Text, true, cancellationToken);
-
-        _ = _webSocketSemaphore.Release();
+        try
+        {
+            var messageBytes = Encoding.UTF8.GetBytes(messageString);
+            await _webSocket.SendAsync(new ArraySegment<byte>(messageBytes), WebSocketMessageType.Text, true, cancellationToken);
+        }
+        finally
+        {
+            _ = _webSocketSemaphore.Release();
+        }
     }
 
     private async Task HandleMessagesAsync(WebSocket ws)
@@ -172,5 +176,6 @@ public sealed class WebSocketServer(string host, int port, string token, ILogger
     public void Dispose()
     {
         _listener?.Close();
+        _webSocketSemaphore.Dispose();
     }
 }
