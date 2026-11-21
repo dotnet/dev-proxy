@@ -12,7 +12,7 @@ namespace DevProxy.Integration.Tests;
 
 public sealed class JsonReporterTests
 {
-    private sealed class TestJsonReporter() : JsonReporter(NullLogger<JsonReporter>.Instance, new HashSet<UrlToWatch>())
+    private sealed class TestJsonReporter() : JsonReporter(NullLogger<JsonReporter>.Instance, new HashSet<UrlToWatch>(), new TestProxyConfiguration())
     {
         public string? Report(string key, object value) => GetReport(new(key, value));
     }

@@ -30,6 +30,7 @@ internal sealed class TestProxyConfiguration : IProxyConfiguration, IProcessTree
     public bool NoWatch { get; set; }
     public int Port { get; set; }
     public bool Record { get; set; }
+    public string? ReportsFolder { get; set; }
     public bool ShowTimestamps => false;
     public long? TimeoutSeconds { get; set; }
     public bool ValidateSchemas => false;

@@ -4,6 +4,7 @@
 
 using DevProxy.Abstractions.Models;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Utils;
 using System.Text.Json.Serialization;
 
 namespace DevProxy.Proxy;
@@ -44,6 +45,7 @@ sealed class ProxyConfiguration : IProxyConfiguration, IProcessTreeProxyConfigur
     public ReleaseType NewVersionNotification { get; set; } = ReleaseType.Stable;
     public int Port { get; set; } = 8000;
     public bool Record { get; set; }
+    public string? ReportsFolder { get; set; }
     public bool ShowSkipMessages { get; set; } = true;
     public bool ShowTimestamps { get; set; } = true;
     public long? TimeoutSeconds { get; set; }
@@ -57,6 +59,29 @@ sealed class ProxyConfiguration : IProxyConfiguration, IProcessTreeProxyConfigur
     {
         _configurationRoot = configurationRoot;
         _configurationRoot.Bind(this);
+        ReportsFolder = ResolveReportsFolder(ReportsFolder, _configurationRoot);
+    }
+
+    // reportsFolder from the config file is relative to the config file
+    internal static string? ResolveReportsFolder(string? reportsFolder, IConfigurationRoot configurationRoot)
+    {
+        if (string.IsNullOrWhiteSpace(reportsFolder))
+        {
+            return null;
+        }
+
+        string? configFilePath = null;
+        try
+        {
+            configFilePath = GetConfigFilePath(configurationRoot);
+        }
+        catch (InvalidOperationException)
+        {
+        }
+
+        return configFilePath is null
+            ? Path.GetFullPath(ProxyUtils.ReplacePathTokens(reportsFolder))
+            : ProxyUtils.GetFullPath(reportsFolder, configFilePath);
     }
 
     internal static string GetConfigFilePath(IConfigurationRoot configurationRoot)

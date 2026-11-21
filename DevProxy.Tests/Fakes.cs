@@ -85,6 +85,7 @@ internal sealed class FakeProxyConfiguration : IProxyConfiguration, IProcessTree
     public bool NoWatch { get; set; }
     public int Port { get; set; } = 8000;
     public bool Record { get; set; }
+    public string? ReportsFolder { get; set; }
     public bool ShowTimestamps => false;
     public long? TimeoutSeconds { get; set; }
     public bool ValidateSchemas => false;
