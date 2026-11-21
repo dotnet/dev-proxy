@@ -7,6 +7,7 @@ using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Models;
 using Microsoft.Extensions.Logging;
+using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -116,6 +117,76 @@ sealed class GraphUtils(
         }
 
         return newMinimalScopes;
+    }
+
+    /// <summary>
+    /// Returns permissions and type (delegated or application) from the bearer token
+    /// in the specified Authorization header value. Returns null type and no permissions
+    /// if the header is missing or the token can't be read as a JWT.
+    /// </summary>
+    internal static (GraphPermissionsType? Type, IEnumerable<string> Permissions) GetPermissionsFromAuthorizationHeader(string? authorizationHeader)
+    {
+        if (string.IsNullOrEmpty(authorizationHeader))
+        {
+            return (null, []);
+        }
+
+        var token = authorizationHeader.Replace("Bearer ", string.Empty, StringComparison.OrdinalIgnoreCase).Trim();
+        if (token.Split('.').Length != 3)
+        {
+            return (null, []);
+        }
+
+        try
+        {
+            var jwtSecurityToken = new JwtSecurityTokenHandler().ReadJwtToken(token);
+
+            var scopeClaim = jwtSecurityToken.Claims.FirstOrDefault(c => c.Type == "scp");
+            if (scopeClaim is not null)
+            {
+                return (GraphPermissionsType.Delegated, scopeClaim.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+            }
+
+            // possibly an application token; roles is an array
+            var roles = jwtSecurityToken.Claims
+                .Where(c => c.Type == "roles")
+                .Select(c => c.Value)
+                .ToArray();
+            return (GraphPermissionsType.Application, roles);
+        }
+        catch
+        {
+            return (null, []);
+        }
+    }
+
+    internal static (string[] UserIdentifiers, string? TenantId) GetUserInfoFromAuthorizationHeader(string? authorizationHeader)
+    {
+        if (string.IsNullOrEmpty(authorizationHeader))
+        {
+            return ([], null);
+        }
+
+        var token = authorizationHeader.Replace("Bearer ", string.Empty, StringComparison.OrdinalIgnoreCase).Trim();
+        if (token.Split('.').Length != 3)
+        {
+            return ([], null);
+        }
+
+        try
+        {
+            var jwtSecurityToken = new JwtSecurityTokenHandler().ReadJwtToken(token);
+            var userIdentifiers = jwtSecurityToken.Claims
+                .Where(c => c.Type is "oid" or "upn" or "preferred_username" && !string.IsNullOrEmpty(c.Value))
+                .Select(c => c.Value)
+                .ToArray();
+            var tenantId = jwtSecurityToken.Claims.FirstOrDefault(c => c.Type == "tid")?.Value;
+            return (userIdentifiers, tenantId);
+        }
+        catch
+        {
+            return ([], null);
+        }
     }
 
     internal static string GetTokenizedUrl(string absoluteUrl)
