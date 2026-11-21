@@ -8,6 +8,8 @@ using DevProxy.Abstractions.Proxy.Http;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Schema;
+using System.Buffers;
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Reflection;
 using System.Text.Encodings.Web;
@@ -28,6 +30,9 @@ sealed class ParsedSample
 
 public static class ProxyUtils
 {
+    private static readonly ConcurrentDictionary<string, JSchema> _schemaCache = new(StringComparer.Ordinal);
+    private static readonly byte[] _utf8Bom = [0xEF, 0xBB, 0xBF];
+
     private static readonly Regex itemPathRegex = new(@"(?:\/)[\w]+:[\w\/.]+(:(?=\/)|$)");
     private static readonly Regex sanitizedItemPathRegex = new("^[a-z]+:<value>$", RegexOptions.IgnoreCase);
     private static readonly Regex entityNameRegex = new("^((microsoft.graph(.[a-z]+)+)|[a-z]+)$", RegexOptions.IgnoreCase);
@@ -292,11 +297,7 @@ public static class ProxyUtils
             }
             ArgumentNullException.ThrowIfNull(httpClient);
 
-            logger.LogDebug("Downloading schema from {SchemaUrl}", schemaUrl);
-            var schemaContents = await httpClient.GetStringAsync(schemaUrl, cancellationToken);
-
-            logger.LogDebug("Parsing schema");
-            var schema = JSchema.Parse(schemaContents);
+            var schema = await GetSchemaAsync(schemaUrl, httpClient, logger, cancellationToken);
             logger.LogDebug("Parsing JSON");
             var token = JToken.Parse(json);
 
@@ -309,6 +310,170 @@ public static class ProxyUtils
         {
             logger.LogDebug(ex, "Error validating JSON");
             return (false, [ex.Message]);
+        }
+    }
+
+    /// <summary>
+    /// Validates UTF-8 JSON read from <paramref name="json"/> against the schema at <paramref name="schemaUrl"/>.
+    /// The stream is read from its current position and isn't disposed.
+    /// </summary>
+    public static async Task<(bool IsValid, IEnumerable<string> ValidationErrors)> ValidateJsonAsync(Stream json, string? schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(json);
+        ArgumentNullException.ThrowIfNull(logger);
+
+        try
+        {
+            logger.LogDebug("Validating JSON against schema {SchemaUrl}", schemaUrl);
+
+            if (json.CanSeek && json.Length - json.Position == 0)
+            {
+                logger.LogDebug("JSON is empty, skipping validation");
+                return (true, []);
+            }
+            if (string.IsNullOrEmpty(schemaUrl))
+            {
+                logger.LogDebug("Schema URL is empty, skipping validation");
+                return (true, []);
+            }
+            ArgumentNullException.ThrowIfNull(httpClient);
+
+            var schema = await GetSchemaAsync(schemaUrl, httpClient, logger, cancellationToken);
+            logger.LogDebug("Parsing JSON");
+            JToken token;
+            // the JSON is read from a local or in-memory stream, where sync reads are cheaper than async ones
+#pragma warning disable CA1849
+            using (var streamReader = new StreamReader(json, leaveOpen: true))
+            using (var jsonReader = new Newtonsoft.Json.JsonTextReader(streamReader))
+            {
+                token = JToken.Load(jsonReader);
+                // same as JToken.Parse: fail on anything other than comments after the root value
+                while (jsonReader.Read())
+                {
+                }
+            }
+#pragma warning restore CA1849
+
+            logger.LogDebug("Validating JSON");
+            var isValid = token.IsValid(schema, out IList<string> errorMessages);
+
+            return (isValid, errorMessages);
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Error validating JSON");
+            return (false, [ex.Message]);
+        }
+    }
+
+    // Schemas are downloaded once per process. Changes to a schema
+    // published online are picked up the next time Dev Proxy starts.
+    private static async Task<JSchema> GetSchemaAsync(string schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken)
+    {
+        if (_schemaCache.TryGetValue(schemaUrl, out var cachedSchema))
+        {
+            logger.LogDebug("Using cached schema {SchemaUrl}", schemaUrl);
+            return cachedSchema;
+        }
+
+        logger.LogDebug("Downloading schema from {SchemaUrl}", schemaUrl);
+        var schemaContents = await httpClient.GetStringAsync(schemaUrl, cancellationToken);
+
+        logger.LogDebug("Parsing schema");
+        var schema = JSchema.Parse(schemaContents);
+        return _schemaCache.GetOrAdd(schemaUrl, schema);
+    }
+
+    /// <summary>
+    /// Reads the value of the top-level <c>$schema</c> property from UTF-8 JSON without
+    /// parsing the whole document. Reading stops as soon as the property is found.
+    /// The stream is read from its current position and isn't disposed.
+    /// </summary>
+    /// <returns>The schema URL, or <c>null</c> if the root isn't an object or doesn't have a <c>$schema</c> property.</returns>
+    /// <exception cref="JsonException">The JSON is invalid before the <c>$schema</c> property is found.</exception>
+    /// <exception cref="InvalidOperationException">The <c>$schema</c> property isn't a string.</exception>
+    public static string? ReadSchemaReference(Stream utf8Json)
+    {
+        ArgumentNullException.ThrowIfNull(utf8Json);
+
+        var buffer = ArrayPool<byte>.Shared.Rent(4096);
+        try
+        {
+            var state = new JsonReaderState(new JsonReaderOptions
+            {
+                AllowTrailingCommas = JsonDocumentOptions.AllowTrailingCommas,
+                CommentHandling = JsonDocumentOptions.CommentHandling
+            });
+
+            var dataLength = utf8Json.ReadAtLeast(buffer, _utf8Bom.Length, throwOnEndOfStream: false);
+            var isFinalBlock = dataLength < _utf8Bom.Length;
+            if (buffer.AsSpan(0, dataLength).StartsWith(_utf8Bom))
+            {
+                buffer.AsSpan(_utf8Bom.Length, dataLength - _utf8Bom.Length).CopyTo(buffer);
+                dataLength -= _utf8Bom.Length;
+            }
+
+            var isSchemaValue = false;
+            while (true)
+            {
+                if (!isFinalBlock && dataLength < buffer.Length)
+                {
+                    var read = utf8Json.Read(buffer, dataLength, buffer.Length - dataLength);
+                    isFinalBlock = read == 0;
+                    dataLength += read;
+                }
+
+                var reader = new Utf8JsonReader(buffer.AsSpan(0, dataLength), isFinalBlock, state);
+                while (reader.Read())
+                {
+                    if (isSchemaValue)
+                    {
+                        return reader.TokenType switch
+                        {
+                            JsonTokenType.String => reader.GetString(),
+                            JsonTokenType.Null => null,
+                            _ => throw new InvalidOperationException("The $schema property must be a string")
+                        };
+                    }
+
+                    if (reader.CurrentDepth == 0)
+                    {
+                        if (reader.TokenType != JsonTokenType.StartObject)
+                        {
+                            return null;
+                        }
+                    }
+                    else if (reader.CurrentDepth == 1 &&
+                        reader.TokenType == JsonTokenType.PropertyName &&
+                        reader.ValueTextEquals("$schema"u8))
+                    {
+                        isSchemaValue = true;
+                    }
+                }
+
+                if (isFinalBlock)
+                {
+                    return null;
+                }
+
+                state = reader.CurrentState;
+                var consumed = (int)reader.BytesConsumed;
+                buffer.AsSpan(consumed, dataLength - consumed).CopyTo(buffer);
+                dataLength -= consumed;
+
+                // a single token doesn't fit in the buffer
+                if (dataLength == buffer.Length)
+                {
+                    var largerBuffer = ArrayPool<byte>.Shared.Rent(buffer.Length * 2);
+                    buffer.AsSpan(0, dataLength).CopyTo(largerBuffer);
+                    ArrayPool<byte>.Shared.Return(buffer);
+                    buffer = largerBuffer;
+                }
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
         }
     }
 

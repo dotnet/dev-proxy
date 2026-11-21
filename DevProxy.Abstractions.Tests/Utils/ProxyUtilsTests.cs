@@ -98,4 +98,60 @@ public class ProxyUtilsTests
         using var doc = JsonDocument.Parse(body);
         Assert.Equal("hello", doc.RootElement.GetProperty("message").GetString());
     }
+
+    [Theory]
+    [InlineData("""{ "$schema": "https://example.test/schema.json", "mocks": [] }""")]
+    [InlineData("""{ "mocks": [{ "$schema": "nested" }], "$schema": "https://example.test/schema.json" }""")]
+    [InlineData("""
+        // comment
+        {
+          "mocks": [],
+          "$schema": "https://example.test/schema.json",
+        }
+        """)]
+    public void ReadSchemaReference_ReturnsTopLevelSchema(string json)
+    {
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(json));
+        Assert.Equal("https://example.test/schema.json", ProxyUtils.ReadSchemaReference(stream));
+    }
+
+    [Theory]
+    [InlineData("""{ "mocks": [{ "$schema": "nested" }] }""")]
+    [InlineData("""[{ "$schema": "https://example.test/schema.json" }]""")]
+    [InlineData("""{ "$schema": null }""")]
+    public void ReadSchemaReference_ReturnsNullWithoutTopLevelSchema(string json)
+    {
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(json));
+        Assert.Null(ProxyUtils.ReadSchemaReference(stream));
+    }
+
+    [Fact]
+    public void ReadSchemaReference_StopsReadingAfterSchema()
+    {
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(
+            """{ "$schema": "https://example.test/schema.json", "mocks": [ invalid"""));
+        Assert.Equal("https://example.test/schema.json", ProxyUtils.ReadSchemaReference(stream));
+    }
+
+    [Fact]
+    public void ReadSchemaReference_ReadsTokensLargerThanBufferInSmallChunks()
+    {
+        var json = $$"""{ "body": "{{new string('a', 20_000)}}", "$schema": "https://example.test/schema.json" }""";
+        var bytes = System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(json)).ToArray();
+        using var stream = new OneByteStream(bytes);
+        Assert.Equal("https://example.test/schema.json", ProxyUtils.ReadSchemaReference(stream));
+    }
+
+    [Fact]
+    public void ReadSchemaReference_ThrowsOnInvalidJsonBeforeSchema()
+    {
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("""{ "mocks": [ invalid ], "$schema": "x" }"""));
+        Assert.ThrowsAny<JsonException>(() => ProxyUtils.ReadSchemaReference(stream));
+    }
+
+    private sealed class OneByteStream(byte[] bytes) : MemoryStream(bytes)
+    {
+        public override int Read(byte[] buffer, int offset, int count) => base.Read(buffer, offset, Math.Min(count, 1));
+        public override int Read(Span<byte> buffer) => base.Read(buffer[..Math.Min(buffer.Length, 1)]);
+    }
 }

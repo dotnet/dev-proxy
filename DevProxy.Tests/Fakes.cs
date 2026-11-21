@@ -87,7 +87,7 @@ internal sealed class FakeProxyConfiguration : IProxyConfiguration, IProcessTree
     public bool Record { get; set; }
     public bool ShowTimestamps => false;
     public long? TimeoutSeconds { get; set; }
-    public bool ValidateSchemas => false;
+    public bool ValidateSchemas { get; set; }
     public IEnumerable<int> WatchPids { get; set; } = [];
     public IEnumerable<string> WatchProcessNames { get; set; } = [];
     public bool WatchProcessTree { get; set; }
