@@ -6,6 +6,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using DevProxy.Abstractions.Models;
+using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Mocking;
 using DevProxy.Plugins.Utils;
@@ -157,6 +158,42 @@ public sealed class MockResponseServingTests
     [InlineData("wss://contoso.com/socket/*", "http://contoso.com/socket/1", false)]
     public void WildcardUrlPattern_NormalizesWebSocketScheme(string pattern, string url, bool expected) =>
         Assert.Equal(expected, WildcardUrlPattern.IsWebSocketMatch(url, pattern));
+
+    [Fact]
+    public async Task SubclassOverridingBodyHook_StillSeesEveryServedBody()
+    {
+        await using var origin = await FakeOrigin.StartAsync();
+        using var plugin = new HookedMockResponsePlugin(origin.Host);
+        plugin.Configuration.Mocks = JsonSerializer.Deserialize<MockResponseConfiguration>(
+            $$"""{ "mocks": [ { "request": { "url": "http://{{origin.Host}}/hooked" }, "response": { "body": { "value": "original" } } } ] }""",
+            ProxyUtils.JsonSerializerOptions)!.Mocks;
+        await using var proxy = await KestrelProxyHarness.StartAsync(origin.Host, [plugin]);
+        using var client = proxy.CreateHttpClient();
+
+        for (var i = 0; i < 2; i++)
+        {
+            var body = await client.GetStringAsync(new Uri($"http://{origin.Host}/hooked"));
+            Assert.Equal("""{"value":"hooked"}""", body.Replace(" ", "", StringComparison.Ordinal).ReplaceLineEndings(""));
+        }
+        Assert.Equal(2, plugin.HookCalls);
+    }
+
+    private sealed class HookedMockResponsePlugin(string originHost) : MockResponsePlugin(
+        SharedHttpClient,
+        NullLogger<MockResponsePlugin>.Instance,
+        KestrelProxyHarness.BuildUrlsToWatch(originHost),
+        ProxyConfig,
+        PluginConfig.Empty())
+    {
+        public int HookCalls { get; private set; }
+
+        protected override void ProcessMockResponse(ref string? body, IList<MockResponseHeader> headers, ProxyRequestArgs e, MockResponse? matchingResponse)
+        {
+            HookCalls++;
+            body = body?.Replace("original", "hooked", StringComparison.Ordinal);
+            base.ProcessMockResponse(ref body, headers, e, matchingResponse);
+        }
+    }
 
     private static MockResponsePlugin CreatePlugin(string originHost, string mocksJson)
     {

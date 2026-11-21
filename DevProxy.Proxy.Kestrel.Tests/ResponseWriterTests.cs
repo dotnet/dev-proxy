@@ -55,6 +55,48 @@ public class ResponseWriterTests
     }
 
     [Fact]
+    public async Task WriteAsync_WritesLargeBodyInBoundedSlices()
+    {
+        var body = new byte[(ResponseWriter.WriteSliceBytes * 3) + 17];
+        var response = new MutableHttpResponse(HttpStatusCode.OK, HttpVersion.Version11, new HeaderCollection(), body);
+        using var stream = new WriteRecordingStream();
+
+        await ResponseWriter.WriteAsync(stream, response, keepAlive: false, "GET", CancellationToken.None);
+
+        Assert.True(stream.Writes.Count > 1);
+        Assert.All(stream.Writes, count => Assert.InRange(count, 1, ResponseWriter.WriteSliceBytes));
+    }
+
+    private sealed class WriteRecordingStream : MemoryStream
+    {
+        public List<int> Writes { get; } = [];
+
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            Writes.Add(count);
+            base.Write(buffer, offset, count);
+        }
+
+        public override void Write(ReadOnlySpan<byte> buffer)
+        {
+            Writes.Add(buffer.Length);
+            base.Write(buffer);
+        }
+
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        {
+            Writes.Add(count);
+            return base.WriteAsync(buffer, offset, count, cancellationToken);
+        }
+
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            Writes.Add(buffer.Length);
+            return base.WriteAsync(buffer, cancellationToken);
+        }
+    }
+
+    [Fact]
     public async Task WriteContinueAsync_WritesInterim100()
     {
         using var stream = new MemoryStream();
