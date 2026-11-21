@@ -7,12 +7,12 @@ using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Behavior;
+using DevProxy.Plugins.Utils;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
 using System.Net;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 
 namespace DevProxy.Plugins.Mocking;
 
@@ -203,8 +203,7 @@ public class GraphMockResponsePlugin(
             }
 
             //turn mock URL with wildcard into a regex and match against the request URL
-            var mockResponseUrlRegex = Regex.Escape(mockResponse.Request.Url).Replace("\\*", ".*", StringComparison.OrdinalIgnoreCase);
-            return Regex.IsMatch(absoluteRequestFromBatchUrl, $"^{mockResponseUrlRegex}$", RegexOptions.IgnoreCase);
+            return WildcardUrlPattern.IsMatch(absoluteRequestFromBatchUrl, mockResponse.Request.Url);
         });
         return mockResponse;
     }

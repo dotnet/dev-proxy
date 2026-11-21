@@ -381,11 +381,10 @@ internal sealed class WebSocketRelay(ILogger logger)
             return await new Http1ConnectionReader(prefixed).ReadBodyAsync(contentLength, ct).ConfigureAwait(false);
         }
 
-        using var destination = new MemoryStream();
-        var buffer = new byte[81920];
+        using var destination = new BodyAccumulator();
         while (true)
         {
-            var read = await prefixed.ReadAsync(buffer, ct).ConfigureAwait(false);
+            var read = await prefixed.ReadAsync(destination.GetMemory(), ct).ConfigureAwait(false);
             if (read == 0)
             {
                 return destination.ToArray();
@@ -394,7 +393,7 @@ internal sealed class WebSocketRelay(ILogger logger)
             {
                 throw new InvalidOperationException("WebSocket handshake response body too large.");
             }
-            await destination.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
+            destination.Advance(read);
         }
     }
 
