@@ -152,13 +152,16 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
             return 1;
         }
 
-        // Wait a moment for the proxy to start and write its state file
+        // Wait for the proxy to start and write its state file. Poll briefly,
+        // but wake up immediately if the daemon exits so failures surface fast.
         var timeout = TimeSpan.FromSeconds(10);
+        var pollInterval = TimeSpan.FromMilliseconds(20);
+        var processExited = process.WaitForExitAsync();
         var stopwatch = Stopwatch.StartNew();
 
         while (stopwatch.Elapsed < timeout)
         {
-            await Task.Delay(200);
+            _ = await Task.WhenAny(Task.Delay(pollInterval), processExited);
 
             var state = await StateManager.LoadStateByPidAsync(process.Id);
             if (state is { Port: > 0 } && !string.IsNullOrEmpty(state.ApiUrl) && !state.ApiUrl.EndsWith(":0", StringComparison.Ordinal))
