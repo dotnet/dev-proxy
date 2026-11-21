@@ -86,7 +86,17 @@ static class IServiceCollectionExtensions
             .AddSingleton<UpdateNotification>()
             .AddSingleton<DevProxyCommand>()
             .AddSingleton<MSGraphDb>()
-            .AddHttpClient();
+            .AddHttpClient()
+            // Handler rotation keeps the factory's expiry timers rooted, and through
+            // them every hot-reload generation's service provider. Never expire
+            // handlers and recycle pooled connections instead, so DNS changes are
+            // still picked up.
+            .ConfigureHttpClientDefaults(b => b
+                .SetHandlerLifetime(Timeout.InfiniteTimeSpan)
+                .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+                {
+                    PooledConnectionLifetime = TimeSpan.FromMinutes(2)
+                }));
 
         _ = services.AddPlugins(configuration, options);
 
