@@ -58,10 +58,10 @@ public sealed class OpenAITelemetryPlugin(
     private const string ActivitySourceName = "DevProxy.OpenAI";
     private const string OpenAISystem = "openai";
 
-    private static readonly Meter _meter = new(ActivitySourceName);
-    private static Histogram<double>? _requestCostMetric;
-    private static Counter<double>? _totalCostMetric;
-    private static Histogram<long>? _tokenUsageMetric;
+    private readonly Meter _meter = new(ActivitySourceName);
+    private Histogram<double>? _requestCostMetric;
+    private Counter<double>? _totalCostMetric;
+    private Histogram<long>? _tokenUsageMetric;
 
     private readonly ActivitySource _activitySource = new(ActivitySourceName);
     private LanguageModelPricesLoader? _loader;
@@ -1105,6 +1105,7 @@ public sealed class OpenAITelemetryPlugin(
             _activitySource?.Dispose();
             _tracerProvider?.Dispose();
             _meterProvider?.Dispose();
+            _meter.Dispose();
         }
         base.Dispose(disposing);
     }
