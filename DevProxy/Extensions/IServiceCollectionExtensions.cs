@@ -50,7 +50,14 @@ static class IServiceCollectionExtensions
     static IServiceCollection AddProxyEngine(this IServiceCollection services)
     {
         _ = services.AddSingleton<IRootCertificateTrust, RootCertificateTrust>();
-        _ = services.AddSingleton<ISystemProxyManager, SystemProxyManager>();
+        _ = services.AddSingleton<SystemProxyManager>();
+        // Route through the process-wide session (when registered) so the system proxy
+        // stays registered across hot-reload restarts.
+        _ = services.AddSingleton<ISystemProxyManager>(sp =>
+        {
+            var manager = sp.GetRequiredService<SystemProxyManager>();
+            return sp.GetService<SystemProxySession>()?.Track(manager) ?? manager;
+        });
         _ = services.AddKestrelCertificateAuthority();
         _ = services.AddHostedService(sp => new KestrelProxyEngine(
             sp.GetRequiredService<CertificateAuthority>(),
