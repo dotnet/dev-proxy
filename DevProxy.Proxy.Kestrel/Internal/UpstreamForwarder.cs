@@ -31,10 +31,10 @@ internal sealed class UpstreamForwarder(HttpClient httpClient)
     {
         using var outgoing = new HttpRequestMessage(new HttpMethod(request.Method), request.RequestUri);
 
-        ByteArrayContent? content = null;
+        HttpContent? content = null;
         if (request.HasBody)
         {
-            content = new ByteArrayContent(request.Body.ToArray());
+            content = new ReadOnlyMemoryContent(request.Body);
             outgoing.Content = content;
         }
 
@@ -131,11 +131,12 @@ internal sealed class UpstreamForwarder(HttpClient httpClient)
         }
 
         await using var source = await content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-        using var destination = new MemoryStream();
-        var buffer = new byte[81920];
+        // With a known length the body lands in one exact-size array, no copy.
+        var expectedLength = content.Headers.ContentLength is long length and > 0 ? (int)length : 0;
+        using var destination = new BodyAccumulator(expectedLength);
         while (true)
         {
-            var read = await source.ReadAsync(buffer, ct).ConfigureAwait(false);
+            var read = await source.ReadAsync(destination.GetMemory(), ct).ConfigureAwait(false);
             if (read == 0)
             {
                 return destination.ToArray();
@@ -144,7 +145,7 @@ internal sealed class UpstreamForwarder(HttpClient httpClient)
             {
                 throw new InvalidOperationException("Origin response body too large.");
             }
-            await destination.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
+            destination.Advance(read);
         }
     }
 

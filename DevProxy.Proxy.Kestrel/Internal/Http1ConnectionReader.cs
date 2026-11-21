@@ -40,7 +40,18 @@ internal sealed class Http1ConnectionReader(Stream stream)
     internal const int MaxBufferedBodyBytes = 256 * 1024 * 1024;
     private const int ReadChunkBytes = 4096;
     private const int MaxChunkLineBytes = 64 * 1024;
-    private byte[] _pending = [];
+
+    // Bytes read off the stream but not yet consumed live in _buffer[_start.._end].
+    // Consuming advances _start; reading appends at _end, compacting or growing the
+    // buffer only when there is no room left. Chunk data never passes through here
+    // in bulk (it is copied straight into the body), so the buffer stays small.
+    private byte[] _buffer = [];
+    private int _start;
+    private int _end;
+
+    private int PendingLength => _end - _start;
+
+    private ReadOnlySpan<byte> Pending => _buffer.AsSpan(_start, PendingLength);
 
     /// <summary>
     /// Reads the next request head, or <c>null</c> on a clean EOF (the peer closed the
@@ -48,8 +59,9 @@ internal sealed class Http1ConnectionReader(Stream stream)
     /// </summary>
     public async Task<ParsedRequestHead?> ReadHeadAsync(CancellationToken ct)
     {
-        var accumulator = new List<byte>(_pending);
-        _pending = [];
+        var accumulator = new List<byte>(PendingLength);
+        accumulator.AddRange(Pending);
+        Consume(PendingLength);
         var buffer = new byte[ReadChunkBytes];
 
         while (true)
@@ -58,7 +70,7 @@ internal sealed class Http1ConnectionReader(Stream stream)
             if (terminator >= 0)
             {
                 var headerText = Encoding.ASCII.GetString(accumulator.ToArray(), 0, terminator);
-                _pending = Slice(accumulator, terminator + 4);
+                SetPending(Slice(accumulator, terminator + 4));
                 return Http1RequestReader.ParseHead(headerText);
             }
 
@@ -95,10 +107,7 @@ internal sealed class Http1ConnectionReader(Stream stream)
         }
 
         var body = new byte[contentLength];
-        var fromPending = TakeFromPending(Math.Min(_pending.Length, contentLength));
-        fromPending.CopyTo(body.AsSpan());
-
-        var offset = fromPending.Length;
+        var offset = TakeFromPending(body);
         while (offset < contentLength)
         {
             var read = await stream.ReadAsync(body.AsMemory(offset, contentLength - offset), ct).ConfigureAwait(false);
@@ -133,7 +142,7 @@ internal sealed class Http1ConnectionReader(Stream stream)
     /// </remarks>
     public async Task<byte[]> ReadChunkedBodyAsync(CancellationToken ct)
     {
-        var body = new List<byte>();
+        using var body = new BodyAccumulator();
 
         while (true)
         {
@@ -156,40 +165,62 @@ internal sealed class Http1ConnectionReader(Stream stream)
                 break;
             }
 
-            var chunk = await ReadExactlyAsync(size, ct).ConfigureAwait(false);
-            if (body.Count > MaxBufferedBodyBytes - chunk.Length)
+            if (body.Length > MaxBufferedBodyBytes - size)
             {
                 throw new RequestBodyTooLargeException();
             }
-            body.AddRange(chunk);
+            await ReadChunkDataAsync(body, size, ct).ConfigureAwait(false);
 
-            var crlf = await ReadExactlyAsync(2, ct).ConfigureAwait(false);
-            if (crlf[0] != (byte)'\r' || crlf[1] != (byte)'\n')
+            await EnsurePendingAsync(2, ct).ConfigureAwait(false);
+            if (_buffer[_start] != (byte)'\r' || _buffer[_start + 1] != (byte)'\n')
             {
                 throw new InvalidOperationException("Missing CRLF after chunk data.");
             }
+            Consume(2);
         }
 
-        return [.. body];
+        return body.ToArray();
     }
 
-    /// <summary>Reads exactly <paramref name="count"/> bytes, throwing on premature EOF.</summary>
-    private async Task<byte[]> ReadExactlyAsync(int count, CancellationToken ct)
+    /// <summary>
+    /// Copies exactly <paramref name="count"/> bytes of chunk data into
+    /// <paramref name="body"/>: buffered bytes first, then straight from the stream.
+    /// Throws on premature EOF.
+    /// </summary>
+    private async Task ReadChunkDataAsync(BodyAccumulator body, int count, CancellationToken ct)
     {
-        if (count == 0)
-        {
-            return [];
-        }
+        var fromPending = Math.Min(PendingLength, count);
+        body.Write(_buffer.AsSpan(_start, fromPending));
+        Consume(fromPending);
 
-        while (_pending.Length < count)
+        var remaining = count - fromPending;
+        while (remaining > 0)
+        {
+            var target = body.GetMemory();
+            if (target.Length > remaining)
+            {
+                target = target[..remaining];
+            }
+            var read = await stream.ReadAsync(target, ct).ConfigureAwait(false);
+            if (read == 0)
+            {
+                throw new InvalidOperationException("Unexpected end of stream while reading chunked body.");
+            }
+            body.Advance(read);
+            remaining -= read;
+        }
+    }
+
+    /// <summary>Ensures at least <paramref name="count"/> bytes are buffered, throwing on premature EOF.</summary>
+    private async Task EnsurePendingAsync(int count, CancellationToken ct)
+    {
+        while (PendingLength < count)
         {
             if (await PullAsync(ct).ConfigureAwait(false) == 0)
             {
                 throw new InvalidOperationException("Unexpected end of stream while reading chunked body.");
             }
         }
-
-        return TakeFromPending(count);
     }
 
     /// <summary>
@@ -201,21 +232,21 @@ internal sealed class Http1ConnectionReader(Stream stream)
         var scanFrom = 0;
         while (true)
         {
-            var crlf = IndexOfCrlf(_pending, scanFrom);
+            var crlf = IndexOfCrlf(Pending, scanFrom);
             if (crlf >= 0)
             {
-                var line = Encoding.ASCII.GetString(_pending, 0, crlf);
-                _pending = _pending.Length > crlf + 2 ? _pending[(crlf + 2)..] : [];
+                var line = Encoding.ASCII.GetString(_buffer, _start, crlf);
+                Consume(crlf + 2);
                 return line;
             }
 
-            if (_pending.Length > MaxChunkLineBytes)
+            if (PendingLength > MaxChunkLineBytes)
             {
                 throw new InvalidOperationException("Chunk header line too large.");
             }
 
             // A CRLF can straddle two reads, so resume the scan one byte back.
-            scanFrom = Math.Max(0, _pending.Length - 1);
+            scanFrom = Math.Max(0, PendingLength - 1);
             if (await PullAsync(ct).ConfigureAwait(false) == 0)
             {
                 throw new InvalidOperationException("Unexpected end of stream while reading chunk header.");
@@ -223,37 +254,59 @@ internal sealed class Http1ConnectionReader(Stream stream)
         }
     }
 
-    /// <summary>Reads one block from the stream and appends it to <c>_pending</c>; returns bytes read.</summary>
+    /// <summary>Reads one block from the stream and appends it to the pending bytes; returns bytes read.</summary>
     private async Task<int> PullAsync(CancellationToken ct)
     {
-        var buffer = new byte[ReadChunkBytes];
-        var read = await stream.ReadAsync(buffer, ct).ConfigureAwait(false);
-        if (read == 0)
+        if (_buffer.Length - _end < ReadChunkBytes)
         {
-            return 0;
+            var pending = PendingLength;
+            if (_buffer.Length - pending >= ReadChunkBytes)
+            {
+                // Enough room once consumed bytes are dropped: slide the pending bytes down.
+                _buffer.AsSpan(_start, pending).CopyTo(_buffer);
+            }
+            else
+            {
+                var grown = new byte[Math.Max(_buffer.Length * 2, pending + ReadChunkBytes)];
+                _buffer.AsSpan(_start, pending).CopyTo(grown);
+                _buffer = grown;
+            }
+            _start = 0;
+            _end = pending;
         }
 
-        var combined = new byte[_pending.Length + read];
-        Array.Copy(_pending, combined, _pending.Length);
-        Array.Copy(buffer, 0, combined, _pending.Length, read);
-        _pending = combined;
+        var read = await stream.ReadAsync(_buffer.AsMemory(_end), ct).ConfigureAwait(false);
+        _end += read;
         return read;
     }
 
-    /// <summary>Removes and returns the first <paramref name="count"/> bytes of <c>_pending</c>.</summary>
-    private byte[] TakeFromPending(int count)
+    /// <summary>Moves up to <paramref name="destination"/>.Length pending bytes into it; returns the count.</summary>
+    private int TakeFromPending(Span<byte> destination)
     {
-        if (count == 0)
-        {
-            return [];
-        }
-
-        var taken = _pending[..count];
-        _pending = _pending.Length > count ? _pending[count..] : [];
-        return taken;
+        var count = Math.Min(PendingLength, destination.Length);
+        _buffer.AsSpan(_start, count).CopyTo(destination);
+        Consume(count);
+        return count;
     }
 
-    private static int IndexOfCrlf(byte[] data, int start)
+    private void Consume(int count)
+    {
+        _start += count;
+        if (_start == _end)
+        {
+            _start = 0;
+            _end = 0;
+        }
+    }
+
+    private void SetPending(byte[] data)
+    {
+        _buffer = data;
+        _start = 0;
+        _end = data.Length;
+    }
+
+    private static int IndexOfCrlf(ReadOnlySpan<byte> data, int start)
     {
         for (var i = Math.Max(0, start); i + 1 < data.Length; i++)
         {

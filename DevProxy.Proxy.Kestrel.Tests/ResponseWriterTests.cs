@@ -37,6 +37,24 @@ public class ResponseWriterTests
     }
 
     [Fact]
+    public async Task WriteAsync_WritesBodyLargerThanWriteSliceIntact()
+    {
+        var body = new byte[(ResponseWriter.WriteSliceBytes * 3) + 17];
+        for (var i = 0; i < body.Length; i++)
+        {
+            body[i] = (byte)(i % 253);
+        }
+        var response = new MutableHttpResponse(HttpStatusCode.OK, HttpVersion.Version11, new HeaderCollection(), body);
+        using var stream = new MemoryStream();
+
+        await ResponseWriter.WriteAsync(stream, response, keepAlive: false, "GET", CancellationToken.None);
+
+        var output = stream.ToArray();
+        Assert.Contains($"Content-Length: {body.Length}\r\n", Encoding.ASCII.GetString(output), StringComparison.Ordinal);
+        Assert.Equal(body, output[^body.Length..]);
+    }
+
+    [Fact]
     public async Task WriteContinueAsync_WritesInterim100()
     {
         using var stream = new MemoryStream();
