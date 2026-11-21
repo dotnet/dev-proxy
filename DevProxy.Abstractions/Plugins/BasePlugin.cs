@@ -154,7 +154,15 @@ public abstract class BasePlugin<TConfiguration>(
         {
             if (Logger.IsEnabled(LogLevel.Error))
             {
-                Logger.LogError("Plugin configuration validation failed with the following errors: {Errors}", string.Join(", ", ValidationErrors));
+                var docsLink = DocsLinks.ForPlugin(GetType());
+                if (docsLink is null)
+                {
+                    Logger.LogError("Plugin configuration validation failed with the following errors: {Errors}", string.Join(", ", ValidationErrors));
+                }
+                else
+                {
+                    Logger.LogError("Plugin configuration validation failed with the following errors: {Errors}. Docs: {DocsUrl}", string.Join(", ", ValidationErrors).TrimEnd('.'), docsLink);
+                }
             }
         }
     }
