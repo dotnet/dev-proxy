@@ -56,6 +56,7 @@ public abstract class BaseReporter(
 
             Logger.LogInformation("Writing report {ReportKey} to {FileName}...", report.Key, fileName);
             await File.WriteAllTextAsync(fileName, reportContents, cancellationToken);
+            e.ReportFiles.Add(Path.GetFullPath(fileName));
         }
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
