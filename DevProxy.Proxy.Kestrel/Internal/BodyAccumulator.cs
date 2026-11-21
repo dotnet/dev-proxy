@@ -92,7 +92,9 @@ internal sealed class BodyAccumulator(int expectedLength = 0) : IDisposable
         {
             return [];
         }
-        if (_segments.Count == 1 && ReferenceEquals(_segments[0], _owned) && Length == _owned!.Length)
+        // A trailing empty segment (e.g. from a GetMemory() probe for EOF) doesn't
+        // prevent returning the exact-size first segment.
+        if (_owned is not null && Length == _owned.Length)
         {
             return _owned;
         }

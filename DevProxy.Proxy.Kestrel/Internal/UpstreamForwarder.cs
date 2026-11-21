@@ -103,7 +103,11 @@ internal sealed class UpstreamForwarder(HttpClient httpClient)
 
             // AutomaticDecompression on the shared handler means the bytes here are
             // already decompressed; the Content-Encoding header is removed for us.
-            var body = await ReadBodyAsync(originResponse.Content, ct).ConfigureAwait(false);
+            // HEAD, 204 and 304 responses never carry a body, so their Content-Length
+            // must not size the read buffer.
+            var canHaveBody = !isHead
+                && originResponse.StatusCode is not HttpStatusCode.NoContent and not HttpStatusCode.NotModified;
+            var body = await ReadBodyAsync(originResponse.Content, canHaveBody, ct).ConfigureAwait(false);
             var response = new MutableHttpResponse(
                 originResponse.StatusCode,
                 originResponse.Version,
@@ -123,7 +127,7 @@ internal sealed class UpstreamForwarder(HttpClient httpClient)
         headers.GetFirst("Content-Type")?.Value
             .Contains("text/event-stream", StringComparison.OrdinalIgnoreCase) == true;
 
-    private static async Task<byte[]> ReadBodyAsync(HttpContent content, CancellationToken ct)
+    private static async Task<byte[]> ReadBodyAsync(HttpContent content, bool canHaveBody, CancellationToken ct)
     {
         if (content.Headers.ContentLength > Http1ConnectionReader.MaxBufferedBodyBytes)
         {
@@ -132,7 +136,7 @@ internal sealed class UpstreamForwarder(HttpClient httpClient)
 
         await using var source = await content.ReadAsStreamAsync(ct).ConfigureAwait(false);
         // With a known length the body lands in one exact-size array, no copy.
-        var expectedLength = content.Headers.ContentLength is long length and > 0 ? (int)length : 0;
+        var expectedLength = canHaveBody && content.Headers.ContentLength is long length and > 0 ? (int)length : 0;
         using var destination = new BodyAccumulator(expectedLength);
         while (true)
         {

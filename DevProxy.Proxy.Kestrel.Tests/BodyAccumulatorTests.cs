@@ -59,4 +59,20 @@ public class BodyAccumulatorTests
 
         _ = Assert.Throws<InvalidOperationException>(() => accumulator.Advance(11));
     }
+
+    [Fact]
+    public void ToArray_ReturnsExpectedLengthSegmentWithoutCopy_AfterEofProbe()
+    {
+        using var accumulator = new BodyAccumulator(1000);
+        var first = accumulator.GetMemory();
+        first.Span.Fill(42);
+        accumulator.Advance(first.Length);
+        // A reader asks for more space to detect EOF, then reads nothing.
+        _ = accumulator.GetMemory();
+
+        var result = accumulator.ToArray();
+
+        Assert.True(System.Runtime.InteropServices.MemoryMarshal.TryGetArray<byte>(first, out var segment));
+        Assert.Same(segment.Array, result);
+    }
 }
