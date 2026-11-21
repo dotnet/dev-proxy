@@ -275,7 +275,9 @@ internal sealed class Http1ConnectionReader(Stream stream)
             _end = pending;
         }
 
-        var read = await stream.ReadAsync(_buffer.AsMemory(_end), ct).ConfigureAwait(false);
+        // Bounded so ReadLineAsync checks MaxChunkLineBytes at the same granularity
+        // as before; bulk chunk data bypasses this path.
+        var read = await stream.ReadAsync(_buffer.AsMemory(_end, ReadChunkBytes), ct).ConfigureAwait(false);
         _end += read;
         return read;
     }
