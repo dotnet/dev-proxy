@@ -24,7 +24,7 @@ internal sealed class RewritesLoader(
     // as-is. RewritePlugin resolves ${env:NAME} per request.
     protected override bool ResolveEnvironmentVariables => false;
 
-    protected override void LoadData(string fileContents)
+    protected override void LoadData(Stream fileContents)
     {
         try
         {

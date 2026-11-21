@@ -5,7 +5,10 @@
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Logging;
-using System.Text.Json;
+using System.Buffers;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace DevProxy.Abstractions.Plugins;
 
@@ -61,7 +64,26 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
         await LoadFileContentsAsync(cancellationToken);
     }
 
-    protected abstract void LoadData(string fileContents);
+    /// <summary>
+    /// Loads the data from the file contents as a JSON string. YAML files are
+    /// converted to JSON first. Override this method or <see cref="LoadData(Stream)"/>.
+    /// </summary>
+    protected virtual void LoadData(string fileContents) =>
+        throw new NotImplementedException($"Override {nameof(LoadData)}(string) or {nameof(LoadData)}(Stream) in {GetType().Name}");
+
+    /// <summary>
+    /// Loads the data from the file contents as a UTF-8 JSON stream. YAML files
+    /// are converted to JSON first. Override this method instead of
+    /// <see cref="LoadData(string)"/> to avoid materializing the whole file
+    /// as a string. The default implementation reads the stream into a string
+    /// and calls <see cref="LoadData(string)"/>. The stream is disposed after
+    /// this method returns.
+    /// </summary>
+    protected virtual void LoadData(Stream fileContents)
+    {
+        using var reader = new StreamReader(fileContents, leaveOpen: true);
+        LoadData(reader.ReadToEnd());
+    }
 
     protected virtual void Dispose(bool disposing)
     {
@@ -80,22 +102,29 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
         }
     }
 
-    private async Task<bool> ValidateFileContentsAsync(string fileContents, CancellationToken cancellationToken)
+    private async Task<bool> ValidateFileContentsAsync(Stream fileContents, SchemaValidationCache.FileVersion? fileVersion, CancellationToken cancellationToken)
     {
-        using var document = JsonDocument.Parse(fileContents, ProxyUtils.JsonDocumentOptions);
-        var root = document.RootElement;
+        var schemaUrl = ProxyUtils.ReadSchemaReference(fileContents);
+        fileContents.Position = 0;
 
-        // Schema validation only applies to JSON objects, not arrays
-        if (root.ValueKind != JsonValueKind.Object ||
-            !root.TryGetProperty("$schema", out var schemaUrlElement))
+        if (string.IsNullOrEmpty(schemaUrl))
         {
             Logger.LogDebug("Schema reference not found in file {File}. Skipping schema validation", FilePath);
             return true;
         }
 
-        var schemaUrl = schemaUrlElement.GetString() ?? "";
         ProxyUtils.ValidateSchemaVersion(schemaUrl, Logger);
+
+        var cacheKey = SchemaValidationCache.CreateKey(FilePath, schemaUrl);
+        if (SchemaValidationCache.HasPassed(cacheKey, fileVersion))
+        {
+            Logger.LogDebug("File {File} hasn't changed since it passed schema validation. Skipping schema validation", FilePath);
+            return true;
+        }
+
         var (IsValid, ValidationErrors) = await ProxyUtils.ValidateJsonAsync(fileContents, schemaUrl, _httpClient, Logger, cancellationToken);
+        fileContents.Position = 0;
+        SchemaValidationCache.SetResult(cacheKey, fileVersion, IsValid);
 
         if (!IsValid)
         {
@@ -123,41 +152,130 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
 
         try
         {
+            // read before the contents so that a change while loading isn't missed
+            var fileVersion = SchemaValidationCache.GetFileVersion(FilePath);
+
             using var stream = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            using var reader = new StreamReader(stream);
-            var fileContents = await reader.ReadToEndAsync(cancellationToken);
-
-            // Convert YAML to JSON if needed
-            string jsonContents;
-            if (ProxyYaml.IsYamlFile(FilePath))
+            if (!ProxyYaml.IsYamlFile(FilePath) && CanLoadFromFileStream(stream))
             {
-                if (!ProxyYaml.TryConvertYamlToJson(fileContents, out var converted, out var error))
-                {
-                    Logger.LogError("Failed to parse YAML file {File}: {Error}", FilePath, error);
-                    return;
-                }
-                jsonContents = converted!;
-            }
-            else
-            {
-                jsonContents = fileContents;
+                stream.Position = 0;
+                await LoadJsonAsync(stream, fileVersion, cancellationToken);
+                return;
             }
 
-            if (ResolveEnvironmentVariables)
+            stream.Position = 0;
+            var jsonContents = await ReadJsonContentsAsync(stream, cancellationToken);
+            if (jsonContents is null)
             {
-                var unresolvedVariables = new List<string>();
-                jsonContents = EnvironmentVariablePlaceholders.ResolveInJson(jsonContents, unresolvedVariables);
-                EnvironmentVariablePlaceholders.LogUnresolvedVariables(Logger, unresolvedVariables, FilePath);
+                return;
             }
 
-            if (!_validateSchemas || await ValidateFileContentsAsync(jsonContents, cancellationToken))
-            {
-                LoadData(jsonContents);
-            }
+            using var jsonStream = new MemoryStream(Encoding.UTF8.GetBytes(jsonContents.Value.Json), writable: false);
+            await LoadJsonAsync(jsonStream, fileVersion is { } version ? version with { ContentHash = jsonContents.Value.ContentHash } : null, cancellationToken);
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "An error has occurred while reading {File}:", FilePath);
+        }
+    }
+
+    private async Task LoadJsonAsync(Stream jsonContents, SchemaValidationCache.FileVersion? fileVersion, CancellationToken cancellationToken)
+    {
+        if (!_validateSchemas || await ValidateFileContentsAsync(jsonContents, fileVersion, cancellationToken))
+        {
+            LoadData(jsonContents);
+        }
+    }
+
+    /// <summary>
+    /// Reads the file as a string, converts YAML to JSON, and resolves environment variable placeholders.
+    /// </summary>
+    /// <returns>The JSON and, if placeholders changed the contents, a hash of the resolved JSON.
+    /// <c>null</c> if the YAML couldn't be converted.</returns>
+    private async Task<(string Json, string? ContentHash)?> ReadJsonContentsAsync(Stream stream, CancellationToken cancellationToken)
+    {
+        using var reader = new StreamReader(stream, leaveOpen: true);
+        var fileContents = await reader.ReadToEndAsync(cancellationToken);
+
+        // Convert YAML to JSON if needed
+        string jsonContents;
+        if (ProxyYaml.IsYamlFile(FilePath))
+        {
+            if (!ProxyYaml.TryConvertYamlToJson(fileContents, out var converted, out var error))
+            {
+                Logger.LogError("Failed to parse YAML file {File}: {Error}", FilePath, error);
+                return null;
+            }
+            jsonContents = converted!;
+        }
+        else
+        {
+            jsonContents = fileContents;
+        }
+
+        string? contentHash = null;
+        if (ResolveEnvironmentVariables)
+        {
+            var unresolvedVariables = new List<string>();
+            var resolvedContents = EnvironmentVariablePlaceholders.ResolveInJson(jsonContents, unresolvedVariables);
+            EnvironmentVariablePlaceholders.LogUnresolvedVariables(Logger, unresolvedVariables, FilePath);
+
+            // the validated contents depend on environment variables, not only on the file
+            if (!ReferenceEquals(resolvedContents, jsonContents))
+            {
+                contentHash = Convert.ToHexString(SHA256.HashData(MemoryMarshal.AsBytes(resolvedContents.AsSpan())));
+                jsonContents = resolvedContents;
+            }
+        }
+
+        return (jsonContents, contentHash);
+    }
+
+    /// <summary>
+    /// Returns true if the JSON file can be loaded as-is, without reading it into a string:
+    /// it's not UTF-16 or UTF-32 encoded, and (if placeholders are resolved) it doesn't
+    /// contain anything that could be a placeholder (<c>${</c> or a <c>\u</c> escape).
+    /// </summary>
+    private bool CanLoadFromFileStream(Stream stream)
+    {
+        var buffer = ArrayPool<byte>.Shared.Rent(16 * 1024);
+        try
+        {
+            var read = stream.ReadAtLeast(buffer, 4, throwOnEndOfStream: false);
+            var start = buffer.AsSpan(0, read);
+            if (start.StartsWith((ReadOnlySpan<byte>)[0xFF, 0xFE]) ||
+                start.StartsWith((ReadOnlySpan<byte>)[0xFE, 0xFF]) ||
+                start.StartsWith((ReadOnlySpan<byte>)[0x00, 0x00, 0xFE, 0xFF]))
+            {
+                return false;
+            }
+
+            if (!ResolveEnvironmentVariables)
+            {
+                return true;
+            }
+
+            byte previous = 0;
+            while (read > 0)
+            {
+                foreach (var current in buffer.AsSpan(0, read))
+                {
+                    if ((previous == (byte)'$' && current == (byte)'{') ||
+                        (previous == (byte)'\\' && current == (byte)'u'))
+                    {
+                        return false;
+                    }
+                    // an escaped backslash can't start an escape sequence
+                    previous = previous == (byte)'\\' && current == (byte)'\\' ? (byte)0 : current;
+                }
+                read = stream.Read(buffer);
+            }
+
+            return true;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
         }
     }
 
