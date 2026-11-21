@@ -9,6 +9,8 @@ using DevProxy.Commands;
 using DevProxy.Plugins;
 using DevProxy.Proxy;
 using System.Reflection;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
 using System.Text.RegularExpressions;
 
 #pragma warning disable IDE0130
@@ -17,12 +19,21 @@ namespace Microsoft.Extensions.DependencyInjection;
 
 static class PluginServiceExtensions
 {
+    // Load contexts can't be unloaded, so reuse them across hot reloads for as
+    // long as the plugin file doesn't change. key = plugin location
+    private static readonly Dictionary<string, CachedPluginLoadContext> _pluginLoadContexts = [];
+    private static readonly Lock _pluginLoadContextsLock = new();
+
+    private sealed record CachedPluginLoadContext(PluginLoadContext Context, DateTime LastWriteTimeUtc, long Length);
+
     public static IServiceCollection AddPlugins(
         this IServiceCollection services,
         IConfiguration configuration,
         DevProxyConfigOptions options)
     {
-        var serviceProvider = services.BuildServiceProvider();
+        // Dispose the temporary provider so it doesn't keep its logger
+        // providers (and with them the previous generation) alive on reload.
+        using var serviceProvider = services.BuildServiceProvider();
         var logger = serviceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Plugins");
         using var scope = logger.BeginScope(nameof(AddPlugins));
 
@@ -87,9 +98,6 @@ static class PluginServiceExtensions
             throw new InvalidOperationException("Unable to resolve config file directory.");
         }
 
-        // key = location
-        var pluginContexts = new Dictionary<string, PluginLoadContext>();
-
         foreach (var pluginRef in pluginReferences)
         {
             if (!pluginRef.Enabled)
@@ -100,11 +108,7 @@ static class PluginServiceExtensions
             // Load Handler Assembly if enabled
             var pluginLocation = Path.GetFullPath(Path.Combine(configFileDirectory, ProxyUtils.ReplacePathTokens(pluginRef.PluginPath.Replace('\\', Path.DirectorySeparatorChar))));
 
-            if (!pluginContexts.TryGetValue(pluginLocation, out var pluginLoadContext))
-            {
-                pluginLoadContext = new(pluginLocation);
-                pluginContexts.Add(pluginLocation, pluginLoadContext);
-            }
+            var pluginLoadContext = GetPluginLoadContext(pluginLocation);
 
             logger.LogDebug("Loading plugin {PluginName} from: {PluginLocation}", pluginRef.Name, pluginLocation);
             var assembly = pluginLoadContext.LoadFromAssemblyName(new(Path.GetFileNameWithoutExtension(pluginLocation)));
@@ -153,8 +157,7 @@ static class PluginServiceExtensions
         ILogger logger,
         bool isStdioMode)
     {
-        var pluginType = assembly.GetTypes()
-            .FirstOrDefault(t => t.Name == pluginRef.Name && typeof(IPlugin).IsAssignableFrom(t));
+        var pluginType = FindPluginType(assembly, pluginRef.Name);
         if (pluginType is null)
         {
             logger.LogError("Plugin {PluginName} not found in assembly {Assembly}.", pluginRef.Name, assembly);
@@ -205,6 +208,83 @@ static class PluginServiceExtensions
             return plugin;
         });
         logger.LogDebug("Registered plugin {PluginName}.", pluginRef.Name);
+    }
+
+    internal static PluginLoadContext GetPluginLoadContext(string pluginLocation)
+    {
+        var fileInfo = new FileInfo(pluginLocation);
+        var lastWriteTimeUtc = fileInfo.Exists ? fileInfo.LastWriteTimeUtc : DateTime.MinValue;
+        var length = fileInfo.Exists ? fileInfo.Length : -1;
+
+        lock (_pluginLoadContextsLock)
+        {
+            if (_pluginLoadContexts.TryGetValue(pluginLocation, out var cached) &&
+                cached.LastWriteTimeUtc == lastWriteTimeUtc &&
+                cached.Length == length)
+            {
+                return cached.Context;
+            }
+
+            var context = new PluginLoadContext(pluginLocation);
+            _pluginLoadContexts[pluginLocation] = new(context, lastWriteTimeUtc, length);
+            return context;
+        }
+    }
+
+    /// <summary>
+    /// Finds the plugin type by reading the assembly's metadata, so that only
+    /// the matching type (and its dependencies) is loaded rather than every
+    /// type in the assembly.
+    /// </summary>
+    internal static Type? FindPluginType(Assembly assembly, string typeName)
+    {
+        foreach (var fullName in GetTypeFullNames(assembly, typeName))
+        {
+            var type = assembly.GetType(fullName, throwOnError: false);
+            if (type is not null && typeof(IPlugin).IsAssignableFrom(type))
+            {
+                return type;
+            }
+        }
+
+        return null;
+    }
+
+    private static List<string> GetTypeFullNames(Assembly assembly, string typeName)
+    {
+        if (string.IsNullOrEmpty(assembly.Location) || !File.Exists(assembly.Location))
+        {
+            return [.. assembly.GetTypes().Where(t => t.Name == typeName).Select(t => t.FullName!)];
+        }
+
+        using var stream = File.OpenRead(assembly.Location);
+        using var peReader = new PEReader(stream);
+        var reader = peReader.GetMetadataReader();
+
+        var fullNames = new List<string>();
+        foreach (var handle in reader.TypeDefinitions)
+        {
+            var typeDefinition = reader.GetTypeDefinition(handle);
+            if (reader.StringComparer.Equals(typeDefinition.Name, typeName))
+            {
+                fullNames.Add(GetTypeFullName(reader, typeDefinition));
+            }
+        }
+
+        return fullNames;
+    }
+
+    private static string GetTypeFullName(MetadataReader reader, TypeDefinition typeDefinition)
+    {
+        var name = reader.GetString(typeDefinition.Name);
+        var declaringType = typeDefinition.GetDeclaringType();
+        if (!declaringType.IsNil)
+        {
+            return $"{GetTypeFullName(reader, reader.GetTypeDefinition(declaringType))}+{name}";
+        }
+
+        var ns = reader.GetString(typeDefinition.Namespace);
+        return string.IsNullOrEmpty(ns) ? name : $"{ns}.{name}";
     }
 
     /// <summary>
