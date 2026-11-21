@@ -132,7 +132,7 @@ internal sealed class StopCommand : Command
                 while (stopwatch.Elapsed < TimeSpan.FromSeconds(10) &&
                     StateManager.IsInstanceAlive(state))
                 {
-                    await Task.Delay(200, cancellationToken);
+                    await Task.Delay(20, cancellationToken);
                 }
 
                 // Verify the process actually exited before cleaning up state.
