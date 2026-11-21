@@ -20,11 +20,9 @@ namespace Microsoft.Extensions.DependencyInjection;
 static class PluginServiceExtensions
 {
     // Load contexts can't be unloaded, so reuse them across hot reloads for as
-    // long as the plugin file doesn't change. key = plugin location
-    private static readonly Dictionary<string, CachedPluginLoadContext> _pluginLoadContexts = [];
+    // long as the plugin and the files it loaded don't change. key = plugin location
+    private static readonly Dictionary<string, PluginLoadContext> _pluginLoadContexts = [];
     private static readonly Lock _pluginLoadContextsLock = new();
-
-    private sealed record CachedPluginLoadContext(PluginLoadContext Context, DateTime LastWriteTimeUtc, long Length);
 
     public static IServiceCollection AddPlugins(
         this IServiceCollection services,
@@ -212,21 +210,15 @@ static class PluginServiceExtensions
 
     internal static PluginLoadContext GetPluginLoadContext(string pluginLocation)
     {
-        var fileInfo = new FileInfo(pluginLocation);
-        var lastWriteTimeUtc = fileInfo.Exists ? fileInfo.LastWriteTimeUtc : DateTime.MinValue;
-        var length = fileInfo.Exists ? fileInfo.Length : -1;
-
         lock (_pluginLoadContextsLock)
         {
-            if (_pluginLoadContexts.TryGetValue(pluginLocation, out var cached) &&
-                cached.LastWriteTimeUtc == lastWriteTimeUtc &&
-                cached.Length == length)
+            if (_pluginLoadContexts.TryGetValue(pluginLocation, out var cached) && cached.IsUpToDate())
             {
-                return cached.Context;
+                return cached;
             }
 
             var context = new PluginLoadContext(pluginLocation);
-            _pluginLoadContexts[pluginLocation] = new(context, lastWriteTimeUtc, length);
+            _pluginLoadContexts[pluginLocation] = context;
             return context;
         }
     }
@@ -254,12 +246,18 @@ static class PluginServiceExtensions
     {
         if (string.IsNullOrEmpty(assembly.Location) || !File.Exists(assembly.Location))
         {
-            return [.. assembly.GetTypes().Where(t => t.Name == typeName).Select(t => t.FullName!)];
+            return GetLoadedTypeFullNames(assembly, typeName);
         }
 
         using var stream = File.OpenRead(assembly.Location);
         using var peReader = new PEReader(stream);
         var reader = peReader.GetMetadataReader();
+
+        // The file may have been replaced after the assembly was loaded
+        if (reader.GetGuid(reader.GetModuleDefinition().Mvid) != assembly.ManifestModule.ModuleVersionId)
+        {
+            return GetLoadedTypeFullNames(assembly, typeName);
+        }
 
         var fullNames = new List<string>();
         foreach (var handle in reader.TypeDefinitions)
@@ -273,6 +271,9 @@ static class PluginServiceExtensions
 
         return fullNames;
     }
+
+    private static List<string> GetLoadedTypeFullNames(Assembly assembly, string typeName) =>
+        [.. assembly.GetTypes().Where(t => t.Name == typeName).Select(t => t.FullName!)];
 
     private static string GetTypeFullName(MetadataReader reader, TypeDefinition typeDefinition)
     {
