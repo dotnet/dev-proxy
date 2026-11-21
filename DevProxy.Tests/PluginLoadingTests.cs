@@ -54,6 +54,12 @@ namespace DevProxy.Tests
         [Fact]
         public void FindPluginType_ReplacedAssemblyFile_FallsBackToLoadedAssembly()
         {
+            // Windows locks loaded assemblies, so the file can't be replaced
+            if (OperatingSystem.IsWindows())
+            {
+                return;
+            }
+
             using var plugin = new TempPlugin();
             var context = PluginServiceExtensions.GetPluginLoadContext(plugin.PluginPath);
             var assembly = context.LoadFromAssemblyName(new(Path.GetFileNameWithoutExtension(plugin.PluginPath)));

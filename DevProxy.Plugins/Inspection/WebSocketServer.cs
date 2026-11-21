@@ -31,6 +31,7 @@ public sealed class WebSocketServer(string host, int port, string token, ILogger
     private readonly string _host = host;
     private readonly int _port = port;
     private readonly string _path = $"/{token}";
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA2213:Disposable fields should be disposed", Justification = "Sends may be in flight during disposal; no wait handle is allocated")]
     private readonly SemaphoreSlim _webSocketSemaphore = new(1, 1);
 
     private HttpListener? _listener;
@@ -176,6 +177,5 @@ public sealed class WebSocketServer(string host, int port, string token, ILogger
     public void Dispose()
     {
         _listener?.Close();
-        _webSocketSemaphore.Dispose();
     }
 }
