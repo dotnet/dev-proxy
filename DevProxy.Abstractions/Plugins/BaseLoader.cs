@@ -5,7 +5,6 @@
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Logging;
-using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -155,16 +154,20 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
             // read before the contents so that a change while loading isn't missed
             var fileVersion = SchemaValidationCache.GetFileVersion(FilePath);
 
-            using var stream = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            if (!ProxyYaml.IsYamlFile(FilePath) && CanLoadFromFileStream(stream))
+            (string Json, string? ContentHash)? jsonContents;
+            // validate and load the same snapshot, so that a change to the file while
+            // loading can't publish contents that weren't validated
+            using (var snapshot = await ReadFileAsync(cancellationToken))
             {
-                stream.Position = 0;
-                await LoadJsonAsync(stream, fileVersion, cancellationToken);
-                return;
+                if (!ProxyYaml.IsYamlFile(FilePath) && CanLoadAsIs(snapshot.GetBuffer().AsSpan(0, (int)snapshot.Length)))
+                {
+                    await LoadJsonAsync(snapshot, fileVersion, cancellationToken);
+                    return;
+                }
+
+                jsonContents = await ReadJsonContentsAsync(snapshot, cancellationToken);
             }
 
-            stream.Position = 0;
-            var jsonContents = await ReadJsonContentsAsync(stream, cancellationToken);
             if (jsonContents is null)
             {
                 return;
@@ -231,52 +234,47 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
         return (jsonContents, contentHash);
     }
 
+    private async Task<MemoryStream> ReadFileAsync(CancellationToken cancellationToken)
+    {
+        using var stream = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, bufferSize: 0);
+        var snapshot = new MemoryStream((int)Math.Min(stream.Length, Array.MaxLength));
+        await stream.CopyToAsync(snapshot, cancellationToken);
+        snapshot.Position = 0;
+        return snapshot;
+    }
+
     /// <summary>
     /// Returns true if the JSON file can be loaded as-is, without reading it into a string:
     /// it's not UTF-16 or UTF-32 encoded, and (if placeholders are resolved) it doesn't
     /// contain anything that could be a placeholder (<c>${</c> or a <c>\u</c> escape).
     /// </summary>
-    private bool CanLoadFromFileStream(Stream stream)
+    private bool CanLoadAsIs(ReadOnlySpan<byte> fileContents)
     {
-        var buffer = ArrayPool<byte>.Shared.Rent(16 * 1024);
-        try
+        if (fileContents.StartsWith((ReadOnlySpan<byte>)[0xFF, 0xFE]) ||
+            fileContents.StartsWith((ReadOnlySpan<byte>)[0xFE, 0xFF]) ||
+            fileContents.StartsWith((ReadOnlySpan<byte>)[0x00, 0x00, 0xFE, 0xFF]))
         {
-            var read = stream.ReadAtLeast(buffer, 4, throwOnEndOfStream: false);
-            var start = buffer.AsSpan(0, read);
-            if (start.StartsWith((ReadOnlySpan<byte>)[0xFF, 0xFE]) ||
-                start.StartsWith((ReadOnlySpan<byte>)[0xFE, 0xFF]) ||
-                start.StartsWith((ReadOnlySpan<byte>)[0x00, 0x00, 0xFE, 0xFF]))
+            return false;
+        }
+
+        if (!ResolveEnvironmentVariables)
+        {
+            return true;
+        }
+
+        byte previous = 0;
+        foreach (var current in fileContents)
+        {
+            if ((previous == (byte)'$' && current == (byte)'{') ||
+                (previous == (byte)'\\' && current == (byte)'u'))
             {
                 return false;
             }
-
-            if (!ResolveEnvironmentVariables)
-            {
-                return true;
-            }
-
-            byte previous = 0;
-            while (read > 0)
-            {
-                foreach (var current in buffer.AsSpan(0, read))
-                {
-                    if ((previous == (byte)'$' && current == (byte)'{') ||
-                        (previous == (byte)'\\' && current == (byte)'u'))
-                    {
-                        return false;
-                    }
-                    // an escaped backslash can't start an escape sequence
-                    previous = previous == (byte)'\\' && current == (byte)'\\' ? (byte)0 : current;
-                }
-                read = stream.Read(buffer);
-            }
-
-            return true;
+            // an escaped backslash can't start an escape sequence
+            previous = previous == (byte)'\\' && current == (byte)'\\' ? (byte)0 : current;
         }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+
+        return true;
     }
 
     private void File_Changed(object sender, FileSystemEventArgs e)
