@@ -468,7 +468,12 @@ static WebApplication BuildApplicationCore(
     }
     _ = builder.WebHost.ConfigureKestrel(options =>
     {
-        options.Listen(apiAddress, apiPort);
+        // An out-of-range port would throw while building the app. Skip it so
+        // DevProxyCommand can report it as a configuration error instead.
+        if (DevProxyCommand.IsValidPort(apiPort))
+        {
+            options.Listen(apiAddress, apiPort);
+        }
     });
 
     var app = builder.Build();
