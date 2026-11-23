@@ -33,4 +33,13 @@ Dev Proxy is a local developer tool. The developer who runs it already has full 
 - **Hot reload:** state that must survive or must reset when the config file changes and the proxy restarts.
 - **Error handling that hides failures:** swallowed exceptions on paths the user relies on for feedback.
 
+## Severity
+
+Start every comment with `**Blocking:**` or `**Advisory:**`.
+
+- **Blocking:** a correctness bug, a security issue per the trust boundary above, data loss, a breaking change to a public API, CLI option or JSON schema, or new behavior with no test that would catch it breaking. Must be fixed before merge.
+- **Advisory:** everything else. The author fixes it or replies; it doesn't need another review round.
+
+If you're unsure, use Advisory. Don't label a style or naming nit as Blocking.
+
 When in doubt, ask a question instead of asserting a bug.
