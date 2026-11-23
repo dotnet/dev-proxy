@@ -106,6 +106,28 @@ public class PluginSchemaComparerTests
     }
 
     [Fact]
+    public void Compare_UnionWithIncompatibleType_ReportsType()
+    {
+        var schema = Schema();
+        schema["properties"]!["maxMs"] = JsonNode.Parse("""{ "type": ["integer", "boolean"], "default": 5000 }""");
+
+        var mismatch = Assert.Single(PluginSchemaComparer.Compare("SamplePlugin", typeof(SampleConfiguration), schema));
+
+        Assert.Equal(("maxMs", SchemaMismatchKind.Type), (mismatch.Property, mismatch.Kind));
+    }
+
+    [Fact]
+    public void Compare_ArrayItemsInsideAnyOf_ComparesItems()
+    {
+        var schema = Schema();
+        schema["properties"]!["tags"] = JsonNode.Parse("""{ "anyOf": [{ "type": "array", "items": { "type": "integer" } }] }""");
+
+        var mismatch = Assert.Single(PluginSchemaComparer.Compare("SamplePlugin", typeof(SampleConfiguration), schema));
+
+        Assert.Equal(("tags[]", SchemaMismatchKind.Type), (mismatch.Property, mismatch.Kind));
+    }
+
+    [Fact]
     public void Compare_EnumValuesDiffer_ReportsEnum()
     {
         var schema = Schema();

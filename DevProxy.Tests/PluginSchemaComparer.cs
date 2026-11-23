@@ -137,7 +137,8 @@ internal static class PluginSchemaComparer
             return;
         }
 
-        if (!actual.Overlaps(expected))
+        // Every value the schema allows must bind to the property.
+        if (!actual.IsSubsetOf(expected))
         {
             mismatches.Add(new(plugin, name, SchemaMismatchKind.Type,
                 $"is {string.Join("|", expected)} ({FriendlyName(type)}) but the schema says {string.Join("|", actual)}"));
@@ -149,10 +150,34 @@ internal static class PluginSchemaComparer
         {
             CompareEnum(plugin, name, underlying, schemaProperty, mismatches);
         }
-        else if (expected.Contains("array") && GetElementType(underlying) is { } elementType &&
-            schemaProperty["items"] is JsonObject items)
+        else if (expected.Contains("array") && GetElementType(underlying) is { } elementType)
         {
-            CompareType(plugin, $"{name}[]", elementType, root, Resolve(root, items), mismatches);
+            foreach (var items in GetItemSchemas(root, schemaProperty))
+            {
+                CompareType(plugin, $"{name}[]", elementType, root, items, mismatches);
+            }
+        }
+    }
+
+    private static IEnumerable<JsonObject> GetItemSchemas(JsonObject root, JsonObject schemaProperty)
+    {
+        if (schemaProperty["items"] is JsonObject items)
+        {
+            yield return Resolve(root, items);
+        }
+
+        foreach (var keyword in new[] { "oneOf", "anyOf" })
+        {
+            if (schemaProperty[keyword] is JsonArray branches)
+            {
+                foreach (var branch in branches.OfType<JsonObject>())
+                {
+                    foreach (var branchItems in GetItemSchemas(root, Resolve(root, branch)))
+                    {
+                        yield return branchItems;
+                    }
+                }
+            }
         }
     }
 
@@ -281,12 +306,6 @@ internal static class PluginSchemaComparer
                     }
                 }
                 break;
-        }
-
-        // "integer" values are also valid "number" values.
-        if (types.Contains("integer"))
-        {
-            _ = types.Add("number");
         }
 
         _ = types.Remove("null");
