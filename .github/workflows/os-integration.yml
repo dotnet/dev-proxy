@@ -18,7 +18,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: os-integration-${{ github.ref }}
+  # Repository-wide so overlapping runs can't race on listing/creating the failure issue.
+  group: os-integration
 
 jobs:
   os-integration:

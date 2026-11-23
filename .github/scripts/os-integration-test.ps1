@@ -402,22 +402,41 @@ try {
 
     Write-Step 'Hot reload keeps the system proxy registered'
     $reloads = Get-ReloadCount $logFile
+    # Sample the OS proxy continuously from before the config change until well after the
+    # restart, so a transient unregister/re-register (https://github.com/dotnet/dev-proxy/pull/2149)
+    # is caught even if the proxy is registered again by the end.
+    $outages = [System.Collections.Generic.List[string]]::new()
+    $reloadSeenAt = $null
+    $deadline = [DateTime]::UtcNow.AddSeconds(30)
     Write-Config 'reloaded'
-    Assert-True (Wait-Until { (Get-ReloadCount $logFile) -gt $reloads } 30) 'config change triggered a hot reload'
+    while ([DateTime]::UtcNow -lt $deadline) {
+        if (-not (Test-SystemProxyRegistered)) {
+            $state = Get-SystemProxyState
+            $outages.Add("$([DateTime]::UtcNow.ToString('HH:mm:ss.fff')) http=$($state.HttpEnabled)/$($state.HttpServer) https=$($state.HttpsEnabled)/$($state.HttpsServer)")
+        }
+        if (-not $reloadSeenAt -and (Get-ReloadCount $logFile) -gt $reloads) {
+            $reloadSeenAt = [DateTime]::UtcNow
+            # Keep watching while the proxy restarts.
+            $deadline = $reloadSeenAt.AddSeconds(15)
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    Assert-True ($null -ne $reloadSeenAt) 'config change triggered a hot reload'
     Assert-True (Wait-Until { Test-ProcessRunning $instance.pid } 5) 'Dev Proxy is still running after hot reload'
-    # Give the restarted proxy a moment to come back up before checking.
-    Start-Sleep -Seconds 5
-    $hotReloadOk = Wait-Until { Test-SystemProxyRegistered } 20
+    $registeredAtEnd = Test-SystemProxyRegistered
     Show-SystemProxyState 'after hot reload'
+    foreach ($outage in $outages | Select-Object -First 20) { Write-Host "  Not registered at $outage" }
+    $hotReloadOk = $registeredAtEnd -and $outages.Count -eq 0
     if ($hotReloadOk) {
-        Write-Host "  PASS: system proxy points to $expectedProxy (after hot reload)" -ForegroundColor Green
+        Write-Host "  PASS: system proxy stayed registered at $expectedProxy throughout hot reload" -ForegroundColor Green
         Assert-ProbeAnsweredByMock 'after hot reload'
     }
     elseif ($StrictHotReload) {
-        Assert-True $false 'system proxy is registered after hot reload'
+        Assert-True $false "system proxy stays registered throughout hot reload ($($outages.Count) unregistered samples, registered at end: $registeredAtEnd)"
     }
     else {
-        Write-Host '::warning::System proxy is not registered after hot reload. Known issue fixed by https://github.com/dotnet/dev-proxy/pull/2149; set STRICT_HOT_RELOAD to true in os-integration.yml once it is merged.'
+        Write-Host "::warning::System proxy didn't stay registered throughout hot reload ($($outages.Count) unregistered samples, registered at end: $registeredAtEnd). Known issue fixed by https://github.com/dotnet/dev-proxy/pull/2149; set STRICT_HOT_RELOAD to true in os-integration.yml once it is merged."
+        if ($registeredAtEnd) { Assert-ProbeAnsweredByMock 'after hot reload' }
     }
 
     Write-Step 'devproxy stop restores the system proxy'
