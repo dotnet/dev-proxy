@@ -118,8 +118,15 @@ await Run("websocket", async () =>
         await ws.SendAsync(Encoding.UTF8.GetBytes(message), WebSocketMessageType.Text, true, cts.Token);
         received.Add(await ReceiveText(ws, cts.Token));
     }
+    // CloseAsync throws unless the server's Close reply comes back through the relay.
     await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, null, cts.Token);
-    return received.SequenceEqual(messages) ? null : $"echo mismatch: {string.Join(',', received.Select(r => r.Length))}";
+    if (!received.SequenceEqual(messages))
+    {
+        return $"echo mismatch: {string.Join(',', received.Select(r => r.Length))}";
+    }
+    return ws.State == WebSocketState.Closed && ws.CloseStatus == WebSocketCloseStatus.NormalClosure
+        ? null
+        : $"unclean close: state={ws.State} status={ws.CloseStatus}";
 });
 
 static async Task<string> ReceiveText(ClientWebSocket ws, CancellationToken ct)

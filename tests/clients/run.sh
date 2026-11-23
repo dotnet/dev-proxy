@@ -25,7 +25,11 @@ server_pid=""
 proxy_pid=""
 log_file=""
 
-devproxy_() { HOME="$proxy_home" XDG_CONFIG_HOME="$proxy_home/.config" "$devproxy" "$@"; }
+# DEV_PROXY_CERT_PATH is set explicitly so an inherited value can't point at a real root cert.
+devproxy_() {
+  HOME="$proxy_home" XDG_CONFIG_HOME="$proxy_home/.config" \
+    DEV_PROXY_CERT_PATH="$proxy_home/.config/dev-proxy/rootCert.pfx" "$devproxy" "$@"
+}
 
 cleanup() {
   local code=$?
