@@ -30,12 +30,12 @@ Stop the loop and report to the user when any of these is true:
 2. **Round limit:** 20 review rounds have been completed
 3. **Repeated CI failure:** the same CI check fails 3 times in a row with the same error
 4. **Stuck:** a fix needs a decision from a human (design choice, behavior change, scope change). Ask; don't guess
-5. **No review:** Copilot hasn't submitted a review 30 minutes after it was requested
+5. **Timeout:** Copilot hasn't submitted a review, or CI hasn't finished, 30 minutes after the review was requested
 6. **Nothing left to review:** a round produced only advisory comments that you declined, so no code changed
 
 ## Prerequisites
 
-- `gh` CLI 2.80 or newer, signed in (`gh auth status`) with access to the fork and to `dotnet/dev-proxy`
+- `gh` CLI 2.87 or newer (adds `gh pr edit --add-reviewer @copilot`), signed in (`gh auth status`) with access to the fork and to `dotnet/dev-proxy`
 - Remotes: `upstream` points to `dotnet/dev-proxy`, `origin` points to your fork
 - Work is committed on a feature branch (not `main`)
 
@@ -80,51 +80,60 @@ PR=$(gh pr view "$FORK_OWNER:$BRANCH" --repo "$UPSTREAM" --json number --jq .num
 
 ### Step 3: Request a Copilot Review
 
+Record the request time first, so that an earlier review of the same commit isn't mistaken for the new one:
+
 ```bash
+REQUESTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 gh pr edit "$PR" --repo "$UPSTREAM" --add-reviewer "@copilot"
 ```
 
-Run the same command to re-request a review in later rounds. Each request counts as one round.
+Run the same commands to re-request a review in later rounds. Each request counts as one round.
 
 ### Step 4: Wait for CI and the Review
 
-Wait for CI:
-
-```bash
-gh pr checks "$PR" --repo "$UPSTREAM" --watch
-```
-
-If CI fails, read the logs (`gh run view <run-id> --repo "$UPSTREAM" --log-failed`), fix the cause, and go to Step 6. Track how many times in a row each check failed with the same error (stop condition 3).
-
-Wait for the Copilot review of the current head commit. Poll every 60 seconds until the query returns a review (stop condition 5):
+Poll CI and the review together every 60 seconds, for up to 30 minutes after the request (stop condition 5). The loop ends when CI has finished and Copilot submitted a review of the current head commit after `REQUESTED_AT`:
 
 ```bash
 HEAD_SHA=$(git rev-parse HEAD)
-gh api graphql -F owner=dotnet -F name=dev-proxy -F pr="$PR" -f query='
-query($owner:String!,$name:String!,$pr:Int!){
-  repository(owner:$owner,name:$name){
-    pullRequest(number:$pr){
-      reviews(last:20){
-        nodes{ author{login} submittedAt commit{oid} comments{totalCount} }
+REVIEW=""
+for i in $(seq 1 30); do
+  REVIEW=$(gh api graphql -F owner=dotnet -F name=dev-proxy -F pr="$PR" -f query='
+  query($owner:String!,$name:String!,$pr:Int!){
+    repository(owner:$owner,name:$name){
+      pullRequest(number:$pr){
+        reviews(last:50){
+          nodes{ author{login} submittedAt commit{oid} comments{totalCount} }
+        }
       }
     }
-  }
-}' --jq ".data.repository.pullRequest.reviews.nodes[]
-  | select(.author.login==\"copilot-pull-request-reviewer\" and .commit.oid==\"$HEAD_SHA\")"
+  }' --jq "[.data.repository.pullRequest.reviews.nodes[]
+    | select(.author.login==\"copilot-pull-request-reviewer\" and .commit.oid==\"$HEAD_SHA\" and .submittedAt > \"$REQUESTED_AT\")]
+    | last // empty")
+  PENDING=$(gh pr checks "$PR" --repo "$UPSTREAM" --json bucket --jq '[.[] | select(.bucket=="pending")] | length')
+  [ -n "$REVIEW" ] && [ "$PENDING" = "0" ] && break
+  sleep 60
+done
+echo "$REVIEW"
+gh pr checks "$PR" --repo "$UPSTREAM"
 ```
+
+If `REVIEW` is empty or checks are still pending, stop (stop condition 5).
+
+If CI failed, read the logs (`gh run view <run-id> --repo "$UPSTREAM" --log-failed`), fix the cause, and go to Step 6. Track how many times in a row each check failed with the same error (stop condition 3).
 
 `comments.totalCount` is the number of new comments in that round. If it's `0` and CI is green, stop (stop condition 1).
 
 ### Step 5: Address Each Comment
 
-List unresolved review threads:
+List unresolved review threads. `--paginate` fetches all pages, so threads from earlier rounds don't hide new ones:
 
 ```bash
-gh api graphql -F owner=dotnet -F name=dev-proxy -F pr="$PR" -f query='
-query($owner:String!,$name:String!,$pr:Int!){
+gh api graphql --paginate -F owner=dotnet -F name=dev-proxy -F pr="$PR" -f query='
+query($owner:String!,$name:String!,$pr:Int!,$endCursor:String){
   repository(owner:$owner,name:$name){
     pullRequest(number:$pr){
-      reviewThreads(first:100){
+      reviewThreads(first:100,after:$endCursor){
+        pageInfo{ hasNextPage endCursor }
         nodes{
           id isResolved path line
           comments(first:20){ nodes{ databaseId author{login} body } }
