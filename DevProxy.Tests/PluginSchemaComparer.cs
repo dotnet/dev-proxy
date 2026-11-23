@@ -132,7 +132,7 @@ internal static class PluginSchemaComparer
         }
 
         var actual = GetSchemaTypes(root, schemaProperty);
-        if (actual.Count == 0)
+        if (actual is null || actual.Count == 0)
         {
             mismatches.Add(new(plugin, name, SchemaMismatchKind.Type,
                 $"is {string.Join("|", expected)} ({FriendlyName(type)}) but the schema doesn't constrain its type"));
@@ -161,17 +161,29 @@ internal static class PluginSchemaComparer
         }
     }
 
+    // Yields the item schema of every array the schema allows. An array without
+    // item constraints yields an empty (unconstrained) schema so it's reported.
     private static IEnumerable<JsonObject> GetItemSchemas(JsonObject root, JsonObject schemaProperty)
     {
-        if (schemaProperty["items"] is JsonObject items)
+        switch (schemaProperty["items"])
         {
-            yield return Resolve(root, items);
+            case JsonObject items:
+                yield return Resolve(root, items);
+                yield break;
+            case JsonValue value when value.GetValueKind() == JsonValueKind.True:
+                yield return [];
+                yield break;
+            case JsonValue:
+                // items: false allows only empty arrays.
+                yield break;
         }
 
+        var hasBranches = false;
         foreach (var keyword in new[] { "oneOf", "anyOf" })
         {
             if (schemaProperty[keyword] is JsonArray branches)
             {
+                hasBranches = true;
                 foreach (var branch in branches.OfType<JsonObject>())
                 {
                     foreach (var branchItems in GetItemSchemas(root, Resolve(root, branch)))
@@ -179,6 +191,15 @@ internal static class PluginSchemaComparer
                         yield return branchItems;
                     }
                 }
+            }
+        }
+
+        if (!hasBranches)
+        {
+            var types = GetSchemaTypes(root, schemaProperty);
+            if (types is null || types.Contains("array"))
+            {
+                yield return [];
             }
         }
     }
@@ -285,7 +306,8 @@ internal static class PluginSchemaComparer
         return ["object"];
     }
 
-    private static HashSet<string> GetSchemaTypes(JsonObject root, JsonObject schemaProperty)
+    // Returns null when the schema doesn't constrain the type (any value is allowed).
+    private static HashSet<string>? GetSchemaTypes(JsonObject root, JsonObject schemaProperty)
     {
         var types = new HashSet<string>(StringComparer.Ordinal);
         switch (schemaProperty["type"])
@@ -297,6 +319,7 @@ internal static class PluginSchemaComparer
                 types.UnionWith(array.Select(t => t!.GetValue<string>()));
                 break;
             default:
+                var constrained = true;
                 if (schemaProperty["enum"] is JsonArray enumValues)
                 {
                     types.UnionWith(enumValues.Select(GetJsonType));
@@ -313,16 +336,32 @@ internal static class PluginSchemaComparer
                 {
                     _ = types.Add("array");
                 }
+                else
+                {
+                    constrained = false;
+                }
 
                 foreach (var keyword in new[] { "oneOf", "anyOf" })
                 {
                     if (schemaProperty[keyword] is JsonArray branches)
                     {
+                        constrained = true;
                         foreach (var branch in branches.OfType<JsonObject>())
                         {
-                            types.UnionWith(GetSchemaTypes(root, Resolve(root, branch)));
+                            var branchTypes = GetSchemaTypes(root, Resolve(root, branch));
+                            if (branchTypes is null)
+                            {
+                                return null;
+                            }
+
+                            types.UnionWith(branchTypes);
                         }
                     }
+                }
+
+                if (!constrained)
+                {
+                    return null;
                 }
                 break;
         }

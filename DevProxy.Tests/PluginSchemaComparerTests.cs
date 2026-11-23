@@ -130,6 +130,7 @@ public class PluginSchemaComparerTests
     [Theory]
     [InlineData("""{ "default": 5000 }""")]
     [InlineData("""{ "type": "null" }""")]
+    [InlineData("""{ "anyOf": [{ "type": "integer" }, {}], "default": 5000 }""")]
     public void Compare_UnconstrainedType_ReportsType(string maxMsSchema)
     {
         var schema = Schema();
@@ -138,6 +139,20 @@ public class PluginSchemaComparerTests
         var mismatches = PluginSchemaComparer.Compare("SamplePlugin", typeof(SampleConfiguration), schema);
 
         Assert.Contains(mismatches, m => m is { Property: "maxMs", Kind: SchemaMismatchKind.Type });
+    }
+
+    [Theory]
+    [InlineData("""{ "type": "array" }""")]
+    [InlineData("""{ "type": "array", "items": true }""")]
+    [InlineData("""{ "anyOf": [{ "type": "array", "items": { "type": "string" } }, { "type": "array" }] }""")]
+    public void Compare_ArrayWithoutItemConstraints_ReportsItemType(string tagsSchema)
+    {
+        var schema = Schema();
+        schema["properties"]!["tags"] = JsonNode.Parse(tagsSchema);
+
+        var mismatch = Assert.Single(PluginSchemaComparer.Compare("SamplePlugin", typeof(SampleConfiguration), schema));
+
+        Assert.Equal(("tags[]", SchemaMismatchKind.Type), (mismatch.Property, mismatch.Kind));
     }
 
     [Fact]
