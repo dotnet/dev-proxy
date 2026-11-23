@@ -131,6 +131,8 @@ public class PluginSchemaComparerTests
     [InlineData("""{ "default": 5000 }""")]
     [InlineData("""{ "type": "null" }""")]
     [InlineData("""{ "anyOf": [{ "type": "integer" }, {}], "default": 5000 }""")]
+    [InlineData("""{ "anyOf": [{ "type": "integer" }, true], "default": 5000 }""")]
+    [InlineData("""true""")]
     public void Compare_UnconstrainedType_ReportsType(string maxMsSchema)
     {
         var schema = Schema();
@@ -145,6 +147,7 @@ public class PluginSchemaComparerTests
     [InlineData("""{ "type": "array" }""")]
     [InlineData("""{ "type": "array", "items": true }""")]
     [InlineData("""{ "anyOf": [{ "type": "array", "items": { "type": "string" } }, { "type": "array" }] }""")]
+    [InlineData("""{ "anyOf": [{ "type": "array", "items": { "anyOf": [{ "type": "string" }, true] } }] }""")]
     public void Compare_ArrayWithoutItemConstraints_ReportsItemType(string tagsSchema)
     {
         var schema = Schema();

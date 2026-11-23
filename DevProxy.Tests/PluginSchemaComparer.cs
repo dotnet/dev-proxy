@@ -56,7 +56,7 @@ internal static class PluginSchemaComparer
 
         foreach (var (name, property) in classProperties)
         {
-            if (schemaProperties[name] is not JsonObject schemaProperty)
+            if (AsSchema(schemaProperties[name]) is not { } schemaProperty)
             {
                 mismatches.Add(new(plugin, name, SchemaMismatchKind.MissingInSchema,
                     $"exists on {configurationType.Name} but not in the schema"));
@@ -189,7 +189,7 @@ internal static class PluginSchemaComparer
             if (schemaProperty[keyword] is JsonArray branches)
             {
                 hasBranches = true;
-                foreach (var branch in branches.OfType<JsonObject>())
+                foreach (var branch in branches.Select(AsSchema).OfType<JsonObject>())
                 {
                     foreach (var branchItems in GetItemSchemas(root, Resolve(root, branch)))
                     {
@@ -344,7 +344,7 @@ internal static class PluginSchemaComparer
                     if (schemaProperty[keyword] is JsonArray branches)
                     {
                         constrained = true;
-                        foreach (var branch in branches.OfType<JsonObject>())
+                        foreach (var branch in branches.Select(AsSchema).OfType<JsonObject>())
                         {
                             var branchTypes = GetSchemaTypes(root, Resolve(root, branch));
                             if (branchTypes is null)
@@ -388,7 +388,7 @@ internal static class PluginSchemaComparer
         foreach (var keyword in new[] { "oneOf", "anyOf" })
         {
             if (schemaProperty[keyword] is JsonArray branches &&
-                branches.OfType<JsonObject>().All(b => b.ContainsKey("const")))
+                branches.All(b => b is JsonObject o && o.ContainsKey("const")))
             {
                 return [.. branches.Select(b => b!["const"]?.ToString()).OfType<string>()];
             }
@@ -396,6 +396,14 @@ internal static class PluginSchemaComparer
 
         return null;
     }
+
+    // Boolean schemas: true allows anything (same as {}); false allows nothing.
+    private static JsonObject? AsSchema(JsonNode? node) => node switch
+    {
+        JsonObject schema => schema,
+        JsonValue value when value.GetValueKind() == JsonValueKind.True => [],
+        _ => null,
+    };
 
     private static JsonObject Resolve(JsonObject root, JsonObject schemaProperty)
     {
