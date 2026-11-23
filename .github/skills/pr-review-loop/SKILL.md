@@ -26,7 +26,7 @@ These stay with a human. Never:
 
 Stop the loop and report to the user when any of these is true:
 
-1. **Clean review:** the latest Copilot review of the current head commit generated no new comments, CI is green, and every earlier thread is resolved or has your reply
+1. **Clean review:** the latest Copilot review of the current head commit has no new inline comments and its body reports no unaddressed findings, CI is green, and every earlier thread is resolved or has your reply
 2. **Round limit:** 20 review rounds have been completed
 3. **Repeated CI failure:** the same CI check fails 3 times in a row with the same error
 4. **Stuck:** a fix needs a decision from a human (design choice, behavior change, scope change). Ask; don't guess
@@ -62,7 +62,14 @@ Skip this step for documentation-only changes.
 
 ### Step 2: Open the Pull Request
 
-Rebase on the latest upstream `main` and push the branch to the fork:
+If a pull request for the branch is already open, reuse it and skip to Step 5 to address its open feedback:
+
+```bash
+PR=$(gh pr view "$FORK_OWNER:$BRANCH" --repo "$UPSTREAM" --json number,state \
+  --jq 'select(.state=="OPEN") | .number' 2>/dev/null)
+```
+
+Otherwise, rebase on the latest upstream `main` and push the branch to the fork. Only rebase a branch that hasn't been pushed yet. Once it's published, don't rewrite its history; if it needs upstream changes, merge `upstream/main` instead.
 
 ```bash
 git fetch upstream main
@@ -102,7 +109,7 @@ for i in $(seq 1 30); do
     repository(owner:$owner,name:$name){
       pullRequest(number:$pr){
         reviews(last:50){
-          nodes{ author{login} submittedAt commit{oid} comments{totalCount} }
+          nodes{ author{login} submittedAt commit{oid} comments{totalCount} body }
         }
       }
     }
@@ -121,7 +128,9 @@ If `REVIEW` is empty or checks are still pending, stop (stop condition 5).
 
 If CI failed, read the logs (`gh run view <run-id> --repo "$UPSTREAM" --log-failed`) and fix the cause together with the review comments in Step 5. Track how many times in a row each check failed with the same error (stop condition 3).
 
-`comments.totalCount` is the number of new comments in that round. If it's `0` and CI is green, stop (stop condition 1).
+`comments.totalCount` is the number of new inline comments in that round. Also read the review `body`: Copilot lists some findings, such as issues it missed in code that didn't change since the last review, only in the body and not as inline comments. Treat those like inline comments.
+
+If the review has no new inline comments, its body reports no findings you haven't addressed, and CI is green, stop (stop condition 1).
 
 ### Step 5: Address Each Comment
 
@@ -168,6 +177,12 @@ mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ isResolved
 ```
 
 When you decline a suggestion, reply with the reason and leave the thread unresolved, so that a maintainer can decide.
+
+Findings that appear only in the review body have no thread. Address them in one PR comment:
+
+```bash
+gh pr comment "$PR" --repo "$UPSTREAM" --body "<finding>: fixed in <sha> / not changed because <reason>"
+```
 
 ### Step 6: Push and Repeat
 
