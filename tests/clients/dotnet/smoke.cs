@@ -111,25 +111,31 @@ await Run("websocket", async () =>
     ws.Options.RemoteCertificateValidationCallback = validate;
     using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
     await ws.ConnectAsync(new Uri($"{target.Replace("https://", "wss://")}/ws"), cts.Token);
-    string[] messages = ["hello-dotnet", new string('x', 70_000)];
-    var received = new List<string>();
+    (WebSocketMessageType Type, byte[] Data)[] messages =
+    [
+        (WebSocketMessageType.Text, Encoding.UTF8.GetBytes("hello-dotnet")),
+        (WebSocketMessageType.Text, Encoding.UTF8.GetBytes(new string('x', 70_000))),
+        (WebSocketMessageType.Binary, [.. Enumerable.Range(0, 256).Select(i => (byte)i)]),
+    ];
+    var received = new List<(WebSocketMessageType Type, byte[] Data)>();
     foreach (var message in messages)
     {
-        await ws.SendAsync(Encoding.UTF8.GetBytes(message), WebSocketMessageType.Text, true, cts.Token);
-        received.Add(await ReceiveText(ws, cts.Token));
+        await ws.SendAsync(message.Data, message.Type, true, cts.Token);
+        received.Add(await ReceiveMessage(ws, cts.Token));
     }
     // CloseAsync throws unless the server's Close reply comes back through the relay.
     await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, null, cts.Token);
-    if (!received.SequenceEqual(messages))
+    if (received.Count != messages.Length
+        || !received.Zip(messages).All(p => p.First.Type == p.Second.Type && p.First.Data.AsSpan().SequenceEqual(p.Second.Data)))
     {
-        return $"echo mismatch: {string.Join(',', received.Select(r => r.Length))}";
+        return $"echo mismatch: {string.Join(',', received.Select(r => $"{r.Type}:{r.Data.Length}"))}";
     }
     return ws.State == WebSocketState.Closed && ws.CloseStatus == WebSocketCloseStatus.NormalClosure
         ? null
         : $"unclean close: state={ws.State} status={ws.CloseStatus}";
 });
 
-static async Task<string> ReceiveText(ClientWebSocket ws, CancellationToken ct)
+static async Task<(WebSocketMessageType Type, byte[] Data)> ReceiveMessage(ClientWebSocket ws, CancellationToken ct)
 {
     using var buffer = new MemoryStream();
     var chunk = new byte[16 * 1024];
@@ -139,7 +145,7 @@ static async Task<string> ReceiveText(ClientWebSocket ws, CancellationToken ct)
         received = await ws.ReceiveAsync(chunk, ct);
         buffer.Write(chunk, 0, received.Count);
     } while (!received.EndOfMessage);
-    return Encoding.UTF8.GetString(buffer.ToArray());
+    return (received.MessageType, buffer.ToArray());
 }
 
 static async Task Run(string name, Func<Task<string?>> scenario)

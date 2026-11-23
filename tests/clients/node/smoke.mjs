@@ -88,12 +88,18 @@ await scenario('sse', async () => {
 
 await scenario('websocket', () => new Promise(resolve => {
   const ws = new WebSocket(`${target.replace(/^https/, 'wss')}/ws`);
-  const messages = ['hello-node', 'x'.repeat(70_000)];
+  const binary = Uint8Array.from({ length: 256 }, (_, i) => i);
+  const messages = ['hello-node', 'x'.repeat(70_000), binary];
   const received = [];
+  const same = (a, b) => typeof b === 'string'
+    ? a === b
+    : a instanceof ArrayBuffer && Buffer.from(a).equals(Buffer.from(b));
+  const describe = m => typeof m === 'string' ? `text:${m.length}` : `${m?.constructor?.name}:${m?.byteLength}`;
   let error = '';
   let settled = false;
   const done = failure => { if (!settled) { settled = true; clearTimeout(timer); resolve(failure); } };
   const timer = setTimeout(() => { done('timed out'); ws.close(); }, 30_000);
+  ws.binaryType = 'arraybuffer';
   ws.onopen = () => messages.forEach(m => ws.send(m));
   ws.onmessage = e => {
     received.push(e.data);
@@ -102,8 +108,8 @@ await scenario('websocket', () => new Promise(resolve => {
   // Only a completed close handshake counts: the relay must deliver the server's Close reply.
   ws.onclose = e => {
     if (!e.wasClean || e.code !== 1000) return done(`unclean close: wasClean=${e.wasClean} code=${e.code}${error}`);
-    if (received.length !== messages.length || !received.every((m, i) => m === messages[i])) {
-      return done(`echo mismatch: ${received.map(m => m.length).join(',')}`);
+    if (received.length !== messages.length || !received.every((m, i) => same(m, messages[i]))) {
+      return done(`echo mismatch: ${received.map(describe).join(',')}`);
     }
     done();
   };

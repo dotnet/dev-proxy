@@ -31,10 +31,33 @@ devproxy_() {
     DEV_PROXY_CERT_PATH="$proxy_home/.config/dev-proxy/rootCert.pfx" "$devproxy" "$@"
 }
 
+# PIDs of processes started with this run's isolated config dir. Catches a detached
+# Dev Proxy child even if `--detach` failed (e.g. timed out) before reporting its PID.
+isolated_pids() {
+  local environ pid
+  for environ in /proc/[0-9]*/environ; do
+    pid=${environ#/proc/}
+    pid=${pid%/environ}
+    tr '\0' '\n' <"$environ" 2>/dev/null | grep -qxF "XDG_CONFIG_HOME=$proxy_home/.config" && echo "$pid"
+  done
+  return 0
+}
+
 cleanup() {
   local code=$?
   if [[ -n $proxy_pid ]]; then
     devproxy_ stop --pid "$proxy_pid" >/dev/null 2>&1 || kill "$proxy_pid" 2>/dev/null || true
+  fi
+  local leftover
+  leftover=$(isolated_pids)
+  if [[ -n $leftover ]]; then
+    kill $leftover 2>/dev/null || true
+    for _ in $(seq 1 50); do
+      [[ -z $(isolated_pids) ]] && break
+      sleep 0.1
+    done
+    leftover=$(isolated_pids)
+    [[ -n $leftover ]] && kill -9 $leftover 2>/dev/null || true
   fi
   [[ -n $server_pid ]] && kill "$server_pid" 2>/dev/null || true
   if [[ $code -ne 0 ]]; then
@@ -91,7 +114,11 @@ read -r proxy_pid proxy_url log_file < <(node -e '
     .map(e => e.data ?? e).find(e => e.ProxyUrl ?? e.proxyUrl);
   if (!entry) process.exit(1);
   console.log([entry.Pid ?? entry.pid, entry.ProxyUrl ?? entry.proxyUrl, entry.LogFile ?? entry.logFile].join(" "));
-' <<<"$started")
+' <<<"$started") || true
+if [[ -z $proxy_pid || -z $proxy_url ]]; then
+  echo "Couldn't read the Dev Proxy PID and URL from its startup output." >&2
+  exit 1
+fi
 echo "Dev Proxy: $proxy_url (PID $proxy_pid)"
 
 wait_for_file "$proxy_home/.config/dev-proxy/rootCert.pfx"
@@ -133,6 +160,10 @@ for client in "${clients[@]}"; do
       printf '%s\t%s\tFAIL\tno result (client exited with %s)\n' "$client" "$scenario" "$code" >>"$results"
     fi
   done
+  # A crash or timeout after all scenarios reported must still fail the run.
+  if [[ $code -ne 0 ]]; then
+    printf '%s\tprocess\tFAIL\tclient exited with %s\n' "$client" "$code" >>"$results"
+  fi
 done
 
 icon() { case $1 in PASS) echo "✅" ;; FAIL) echo "❌" ;; *) echo "➖" ;; esac; }

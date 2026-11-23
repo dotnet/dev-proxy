@@ -57,4 +57,4 @@ For each scenario, a client prints one line to stdout:
 RESULT<TAB><scenario><TAB><PASS|FAIL|SKIP><TAB><detail>
 ```
 
-A scenario with no `RESULT` line counts as a failure. To add a client, add a folder with a script that follows this contract and add a case for it in `run_client` in `run.sh`.
+A scenario with no `RESULT` line counts as a failure. A nonzero client exit also fails the run (shown as a `process` row), even when every scenario reported. To add a client, add a folder with a script that follows this contract and add a case for it in `run_client` in `run.sh`.

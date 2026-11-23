@@ -83,7 +83,7 @@ def sse():
 
 def websocket():
     url = TARGET.replace("https://", "wss://", 1) + "/ws"
-    messages = ["hello-python", "x" * 70_000]
+    messages = ["hello-python", "x" * 70_000, bytes(range(256))]
     with connect(url, proxy=PROXY, ssl=SSL_CONTEXT, open_timeout=30, max_size=None) as ws:
         for m in messages:
             ws.send(m)
@@ -92,7 +92,7 @@ def websocket():
         # Only a completed close handshake counts: the relay must deliver the server's Close reply.
         close_rcvd = ws.protocol.close_rcvd
     if received != messages:
-        return f"echo mismatch: {[len(m) for m in received]}"
+        return f"echo mismatch: {[f'{type(m).__name__}:{len(m)}' for m in received]}"
     if close_rcvd is None or close_rcvd.code != 1000:
         return f"unclean close: received={close_rcvd}"
     return None
