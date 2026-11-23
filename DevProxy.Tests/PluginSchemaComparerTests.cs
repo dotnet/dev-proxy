@@ -127,6 +127,30 @@ public class PluginSchemaComparerTests
         Assert.Equal(("tags[]", SchemaMismatchKind.Type), (mismatch.Property, mismatch.Kind));
     }
 
+    [Theory]
+    [InlineData("""{ "default": 5000 }""")]
+    [InlineData("""{ "type": "null" }""")]
+    public void Compare_UnconstrainedType_ReportsType(string maxMsSchema)
+    {
+        var schema = Schema();
+        schema["properties"]!["maxMs"] = JsonNode.Parse(maxMsSchema);
+
+        var mismatches = PluginSchemaComparer.Compare("SamplePlugin", typeof(SampleConfiguration), schema);
+
+        Assert.Contains(mismatches, m => m is { Property: "maxMs", Kind: SchemaMismatchKind.Type });
+    }
+
+    [Fact]
+    public void Compare_EnumWithoutType_ComparesEnumValues()
+    {
+        var schema = Schema();
+        schema["properties"]!["mode"] = JsonNode.Parse("""{ "default": "fast", "enum": ["Fast", "Medium"] }""");
+
+        var mismatches = PluginSchemaComparer.Compare("SamplePlugin", typeof(SampleConfiguration), schema);
+
+        Assert.Equal(2, mismatches.Count(m => m is { Property: "mode", Kind: SchemaMismatchKind.Enum }));
+    }
+
     [Fact]
     public void Compare_EnumValuesDiffer_ReportsEnum()
     {

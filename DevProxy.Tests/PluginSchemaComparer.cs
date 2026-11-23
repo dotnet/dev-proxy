@@ -134,6 +134,8 @@ internal static class PluginSchemaComparer
         var actual = GetSchemaTypes(root, schemaProperty);
         if (actual.Count == 0)
         {
+            mismatches.Add(new(plugin, name, SchemaMismatchKind.Type,
+                $"is {string.Join("|", expected)} ({FriendlyName(type)}) but the schema doesn't constrain its type"));
             return;
         }
 
@@ -295,6 +297,23 @@ internal static class PluginSchemaComparer
                 types.UnionWith(array.Select(t => t!.GetValue<string>()));
                 break;
             default:
+                if (schemaProperty["enum"] is JsonArray enumValues)
+                {
+                    types.UnionWith(enumValues.Select(GetJsonType));
+                }
+                else if (schemaProperty.TryGetPropertyValue("const", out var constValue))
+                {
+                    _ = types.Add(GetJsonType(constValue));
+                }
+                else if (schemaProperty.ContainsKey("properties"))
+                {
+                    _ = types.Add("object");
+                }
+                else if (schemaProperty.ContainsKey("items"))
+                {
+                    _ = types.Add("array");
+                }
+
                 foreach (var keyword in new[] { "oneOf", "anyOf" })
                 {
                     if (schemaProperty[keyword] is JsonArray branches)
@@ -311,6 +330,16 @@ internal static class PluginSchemaComparer
         _ = types.Remove("null");
         return types;
     }
+
+    private static string GetJsonType(JsonNode? node) => node?.GetValueKind() switch
+    {
+        null or JsonValueKind.Null => "null",
+        JsonValueKind.String => "string",
+        JsonValueKind.True or JsonValueKind.False => "boolean",
+        JsonValueKind.Number => node.GetValue<JsonElement>().TryGetInt64(out _) ? "integer" : "number",
+        JsonValueKind.Array => "array",
+        _ => "object",
+    };
 
     private static List<string>? GetEnumValues(JsonObject schemaProperty)
     {
