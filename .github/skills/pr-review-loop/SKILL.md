@@ -62,11 +62,12 @@ Skip this step for documentation-only changes.
 
 ### Step 2: Open the Pull Request
 
-Check whether a pull request for the branch is already open:
+Check whether a pull request from the branch to `main` is already open:
 
 ```bash
-PR=$(gh pr view "$FORK_OWNER:$BRANCH" --repo "$UPSTREAM" --json number,state \
-  --jq 'select(.state=="OPEN") | .number' 2>/dev/null)
+PR=$(gh pr list --repo "$UPSTREAM" --head "$BRANCH" --base main --state open \
+  --json number,headRepositoryOwner \
+  --jq ".[] | select(.headRepositoryOwner.login==\"$FORK_OWNER\") | .number")
 ```
 
 If `PR` is set, reuse it: push any new commits (`git push origin "$BRANCH"`) and continue with Step 3. Unresolved feedback from earlier rounds comes up again in Step 5.
