@@ -192,6 +192,16 @@ public class PluginSchemaComparerTests
     }
 
     [Fact]
+    public void Compare_DefaultNextToRef_UsesSiblingDefault()
+    {
+        var schema = Schema();
+        schema["definitions"] = JsonNode.Parse("""{ "ms": { "type": "integer" } }""");
+        schema["properties"]!["maxMs"] = JsonNode.Parse("""{ "$ref": "#/definitions/ms", "default": 5000 }""");
+
+        Assert.Empty(PluginSchemaComparer.Compare("SamplePlugin", typeof(SampleConfiguration), schema));
+    }
+
+    [Fact]
     public void Compare_RequiredButNotInClass_ReportsRequired()
     {
         var schema = Schema();

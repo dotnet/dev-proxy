@@ -65,7 +65,7 @@ internal static class PluginSchemaComparer
 
             var resolved = Resolve(schema, schemaProperty);
             CompareType(plugin, name, property.PropertyType, schema, resolved, mismatches);
-            CompareDefault(plugin, name, property, instance, resolved, mismatches);
+            CompareDefault(plugin, name, property, instance, schemaProperty, resolved, mismatches);
         }
 
         foreach (var (name, _) in schemaProperties)
@@ -236,13 +236,15 @@ internal static class PluginSchemaComparer
         }
     }
 
-    private static void CompareDefault(string plugin, string name, PropertyInfo property, object? instance, JsonObject schemaProperty, List<SchemaMismatch> mismatches)
+    private static void CompareDefault(string plugin, string name, PropertyInfo property, object? instance, JsonObject schemaProperty, JsonObject resolved, List<SchemaMismatch> mismatches)
     {
         var value = property.GetValue(instance);
         var underlying = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
         var actual = JsonSerializer.SerializeToNode(value, property.PropertyType, _serializerOptions);
 
-        if (!schemaProperty.TryGetPropertyValue("default", out var schemaDefault))
+        // A 'default' next to '$ref' applies to the property, so it wins over the referenced schema's.
+        if (!schemaProperty.TryGetPropertyValue("default", out var schemaDefault) &&
+            !resolved.TryGetPropertyValue("default", out schemaDefault))
         {
             if (IsSimpleOrSimpleCollection(underlying) && !IsTrivialDefault(value))
             {
