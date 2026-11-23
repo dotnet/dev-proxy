@@ -26,7 +26,7 @@ These stay with a human. Never:
 
 Stop the loop and report to the user when any of these is true:
 
-1. **Clean review:** the latest Copilot review of the current head commit generated no new comments, and CI is green
+1. **Clean review:** the latest Copilot review of the current head commit generated no new comments, CI is green, and every earlier thread is resolved or has your reply
 2. **Round limit:** 20 review rounds have been completed
 3. **Repeated CI failure:** the same CI check fails 3 times in a row with the same error
 4. **Stuck:** a fix needs a decision from a human (design choice, behavior change, scope change). Ask; don't guess
@@ -119,7 +119,7 @@ gh pr checks "$PR" --repo "$UPSTREAM"
 
 If `REVIEW` is empty or checks are still pending, stop (stop condition 5).
 
-If CI failed, read the logs (`gh run view <run-id> --repo "$UPSTREAM" --log-failed`), fix the cause, and go to Step 6. Track how many times in a row each check failed with the same error (stop condition 3).
+If CI failed, read the logs (`gh run view <run-id> --repo "$UPSTREAM" --log-failed`) and fix the cause together with the review comments in Step 5. Track how many times in a row each check failed with the same error (stop condition 3).
 
 `comments.totalCount` is the number of new comments in that round. If it's `0` and CI is green, stop (stop condition 1).
 
