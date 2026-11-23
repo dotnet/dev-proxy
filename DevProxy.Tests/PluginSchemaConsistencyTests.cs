@@ -63,8 +63,6 @@ public class PluginSchemaConsistencyTests(ITestOutputHelper output)
         [("MinimalPermissionsGuidancePlugin", "apiSpecsFolderPath", SchemaMismatchKind.Required)] = "Nullable so the plugin can report a missing value at startup",
         [("MinimalPermissionsPlugin", "apiSpecsFolderPath", SchemaMismatchKind.Required)] = "Nullable so the plugin can report a missing value at startup",
         [("AuthPlugin", "type", SchemaMismatchKind.Required)] = "Nullable so the plugin can report a missing value at startup",
-        [("AuthPlugin", "oAuth2", SchemaMismatchKind.MissingInSchema)] = "Schema uses 'oauth2'; configuration binding is case-insensitive",
-        [("AuthPlugin", "oauth2", SchemaMismatchKind.MissingInClass)] = "Binds to OAuth2; configuration binding is case-insensitive",
         [("MinimalCsomPermissionsPlugin", "typesDefinitions", SchemaMismatchKind.MissingInSchema)] = FileOnly,
         [("CrudApiPlugin", "actions", SchemaMismatchKind.MissingInSchema)] = FileOnly,
         [("CrudApiPlugin", "apiKeyAuthConfig", SchemaMismatchKind.MissingInSchema)] = FileOnly,
@@ -91,7 +89,7 @@ public class PluginSchemaConsistencyTests(ITestOutputHelper output)
     };
 
     // Lower this when you remove allowlist entries. Never raise it.
-    private const int MaxAllowlistCount = 31;
+    private const int MaxAllowlistCount = 29;
 
     private static readonly string _repoRoot = FindRepoRoot();
     private static readonly string _schemaFolder = Path.Combine(_repoRoot, "schemas", $"v{GetCurrentVersion()}");
