@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -77,7 +78,14 @@ static class DevProxyCli
         }
 
         using var process = new Process { StartInfo = startInfo };
-        _ = process.Start();
+        try
+        {
+            _ = process.Start();
+        }
+        catch (Win32Exception ex)
+        {
+            throw new CliLaunchException($"Couldn't start '{startInfo.FileName}': {ex.Message}", ex);
+        }
         // Closed stdin: no interactive prompts or hotkeys, like in CI or an agent shell.
         process.StandardInput.Close();
 
@@ -170,7 +178,7 @@ static class DevProxyCli
             path = Path.GetFullPath(path);
             return File.Exists(path)
                 ? path
-                : throw new FileNotFoundException($"{ExecutableEnvironmentVariable} points to '{path}', which doesn't exist.", path);
+                : throw new CliLaunchException($"{ExecutableEnvironmentVariable} points to '{path}', which doesn't exist.");
         }
 
         var configuration =
@@ -188,7 +196,14 @@ static class DevProxyCli
             }
         }
 
-        throw new FileNotFoundException(
+        throw new CliLaunchException(
             $"Couldn't find the devproxy executable. Build DevProxy ({configuration}) or set {ExecutableEnvironmentVariable} to the executable or its folder.");
     }
 }
+
+/// <summary>
+/// The Dev Proxy executable couldn't be found or started. CI reports a scenario that fails
+/// with this exception as inconclusive rather than as a product failure, so keep the type
+/// name in sync with <c>.github/scripts/cli-scenarios-on-base.cs</c>.
+/// </summary>
+sealed class CliLaunchException(string message, Exception? innerException = null) : Exception(message, innerException);

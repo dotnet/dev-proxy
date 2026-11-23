@@ -27,6 +27,9 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
+// Thrown by DevProxy.Cli.Tests when devproxy can't be found or started.
+const string LaunchExceptionType = "DevProxy.Cli.Tests.CliLaunchException";
+
 return args switch
 {
     ["select", var baseRef, var headRef, var workDir] => Select(baseRef, headRef, workDir),
@@ -47,28 +50,21 @@ static int Select(string baseRef, string headRef, string workDir)
     var selected = new SortedSet<string>(StringComparer.Ordinal);
     var skipped = new SortedSet<string>(StringComparer.Ordinal);
 
-    foreach (var (path, changedLines) in GetChangedLines(baseRef, headRef))
+    foreach (var file in GetChangedFiles(baseRef, headRef))
     {
-        var source = Git("show", $"{headRef}:{path}");
-        var root = CSharpSyntaxTree.ParseText(source, path: path).GetRoot();
-        foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
+        var headTests = GetTestMethods(Git("show", $"{headRef}:{file.HeadPath}"));
+        var changed = headTests.Where(t => t.Overlaps(file.HeadLines)).Select(t => t.Name).ToHashSet(StringComparer.Ordinal);
+        // Lines removed from a test leave no head-side lines inside it, so find those
+        // tests on the base side. Tests that no longer exist on head are ignored.
+        if (file.BasePath is not null && file.BaseLines.Count > 0)
         {
-            var testAttribute = method.AttributeLists.SelectMany(l => l.Attributes).FirstOrDefault(IsTestAttribute);
-            if (testAttribute is null)
-            {
-                continue;
-            }
-            // The span covers the attributes and the body, so new [InlineData] rows count too.
-            var span = method.GetLocation().GetLineSpan();
-            var first = span.StartLinePosition.Line + 1;
-            var last = span.EndLinePosition.Line + 1;
-            if (!changedLines.Any(l => l >= first && l <= last))
-            {
-                continue;
-            }
-            var isSkipped = testAttribute.ArgumentList?.Arguments
-                .Any(a => a.NameEquals?.Name.Identifier.Text == "Skip") == true;
-            _ = (isSkipped ? skipped : selected).Add(GetFullyQualifiedName(method));
+            changed.UnionWith(GetTestMethods(Git("show", $"{baseRef}:{file.BasePath}"))
+                .Where(t => t.Overlaps(file.BaseLines))
+                .Select(t => t.Name));
+        }
+        foreach (var test in headTests.Where(t => changed.Contains(t.Name)))
+        {
+            _ = (test.IsSkipped ? skipped : selected).Add(test.Name);
         }
     }
 
@@ -122,9 +118,17 @@ static int Report(string workDir, string baseBuildOutcome, bool allowPassOnBase)
     {
         inconclusive.Add("The scenarios didn't produce results against the base build.");
     }
+    else if (!allowPassOnBase && baseResults?.Unusable is not null)
+    {
+        inconclusive.Add($"The scenarios didn't run to completion against the base build: {baseResults.Unusable}.");
+    }
     if (headResults is null)
     {
         errors.Add("The scenarios didn't produce results against the PR build.");
+    }
+    else if (headResults.Unusable is not null)
+    {
+        errors.Add($"The scenarios didn't run to completion against the PR build: {headResults.Unusable}.");
     }
     var baseUsable = !allowPassOnBase && inconclusive.Count == 0;
 
@@ -146,6 +150,11 @@ static int Report(string workDir, string baseBuildOutcome, bool allowPassOnBase)
             {
                 baseCell = "⚠️ no result";
                 inconclusive.Add($"`{test}` didn't run against the base build.");
+            }
+            else if (baseResults!.LaunchFailures.Contains(test))
+            {
+                baseCell = "⚠️ couldn't start devproxy";
+                inconclusive.Add($"`{test}` couldn't start the base `devproxy`, so its failure says nothing about the change.");
             }
             else if (outcomes.Contains("Failed"))
             {
@@ -169,7 +178,7 @@ static int Report(string workDir, string baseBuildOutcome, bool allowPassOnBase)
                 errors.Add($"`{test}` didn't run against the PR build.");
             }
         }
-        else if (headOutcomes.All(o => o == "Passed"))
+        else if (headResults!.Unusable is null && headOutcomes.All(o => o == "Passed"))
         {
             headCell = "✅ passes";
             passedOnHead++;
@@ -236,11 +245,12 @@ static string Describe(List<string> outcomes) => string.Join(", ", outcomes
     .GroupBy(o => o)
     .Select(g => $"{g.Count()} {g.Key.ToLowerInvariant()}"));
 
-static List<string> Lookup(Dictionary<string, List<string>>? results, string test) =>
-    results is not null && results.TryGetValue(test, out var outcomes) ? outcomes : [];
+static List<string> Lookup(TrxRun? run, string test) =>
+    run is not null && run.Results.TryGetValue(test, out var outcomes) ? outcomes : [];
 
 // Maps fully qualified test method names to the outcome of each of their test cases.
-static Dictionary<string, List<string>>? ReadTrx(string path)
+// Returns null when the file is missing.
+static TrxRun? ReadTrx(string path)
 {
     if (!File.Exists(path))
     {
@@ -256,6 +266,7 @@ static Dictionary<string, List<string>>? ReadTrx(string path)
             return $"{(string)method.Attribute("className")!}.{(string)method.Attribute("name")!}";
         });
     var results = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+    var launchFailures = new HashSet<string>(StringComparer.Ordinal);
     foreach (var result in doc.Descendants(ns + "UnitTestResult"))
     {
         if (!methods.TryGetValue((string)result.Attribute("testId")!, out var name))
@@ -267,8 +278,53 @@ static Dictionary<string, List<string>>? ReadTrx(string path)
             results[name] = outcomes = [];
         }
         outcomes.Add((string?)result.Attribute("outcome") ?? "Unknown");
+        var message = (string?)result.Descendants(ns + "Message").FirstOrDefault() ?? "";
+        if (message.Contains(LaunchExceptionType, StringComparison.Ordinal))
+        {
+            _ = launchFailures.Add(name);
+        }
     }
-    return results;
+
+    // A crashed or aborted test host leaves partial results that look like passes. xUnit
+    // also logs every failing test as a run-level error, so look for VSTest's abort message.
+    var summary = doc.Descendants(ns + "ResultSummary").FirstOrDefault();
+    var summaryOutcome = (string?)summary?.Attribute("outcome");
+    var runErrors = summary?.Descendants(ns + "RunInfo")
+        .Where(r => (string?)r.Attribute("outcome") == "Error")
+        .Select(r => ((string?)r.Element(ns + "Text"))?.Trim() ?? "")
+        .Where(t => t.Contains("test run was aborted", StringComparison.OrdinalIgnoreCase)
+            || t.Contains("test host process crashed", StringComparison.OrdinalIgnoreCase))
+        .Select(t => t.ReplaceLineEndings(" ").Split(" at ", 2)[0].Trim())
+        .ToList() ?? [];
+    string? unusable = null;
+    if (summaryOutcome is not ("Completed" or "Failed" or "Passed"))
+    {
+        unusable = $"the test run ended with outcome '{summaryOutcome ?? "missing"}'";
+    }
+    else if (runErrors.Count > 0)
+    {
+        unusable = string.Join(" ", runErrors).TrimEnd('.');
+    }
+    return new(results, launchFailures, unusable);
+}
+
+static List<TestMethod> GetTestMethods(string source)
+{
+    var tests = new List<TestMethod>();
+    foreach (var method in CSharpSyntaxTree.ParseText(source).GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>())
+    {
+        var testAttribute = method.AttributeLists.SelectMany(l => l.Attributes).FirstOrDefault(IsTestAttribute);
+        if (testAttribute is null)
+        {
+            continue;
+        }
+        // The span covers the attributes and the body, so new [InlineData] rows count too.
+        var span = method.GetLocation().GetLineSpan();
+        var isSkipped = testAttribute.ArgumentList?.Arguments
+            .Any(a => a.NameEquals?.Name.Identifier.Text == "Skip") == true;
+        tests.Add(new(GetFullyQualifiedName(method), span.StartLinePosition.Line + 1, span.EndLinePosition.Line + 1, isSkipped));
+    }
+    return tests;
 }
 
 static bool IsTestAttribute(AttributeSyntax attribute)
@@ -292,23 +348,33 @@ static string GetFullyQualifiedName(MethodDeclarationSyntax method)
     return $"{(prefix.Length > 0 ? prefix + "." : "")}{string.Join('+', types)}.{method.Identifier.Text}";
 }
 
-// Returns, per changed .cs file under DevProxy.Cli.Tests, the head-side line numbers
-// that were added or changed. A pure deletion marks the lines on both sides of it.
-static Dictionary<string, HashSet<int>> GetChangedLines(string baseRef, string headRef)
+// Returns the added/changed head-side lines and removed/changed base-side lines of each
+// changed .cs file under DevProxy.Cli.Tests.
+static List<ChangedFile> GetChangedFiles(string baseRef, string headRef)
 {
     var diff = Git("diff", "--unified=0", "--no-color", "--no-ext-diff", "--find-renames", "--diff-filter=AMR",
         baseRef, headRef, "--", "DevProxy.Cli.Tests/");
-    var files = new Dictionary<string, HashSet<int>>(StringComparer.Ordinal);
-    HashSet<int>? current = null;
-    var hunk = new Regex(@"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@");
-    foreach (var line in diff.Split('\n'))
+    var files = new List<ChangedFile>();
+    string? basePath = null;
+    ChangedFile? current = null;
+    var hunk = new Regex(@"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@");
+    foreach (var rawLine in diff.Split('\n'))
     {
+        var line = rawLine.TrimEnd('\r');
+        if (line.StartsWith("--- ", StringComparison.Ordinal))
+        {
+            basePath = line.StartsWith("--- a/", StringComparison.Ordinal) ? line[6..] : null;
+            continue;
+        }
         if (line.StartsWith("+++ ", StringComparison.Ordinal))
         {
-            var path = line[4..].TrimEnd('\r');
-            current = path.StartsWith("b/", StringComparison.Ordinal) && path.EndsWith(".cs", StringComparison.Ordinal)
-                ? files[path[2..]] = []
+            current = line.StartsWith("+++ b/", StringComparison.Ordinal) && line.EndsWith(".cs", StringComparison.Ordinal)
+                ? new ChangedFile(line[6..], basePath)
                 : null;
+            if (current is not null)
+            {
+                files.Add(current);
+            }
             continue;
         }
         var match = hunk.Match(line);
@@ -316,19 +382,20 @@ static Dictionary<string, HashSet<int>> GetChangedLines(string baseRef, string h
         {
             continue;
         }
-        var start = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
-        var count = match.Groups[2].Success ? int.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture) : 1;
-        if (count == 0)
-        {
-            _ = current.Add(start);
-            _ = current.Add(start + 1);
-        }
-        for (var i = 0; i < count; i++)
-        {
-            _ = current.Add(start + i);
-        }
+        AddRange(current.BaseLines, match.Groups[1], match.Groups[2]);
+        AddRange(current.HeadLines, match.Groups[3], match.Groups[4]);
     }
     return files;
+
+    static void AddRange(HashSet<int> lines, Group start, Group count)
+    {
+        var first = int.Parse(start.Value, CultureInfo.InvariantCulture);
+        var length = count.Success ? int.Parse(count.Value, CultureInfo.InvariantCulture) : 1;
+        for (var i = 0; i < length; i++)
+        {
+            _ = lines.Add(first + i);
+        }
+    }
 }
 
 static string Git(params string[] arguments)
@@ -384,6 +451,19 @@ static void WriteOutput(string name, string value)
         File.AppendAllText(path, $"{name}={value}{Environment.NewLine}");
     }
 }
+
+sealed record TestMethod(string Name, int FirstLine, int LastLine, bool IsSkipped)
+{
+    public bool Overlaps(IEnumerable<int> lines) => lines.Any(l => l >= FirstLine && l <= LastLine);
+}
+
+sealed record ChangedFile(string HeadPath, string? BasePath)
+{
+    public HashSet<int> HeadLines { get; } = [];
+    public HashSet<int> BaseLines { get; } = [];
+}
+
+sealed record TrxRun(Dictionary<string, List<string>> Results, HashSet<string> LaunchFailures, string? Unusable);
 
 static class Files
 {
