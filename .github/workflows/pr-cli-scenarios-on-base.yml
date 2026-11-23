@@ -1,0 +1,90 @@
+name: CLI scenarios on base
+
+# Proves that the CLI scenario tests a PR adds or changes (DevProxy.Cli.Tests) actually
+# test the change: they must fail against devproxy built from the base branch and pass
+# against devproxy built from the PR. PRs that don't touch the scenarios pass with
+# "0 scenarios selected".
+#
+# Add the `test-passes-on-main` label to a PR whose new scenarios intentionally lock in
+# existing behavior; the check then only requires them to pass on the PR build.
+#
+# This is a separate workflow (not a job in pr-build.yml) so adding or removing that
+# label re-runs only this check.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    paths-ignore: ['samples/**', '**.md', '.vscode/**', '**.svg']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  scenarios-on-base:
+    name: New CLI scenarios fail on base, pass on PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+      WORK_DIR: ${{ github.workspace }}/../scenarios-on-base
+      ALLOW_PASS_ON_BASE: ${{ contains(github.event.pull_request.labels.*.name, 'test-passes-on-main') }}
+    steps:
+      # The PR merge commit and its first parent: the base branch the PR merges into.
+      # Comparing the two isolates exactly what the PR changes.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - name: Setup .NET
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: 10.0.x
+      - name: Select new or changed scenarios
+        id: select
+        run: dotnet run .github/scripts/cli-scenarios-on-base.cs -- select HEAD^1 HEAD "$WORK_DIR"
+
+      - name: Build PR
+        if: steps.select.outputs.count != '0'
+        run: |
+          dotnet restore DevProxy.sln --locked-mode
+          dotnet build DevProxy/DevProxy.csproj -c Release --no-restore
+          dotnet build DevProxy.Plugins/DevProxy.Plugins.csproj -c Release --no-restore
+          dotnet build DevProxy.Cli.Tests/DevProxy.Cli.Tests.csproj -c Release --no-restore
+      # Infra failures here make the result inconclusive, never "fails on base".
+      - name: Build base
+        id: base-build
+        if: steps.select.outputs.count != '0' && env.ALLOW_PASS_ON_BASE != 'true'
+        continue-on-error: true
+        run: |
+          git worktree add --detach "$WORK_DIR/base" HEAD^1
+          cd "$WORK_DIR/base"
+          dotnet restore DevProxy/DevProxy.csproj --locked-mode
+          dotnet restore DevProxy.Plugins/DevProxy.Plugins.csproj --locked-mode
+          dotnet build DevProxy/DevProxy.csproj -c Release --no-restore
+          dotnet build DevProxy.Plugins/DevProxy.Plugins.csproj -c Release --no-restore
+          ./DevProxy/bin/Release/net10.0/devproxy --version
+      # The test project always comes from the PR: black-box tests reference no product
+      # types, so only DEVPROXY_EXE changes between the two runs.
+      - name: Run scenarios against base
+        if: steps.base-build.outcome == 'success'
+        env:
+          DEVPROXY_EXE: ${{ env.WORK_DIR }}/base/DevProxy/bin/Release/net10.0
+        run: |
+          dotnet test DevProxy.Cli.Tests/DevProxy.Cli.Tests.csproj -c Release --no-build \
+            --filter "$(cat "$WORK_DIR/filter.txt")" \
+            --results-directory "$WORK_DIR" --logger "trx;LogFileName=base.trx" --logger "console;verbosity=normal" || true
+      - name: Run scenarios against PR
+        if: steps.select.outputs.count != '0'
+        env:
+          DEVPROXY_EXE: ${{ github.workspace }}/DevProxy/bin/Release/net10.0
+        run: |
+          dotnet test DevProxy.Cli.Tests/DevProxy.Cli.Tests.csproj -c Release --no-build \
+            --filter "$(cat "$WORK_DIR/filter.txt")" \
+            --results-directory "$WORK_DIR" --logger "trx;LogFileName=head.trx" --logger "console;verbosity=normal" || true
+      - name: Report
+        if: always() && steps.select.outputs.count != '0' && steps.select.outputs.count != ''
+        run: dotnet run .github/scripts/cli-scenarios-on-base.cs -- report "$WORK_DIR" "${{ steps.base-build.outcome }}" "$ALLOW_PASS_ON_BASE"

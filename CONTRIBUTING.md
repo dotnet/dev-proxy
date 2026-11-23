@@ -21,6 +21,7 @@ Typos are embarrassing! Most PRs that fix typos will be accepted immediately. To
 ## DO's & DON'Ts
 
 - **DO** follow the same project and test structure as the existing project.
+- **DO** add a CLI scenario in `DevProxy.Cli.Tests` that fails without your change when you change CLI behavior. The *CLI scenarios on base* check runs the scenarios a PR adds or changes against `devproxy` built from the base branch (they must fail) and from the PR (they must pass). If a scenario intentionally locks in existing behavior, ask a maintainer to add the `test-passes-on-main` label.
 - **DO** keep discussions focused. When a new or related topic comes up, it's often better to create a new issue than to side-track the conversation.
 - **DO NOT** submit PRs for coding style changes. These changes can cause unnecessary conflicts and make the review process more complicated.
 - **DO NOT** surprise us with big PRs. Instead, file an issue and start a discussion so we can agree on a direction before you invest a large amount of time.
