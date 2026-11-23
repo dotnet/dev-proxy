@@ -26,8 +26,10 @@ proxy_pid=""
 log_file=""
 
 # DEV_PROXY_CERT_PATH is set explicitly so an inherited value can't point at a real root cert.
+# DEV_PROXY_API_TOKEN is cleared so the instance generates a disposable token instead of
+# reusing (and printing) an inherited one.
 devproxy_() {
-  HOME="$proxy_home" XDG_CONFIG_HOME="$proxy_home/.config" \
+  env -u DEV_PROXY_API_TOKEN HOME="$proxy_home" XDG_CONFIG_HOME="$proxy_home/.config" \
     DEV_PROXY_CERT_PATH="$proxy_home/.config/dev-proxy/rootCert.pfx" "$devproxy" "$@"
 }
 
