@@ -62,12 +62,14 @@ Skip this step for documentation-only changes.
 
 ### Step 2: Open the Pull Request
 
-If a pull request for the branch is already open, reuse it and skip to Step 5 to address its open feedback:
+Check whether a pull request for the branch is already open:
 
 ```bash
 PR=$(gh pr view "$FORK_OWNER:$BRANCH" --repo "$UPSTREAM" --json number,state \
   --jq 'select(.state=="OPEN") | .number' 2>/dev/null)
 ```
+
+If `PR` is set, reuse it: push any new commits (`git push origin "$BRANCH"`) and continue with Step 3. Unresolved feedback from earlier rounds comes up again in Step 5.
 
 Otherwise, rebase on the latest upstream `main` and push the branch to the fork. Only rebase a branch that hasn't been pushed yet. Once it's published, don't rewrite its history; if it needs upstream changes, merge `upstream/main` instead.
 
