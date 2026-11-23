@@ -55,7 +55,7 @@ dotnet run --project DevProxy -- --detach --as-system-proxy false --port 0 --api
 ## Reference (Architecture)
 
 - **Main entry point:** `DevProxy/Program.cs` — sets up web host, configuration, logging, plugins, and starts proxy engine
-- **Proxy Engine:** `DevProxy/Proxy/ProxyEngine.cs` — network interception, request/response handling, plugin invocation
+- **Proxy Engine:** `DevProxy.Proxy.Kestrel/KestrelProxyEngine.cs` — hosted service that listens for proxy connections (registered in `DevProxy/Extensions/IServiceCollectionExtensions.cs`); `DevProxy.Proxy.Kestrel/Internal/ProxyConnectionHandler.cs` — per-connection request handling, CONNECT/MITM decisions, forwarding to the origin; `DevProxy.Proxy.Kestrel/Internal/PluginPipeline.cs` — plugin invocation
 - **Plugins:** Implement `IPlugin` interface (`DevProxy.Abstractions/Plugins/IPlugin.cs`). Base classes: `BasePlugin`, `BaseReportingPlugin` in `DevProxy.Abstractions/Plugins/`
 - **CLI Commands:** `DevProxy/Commands/` — built with System.CommandLine, registered via `DevProxyCommand.cs`
 - **Configuration:** `DevProxy/config/devproxyrc.json` and other JSON files in `config/`
