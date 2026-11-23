@@ -7,8 +7,10 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <!-- Underscored Method_Scenario_Expectation test names are idiomatic; inline literal
-         arrays in assertions are fine in tests. -->
-    <NoWarn>$(NoWarn);CA1707;CA1861</NoWarn>
+         arrays in assertions are fine in tests. The DevProxy reference brings in the
+         VS threading analyzers, whose VSTHRD003/VSTHRD202 rules flag test methods that
+         await helpers or tasks they didn't start. -->
+    <NoWarn>$(NoWarn);CA1707;CA1861;VSTHRD003;VSTHRD202</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -31,12 +33,13 @@
     <PackageReference Include="Microsoft.OpenApi" Version="3.11.0" />
     <PackageReference Include="Microsoft.OpenApi.YamlReader" Version="3.11.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-    <PackageReference Include="OpenTelemetry" Version="1.20.1" />
-    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.20.1" />
+    <PackageReference Include="OpenTelemetry" Version="1.21.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.21.0" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.23.0" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\DevProxy\DevProxy.csproj" />
     <ProjectReference Include="..\DevProxy.Abstractions\DevProxy.Abstractions.csproj" />
     <ProjectReference Include="..\DevProxy.Plugins\DevProxy.Plugins.csproj" />
     <ProjectReference Include="..\DevProxy.Proxy.Kestrel\DevProxy.Proxy.Kestrel.csproj" />
