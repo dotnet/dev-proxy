@@ -407,6 +407,16 @@ public sealed class MemoryRetentionTests(ITestOutputHelper output)
             probe.Tracking = false;
 
             var tracked = probe.TrackedSessions.ToArray();
+            // Every successful request reaches the proxy; a cancelled one may not, but
+            // an empty sample would let the checks pass without checking anything.
+            if (mix == RequestMix.Successful)
+            {
+                Assert.Equal(TrackedRequests, tracked.Length);
+            }
+            else
+            {
+                Assert.NotEmpty(tracked);
+            }
             await CollectUntilAsync(() => tracked.All(s => !s.IsAlive));
             var retained = tracked.Count(s => s.IsAlive);
 
