@@ -155,7 +155,7 @@ internal static class PluginSchemaComparer
         var underlying = Nullable.GetUnderlyingType(type) ?? type;
         if (underlying.IsEnum)
         {
-            CompareEnum(plugin, name, underlying, schemaProperty, mismatches);
+            CompareEnum(plugin, name, underlying, root, schemaProperty, mismatches);
         }
         else if (expected.Contains("array") && GetElementType(underlying) is { } elementType)
         {
@@ -209,9 +209,9 @@ internal static class PluginSchemaComparer
         }
     }
 
-    private static void CompareEnum(string plugin, string name, Type enumType, JsonObject schemaProperty, List<SchemaMismatch> mismatches)
+    private static void CompareEnum(string plugin, string name, Type enumType, JsonObject root, JsonObject schemaProperty, List<SchemaMismatch> mismatches)
     {
-        var enumValues = GetEnumValues(schemaProperty);
+        var enumValues = GetEnumValues(root, schemaProperty);
         if (enumValues is null)
         {
             mismatches.Add(new(plugin, name, SchemaMismatchKind.Enum,
@@ -380,23 +380,45 @@ internal static class PluginSchemaComparer
         _ => "object",
     };
 
-    private static List<string>? GetEnumValues(JsonObject schemaProperty)
+    // Collects the allowed values from 'enum'/'const', including across oneOf/anyOf
+    // branches. Returns null when any branch doesn't restrict values.
+    private static List<string>? GetEnumValues(JsonObject root, JsonObject schemaProperty)
     {
         if (schemaProperty["enum"] is JsonArray values)
         {
             return [.. values.Select(v => v?.ToString()).OfType<string>()];
         }
 
+        if (schemaProperty.TryGetPropertyValue("const", out var constValue))
+        {
+            return constValue is null ? [] : [constValue.ToString()];
+        }
+
+        if (schemaProperty["type"] is JsonValue type && type.GetValue<string>() == "null")
+        {
+            return [];
+        }
+
+        List<string>? result = null;
         foreach (var keyword in new[] { "oneOf", "anyOf" })
         {
-            if (schemaProperty[keyword] is JsonArray branches &&
-                branches.All(b => b is JsonObject o && o.ContainsKey("const")))
+            if (schemaProperty[keyword] is not JsonArray branches)
             {
-                return [.. branches.Select(b => b!["const"]?.ToString()).OfType<string>()];
+                continue;
+            }
+
+            foreach (var branch in branches.Select(AsSchema).OfType<JsonObject>())
+            {
+                if (GetEnumValues(root, Resolve(root, branch)) is not { } branchValues)
+                {
+                    return null;
+                }
+
+                (result ??= []).AddRange(branchValues);
             }
         }
 
-        return null;
+        return result;
     }
 
     // Boolean schemas: true allows anything (same as {}); false allows nothing.

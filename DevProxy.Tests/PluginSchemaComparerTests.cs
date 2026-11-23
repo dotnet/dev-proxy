@@ -180,6 +180,29 @@ public class PluginSchemaComparerTests
         Assert.Equal(2, mismatches.Count(m => m is { Property: "mode", Kind: SchemaMismatchKind.Enum }));
     }
 
+    [Theory]
+    [InlineData("""{ "anyOf": [{ "$ref": "#/definitions/mode" }, { "type": "null" }], "default": "fast" }""")]
+    [InlineData("""{ "oneOf": [{ "const": "Fast" }, { "$ref": "#/definitions/slow" }], "default": "fast" }""")]
+    public void Compare_EnumInsideBranches_ComparesEnumValues(string modeSchema)
+    {
+        var schema = Schema();
+        schema["definitions"] = JsonNode.Parse("""{ "mode": { "type": "string", "enum": ["Fast", "Slow"] }, "slow": { "const": "Slow" } }""");
+        schema["properties"]!["mode"] = JsonNode.Parse(modeSchema);
+
+        Assert.Empty(PluginSchemaComparer.Compare("SamplePlugin", typeof(SampleConfiguration), schema));
+    }
+
+    [Fact]
+    public void Compare_EnumBranchMissingMember_ReportsEnum()
+    {
+        var schema = Schema();
+        schema["properties"]!["mode"] = JsonNode.Parse("""{ "anyOf": [{ "type": "string", "enum": ["Fast"] }], "default": "fast" }""");
+
+        var mismatch = Assert.Single(PluginSchemaComparer.Compare("SamplePlugin", typeof(SampleConfiguration), schema));
+
+        Assert.Equal(("mode", SchemaMismatchKind.Enum), (mismatch.Property, mismatch.Kind));
+    }
+
     [Fact]
     public void Compare_RequiredButNullable_ReportsRequired()
     {
