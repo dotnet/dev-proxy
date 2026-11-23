@@ -35,6 +35,7 @@ To create a new plugin:
 - **Commit messages:** Clear, succinct, and reference the issue they close when applicable
 - **Versioning:** We follow semver. Use the `upgrade-devproxy-version` skill for version bumps
 - **Release:** After release builds, homebrew is updated manually. Use the `publish-to-winget` skill for winget submissions
+- **Pull requests:** Build and run tests before opening a PR. Use the `pr-review-loop` skill to open it and drive it through Copilot review. Never merge it yourself
 
 ## Testing Code Changes
 
