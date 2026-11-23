@@ -83,7 +83,12 @@ internal static class PluginSchemaComparer
         {
             foreach (var name in required.Select(r => r?.GetValue<string>()).OfType<string>())
             {
-                if (classProperties.TryGetValue(name, out var property) && IsNullable(property))
+                if (!classProperties.TryGetValue(name, out var property))
+                {
+                    mismatches.Add(new(plugin, name, SchemaMismatchKind.Required,
+                        $"is required in the schema but doesn't exist on {configurationType.Name}"));
+                }
+                else if (IsNullable(property))
                 {
                     mismatches.Add(new(plugin, name, SchemaMismatchKind.Required,
                         $"is required in the schema but nullable on {configurationType.Name}"));
@@ -328,16 +333,9 @@ internal static class PluginSchemaComparer
                 {
                     _ = types.Add(GetJsonType(constValue));
                 }
-                else if (schemaProperty.ContainsKey("properties"))
-                {
-                    _ = types.Add("object");
-                }
-                else if (schemaProperty.ContainsKey("items"))
-                {
-                    _ = types.Add("array");
-                }
                 else
                 {
+                    // 'properties' and 'items' only apply to objects/arrays; they don't restrict the type.
                     constrained = false;
                 }
 

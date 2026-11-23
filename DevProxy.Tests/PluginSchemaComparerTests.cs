@@ -187,4 +187,26 @@ public class PluginSchemaComparerTests
 
         Assert.Equal(("name", SchemaMismatchKind.Required), (mismatch.Property, mismatch.Kind));
     }
+
+    [Fact]
+    public void Compare_RequiredButNotInClass_ReportsRequired()
+    {
+        var schema = Schema();
+        schema["required"] = new JsonArray("maxMs", "timeout");
+
+        var mismatch = Assert.Single(PluginSchemaComparer.Compare("SamplePlugin", typeof(SampleConfiguration), schema));
+
+        Assert.Equal(("timeout", SchemaMismatchKind.Required), (mismatch.Property, mismatch.Kind));
+    }
+
+    [Fact]
+    public void Compare_ItemsWithoutType_ReportsType()
+    {
+        var schema = Schema();
+        schema["properties"]!["tags"] = JsonNode.Parse("""{ "items": { "type": "string" } }""");
+
+        var mismatches = PluginSchemaComparer.Compare("SamplePlugin", typeof(SampleConfiguration), schema);
+
+        Assert.Contains(mismatches, m => m is { Property: "tags", Kind: SchemaMismatchKind.Type });
+    }
 }
