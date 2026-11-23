@@ -1,0 +1,101 @@
+name: OS integration
+
+# Exercises Dev Proxy's real OS integration (system proxy, root certificate trust, restoring
+# settings on stop/crash) on throwaway hosted runners. PR CI deliberately avoids these paths
+# (--as-system-proxy false --install-cert false). Failures open or update an issue.
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+    inputs:
+      break_system_proxy:
+        description: Deliberately break system proxy registration (verifies failure reporting)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: os-integration-${{ github.ref }}
+
+jobs:
+  os-integration:
+    # Nightly runs only upstream; forks can run it manually.
+    if: github.event_name == 'workflow_dispatch' || github.repository == 'dotnet/dev-proxy'
+    name: OS integration (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: macOS
+          - os: windows-latest
+            name: Windows
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      # Set to 'true' once https://github.com/dotnet/dev-proxy/pull/2149 is merged.
+      STRICT_HOT_RELOAD: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup .NET
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: 10.0.x
+      - name: Restore workloads
+        run: dotnet workload restore
+      - name: Restore dependencies
+        run: dotnet restore DevProxy.sln --locked-mode
+      - name: Build
+        run: dotnet build DevProxy.sln --no-restore -c Release
+      - name: Run OS integration test
+        timeout-minutes: 15
+        shell: pwsh
+        env:
+          BREAK_SYSTEM_PROXY: ${{ inputs.break_system_proxy }}
+        run: >
+          ./.github/scripts/os-integration-test.ps1
+          -AppDir DevProxy/bin/Release/net10.0
+          -BreakSystemProxy:$($env:BREAK_SYSTEM_PROXY -eq 'true')
+          -StrictHotReload:$($env:STRICT_HOT_RELOAD -eq 'true')
+      - name: Report failure
+        if: failure()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OS_NAME: ${{ matrix.name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $title = "Nightly OS integration failing ($env:OS_NAME)"
+          $runUrl = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID/attempts/$env:GITHUB_RUN_ATTEMPT"
+          $bodyFile = Join-Path $env:RUNNER_TEMP 'os-integration-issue.md'
+          @(
+            "The OS integration workflow failed on **$env:OS_NAME**."
+            ''
+            "- Run: $runUrl"
+            "- Commit: $env:GITHUB_SHA"
+            "- Trigger: $env:GITHUB_EVENT_NAME"
+            ''
+            'Close this issue manually after a green run.'
+          ) | Set-Content -Path $bodyFile
+
+          # Dedupe by exact title: comment on the open issue instead of opening another one.
+          $existing = gh issue list --repo $env:GITHUB_REPOSITORY --state open --limit 1000 --json number,title |
+            ConvertFrom-Json | Where-Object title -eq $title | Select-Object -First 1
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to list issues' }
+
+          if ($existing) {
+            gh issue comment $existing.number --repo $env:GITHUB_REPOSITORY --body-file $bodyFile
+          }
+          else {
+            gh issue create --repo $env:GITHUB_REPOSITORY --title $title --body-file $bodyFile
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to report the failure' }
