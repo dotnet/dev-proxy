@@ -13,8 +13,26 @@ on:
 permissions:
   contents: read
 
-jobs:
+jobs: # job names and matrices must match the original workflow
   build:
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required"'
+
+  unit-tests:
+    name: Unit tests (${{ matrix.os }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+    steps:
+      - run: 'echo "No unit tests required"'
+
+  integration-tests:
+    name: Integration tests (${{ matrix.os }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+    steps:
+      - run: 'echo "No integration tests required"'

@@ -18,12 +18,14 @@
     },
     "rate": {
       "type": "integer",
+      "default": 50,
       "minimum": 0,
       "maximum": 100,
       "description": "The percentage (0-100) of requests that should be failed with a random error."
     },
     "retryAfterInSeconds": {
       "type": "integer",
+      "default": 5,
       "minimum": 0,
       "description": "The number of seconds to set in the Retry-After header for throttling responses."
     }
