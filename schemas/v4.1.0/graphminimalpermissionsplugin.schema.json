@@ -9,6 +9,7 @@
     },
     "type": {
       "type": "string",
+      "default": "delegated",
       "enum": [
         "delegated",
         "application"
