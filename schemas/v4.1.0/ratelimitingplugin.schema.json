@@ -9,43 +9,52 @@
     },
     "headerLimit": {
       "type": "string",
+      "default": "RateLimit-Limit",
       "description": "Name of the response header that communicates the rate-limiting limit (e.g., 'RateLimit-Limit')."
     },
     "headerRemaining": {
       "type": "string",
+      "default": "RateLimit-Remaining",
       "description": "Name of the response header that communicates the remaining number of resources before the reset (e.g., 'RateLimit-Remaining')."
     },
     "headerReset": {
       "type": "string",
+      "default": "RateLimit-Reset",
       "description": "Name of the response header that communicates the time remaining until the reset (e.g., 'RateLimit-Reset')."
     },
     "headerRetryAfter": {
       "type": "string",
+      "default": "Retry-After",
       "description": "Name of the response header that communicates the retry-after period (e.g., 'Retry-After')."
     },
     "costPerRequest": {
       "type": "integer",
+      "default": 2,
       "minimum": 1,
       "description": "How many resources a single request costs."
     },
     "resetTimeWindowSeconds": {
       "type": "integer",
+      "default": 60,
       "minimum": 1,
       "description": "How long in seconds until the next rate limit reset."
     },
     "warningThresholdPercent": {
       "type": "integer",
+      "default": 80,
       "minimum": 0,
       "maximum": 100,
       "description": "The percentage of the rate limit after which warning headers are returned."
     },
     "rateLimit": {
       "type": "integer",
+      "default": 120,
       "minimum": 1,
       "description": "Number of resources allowed per time window."
     },
     "whenLimitExceeded": {
       "type": "string",
+      "default": "Throttle",
       "enum": [
         "Throttle",
         "Custom"
@@ -54,6 +63,7 @@
     },
     "resetFormat": {
       "type": "string",
+      "default": "SecondsLeft",
       "enum": [
         "SecondsLeft",
         "UtcEpochSeconds"
@@ -62,6 +72,7 @@
     },
     "customResponseFile": {
       "type": "string",
+      "default": "rate-limit-response.json",
       "description": "Path to a file containing a custom error response to use when the rate limit is exceeded."
     }
   },
