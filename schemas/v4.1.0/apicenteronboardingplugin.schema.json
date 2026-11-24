@@ -9,6 +9,7 @@
     },
     "createApicEntryForNewApis": {
       "type": "boolean",
+      "default": true,
       "description": "Set to true to have Dev Proxy create new API entries for APIs detected but not yet registered in API Center. When false, Dev Proxy only lists unregistered APIs. Default is true."
     },
     "resourceGroupName": {
@@ -25,6 +26,7 @@
     },
     "workspaceName": {
       "type": "string",
+      "default": "default",
       "description": "Name of the Azure API Center workspace to use. Default is 'default'."
     }
   },
