@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v4.1.0/mockresponseplugin.mocksfile.schema.json",
+  "mocks": [
+    {
+      "request": {
+        "url": "https://localhost:${SMOKE_TARGET_PORT}/mocked"
+      },
+      "response": {
+        "statusCode": 200,
+        "headers": [
+          {
+            "name": "X-Smoke-Mock",
+            "value": "yes"
+          }
+        ],
+        "body": {
+          "mocked": true
+        }
+      }
+    }
+  ]
+}
