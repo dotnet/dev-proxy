@@ -35,7 +35,7 @@ public sealed class MockResponseConfiguration
     [JsonIgnore]
     public bool NoMocks { get; set; }
     [JsonPropertyName("$schema")]
-    public string Schema { get; set; } = "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v4.0.0/mockresponseplugin.mocksfile.schema.json";
+    public string Schema { get; set; } = "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v4.1.0/mockresponseplugin.mocksfile.schema.json";
 }
 
 public class MockResponsePlugin(
@@ -308,8 +308,32 @@ public class MockResponsePlugin(
         }
 
         return matchingMocks.FirstOrDefault(mockResponse =>
-            mockResponse.Request!.Nth is null ||
-            mockResponse.Request.Nth == requestCounts[GetMockKey(mockResponse)]);
+            (mockResponse.Request!.Nth is null ||
+            mockResponse.Request.Nth == requestCounts[GetMockKey(mockResponse)]) &&
+            ShouldApplyMock(mockResponse));
+    }
+
+    internal static bool IsValidRate(int rate) => rate is >= 0 and <= 100;
+
+    private bool ShouldApplyMock(MockResponse mockResponse)
+    {
+        if (mockResponse.Rate is not { } rate || !IsValidRate(rate))
+        {
+            return true;
+        }
+
+        var roll = Random.Shared.Next(1, 101);
+        if (roll <= rate)
+        {
+            return true;
+        }
+
+        Logger.LogDebug(
+            "Skipping mock for {Method} {Url} based on its rate of {Rate}%",
+            mockResponse.Request!.Method,
+            mockResponse.Request.Url,
+            rate);
+        return false;
     }
 
     private static MockRequestKey GetMockKey(MockResponse mockResponse)
