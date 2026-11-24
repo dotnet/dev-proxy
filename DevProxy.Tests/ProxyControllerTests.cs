@@ -9,7 +9,6 @@ using DevProxy.ApiControllers;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
-
 using Xunit;
 
 namespace DevProxy.Tests;
@@ -85,4 +84,16 @@ public sealed class ProxyControllerTests : IDisposable
                 HttpContext = new DefaultHttpContext { RequestServices = _services }
             }
         };
+
+    [Fact]
+    public async Task RaiseMockRequestAsync_ReturnsNoContentAfterMockRequestCompletes()
+    {
+        var stateController = new FakeProxyStateController();
+        var controller = new ProxyController(stateController, new FakeProxyConfiguration(), _certificate);
+
+        var result = await controller.RaiseMockRequestAsync(CancellationToken.None);
+
+        _ = Assert.IsType<NoContentResult>(result);
+        Assert.Equal(1, stateController.MockRequestCalls);
+    }
 }

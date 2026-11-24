@@ -2,6 +2,7 @@ using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Proxy;
+using DevProxy.Proxy.Kestrel;
 using DevProxy.State;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
@@ -63,7 +64,6 @@ sealed class DevProxyCommand : RootCommand
     private static bool _isInternalDaemonResolved;
     private static bool _stdioLogFilePathResolved;
     private static bool _detachedLogFilePathResolved;
-    private static bool _noColorResolved;
 
     public static bool HasGlobalOptions
     {
@@ -222,23 +222,16 @@ sealed class DevProxyCommand : RootCommand
         }
     }
 
-    public static bool NoColor
-    {
-        get
-        {
-            if (_noColorResolved)
-            {
-                return field;
-            }
+    public static bool NoColor => ShouldDisableColor(
+        Environment.GetCommandLineArgs(),
+        Environment.GetEnvironmentVariable("NO_COLOR"),
+        Environment.GetEnvironmentVariable("TERM"));
 
-            var args = Environment.GetCommandLineArgs();
-            field = args.Contains(NoColorOptionName) ||
-                Environment.GetEnvironmentVariable("NO_COLOR") is not null ||
-                string.Equals(Environment.GetEnvironmentVariable("TERM"), "dumb", StringComparison.OrdinalIgnoreCase);
-            _noColorResolved = true;
-            return field;
-        }
-    }
+    // Per https://no-color.org, NO_COLOR disables color only when present and not empty.
+    internal static bool ShouldDisableColor(string[] args, string? noColorEnv, string? termEnv) =>
+        args.Contains(NoColorOptionName) ||
+        !string.IsNullOrEmpty(noColorEnv) ||
+        string.Equals(termEnv, "dumb", StringComparison.OrdinalIgnoreCase);
 
     public DevProxyCommand(
         IEnumerable<IPlugin> plugins,
@@ -246,7 +239,8 @@ sealed class DevProxyCommand : RootCommand
         IProxyConfiguration proxyConfiguration,
         IServiceProvider serviceProvider,
         UpdateNotification updateNotification,
-        ILogger<DevProxyCommand> logger) : base($"Start Dev Proxy\n\nAPI:\n  Dev Proxy exposes an authenticated REST API for runtime management.\n  OpenAPI spec: {ApiSecurity.GetApiUrl(new UriBuilder(Uri.UriSchemeHttp, proxyConfiguration.ApiIpAddress, proxyConfiguration.ApiPort).Uri.AbsoluteUri)}/swagger\n  Use --api-port (default: {proxyConfiguration.ApiPort}) and --api-ip-address (default: 127.0.0.1).\n  The API bind address is independent of --ip-address.\n  Run 'devproxy status' for the API URL and token, or 'devproxy api show' for endpoints.")
+        DevProxyConfigOptions options,
+        ILogger<DevProxyCommand> logger) : base($"Start Dev Proxy\n\nAPI:\n  Dev Proxy exposes an authenticated REST API for runtime management.\n  Use --api-port (default: {proxyConfiguration.ApiPort}) and --api-ip-address (default: 127.0.0.1).\n  The API bind address is independent of --ip-address.\n  Run 'devproxy status' for the API URL and token, or 'devproxy api show' for endpoints.\n  Set the DEV_PROXY_API_TOKEN environment variable (at least 32 characters) to use a fixed API token instead of a generated one.")
     {
         _serviceProvider = serviceProvider;
         _plugins = plugins;
@@ -255,7 +249,7 @@ sealed class DevProxyCommand : RootCommand
         _updateNotification = updateNotification;
         _logger = logger;
 
-        ConfigureCommand();
+        ConfigureCommand(options);
     }
 
     public async Task<int> InvokeAsync(string[] args, WebApplication app)
@@ -285,11 +279,27 @@ sealed class DevProxyCommand : RootCommand
         return exitCode;
     }
 
+    internal static void ValidatePort(OptionResult input)
+    {
+        var value = input.Tokens.Count > 0 ? input.Tokens[0].Value : null;
+        if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var port) || port > System.Net.IPEndPoint.MaxPort)
+        {
+            input.AddError($"'{value}' is not a valid port. Specify a number between 0 and {System.Net.IPEndPoint.MaxPort}.");
+        }
+    }
+
     private async Task<int> InvokeAsync(ParseResult parseResult, CancellationToken cancellationToken)
     {
         if (_app is null)
         {
             throw new InvalidOperationException("WebApplication instance is not set. Please provide it when invoking the command.");
+        }
+        // Environment overrides from config and --env are applied by now, so this
+        // validates and pins the effective token before anything reads it.
+        if (!ApiSecurity.TryInitializeToken(out var tokenError))
+        {
+            _logger.LogError("{TokenError}", tokenError);
+            return 1;
         }
         if (!_plugins.Any())
         {
@@ -303,6 +313,16 @@ sealed class DevProxyCommand : RootCommand
         }
 
         ConfigureFromOptions(parseResult);
+
+        var portConflict =
+            await PortConflict.CheckAsync(PortKind.Proxy, _proxyConfiguration.IPAddress, _proxyConfiguration.Port, cancellationToken) ??
+            await PortConflict.CheckAsync(PortKind.Api, _proxyConfiguration.ApiIpAddress, _proxyConfiguration.ApiPort, cancellationToken);
+        if (portConflict is not null)
+        {
+            _logger.LogError("{PortConflict}", portConflict);
+            return 1;
+        }
+
         var optionsLoadedArgs = new OptionsLoadedArgs(parseResult);
         foreach (var plugin in _plugins.Where(p => p.Enabled))
         {
@@ -315,6 +335,25 @@ sealed class DevProxyCommand : RootCommand
         {
             await ApiSecurity.SaveTokenAsync(cancellationToken);
             await _app.StartAsync(cancellationToken);
+
+            // The proxy binds in a background service, so wait for it before
+            // publishing readiness. Otherwise a detached launcher could report a
+            // successful start for a proxy that failed to bind. Don't pass the
+            // cancellation token: a bind failure stops the host, which would cancel
+            // the wait before the failure is reported. The engine always completes
+            // Started once the host stops.
+            var proxyEngines = _app.Services.GetServices<IHostedService>().OfType<KestrelProxyEngine>().ToArray();
+            var proxyStarted = (await Task.WhenAll(proxyEngines.Select(e => e.Started))).All(started => started);
+            if (!proxyStarted)
+            {
+                await _app.WaitForShutdownAsync(cancellationToken);
+                if (proxyEngines.Any(e => e.PortInUse))
+                {
+                    _logger.LogError("{PortConflict}",
+                        await PortConflict.GetMessageAsync(PortKind.Proxy, _proxyConfiguration.IPAddress, _proxyConfiguration.Port, CancellationToken.None));
+                }
+                return 1;
+            }
 
             var serverAddresses = _app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>();
             var serverAddress = serverAddresses?.Addresses.FirstOrDefault();
@@ -344,6 +383,13 @@ sealed class DevProxyCommand : RootCommand
         {
             throw;
         }
+        catch (Exception ex) when (PortConflict.IsAddressInUse(ex))
+        {
+            // The API port was taken between the pre-flight check and binding.
+            _logger.LogError("{PortConflict}",
+                await PortConflict.GetMessageAsync(PortKind.Api, _proxyConfiguration.ApiIpAddress, _proxyConfiguration.ApiPort, CancellationToken.None));
+            return 1;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "An error occurred while running Dev Proxy");
@@ -362,12 +408,12 @@ sealed class DevProxyCommand : RootCommand
         }
     }
 
-    private void ConfigureCommand()
+    private void ConfigureCommand(DevProxyConfigOptions configOptions)
     {
         ConfigFileOption.Validators.Clear();
         ConfigFileOption.Validators.Add(input =>
         {
-            var filePath = ProxyUtils.ReplacePathTokens(input.Tokens[0].Value);
+            var filePath = configOptions.ConfigFile ?? ProxyUtils.ReplacePathTokens(input.Tokens[0].Value);
             if (string.IsNullOrEmpty(filePath))
             {
                 return;
@@ -419,12 +465,14 @@ sealed class DevProxyCommand : RootCommand
             Description = "The port for the proxy to listen on",
             HelpName = "port"
         };
+        portOption.Validators.Add(ValidatePort);
 
         var apiPortOption = new Option<int?>(ApiPortOptionName)
         {
             Description = "The port for the Dev Proxy API to listen on",
             HelpName = "api-port"
         };
+        apiPortOption.Validators.Add(ValidatePort);
         var apiIpAddressOption = new Option<string?>(ApiIpAddressOptionName)
         {
             Description = "The API bind address (default: 127.0.0.1). Use ::1 for IPv6 loopback. Non-loopback binding requires a trusted network",
@@ -527,7 +575,7 @@ sealed class DevProxyCommand : RootCommand
         {
             AllowMultipleArgumentsPerToken = true,
             Arity = ArgumentArity.ZeroOrMore,
-            Description = "Variables to set for the Dev Proxy process",
+            Description = "Environment variables to set for the Dev Proxy process, in name=value format. Also used to replace {name} placeholders in API spec files used by the MinimalPermissions plugins. Changes to HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, or NO_PROXY (including lowercase variants) require a full stop/start; hot reload cannot refresh cached HTTP proxy settings",
             HelpName = "env",
         };
         envOption.Validators.Add(input =>
@@ -544,7 +592,7 @@ sealed class DevProxyCommand : RootCommand
                 {
                     // Split on first '=' only
                     var parts = envVar.Split('=', 2);
-                    if (parts.Length != 2)
+                    if (parts.Length != 2 || parts[0].Length == 0)
                     {
                         input.AddError($"Invalid environment variable format: '{envVar}'. Expected format is 'name=value'.");
                         return;
@@ -674,6 +722,15 @@ sealed class DevProxyCommand : RootCommand
         }
     }
 
+    internal static void ApplyDiscoverOption(IProxyConfiguration proxyConfiguration, bool? isDiscover)
+    {
+        // Discovery mode requires recording, but --discover false must not enable it
+        if (isDiscover == true)
+        {
+            proxyConfiguration.Record = true;
+        }
+    }
+
     private void ConfigureFromOptions(ParseResult parseResult)
     {
         var port = parseResult.GetValueOrDefault<int?>(PortOptionName);
@@ -742,11 +799,7 @@ sealed class DevProxyCommand : RootCommand
         {
             _proxyConfiguration.TimeoutSeconds = timeout.Value;
         }
-        var isDiscover = parseResult.GetValueOrDefault<bool?>(DiscoverOptionName);
-        if (isDiscover is not null)
-        {
-            _proxyConfiguration.Record = true;
-        }
+        ApplyDiscoverOption(_proxyConfiguration, parseResult.GetValueOrDefault<bool?>(DiscoverOptionName));
         var env = parseResult.GetValueOrDefault<string[]?>(EnvOptionName);
         if (env is not null)
         {
@@ -797,9 +850,11 @@ sealed class DevProxyCommand : RootCommand
             ProxyUrl = SystemProxyAddress.ToHttpAuthority(_proxyConfiguration.IPAddress, _proxyConfiguration.Port),
             LogFile = IsInternalDaemon ? DetachedLogFilePath : string.Empty,
             StartedAt = DateTimeOffset.UtcNow,
+            ProcessStartTime = StateManager.GetCurrentProcessStartTime(),
             ConfigFile = _proxyConfiguration.ConfigFile,
             Port = _proxyConfiguration.Port,
-            AsSystemProxy = _proxyConfiguration.AsSystemProxy
+            AsSystemProxy = _proxyConfiguration.AsSystemProxy,
+            SuppressTokenOutput = !ApiSecurity.ShouldDisplayToken
         };
 
         await StateManager.SaveStateAsync(state);

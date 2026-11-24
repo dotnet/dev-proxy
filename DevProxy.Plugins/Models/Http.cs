@@ -240,6 +240,30 @@ internal static class Http
         "code"
     ];
 
+    internal static readonly string[] SensitiveQueryParameters =
+    [
+        "access_token",
+        "api_key",
+        "api-key",
+        "apikey",
+        "auth",
+        "client_secret",
+        "code",
+        "id_token",
+        "key",
+        "password",
+        "refresh_token",
+        "secret",
+        "sig",
+        "signature",
+        "token",
+        "x-amz-credential",
+        "x-amz-security-token",
+        "x-amz-signature",
+        "x-goog-credential",
+        "x-goog-signature"
+    ];
+
     internal static readonly string[] SensitiveHeaders =
     [
         "authorization",

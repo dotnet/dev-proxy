@@ -157,6 +157,13 @@ public sealed class RateLimitingPlugin(
                         _ = headersList.Remove(retryAfterHeader);
                     }
 
+                    // default the content type to application/json unless set in the custom response
+                    if (Configuration.CustomResponse.Body is not null &&
+                        !headersList.Any(h => h.Name.Equals("Content-Type", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        headersList.Add(new("Content-Type", "application/json"));
+                    }
+
                     var headers = headersList.ToArray();
 
                     // allow custom throttling response
@@ -177,9 +184,7 @@ public sealed class RateLimitingPlugin(
                         ));
                     }
 
-                    string body = Configuration.CustomResponse.Body is not null ?
-                        JsonSerializer.Serialize(Configuration.CustomResponse.Body, ProxyUtils.JsonSerializerOptions) :
-                        "";
+                    string body = ProxyUtils.SerializeBody(Configuration.CustomResponse.Body);
                     e.ProxySession.Respond(body, responseCode, headers);
                     state.HasBeenSet = true;
                 }

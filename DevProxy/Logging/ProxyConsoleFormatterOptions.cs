@@ -11,4 +11,6 @@ sealed class ProxyConsoleFormatterOptions : ConsoleFormatterOptions
     public bool ShowSkipMessages { get; set; } = true;
 
     public bool ShowTimestamps { get; set; } = true;
+
+    public bool IncludeFullTimestamps { get; set; }
 }
