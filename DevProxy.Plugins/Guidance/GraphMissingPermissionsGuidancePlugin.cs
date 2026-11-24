@@ -213,10 +213,15 @@ public sealed class GraphMissingPermissionsGuidancePlugin(
             var otherUserPermissions = requiredPermissions
                 .Where(p => !SelfOnlyDelegatedPermissions.Contains(p.Value))
                 .ToArray();
-            if (selfOnlyPermissions.Length > 0 && otherUserPermissions.Length > 0)
+            if (selfOnlyPermissions.Length > 0)
             {
-                requiredPermissions = otherUserPermissions;
                 selfOnlyNote = $" The {FormatList(selfOnlyPermissions)} permission(s) only allow access to the signed-in user. If you're calling the API for the signed-in user, use /me instead.";
+                if (otherUserPermissions.Length == 0)
+                {
+                    return ($"{requestDescription} failed with 403 Forbidden. The {GetPermissionsTypeString(permissionsType.Value)} permissions that allow calling {method} {tokenizedUrl} only allow access to the signed-in user, and the request likely targets another user.{selfOnlyNote}{otherUserDataNote}",
+                        MessageType.Failed);
+                }
+                requiredPermissions = otherUserPermissions;
             }
         }
 
