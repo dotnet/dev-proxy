@@ -20,6 +20,16 @@
     "preferredBrowserPath": {
       "type": "string",
       "description": "Path to the browser executable. When specified, overrides preferredBrowser."
+    },
+    "port": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 65535,
+      "description": "Port on which the plugin listens for DevTools connections. Use a fixed port when you need to publish it, eg. when running Dev Proxy in a container. Default: 0 (random available port)."
+    },
+    "launchBrowser": {
+      "type": "boolean",
+      "description": "Whether to launch the browser with DevTools. When false, the plugin logs the DevTools URL that you can open in Microsoft Edge or Google Chrome yourself, eg. when running Dev Proxy in a container. Default: true."
     }
   },
   "additionalProperties": false

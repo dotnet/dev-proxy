@@ -12,6 +12,12 @@ public class MockResponse : ICloneable
 {
     public MockResponseRequest? Request { get; set; }
     public MockResponseResponse? Response { get; set; }
+    /// <summary>
+    /// Probability (0-100) that the mock is applied when it matches a request.
+    /// When not set, the mock is always applied. When the mock isn't applied,
+    /// the request falls through to the next matching mock or the real API.
+    /// </summary>
+    public int? Rate { get; set; }
 
     public object Clone()
     {
@@ -19,9 +25,17 @@ public class MockResponse : ICloneable
         return JsonSerializer.Deserialize<MockResponse>(json) ?? new MockResponse();
     }
 
-    public static MockResponse FromHttpResponse(string httpResponse, ILogger logger)
+    public static MockResponse FromHttpResponse(string httpResponse, ILogger logger) =>
+        FromHttpResponse(httpResponse, logger, out _);
+
+    /// <summary>
+    /// Parses an HTTP response, reporting recoverable errors without changing the
+    /// generated mock's fallback headers or body.
+    /// </summary>
+    public static MockResponse FromHttpResponse(string httpResponse, ILogger logger, out bool hasErrors)
     {
         ArgumentNullException.ThrowIfNull(logger);
+        hasErrors = false;
 
         logger.LogTrace("{Method} called", nameof(FromHttpResponse));
 
@@ -77,6 +91,7 @@ public class MockResponse : ICloneable
                     catch (JsonException ex)
                     {
                         logger.LogError(ex, "Failed to deserialize JSON body from HTTP response");
+                        hasErrors = true;
                         body = bodyContents;
                     }
                 }
@@ -94,6 +109,7 @@ public class MockResponse : ICloneable
                 if (headerParts.Length < 2)
                 {
                     logger.LogError($"Invalid HTTP response header format");
+                    hasErrors = true;
                     continue;
                 }
 

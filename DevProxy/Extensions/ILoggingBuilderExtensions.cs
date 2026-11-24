@@ -54,7 +54,8 @@ static class ILoggingBuilderExtensions
         }
 
         var showSkipMessages = configuration.GetValue("showSkipMessages", true);
-        var showTimestamps = configuration.GetValue("showTimestamps", true);
+        // Detached files need request timestamps even when interactive timestamps are hidden.
+        var showTimestamps = DevProxyCommand.IsInternalDaemon || configuration.GetValue("showTimestamps", true);
 
         // Select the appropriate formatter based on output setting
         var formatterName = configuredOutput == OutputFormat.Json
@@ -84,6 +85,7 @@ static class ILoggingBuilderExtensions
                         formatterOptions.IncludeScopes = true;
                         formatterOptions.ShowSkipMessages = showSkipMessages;
                         formatterOptions.ShowTimestamps = showTimestamps;
+                        formatterOptions.IncludeFullTimestamps = DevProxyCommand.IsInternalDaemon;
                     }
                 )
                 .AddConsoleFormatter<JsonConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>

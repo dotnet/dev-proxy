@@ -1,0 +1,61 @@
+{
+    "non_root_user": {
+        "build": {
+            "dockerfile": "Dockerfile"
+        },
+        "remoteUser": "devuser",
+        "features": {
+            "dev-proxy": {}
+        }
+    },
+    "specific_version": {
+        "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+        "remoteUser": "vscode",
+        "features": {
+            "dev-proxy": {
+                "version": "3.3.0"
+            }
+        }
+    },
+    "specific_version_with_v": {
+        "image": "debian:latest",
+        "features": {
+            "dev-proxy": {
+                "version": "v2.2.0"
+            }
+        }
+    },
+    "beta": {
+        "image": "mcr.microsoft.com/devcontainers/base:debian",
+        "remoteUser": "vscode",
+        "features": {
+            "dev-proxy": {
+                "version": "beta"
+            }
+        }
+    },
+    "no_trust_certificate": {
+        "build": {
+            "dockerfile": "Dockerfile"
+        },
+        "remoteUser": "devuser",
+        "features": {
+            "dev-proxy": {
+                "trustCertificate": false
+            }
+        }
+    },
+    "runtimes": {
+        "image": "mcr.microsoft.com/devcontainers/python:3",
+        "remoteUser": "vscode",
+        "features": {
+            "ghcr.io/devcontainers/features/node:1": {},
+            "ghcr.io/devcontainers/features/dotnet:2": {
+                "version": "10.0"
+            },
+            "dev-proxy": {
+                "version": "beta"
+            }
+        }
+    }
+}

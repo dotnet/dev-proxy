@@ -24,6 +24,7 @@ namespace DevProxy.Integration.Tests;
 ///   POST /echo           → 200 echoes request body  (X-Echo-Length header)
 ///   GET  /status/{code}  → {code} "status {code}"
 ///   GET  /headers        → 200, reflects X-Probe request header in body
+///   GET  /via            → 200, reflects the Via request header values in body
 ///   GET  /sse            → 200 text/event-stream, 5 events flushed ~50ms apart
 ///   GET  /big/{n}        → 200, n bytes of 'A' (large finite body)
 ///   GET  /json           → 200 application/json, a 2-element array
@@ -93,6 +94,9 @@ internal sealed class FakeOrigin : IAsyncDisposable
             var probe = ctx.Request.Headers["X-Probe"].ToString();
             return Results.Text($"probe={probe}");
         });
+
+        app.MapGet("/via", (HttpContext ctx) =>
+            Results.Text(string.Join(", ", ctx.Request.Headers.Via.ToArray())));
 
         app.MapGet("/sse", async (HttpContext ctx) =>
         {

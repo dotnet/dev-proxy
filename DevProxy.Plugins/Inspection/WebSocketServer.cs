@@ -12,10 +12,25 @@ using System.Text.Json;
 
 namespace DevProxy.Plugins.Inspection;
 
-public sealed class WebSocketServer(int port, ILogger logger) : IDisposable
+public sealed class WebSocketServer(string host, int port, string token, ILogger logger) : IDisposable
 {
+    // Origins used by the Chromium DevTools frontend: the bundled frontend
+    // (devtools://devtools/...) and the frontend served by the browser's
+    // remote debugging server, which the plugin launches on port 9222.
+    // Browsers always send Origin on WebSocket handshakes and don't apply
+    // CORS to them, so checking it prevents arbitrary web pages from
+    // connecting and reading intercepted traffic.
+    internal static readonly string[] AllowedOrigins =
+    [
+        "devtools://devtools",
+        "http://localhost:9222",
+        "http://127.0.0.1:9222"
+    ];
+
     private readonly ILogger _logger = logger;
+    private readonly string _host = host;
     private readonly int _port = port;
+    private readonly string _path = $"/{token}";
     static readonly SemaphoreSlim _webSocketSemaphore = new(1, 1);
 
     private HttpListener? _listener;
@@ -28,27 +43,81 @@ public sealed class WebSocketServer(int port, ILogger logger) : IDisposable
     public event Action? ClientConnected;
 #pragma warning restore CA1003
 
-    public async Task StartAsync()
+    /// <summary>
+    /// Starts listening for connections. Throws if the listener can't be
+    /// started, eg. because the port is already in use.
+    /// </summary>
+    public void Start()
     {
         _listener = new();
-        _listener.Prefixes.Add($"http://127.0.0.1:{_port}/");
+        _listener.Prefixes.Add($"http://{_host}:{_port}/");
         _listener.Start();
 
-        while (true)
-        {
-            var context = await _listener.GetContextAsync();
+        _ = AcceptConnectionsAsync(_listener);
+    }
 
-            if (context.Request.IsWebSocketRequest)
+    internal static bool IsAllowedOrigin(string? origin) =>
+        origin is not null &&
+        AllowedOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase);
+
+    // Origin is client-controlled and the listener may be reachable from the
+    // network, so escape control characters to prevent log forging.
+    internal static string SanitizeForLog(string? value) =>
+        value is null
+            ? "(none)"
+            : string.Concat(value.Select(c => char.IsControl(c)
+                ? $"\\u{(int)c:x4}"
+                : c.ToString()));
+
+    private async Task AcceptConnectionsAsync(HttpListener listener)
+    {
+        while (listener.IsListening)
+        {
+            HttpListenerContext context;
+            try
+            {
+                context = await listener.GetContextAsync();
+            }
+            catch (Exception ex) when (ex is HttpListenerException or ObjectDisposedException or InvalidOperationException)
+            {
+                // listener has been stopped
+                return;
+            }
+
+            if (!context.Request.IsWebSocketRequest)
+            {
+                context.Response.StatusCode = 400;
+                context.Response.Close();
+                continue;
+            }
+
+            if (!string.Equals(context.Request.Url?.AbsolutePath, _path, StringComparison.Ordinal))
+            {
+                _logger.LogWarning("[WS] Rejected DevTools connection with an invalid token");
+                context.Response.StatusCode = 403;
+                context.Response.Close();
+                continue;
+            }
+
+            var origin = context.Request.Headers["Origin"];
+            if (!IsAllowedOrigin(origin))
+            {
+                _logger.LogWarning("[WS] Rejected DevTools connection from origin {Origin}", SanitizeForLog(origin));
+                context.Response.StatusCode = 403;
+                context.Response.Close();
+                continue;
+            }
+
+            try
             {
                 var webSocketContext = await context.AcceptWebSocketAsync(null);
                 _webSocket = webSocketContext.WebSocket;
                 ClientConnected?.Invoke();
                 _ = HandleMessagesAsync(_webSocket);
             }
-            else
+            catch (WebSocketException ex)
             {
-                context.Response.StatusCode = 400;
-                context.Response.Close();
+                _logger.LogError(ex, "[WS] Error accepting DevTools connection");
             }
         }
     }

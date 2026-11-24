@@ -9,9 +9,15 @@ namespace DevProxy;
 static class Announcement
 {
     private static readonly Uri announcementUrl = new("https://aka.ms/devproxy/announcement");
+    private static int _requested;
 
-    public static async Task ShowAsync()
+    public static async Task ShowOnceAsync()
     {
+        if (Interlocked.Exchange(ref _requested, 1) != 0)
+        {
+            return;
+        }
+
         var announcement = await GetAsync();
         if (!string.IsNullOrEmpty(announcement))
         {

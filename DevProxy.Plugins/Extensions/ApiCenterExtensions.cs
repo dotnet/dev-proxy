@@ -116,7 +116,7 @@ public static class ModelExtensions
                         continue;
                     }
 
-                    if (definition.Definition.Servers is null || !definition.Definition.Servers.Any())
+                    if (definition.Definition.Servers is null || definition.Definition.Servers.Count == 0)
                     {
                         logger.LogDebug("No servers found for API definition {DefinitionId}", definition.Id);
                         continue;

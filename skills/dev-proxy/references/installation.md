@@ -58,6 +58,18 @@ Or with PowerShell:
    ```
 3. Reload: `source ~/.bashrc`
 
+### Dev Containers and GitHub Codespaces
+
+Add the Dev Proxy Feature to `devcontainer.json`:
+
+```json
+"features": {
+  "ghcr.io/dotnet/dev-proxy/dev-proxy:1": {}
+}
+```
+
+The Feature installs Dev Proxy, and after the container is created, generates a root certificate unique to the container and trusts it system-wide (including Node.js and Python). No first run setup is needed. Use the `version` option to install a specific version (`"version": "4.0.0"`) or the latest beta (`"version": "beta"`).
+
 ### Install a Specific Version
 
 Pass the version to the setup script:

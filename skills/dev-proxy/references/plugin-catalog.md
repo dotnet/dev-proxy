@@ -139,6 +139,8 @@ Exposes Dev Proxy activity in Chrome DevTools (HTTP and STDIO).
 |----------|---------|-------------|
 | `preferredBrowser` | `Edge` | `Edge`, `EdgeDev`, `EdgeBeta`, or `Chrome` |
 | `preferredBrowserPath` | empty | Path to the browser executable; overrides `preferredBrowser` |
+| `port` | `0` | Port for DevTools connections; `0` picks a random port. Set a fixed port to publish it from a container |
+| `launchBrowser` | `true` | When `false`, logs the DevTools URL to open in Edge or Chrome instead of launching the browser |
 
 ### MockStdioResponsePlugin
 
