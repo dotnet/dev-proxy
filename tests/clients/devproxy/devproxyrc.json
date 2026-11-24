@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v4.1.0/rc.schema.json",
+  "plugins": [
+    {
+      "name": "MockResponsePlugin",
+      "enabled": true,
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll",
+      "configSection": "mockResponsePlugin"
+    }
+  ],
+  "urlsToWatch": [
+    "https://localhost:${SMOKE_TARGET_PORT}/*"
+  ],
+  "mockResponsePlugin": {
+    "$schema": "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v4.1.0/mockresponseplugin.schema.json",
+    "mocksFile": "mocks.json"
+  },
+  "logLevel": "information",
+  "newVersionNotification": "none",
+  "showSkipMessages": true,
+  "validateSchemas": false
+}
