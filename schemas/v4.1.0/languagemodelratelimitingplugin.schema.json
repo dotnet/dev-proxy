@@ -9,25 +9,30 @@
     },
     "headerRetryAfter": {
       "type": "string",
+      "default": "retry-after",
       "description": "Name of the response header that communicates the retry-after period (e.g., 'Retry-After')."
     },
     "resetTimeWindowSeconds": {
       "type": "integer",
+      "default": 60,
       "minimum": 1,
       "description": "How long in seconds until the next token limit reset."
     },
     "promptTokenLimit": {
       "type": "integer",
+      "default": 5000,
       "minimum": 1,
       "description": "Number of prompt tokens allowed per time window."
     },
     "completionTokenLimit": {
       "type": "integer",
+      "default": 5000,
       "minimum": 1,
       "description": "Number of completion tokens allowed per time window."
     },
     "whenLimitExceeded": {
       "type": "string",
+      "default": "Throttle",
       "enum": [
         "Throttle",
         "Custom"
@@ -36,6 +41,7 @@
     },
     "customResponseFile": {
       "type": "string",
+      "default": "token-limit-response.json",
       "description": "Path to a file containing a custom error response to use when the token limit is exceeded."
     }
   },
