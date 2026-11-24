@@ -18,8 +18,11 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
     private readonly bool _validateSchemas = proxyConfiguration.ValidateSchemas;
     private readonly Lock _debounceLock = new();
     private readonly int _debounceDelay = 300; // milliseconds
-    private readonly Lock _loadLock = new();
-    private int _loadGeneration;
+    // Serializes loads so that an older load can't overwrite data from a newer one.
+    // Each load reads the file after acquiring it, so the last load always has the latest contents.
+#pragma warning disable CA2213 // Not disposed so that pending reloads don't fail; it never allocates a wait handle
+    private readonly SemaphoreSlim _loadSemaphore = new(1, 1);
+#pragma warning restore CA2213
 
     private FileSystemWatcher? _watcher;
     private Timer? _debounceTimer;
@@ -133,10 +136,23 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
             return;
         }
 
-        var generation = Interlocked.Increment(ref _loadGeneration);
+        try
+        {
+            await _loadSemaphore.WaitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            Logger.LogDebug("Loading {File} was canceled", FilePath);
+            return;
+        }
 
         try
         {
+            if (_isDisposed)
+            {
+                return;
+            }
+
             using var stream = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             using var reader = new StreamReader(stream);
             var fileContents = await reader.ReadToEndAsync(cancellationToken);
@@ -166,18 +182,7 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
 
             if (!_validateSchemas || await ValidateFileContentsAsync(jsonContents, cancellationToken))
             {
-                lock (_loadLock)
-                {
-                    // A newer load started while this one was validating; don't
-                    // let this older snapshot overwrite the newer data
-                    if (generation != Volatile.Read(ref _loadGeneration))
-                    {
-                        Logger.LogDebug("Skipping superseded load of {File}", FilePath);
-                        return;
-                    }
-
-                    LoadData(jsonContents);
-                }
+                LoadData(jsonContents);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -187,6 +192,10 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
         catch (Exception ex)
         {
             Logger.LogError(ex, "An error has occurred while reading {File}:", FilePath);
+        }
+        finally
+        {
+            _ = _loadSemaphore.Release();
         }
     }
 

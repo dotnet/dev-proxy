@@ -61,7 +61,7 @@ public sealed class BaseLoaderSchemaValidationTests : IDisposable
     private async Task<TestLoader> LoadAsync(Func<HttpRequestMessage, HttpResponseMessage> sendSchemaRequest, ILogger logger, CancellationToken cancellationToken = default)
     {
         var path = Path.Combine(_folder, "mocks.json");
-        await File.WriteAllTextAsync(path, Contents);
+        await File.WriteAllTextAsync(path, Contents, CancellationToken.None);
         using var handler = new FakeHttpMessageHandler(sendSchemaRequest);
         using var httpClient = new HttpClient(handler);
         var loader = new TestLoader(httpClient, logger, path);
