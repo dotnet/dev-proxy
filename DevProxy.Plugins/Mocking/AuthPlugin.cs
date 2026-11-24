@@ -64,6 +64,7 @@ public sealed class AuthPluginOAuth2Configuration
 public sealed class AuthPluginConfiguration
 {
     public AuthPluginApiKeyConfiguration? ApiKey { get; set; }
+    [ConfigurationKeyName("oauth2")]
     public AuthPluginOAuth2Configuration? OAuth2 { get; set; }
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public AuthPluginAuthType? Type { get; set; }

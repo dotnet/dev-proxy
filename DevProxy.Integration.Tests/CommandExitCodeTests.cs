@@ -207,7 +207,7 @@ public sealed class CommandExitCodeTests
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null)
         {
-            var candidate = Path.Combine(dir.FullName, "DevProxy", "bin", config, "net10.0", "DevProxy.dll");
+            var candidate = Path.Combine(dir.FullName, "DevProxy", "bin", config, "net10.0", "devproxy.dll");
             if (File.Exists(candidate))
             {
                 return candidate;
@@ -216,7 +216,7 @@ public sealed class CommandExitCodeTests
             dir = dir.Parent;
         }
 
-        return Path.Combine(AppContext.BaseDirectory, "DevProxy.dll");
+        return Path.Combine(AppContext.BaseDirectory, "devproxy.dll");
     }
 
     private sealed class TempDir : IDisposable
