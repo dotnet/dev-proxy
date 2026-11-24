@@ -31,7 +31,10 @@ public sealed class ProcessSmokeTests
 {
     private static readonly TimeSpan s_startupTimeout = TimeSpan.FromSeconds(90);
 
-    [Theory]
+    private const string DetachInheritsRedirectedHandlesOnWindows =
+        "On Windows the --detach daemon inherits the caller's redirected output handles, so output never reaches EOF.";
+
+    [SkipOnWindowsTheory(DetachInheritsRedirectedHandlesOnWindows)]
     [InlineData(false)]
     [InlineData(true)]
     public async Task Startup_EnvironmentOverrides_PreserveTildeConfigPathAndApplyBeforeAnnouncement(bool useCommandLine)
@@ -211,7 +214,7 @@ public sealed class ProcessSmokeTests
         }
     }
 
-    [Theory]
+    [SkipOnWindowsTheory(DetachInheritsRedirectedHandlesOnWindows)]
     [InlineData("text", "cli")]
     [InlineData("json", "cli")]
     [InlineData("text", "config")]
@@ -669,6 +672,10 @@ public sealed class ProcessSmokeTests
         psi.ArgumentList.Add("--api-port");
         psi.ArgumentList.Add("0");
         psi.ArgumentList.Add("--as-system-proxy");
+        psi.ArgumentList.Add("false");
+        // Installing the root certificate on Windows shows a modal trust dialog that blocks
+        // headless runs; the smoke test only uses plain HTTP.
+        psi.ArgumentList.Add("--install-cert");
         psi.ArgumentList.Add("false");
         psi.ArgumentList.Add("--no-first-run");
 
