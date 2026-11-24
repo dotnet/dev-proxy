@@ -27,6 +27,28 @@ public class ProxyUtilsTests
         Assert.Equal(["Connection refused"], result.Errors);
     }
 
+    [Fact]
+    public async Task ValidateJsonAgainstSchemaAsync_Canceled_Throws()
+    {
+        using var handler = new StubHttpMessageHandler(_ => new(HttpStatusCode.OK) { Content = new StringContent(Schema) });
+        using var httpClient = new HttpClient(handler);
+
+        _ = await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            ProxyUtils.ValidateJsonAgainstSchemaAsync("""{ "name": 1 }""", SchemaUrl, httpClient, NullLogger.Instance, new CancellationToken(true)));
+    }
+
+    [Fact]
+    public async Task ValidateJsonAsync_Canceled_ReturnsInvalid()
+    {
+        using var handler = new StubHttpMessageHandler(_ => new(HttpStatusCode.OK) { Content = new StringContent(Schema) });
+        using var httpClient = new HttpClient(handler);
+
+        var (isValid, errors) = await ProxyUtils.ValidateJsonAsync("""{ "name": "a" }""", SchemaUrl, httpClient, NullLogger.Instance, new CancellationToken(true));
+
+        Assert.False(isValid);
+        Assert.NotEmpty(errors);
+    }
+
     [Theory]
     [InlineData(HttpStatusCode.NotFound, "404: Not Found")]
     [InlineData(HttpStatusCode.OK, "<html><body>Sign in to continue</body></html>")]

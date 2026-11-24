@@ -42,14 +42,30 @@ public sealed class BaseLoaderSchemaValidationTests : IDisposable
         Assert.Contains(logger.Messages, m => m.LogLevel == LogLevel.Error);
     }
 
-    private async Task<TestLoader> LoadAsync(Func<HttpRequestMessage, HttpResponseMessage> sendSchemaRequest, ILogger logger)
+    [Fact]
+    public async Task DoesNotLoadFileWhenCanceledWhileRetrievingSchema()
+    {
+        var logger = new RecordingLogger();
+        using var cts = new CancellationTokenSource();
+
+        var loader = await LoadAsync(_ =>
+        {
+            cts.Cancel();
+            throw new OperationCanceledException(cts.Token);
+        }, logger, cts.Token);
+
+        Assert.Null(loader.Contents);
+        Assert.DoesNotContain(logger.Messages, m => m.LogLevel >= LogLevel.Warning);
+    }
+
+    private async Task<TestLoader> LoadAsync(Func<HttpRequestMessage, HttpResponseMessage> sendSchemaRequest, ILogger logger, CancellationToken cancellationToken = default)
     {
         var path = Path.Combine(_folder, "mocks.json");
         await File.WriteAllTextAsync(path, Contents);
         using var handler = new FakeHttpMessageHandler(sendSchemaRequest);
         using var httpClient = new HttpClient(handler);
         var loader = new TestLoader(httpClient, logger, path);
-        await loader.InitFileWatcherAsync(CancellationToken.None);
+        await loader.InitFileWatcherAsync(cancellationToken);
         loader.Dispose();
         return loader;
     }

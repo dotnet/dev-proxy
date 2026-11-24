@@ -18,6 +18,8 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
     private readonly bool _validateSchemas = proxyConfiguration.ValidateSchemas;
     private readonly Lock _debounceLock = new();
     private readonly int _debounceDelay = 300; // milliseconds
+    private readonly Lock _loadLock = new();
+    private int _loadGeneration;
 
     private FileSystemWatcher? _watcher;
     private Timer? _debounceTimer;
@@ -131,6 +133,8 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
             return;
         }
 
+        var generation = Interlocked.Increment(ref _loadGeneration);
+
         try
         {
             using var stream = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
@@ -162,8 +166,23 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
 
             if (!_validateSchemas || await ValidateFileContentsAsync(jsonContents, cancellationToken))
             {
-                LoadData(jsonContents);
+                lock (_loadLock)
+                {
+                    // A newer load started while this one was validating; don't
+                    // let this older snapshot overwrite the newer data
+                    if (generation != Volatile.Read(ref _loadGeneration))
+                    {
+                        Logger.LogDebug("Skipping superseded load of {File}", FilePath);
+                        return;
+                    }
+
+                    LoadData(jsonContents);
+                }
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            Logger.LogDebug("Loading {File} was canceled", FilePath);
         }
         catch (Exception ex)
         {

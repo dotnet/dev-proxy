@@ -281,8 +281,16 @@ public static class ProxyUtils
     /// </summary>
     public static async Task<(bool IsValid, IEnumerable<string> ValidationErrors)> ValidateJsonAsync(string? json, string? schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken)
     {
-        var result = await ValidateJsonAgainstSchemaAsync(json, schemaUrl, httpClient, logger, cancellationToken);
-        return (result.Status == SchemaValidationStatus.Valid, result.Errors);
+        try
+        {
+            var result = await ValidateJsonAgainstSchemaAsync(json, schemaUrl, httpClient, logger, cancellationToken);
+            return (result.Status == SchemaValidationStatus.Valid, result.Errors);
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Error validating JSON");
+            return (false, [ex.Message]);
+        }
     }
 
     /// <summary>
@@ -293,6 +301,7 @@ public static class ProxyUtils
     /// there's no network connection, the status is <see cref="SchemaValidationStatus.SchemaUnavailable"/>
     /// so that callers can skip validation instead of treating the document as invalid.
     /// </returns>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
     public static async Task<SchemaValidationResult> ValidateJsonAgainstSchemaAsync(string? json, string? schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken)
     {
         logger.LogDebug("Validating JSON against schema {SchemaUrl}", schemaUrl);
@@ -318,6 +327,10 @@ public static class ProxyUtils
 
             logger.LogDebug("Parsing schema");
             schema = JSchema.Parse(schemaContents);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
