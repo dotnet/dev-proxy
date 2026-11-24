@@ -468,12 +468,17 @@ internal static class OpenApiSchemaValidator
             (name is not null && GetSchemaName(s) == name));
     }
 
-    private static List<string> GetDiscriminatorValues(IList<IOpenApiSchema> oneOf, OpenApiDiscriminator discriminator) =>
-        [.. (discriminator.Mapping ?? Enumerable.Empty<KeyValuePair<string, OpenApiSchemaReference>>())
+    // explicit mappings take precedence over implicit names, so implicit names
+    // that are remapped are only allowed if their mapping stays within oneOf
+    private static List<string> GetDiscriminatorValues(IList<IOpenApiSchema> oneOf, OpenApiDiscriminator discriminator)
+    {
+        var mapping = discriminator.Mapping ?? new Dictionary<string, OpenApiSchemaReference>();
+        return [.. mapping
             .Where(m => FindOneOfBranch(oneOf, m.Value) is not null)
             .Select(m => m.Key)
-            .Concat(oneOf.Select(GetSchemaName).OfType<string>())
+            .Concat(oneOf.Select(GetSchemaName).OfType<string>().Where(n => !mapping.ContainsKey(n)))
             .Distinct(StringComparer.Ordinal)];
+    }
 
     private static string? GetSchemaName(IOpenApiSchema schema) =>
         schema is OpenApiSchemaReference reference ? reference.Reference?.Id : null;

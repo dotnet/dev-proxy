@@ -1167,6 +1167,19 @@ public sealed class OpenApiValidationPluginTests : IDisposable
     }
 
     [Fact]
+    public async Task ExcludesRemappedSchemaNamesFromAllowedDiscriminatorValues()
+    {
+        var spec = DiscriminatorSpec.ReplaceLineEndings("\n")
+            .Replace("    Lizard:", "    Fish:\n      type: object\n      properties: { fins: { type: integer } }\n    Lizard:", StringComparison.Ordinal)
+            .Replace("doggo: '#/components/schemas/Dog'", "doggo: '#/components/schemas/Dog'\n                  Cat: '#/components/schemas/Lizard'\n                  Lizard: '#/components/schemas/Fish'", StringComparison.Ordinal);
+        var plugin = await CreatePluginWithSpecsAsync(("pets.yaml", spec));
+
+        var unknown = plugin.Validate(PostPet("""{ "petType": "Bird" }""").Session);
+
+        Assert.Equal("$.petType: Discriminator value 'Bird' doesn't map to any schema in 'oneOf'. Allowed values: 'doggo', 'Cat', 'Dog'", Assert.Single(Messages(unknown)));
+    }
+
+    [Fact]
     public async Task FallsBackToDiscriminatorDefaultMapping()
     {
         var spec = DiscriminatorSpec.ReplaceLineEndings("\n")
