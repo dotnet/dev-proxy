@@ -9,6 +9,7 @@
     },
     "groupBy": {
       "type": "string",
+      "default": "url",
       "enum": [
         "url",
         "messageType"
