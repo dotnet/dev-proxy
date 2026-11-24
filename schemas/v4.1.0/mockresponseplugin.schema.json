@@ -9,6 +9,7 @@
     },
     "mocksFile": {
       "type": "string",
+      "default": "mocks.json",
       "description": "Path to the file containing the mock responses."
     },
     "blockUnmockedRequests": {
