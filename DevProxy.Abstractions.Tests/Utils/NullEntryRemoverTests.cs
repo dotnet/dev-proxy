@@ -17,6 +17,9 @@ public class NullEntryRemoverTests
         public Item[]? Array { get; set; }
         public Dictionary<string, Item>? Map { get; set; }
         public IEnumerable<Item?>? NullableItems { get; set; }
+        public Item[][]? Nested { get; set; }
+        public Dictionary<string, List<Item>>? MapOfLists { get; set; }
+        public List<Item?[]>? NestedNullable { get; set; }
     }
 
     public sealed class Item
@@ -46,6 +49,26 @@ public class NullEntryRemoverTests
         Assert.Equal(
             ["items[0]", "items[1].names[1]", "items[1].response.headers[0]", "array[0]", "map.a"],
             removed);
+    }
+
+    [Fact]
+    public void RemovesNullEntriesFromNestedCollections()
+    {
+        var root = Deserialize("""
+            {
+              "nested": [ [ null, {} ], null ],
+              "mapOfLists": { "a": [ null ] },
+              "nestedNullable": [ [ null ] ]
+            }
+            """);
+
+        var removed = NullEntryRemover.RemoveNullEntries(root);
+
+        var inner = Assert.Single(root.Nested!);
+        _ = Assert.Single(inner);
+        Assert.Empty(root.MapOfLists!["a"]);
+        _ = Assert.Single(Assert.Single(root.NestedNullable!));
+        Assert.Equal(["nested[0][0]", "nested[1]", "mapOfLists.a[0]"], removed);
     }
 
     [Fact]

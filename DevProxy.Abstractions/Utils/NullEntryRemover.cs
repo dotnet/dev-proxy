@@ -38,38 +38,27 @@ public static class NullEntryRemover
         private readonly NullabilityInfoContext _nullabilityContext = new();
         private readonly HashSet<object> _visited = new(ReferenceEqualityComparer.Instance);
 
-        public void Visit(object obj, string path)
+        public void Visit(object obj, string path) => Visit(obj, null, path);
+
+        // Returns the value to store in the parent: either obj itself or, when null
+        // elements were removed from an array or list, a filtered copy of it.
+        private object Visit(object obj, NullabilityInfo? nullability, string path)
         {
             var type = obj.GetType();
             if (!ShouldInspect(type) || !_visited.Add(obj))
             {
-                return;
+                return obj;
             }
 
             if (obj is IDictionary dictionary)
             {
-                foreach (var key in dictionary.Keys.Cast<object>().ToArray())
-                {
-                    if (dictionary[key] is { } value)
-                    {
-                        Visit(value, $"{path}.{key}");
-                    }
-                }
-                return;
+                VisitDictionary(dictionary, nullability, path);
+                return obj;
             }
 
             if (obj is IEnumerable enumerable)
             {
-                var index = 0;
-                foreach (var item in enumerable)
-                {
-                    if (item is not null)
-                    {
-                        Visit(item, $"{path}[{index}]");
-                    }
-                    index++;
-                }
-                return;
+                return VisitCollection(obj, enumerable, nullability, path);
             }
 
             foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
@@ -88,108 +77,114 @@ public static class NullEntryRemover
                 }
 
                 var propertyPath = path == "$" ? GetJsonName(property) : $"{path}.{GetJsonName(property)}";
-                var nullability = _nullabilityContext.Create(property);
-                if (value is IDictionary dictionaryValue)
+                var canSet = property.SetMethod is { IsPublic: true };
+                var newValue = Visit(value, canSet ? _nullabilityContext.Create(property) : null, propertyPath);
+                if (!ReferenceEquals(newValue, value))
                 {
-                    RemoveNullValues(dictionaryValue, property, nullability, propertyPath);
+                    property.SetValue(obj, newValue);
                 }
-                else if (value is IEnumerable enumerableValue && value is not string)
-                {
-                    // Visit the original collection so that reported paths use the
-                    // indexes from the file rather than from the filtered collection.
-                    RemoveNullElements(obj, enumerableValue, property, nullability, propertyPath);
-                }
-
-                Visit(value, propertyPath);
             }
+
+            return obj;
         }
 
-        private void RemoveNullValues(IDictionary dictionary, PropertyInfo property, NullabilityInfo nullability, string path)
+        private void VisitDictionary(IDictionary dictionary, NullabilityInfo? nullability, string path)
         {
-            var valueType = property.PropertyType.IsGenericType ? property.PropertyType.GetGenericArguments().LastOrDefault() : null;
-            var valueNullability = nullability.GenericTypeArguments.Length == 2 ? nullability.GenericTypeArguments[1] : null;
-            if (dictionary.IsReadOnly || !IsNonNullableReference(valueType, valueNullability))
-            {
-                return;
-            }
+            var type = dictionary.GetType();
+            var valueType = type.IsGenericType ? type.GetGenericArguments().LastOrDefault() : null;
+            var valueNullability = nullability?.GenericTypeArguments.Length == 2 ? nullability.GenericTypeArguments[1] : null;
+            var removeNulls = !dictionary.IsReadOnly && IsNonNullableReference(valueType, valueNullability);
 
             foreach (var key in dictionary.Keys.Cast<object>().ToArray())
             {
-                if (dictionary[key] is null)
+                var value = dictionary[key];
+                if (value is null)
                 {
-                    dictionary.Remove(key);
-                    removed.Add($"{path}.{key}");
+                    if (removeNulls)
+                    {
+                        dictionary.Remove(key);
+                        removed.Add($"{path}.{key}");
+                    }
+                    continue;
+                }
+
+                var newValue = Visit(value, dictionary.IsReadOnly ? null : valueNullability, $"{path}.{key}");
+                if (!ReferenceEquals(newValue, value))
+                {
+                    dictionary[key] = newValue;
                 }
             }
         }
 
-        private void RemoveNullElements(object owner, IEnumerable enumerable, PropertyInfo property, NullabilityInfo nullability, string path)
+        private object VisitCollection(object obj, IEnumerable enumerable, NullabilityInfo? nullability, string path)
         {
-            var propertyType = property.PropertyType;
-            Type? elementType;
-            NullabilityInfo? elementNullability;
-            if (propertyType.IsArray)
+            var type = obj.GetType();
+            Type? elementType = null;
+            NullabilityInfo? elementNullability = null;
+            if (type.IsArray)
             {
-                elementType = propertyType.GetElementType();
-                elementNullability = nullability.ElementType;
+                elementType = type.GetElementType();
+                // The declared type might be a generic interface, like IEnumerable<T>
+                elementNullability = nullability?.ElementType ??
+                    (nullability?.GenericTypeArguments.Length == 1 ? nullability.GenericTypeArguments[0] : null);
             }
-            else if (propertyType.IsGenericType && propertyType.GetGenericArguments().Length == 1)
+            else if (type.IsGenericType && type.GetGenericArguments().Length == 1)
             {
-                elementType = propertyType.GetGenericArguments()[0];
-                elementNullability = nullability.GenericTypeArguments.Length == 1 ? nullability.GenericTypeArguments[0] : null;
-            }
-            else
-            {
-                return;
+                elementType = type.GetGenericArguments()[0];
+                elementNullability = nullability?.GenericTypeArguments.Length == 1 ? nullability.GenericTypeArguments[0] : null;
             }
 
-            if (!IsNonNullableReference(elementType, elementNullability) ||
-                property.SetMethod is null || !property.SetMethod.IsPublic)
-            {
-                return;
-            }
-
+            // Visit the original items so that reported paths use the indexes from
+            // the file rather than from the filtered collection.
             var items = enumerable.Cast<object?>().ToArray();
-            if (!items.Contains(null))
-            {
-                return;
-            }
-
-            var listType = typeof(List<>).MakeGenericType(elementType!);
-            object filtered;
-            if (propertyType.IsArray)
-            {
-                filtered = Array.CreateInstance(elementType!, items.Count(i => i is not null));
-            }
-            else if (propertyType.IsAssignableFrom(listType))
-            {
-                filtered = Activator.CreateInstance(listType)!;
-            }
-            else
-            {
-                return;
-            }
-
-            var target = 0;
+            var canModify = type.IsArray || obj is IList { IsReadOnly: false, IsFixedSize: false };
+            var removeNulls = canModify && IsNonNullableReference(elementType, elementNullability);
+            var changed = false;
+            var kept = new List<object?>(items.Length);
             for (var i = 0; i < items.Length; i++)
             {
-                if (items[i] is null)
+                var item = items[i];
+                if (item is null)
                 {
-                    removed.Add($"{path}[{i}]");
+                    if (removeNulls)
+                    {
+                        removed.Add($"{path}[{i}]");
+                        changed = true;
+                    }
+                    else
+                    {
+                        kept.Add(item);
+                    }
                     continue;
                 }
 
-                if (filtered is Array array)
-                {
-                    array.SetValue(items[i], target++);
-                }
-                else
-                {
-                    ((IList)filtered).Add(items[i]);
-                }
+                var newItem = Visit(item, canModify ? elementNullability : null, $"{path}[{i}]");
+                changed |= !ReferenceEquals(newItem, item);
+                kept.Add(newItem);
             }
 
-            property.SetValue(owner, filtered);
+            if (!changed)
+            {
+                return obj;
+            }
+
+            if (type.IsArray)
+            {
+                var array = Array.CreateInstance(elementType!, kept.Count);
+                for (var i = 0; i < kept.Count; i++)
+                {
+                    array.SetValue(kept[i], i);
+                }
+                return array;
+            }
+
+            var list = (IList)obj;
+            list.Clear();
+            foreach (var item in kept)
+            {
+                _ = list.Add(item);
+            }
+            return obj;
         }
 
         private string GetJsonName(PropertyInfo property) =>
