@@ -32,6 +32,17 @@ public sealed class LatencyPlugin(
 
     public override string Name => nameof(LatencyPlugin);
 
+    public override async Task InitializeAsync(InitArgs e, CancellationToken cancellationToken)
+    {
+        await base.InitializeAsync(e, cancellationToken);
+
+        if (Configuration.MinMs > Configuration.MaxMs)
+        {
+            Enabled = false;
+            throw new InvalidOperationException($"{Name}: minMs ({Configuration.MinMs}) must be less than or equal to maxMs ({Configuration.MaxMs}).");
+        }
+    }
+
     // HTTP: Add latency before request is forwarded
     public override async Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
     {

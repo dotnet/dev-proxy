@@ -12,6 +12,22 @@ namespace DevProxy.Tests;
 public class LogsCommandTests
 {
     [Fact]
+    public void GetLogStartTime_AfterHotReload_UsesProcessStartRatherThanLatestState()
+    {
+        using var process = System.Diagnostics.Process.GetCurrentProcess();
+        var state = new ProxyInstanceState
+        {
+            Pid = process.Id,
+            StartedAt = DateTimeOffset.Now.AddMinutes(5)
+        };
+
+        var logStartTime = LogsCommand.GetLogStartTime(state);
+
+        Assert.Equal(process.StartTime, logStartTime);
+        Assert.Empty(Logging.LogSinceFilter.Filter([" info    Original startup"], logStartTime, state.StartedAt.LocalDateTime));
+    }
+
+    [Fact]
     public void GetMultipleInstancesNotice_SingleInstance_ReturnsNull()
     {
         var state = new ProxyInstanceState { Pid = 100 };

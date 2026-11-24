@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System.Text.Json;
 using DevProxy.Abstractions.Utils;
 using Xunit;
 
@@ -75,5 +76,26 @@ public class ProxyUtilsTests
         Assert.Equal(
             System.IO.Path.GetFullPath(System.IO.Path.Combine(home, "mocks", "mocks.json")),
             ProxyUtils.GetFullPath("~/mocks/mocks.json", configFile));
+    }
+
+    [Fact]
+    public void SerializeBody_NullReturnsEmptyString() =>
+        Assert.Equal(string.Empty, ProxyUtils.SerializeBody(null));
+
+    [Fact]
+    public void SerializeBody_StringIsReturnedAsIs() =>
+        Assert.Equal("hello", ProxyUtils.SerializeBody("hello"));
+
+    [Fact]
+    public void SerializeBody_JsonStringElementIsReturnedAsIs() =>
+        Assert.Equal("hello", ProxyUtils.SerializeBody(JsonSerializer.Deserialize<object>("\"hello\"")));
+
+    [Fact]
+    public void SerializeBody_ObjectIsSerializedAsJson()
+    {
+        var body = ProxyUtils.SerializeBody(JsonSerializer.Deserialize<object>("""{ "message": "hello" }"""));
+
+        using var doc = JsonDocument.Parse(body);
+        Assert.Equal("hello", doc.RootElement.GetProperty("message").GetString());
     }
 }

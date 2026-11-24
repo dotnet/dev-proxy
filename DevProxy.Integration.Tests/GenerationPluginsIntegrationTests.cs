@@ -11,6 +11,7 @@ using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Generation;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -81,6 +82,113 @@ public sealed class GenerationPluginsIntegrationTests
             var har = dir.GetFiles("devproxy-*.har").Single();
             var content = await File.ReadAllTextAsync(har.FullName);
             Assert.Contains("api.contoso.com/users", content, StringComparison.Ordinal);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task HarGenerator_RedactsCookiesAndSensitiveQueryParameters()
+    {
+        var plugin = new HarGeneratorPlugin(
+            TestDefaults.HttpClient,
+            NullLogger<HarGeneratorPlugin>.Instance,
+            Watch,
+            new TestProxyConfiguration(),
+            PluginConfig.Empty());
+
+        var entry = await GenerateSingleHarEntryAsync(plugin, CookieAndSecretsExchange());
+        var request = entry.GetProperty("request");
+        var response = entry.GetProperty("response");
+
+        Assert.All(request.GetProperty("cookies").EnumerateArray(), c => Assert.Equal("REDACTED", c.GetProperty("value").GetString()));
+        Assert.All(response.GetProperty("cookies").EnumerateArray(), c => Assert.Equal("REDACTED", c.GetProperty("value").GetString()));
+        Assert.Equal("session", response.GetProperty("cookies")[0].GetProperty("name").GetString());
+
+        var url = request.GetProperty("url").GetString()!;
+        Assert.DoesNotContain("s3cr3t", url, StringComparison.Ordinal);
+        Assert.DoesNotContain("abc123", url, StringComparison.Ordinal);
+        Assert.Contains("access_token=REDACTED", url, StringComparison.Ordinal);
+        Assert.Contains("sig=REDACTED", url, StringComparison.Ordinal);
+        Assert.Contains("page=2", url, StringComparison.Ordinal);
+
+        var query = request.GetProperty("queryString").EnumerateArray()
+            .ToDictionary(q => q.GetProperty("name").GetString()!, q => q.GetProperty("value").GetString());
+        Assert.Equal("REDACTED", query["access_token"]);
+        Assert.Equal("REDACTED", query["sig"]);
+        Assert.Equal("2", query["page"]);
+    }
+
+    [Theory]
+    [InlineData("?page")]
+    [InlineData("??page")]
+    [InlineData("?access_token")]
+    public async Task HarGenerator_PreservesParameterLeadingQuestionMarks(string parameterName)
+    {
+        var plugin = new HarGeneratorPlugin(
+            TestDefaults.HttpClient,
+            NullLogger<HarGeneratorPlugin>.Instance,
+            Watch,
+            new TestProxyConfiguration(),
+            PluginConfig.Empty());
+
+        var log = TestExchange
+            .Request("GET", $"https://api.contoso.com/users?{parameterName}=2&access_token=secret")
+            .WithResponse(HttpStatusCode.OK)
+            .AsRequestLog(MessageType.InterceptedResponse);
+
+        var entry = await GenerateSingleHarEntryAsync(plugin, log);
+        var request = entry.GetProperty("request");
+
+        Assert.Equal($"https://api.contoso.com/users?{parameterName}=2&access_token=REDACTED",
+            request.GetProperty("url").GetString());
+        var query = request.GetProperty("queryString").EnumerateArray()
+            .ToDictionary(q => q.GetProperty("name").GetString()!, q => q.GetProperty("value").GetString());
+        Assert.Equal("2", query[parameterName]);
+        Assert.Equal("REDACTED", query["access_token"]);
+    }
+
+    [Fact]
+    public async Task HarGenerator_KeepsCookiesAndQueryParametersWhenIncludingSensitiveInformation()
+    {
+        var plugin = new HarGeneratorPlugin(
+            TestDefaults.HttpClient,
+            NullLogger<HarGeneratorPlugin>.Instance,
+            Watch,
+            new TestProxyConfiguration(),
+            PluginConfig.FromJson("""{ "includeSensitiveInformation": true }"""));
+
+        var entry = await GenerateSingleHarEntryAsync(plugin, CookieAndSecretsExchange());
+        var request = entry.GetProperty("request");
+        var response = entry.GetProperty("response");
+
+        Assert.Equal("abc123", request.GetProperty("cookies")[0].GetProperty("value").GetString());
+        Assert.Equal("xyz789", response.GetProperty("cookies")[0].GetProperty("value").GetString());
+        Assert.Contains("access_token=s3cr3t", request.GetProperty("url").GetString(), StringComparison.Ordinal);
+    }
+
+    private static RequestLog CookieAndSecretsExchange() =>
+        TestExchange
+            .Request(
+                "GET",
+                "https://api.contoso.com/users?access_token=s3cr3t&page=2&sig=s3cr3t",
+                headers: [("Cookie", "sid=abc123; theme=dark")])
+            .WithResponse(
+                HttpStatusCode.OK,
+                headers: [("Content-Type", "application/json"), ("Set-Cookie", "session=xyz789; Path=/; HttpOnly")],
+                body: "[]")
+            .AsRequestLog(MessageType.InterceptedResponse);
+
+    private static async Task<JsonElement> GenerateSingleHarEntryAsync(HarGeneratorPlugin plugin, RequestLog log)
+    {
+        var dir = await InTempCwdAsync(() => plugin.AfterRecordingStopAsync(Recording([log]), CancellationToken.None));
+        try
+        {
+            var har = dir.GetFiles("devproxy-*.har").Single();
+            using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(har.FullName));
+            return doc.RootElement.GetProperty("log").GetProperty("entries").EnumerateArray().Single().Clone();
         }
         finally
         {
@@ -161,6 +269,49 @@ public sealed class GenerationPluginsIntegrationTests
     }
 
     [Fact]
+    public async Task MockGenerator_PreservesRecordedOrderForSameUrl()
+    {
+        var plugin = new MockGeneratorPlugin(NullLogger<MockGeneratorPlugin>.Instance, Watch);
+
+        // enough entries to exceed the insertion-sort threshold of an unstable sort
+        const int count = 40;
+        var logs = Enumerable.Range(0, count)
+            .Select(i => TestExchange
+                .Request("GET", i % 2 == 0 ? "https://api.contoso.com/a" : "https://api.contoso.com/b")
+                .WithResponse(
+                    HttpStatusCode.OK,
+                    headers: [("Content-Type", "application/json")],
+                    body: $$"""{ "seq": {{i}} }""")
+                .AsRequestLog(MessageType.InterceptedResponse))
+            .ToList();
+
+        var args = Recording(logs);
+        var dir = await InTempCwdAsync(() => plugin.AfterRecordingStopAsync(args, CancellationToken.None));
+        try
+        {
+            var mockFile = dir.GetFiles("mocks-*.json").Single();
+            using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(mockFile.FullName));
+            var mocks = doc.RootElement.GetProperty("mocks").EnumerateArray()
+                .Select(m => (
+                    Url: m.GetProperty("request").GetProperty("url").GetString(),
+                    Seq: m.GetProperty("response").GetProperty("body").GetProperty("seq").GetInt32()))
+                .ToArray();
+
+            Assert.Equal(count, mocks.Length);
+
+            var expected = Enumerable.Range(0, count).Where(i => i % 2 == 1)
+                .Select(i => ("https://api.contoso.com/b", i))
+                .Concat(Enumerable.Range(0, count).Where(i => i % 2 == 0)
+                    .Select(i => ("https://api.contoso.com/a", i)));
+            Assert.Equal(expected, mocks.Select(m => (m.Url!, m.Seq)));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task HttpFileGenerator_WritesHttpFile()
     {
         var plugin = new HttpFileGeneratorPlugin(
@@ -217,9 +368,10 @@ public sealed class GenerationPluginsIntegrationTests
     [Fact]
     public async Task TypeSpecGenerator_WritesSpec()
     {
+        var logger = new MessageCapturingLogger<TypeSpecGeneratorPlugin>();
         var plugin = new TypeSpecGeneratorPlugin(
             TestDefaults.HttpClient,
-            NullLogger<TypeSpecGeneratorPlugin>.Instance,
+            logger,
             Watch,
             new DisabledLanguageModelClient(),
             new TestProxyConfiguration(),
@@ -233,10 +385,30 @@ public sealed class GenerationPluginsIntegrationTests
                 ((Dictionary<string, object>)args.GlobalData[ProxyUtils.ReportsKey])[plugin.Name]);
             Assert.NotEmpty(report);
             Assert.NotEmpty(dir.GetFiles("*.tsp"));
+            Assert.Contains(logger.Messages, m => m.StartsWith("Writing TypeSpec file to ", StringComparison.Ordinal));
+            Assert.Contains(logger.Messages, m => m.StartsWith("Created TypeSpec file ", StringComparison.Ordinal));
+            Assert.DoesNotContain(logger.Messages, m => m.Contains("OpenAPI", StringComparison.Ordinal));
         }
         finally
         {
             dir.Delete(recursive: true);
         }
+    }
+
+    private sealed class MessageCapturingLogger<T> : ILogger<T>
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            Messages.Add(formatter(state, exception));
     }
 }

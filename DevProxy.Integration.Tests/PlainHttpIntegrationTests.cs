@@ -4,6 +4,7 @@
 
 using System.Net;
 using System.Text;
+using DevProxy.Abstractions.Utils;
 using Xunit;
 
 namespace DevProxy.Integration.Tests;
@@ -129,5 +130,35 @@ public sealed class PlainHttpIntegrationTests
         var body = await response.Content.ReadAsStringAsync();
 
         Assert.Equal("probe=abc123", body);
+    }
+
+    [Fact]
+    public async Task Get_PassedThrough_AddsViaHeader()
+    {
+        await using var origin = await FakeOrigin.StartAsync();
+        await using var proxy = await KestrelProxyHarness.StartAsync(origin.Host);
+        using var client = proxy.CreateHttpClient();
+
+        using var response = await client.GetAsync(
+            new Uri($"http://{origin.Host}/via"));
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal($"1.1 dev-proxy/{ProxyUtils.ProductVersion}", body);
+    }
+
+    [Fact]
+    public async Task Get_PassedThrough_AppendsToExistingViaHeader()
+    {
+        await using var origin = await FakeOrigin.StartAsync();
+        await using var proxy = await KestrelProxyHarness.StartAsync(origin.Host);
+        using var client = proxy.CreateHttpClient();
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get, new Uri($"http://{origin.Host}/via"));
+        _ = request.Headers.TryAddWithoutValidation("Via", "1.0 upstream-proxy");
+        using var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal($"1.0 upstream-proxy, 1.1 dev-proxy/{ProxyUtils.ProductVersion}", body);
     }
 }
