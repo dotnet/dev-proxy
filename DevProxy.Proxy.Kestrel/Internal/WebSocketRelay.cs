@@ -443,13 +443,16 @@ internal sealed class WebSocketRelay(ILogger logger)
 
     private static readonly TimeSpan KeepAliveInterval = TimeSpan.FromSeconds(30);
     private const int ReceiveChunkSize = 8 * 1024;
+    private static readonly TimeSpan CloseHandshakeTimeout = TimeSpan.FromSeconds(5);
 
     /// <summary>
     /// Relays complete WebSocket messages between <paramref name="client"/> and
     /// <paramref name="origin"/> in both directions, capturing each message via
     /// <paramref name="onMessage"/>. When <paramref name="interceptor"/> is set,
     /// client→origin messages are offered to it first; handled messages are not
-    /// forwarded. Runs until either peer closes or the token fires.
+    /// forwarded. Runs until either peer closes or the token fires. When a peer
+    /// closes cleanly, waits (bounded) for the other peer's Close reply to be relayed
+    /// so the close handshake completes on both sides.
     /// </summary>
     private static async Task RelayWebSocketAsync(
         WebSocket client,
@@ -469,7 +472,15 @@ internal sealed class WebSocketRelay(ILogger logger)
 
         try
         {
-            _ = await Task.WhenAny(clientToOrigin, originToClient).ConfigureAwait(false);
+            var first = await Task.WhenAny(clientToOrigin, originToClient).ConfigureAwait(false);
+            if (first.IsCompletedSuccessfully && await first.ConfigureAwait(false))
+            {
+                // One peer started the close handshake and we relayed its Close frame.
+                // Keep the other direction running so the peer's Close reply reaches the
+                // initiator; cancelling now would drop it and abort the handshake.
+                var other = first == clientToOrigin ? originToClient : clientToOrigin;
+                _ = await Task.WhenAny(other, Task.Delay(CloseHandshakeTimeout, linked.Token)).ConfigureAwait(false);
+            }
             await linked.CancelAsync().ConfigureAwait(false);
         }
         finally
@@ -488,8 +499,9 @@ internal sealed class WebSocketRelay(ILogger logger)
     /// <summary>
     /// Relays client→origin messages, optionally intercepting them. When the
     /// interceptor handles a message, it is not forwarded to the origin.
+    /// Returns <c>true</c> when the client closed cleanly (Close frame relayed).
     /// </summary>
-    private static async Task RelayClientToOriginAsync(
+    private static async Task<bool> RelayClientToOriginAsync(
         WebSocket client,
         WebSocket origin,
         Action<WebSocketMessageRecord>? onMessage,
@@ -504,20 +516,15 @@ internal sealed class WebSocketRelay(ILogger logger)
             var (message, result) = await ReceiveFullMessageAsync(client, buffer, ct).ConfigureAwait(false);
             if (message is null || result is null)
             {
-                return;
+                return false;
             }
 
             if (result.MessageType == WebSocketMessageType.Close)
             {
-                if (origin.State is WebSocketState.Open or WebSocketState.CloseReceived)
-                {
-                    await origin.CloseOutputAsync(
-                        result.CloseStatus ?? WebSocketCloseStatus.NormalClosure,
-                        result.CloseStatusDescription, ct).ConfigureAwait(false);
-                }
+                await ForwardCloseAsync(origin, result, ct).ConfigureAwait(false);
                 onMessage?.Invoke(new WebSocketMessageRecord(
                     WebSocketMessageDirection.Send, WebSocketMessageType.Close, ReadOnlyMemory<byte>.Empty, DateTimeOffset.UtcNow));
-                return;
+                return true;
             }
 
             var data = message.Value;
@@ -536,14 +543,17 @@ internal sealed class WebSocketRelay(ILogger logger)
             }
             await origin.SendAsync(data, result.MessageType, endOfMessage: true, ct).ConfigureAwait(false);
         }
+
+        return false;
     }
 
     /// <summary>
     /// Relays origin→client messages. When a <paramref name="clientSendLock"/> is
     /// provided (because an interceptor is active), sends are serialized to avoid
     /// overlapping with interceptor-initiated sends.
+    /// Returns <c>true</c> when the origin closed cleanly (Close frame relayed).
     /// </summary>
-    private static async Task RelayOriginToClientAsync(
+    private static async Task<bool> RelayOriginToClientAsync(
         WebSocket origin,
         WebSocket client,
         Action<WebSocketMessageRecord>? onMessage,
@@ -557,7 +567,7 @@ internal sealed class WebSocketRelay(ILogger logger)
             var (message, result) = await ReceiveFullMessageAsync(origin, buffer, ct).ConfigureAwait(false);
             if (message is null || result is null)
             {
-                return;
+                return false;
             }
 
             if (result.MessageType == WebSocketMessageType.Close)
@@ -567,28 +577,21 @@ internal sealed class WebSocketRelay(ILogger logger)
                     await clientSendLock.WaitAsync(ct).ConfigureAwait(false);
                     try
                     {
-                        if (client.State is WebSocketState.Open or WebSocketState.CloseReceived)
-                        {
-                            await client.CloseOutputAsync(
-                                result.CloseStatus ?? WebSocketCloseStatus.NormalClosure,
-                                result.CloseStatusDescription, ct).ConfigureAwait(false);
-                        }
+                        await ForwardCloseAsync(client, result, ct).ConfigureAwait(false);
                     }
                     finally
                     {
                         clientSendLock.Release();
                     }
                 }
-                else if (client.State is WebSocketState.Open or WebSocketState.CloseReceived)
+                else
                 {
-                    await client.CloseOutputAsync(
-                        result.CloseStatus ?? WebSocketCloseStatus.NormalClosure,
-                        result.CloseStatusDescription, ct).ConfigureAwait(false);
+                    await ForwardCloseAsync(client, result, ct).ConfigureAwait(false);
                 }
 
                 onMessage?.Invoke(new WebSocketMessageRecord(
                     WebSocketMessageDirection.Receive, WebSocketMessageType.Close, ReadOnlyMemory<byte>.Empty, DateTimeOffset.UtcNow));
-                return;
+                return true;
             }
 
             var data = message.Value;
@@ -612,6 +615,31 @@ internal sealed class WebSocketRelay(ILogger logger)
 
             onMessage?.Invoke(new WebSocketMessageRecord(
                 WebSocketMessageDirection.Receive, result.MessageType, data, DateTimeOffset.UtcNow));
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Forwards a peer's Close frame to <paramref name="target"/>. If the target is
+    /// already gone (disposed or aborted), there is nobody left to notify, so the
+    /// failure is treated as normal teardown.
+    /// </summary>
+    private static async Task ForwardCloseAsync(WebSocket target, WebSocketReceiveResult close, CancellationToken ct)
+    {
+        if (target.State is not (WebSocketState.Open or WebSocketState.CloseReceived))
+        {
+            return;
+        }
+
+        try
+        {
+            await target.CloseOutputAsync(
+                close.CloseStatus ?? WebSocketCloseStatus.NormalClosure,
+                close.CloseStatusDescription, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is WebSocketException or ObjectDisposedException)
+        {
         }
     }
 

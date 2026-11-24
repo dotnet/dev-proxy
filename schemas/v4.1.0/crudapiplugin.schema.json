@@ -9,6 +9,7 @@
     },
     "apiFile": {
       "type": "string",
+      "default": "api.json",
       "description": "Path to the file that contains the definition of the CRUD API."
     }
   },
