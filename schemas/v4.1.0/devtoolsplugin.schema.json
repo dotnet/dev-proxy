@@ -9,6 +9,7 @@
     },
     "preferredBrowser": {
       "type": "string",
+      "default": "Edge",
       "enum": [
         "Edge",
         "EdgeDev",
@@ -29,6 +30,7 @@
     },
     "launchBrowser": {
       "type": "boolean",
+      "default": true,
       "description": "Whether to launch the browser with DevTools. When false, the plugin logs the DevTools URL that you can open in Microsoft Edge or Google Chrome yourself, eg. when running Dev Proxy in a container. Default: true."
     }
   },
