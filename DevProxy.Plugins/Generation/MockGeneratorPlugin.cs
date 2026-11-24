@@ -81,8 +81,10 @@ public sealed class MockGeneratorPlugin(
         }
 
         Logger.LogDebug("Sorting mocks...");
-        // sort mocks descending by url length so that most specific mocks are first
-        mocks.Sort((a, b) => string.CompareOrdinal(b.Request!.Url, a.Request!.Url));
+        // group mocks by URL (descending ordinal order) for readability. Generated
+        // mocks use exact URLs, so this order doesn't affect matching. The sort is
+        // stable so that repeated requests to the same URL keep their recorded order.
+        mocks = [.. mocks.OrderByDescending(m => m.Request!.Url, StringComparer.Ordinal)];
 
         var mocksFile = new MockResponseConfiguration { Mocks = mocks };
 

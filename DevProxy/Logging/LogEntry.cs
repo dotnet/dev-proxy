@@ -13,6 +13,7 @@ readonly struct LogEntry
     public EventId EventId { get; init; }
     public string? Message { get; init; }
     public Exception? Exception { get; init; }
+    public DateTimeOffset Timestamp { get; init; }
 
     public static LogEntry FromLogEntry<TState>(LogEntry<TState> logEntry)
     {
@@ -22,7 +23,8 @@ readonly struct LogEntry
             Category = logEntry.Category,
             EventId = logEntry.EventId,
             Message = logEntry.Formatter(logEntry.State, logEntry.Exception),
-            Exception = logEntry.Exception
+            Exception = logEntry.Exception,
+            Timestamp = DateTimeOffset.UtcNow
         };
     }
 }
