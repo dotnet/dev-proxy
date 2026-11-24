@@ -35,8 +35,16 @@ configuration:
     # Are merge commits prohibited from being pushed to this branch. boolean
     requiresLinearHistory: false
     # Required status checks to pass before merging. Values can be any string, but if the value does not correspond to any existing status check, the status check will be stuck on pending for status since nothing exists to push an actual status
+    # Check names for the .NET workflow must match job names in dotnet.yml and dotnet-required-workaround.yml.
     requiredStatusChecks:
     - CodeQL
+    - build
+    - Unit tests (ubuntu-latest)
+    - Unit tests (windows-latest)
+    - Unit tests (macos-latest)
+    - Integration tests (ubuntu-latest)
+    - Integration tests (windows-latest)
+    - Integration tests (macos-latest)
     # Require branches to be up to date before merging. boolean
     requiresStrictStatusChecks: false
     # Indicates whether there are restrictions on who can push. boolean. Should be set with whoCanPush.
