@@ -26,6 +26,18 @@ internal sealed class CrudApiDefinitionLoader(
         try
         {
             var apiDefinitionConfig = JsonSerializer.Deserialize<CrudApiConfiguration>(fileContents, ProxyUtils.JsonSerializerOptions);
+            // Removing null entries from roles/scopes that contain only nulls would
+            // leave them empty, which disables the permission check. Reject such
+            // files instead of silently allowing any token.
+            var invalidPermissions = GetPermissionsWithOnlyNullEntries(apiDefinitionConfig).ToArray();
+            if (invalidPermissions.Length > 0)
+            {
+                Logger.LogError(
+                    "{ApiFile} contains permissions with only null entries: {Permissions}. Specify at least one role or scope, or remove the property. API definition not loaded",
+                    _configuration.ApiFile,
+                    string.Join(", ", invalidPermissions));
+                return;
+            }
             RemoveNullEntries(apiDefinitionConfig);
             _configuration.BaseUrl = apiDefinitionConfig?.BaseUrl ?? string.Empty;
             _configuration.DataFile = apiDefinitionConfig?.DataFile ?? string.Empty;
@@ -64,5 +76,26 @@ internal sealed class CrudApiDefinitionLoader(
         {
             Logger.LogError(ex, "An error has occurred while reading {ApiFile}", _configuration.ApiFile);
         }
+    }
+
+    private static IEnumerable<string> GetPermissionsWithOnlyNullEntries(CrudApiConfiguration? config)
+    {
+        if (config is null)
+        {
+            return [];
+        }
+
+        var authConfigs = new List<(string Path, CrudApiEntraAuth? AuthConfig)> { ("entraAuthConfig", config.EntraAuthConfig) };
+        authConfigs.AddRange((config.Actions ?? []).Select((a, i) => ($"actions[{i}].entraAuthConfig", a?.EntraAuthConfig)));
+
+        return authConfigs
+            .Where(c => c.AuthConfig is not null)
+            .SelectMany(c => new[]
+            {
+                (Path: $"{c.Path}.roles", Values: c.AuthConfig!.Roles),
+                (Path: $"{c.Path}.scopes", Values: c.AuthConfig!.Scopes)
+            })
+            .Where(p => p.Values is not null && p.Values.Any() && p.Values.All(v => v is null))
+            .Select(p => p.Path);
     }
 }
