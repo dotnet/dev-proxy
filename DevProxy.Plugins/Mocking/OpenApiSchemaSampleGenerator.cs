@@ -140,12 +140,43 @@ internal static class OpenApiSchemaSampleGenerator
 
         if (merged is not null)
         {
+            // properties declared in several branches must satisfy all their schemas
+            foreach (var (name, propertySchemas) in GetOverlappingProperties(schema, depth))
+            {
+                merged[name] = GenerateSample(new OpenApiSchema { AllOf = propertySchemas }, depth + 1, visiting);
+            }
             return merged;
         }
 
         // for non-object values, combine the constraints of all branches
         // so that the value satisfies all of them
         return GenerateSample(CombineConstraints(FlattenAllOf(schema, depth)), depth + 1, visiting);
+    }
+
+    private static IEnumerable<(string Name, List<IOpenApiSchema> Schemas)> GetOverlappingProperties(IOpenApiSchema schema, int depth)
+    {
+        var propertySchemas = new Dictionary<string, List<IOpenApiSchema>>();
+        foreach (var candidate in FlattenAllOf(schema, depth))
+        {
+            foreach (var (name, propertySchema) in candidate.Properties ?? new Dictionary<string, IOpenApiSchema>())
+            {
+                if (propertySchema is null || propertySchema.WriteOnly)
+                {
+                    continue;
+                }
+
+                if (!propertySchemas.TryGetValue(name, out var schemas))
+                {
+                    schemas = [];
+                    propertySchemas[name] = schemas;
+                }
+                schemas.Add(propertySchema);
+            }
+        }
+
+        return propertySchemas
+            .Where(p => p.Value.Count > 1)
+            .Select(p => (p.Key, p.Value));
     }
 
     private static IEnumerable<IOpenApiSchema> FlattenAllOf(IOpenApiSchema schema, int depth)
@@ -677,11 +708,11 @@ internal static class OpenApiSchemaSampleGenerator
         }
         if (schema.MinLength is int minLength)
         {
-            description["minLength"] = minLength;
+            MergeDescription(description, new JsonObject { ["minLength"] = minLength });
         }
         if (schema.MaxLength is int maxLength)
         {
-            description["maxLength"] = maxLength;
+            MergeDescription(description, new JsonObject { ["maxLength"] = maxLength });
         }
         if (!string.IsNullOrEmpty(schema.Pattern))
         {
@@ -689,15 +720,15 @@ internal static class OpenApiSchemaSampleGenerator
         }
         if (schema.MultipleOf is not null)
         {
-            description["multipleOf"] = schema.MultipleOf.Value;
+            MergeDescription(description, new JsonObject { ["multipleOf"] = schema.MultipleOf.Value });
         }
         if (schema.MinItems is int minItems)
         {
-            description["minItems"] = minItems;
+            MergeDescription(description, new JsonObject { ["minItems"] = minItems });
         }
         if (schema.MaxItems is int maxItems)
         {
-            description["maxItems"] = maxItems;
+            MergeDescription(description, new JsonObject { ["maxItems"] = maxItems });
         }
         if (schema.UniqueItems == true)
         {
@@ -725,7 +756,8 @@ internal static class OpenApiSchemaSampleGenerator
     private static bool TryGetDecimal(JsonNode? node, out decimal value)
     {
         value = 0;
-        return node is JsonValue jsonValue && jsonValue.TryGetValue(out value);
+        return node is JsonValue jsonValue && jsonValue.GetValueKind() == JsonValueKind.Number &&
+            TryParseBound(jsonValue.ToJsonString(), out value);
     }
 
     private static JsonValue? ToNumberNode(string? value) =>
@@ -760,15 +792,27 @@ internal static class OpenApiSchemaSampleGenerator
                 continue;
             }
             // allOf requires all constraints, so keep the stricter bound
-            if (key is "minimum" or "maximum" &&
+            if (key is "minimum" or "maximum" or "minLength" or "maxLength" or "minItems" or "maxItems" &&
                 TryGetDecimal(value, out var sourceBound) &&
                 TryGetDecimal(target[key], out var targetBound))
             {
-                var isStricter = key == "minimum" ? sourceBound > targetBound : sourceBound < targetBound;
+                var isStricter = key.StartsWith("min", StringComparison.Ordinal) ? sourceBound > targetBound : sourceBound < targetBound;
                 if (isStricter)
                 {
                     target[key] = value!.DeepClone();
                 }
+                continue;
+            }
+            if (key == "multipleOf" &&
+                TryGetDecimal(value, out var sourceMultipleOf) && sourceMultipleOf > 0 &&
+                TryGetDecimal(target[key], out var targetMultipleOf) && targetMultipleOf > 0)
+            {
+                target[key] = LeastCommonMultiple(targetMultipleOf, sourceMultipleOf);
+                continue;
+            }
+            if (key == "uniqueItems" && target[key] is JsonValue targetUnique &&
+                targetUnique.TryGetValue<bool>(out var isUnique) && isUnique)
+            {
                 continue;
             }
             if (key == "required" && value is JsonArray sourceRequired &&

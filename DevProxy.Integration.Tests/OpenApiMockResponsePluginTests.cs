@@ -135,6 +135,17 @@ public sealed class OpenApiMockResponsePluginTests
         Assert.True(JsonNode.DeepEquals(JsonNode.Parse(expected), sample), sample?.ToJsonString());
     }
 
+    [Theory]
+    [InlineData("{ allOf: [ { type: object, properties: { id: { type: integer, minimum: 7 } } }, { type: object, properties: { id: { type: integer, maximum: 10 } } } ] }", "{\"id\":7}")]
+    [InlineData("{ properties: { id: { type: integer, maximum: -3 } }, allOf: [ { type: object, properties: { id: { type: integer, multipleOf: 5 } } } ] }", "{\"id\":-5}")]
+    [InlineData("{ allOf: [ { type: object, properties: { name: { type: string, minLength: 8 } } }, { properties: { name: { type: string, maxLength: 10 }, age: { type: integer } } } ] }", "{\"name\":\"stringxx\",\"age\":0}")]
+    public void GenerateSample_IntersectsOverlappingAllOfProperties(string schema, string expected)
+    {
+        var sample = OpenApiSchemaSampleGenerator.GenerateSample(ParseSchema(schema));
+
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(expected), sample), sample?.ToJsonString());
+    }
+
     [Fact]
     public async Task LanguageModelResponse_IsUsedAndCached()
     {
@@ -217,6 +228,26 @@ public sealed class OpenApiMockResponsePluginTests
         Assert.Equal(1, properties["tags"]!["minItems"]!.GetValue<int>());
         Assert.Equal(3, properties["tags"]!["maxItems"]!.GetValue<int>());
         Assert.True(properties["tags"]!["uniqueItems"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public void Describe_KeepsStricterAllOfConstraints()
+    {
+        var description = OpenApiSchemaSampleGenerator.Describe(ParseSchema("""
+            allOf:
+              - { type: string, minLength: 5, maxLength: 8 }
+              - { minLength: 1, maxLength: 20 }
+              - { type: array, minItems: 3, maxItems: 4, multipleOf: 4 }
+            minItems: 2
+            maxItems: 10
+            multipleOf: 6
+            """));
+
+        Assert.Equal(5, description["minLength"]!.GetValue<int>());
+        Assert.Equal(8, description["maxLength"]!.GetValue<int>());
+        Assert.Equal(3, description["minItems"]!.GetValue<int>());
+        Assert.Equal(4, description["maxItems"]!.GetValue<int>());
+        Assert.Equal(12m, description["multipleOf"]!.GetValue<decimal>());
     }
 
     private static IOpenApiSchema ParseSchema(string schemaYaml)
