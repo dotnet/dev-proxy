@@ -9,6 +9,7 @@
     },
     "rewritesFile": {
       "type": "string",
+      "default": "rewrites.json",
       "description": "Path to the file containing rewrite definitions (e.g., 'rewrites.json')."
     }
   },
