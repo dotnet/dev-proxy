@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy HttpFileGeneratorPlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Reference to the JSON schema definition."
+    },
+    "includeOptionsRequests": {
+      "type": "boolean",
+      "description": "Determines whether to include OPTIONS requests in the generated HTTP file. Default: false."
+    }
+  },
+  "additionalProperties": false
+}
