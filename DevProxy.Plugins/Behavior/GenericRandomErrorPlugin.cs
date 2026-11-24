@@ -264,17 +264,22 @@ public sealed class GenericRandomErrorPlugin(
             }
         }
 
+        // default the content type to application/json unless set in the error response
+        if (error.Body is not null &&
+            !headers.Any(h => string.Equals(h.Name, "Content-Type", StringComparison.OrdinalIgnoreCase)))
+        {
+            headers.Add(new("Content-Type", "application/json"));
+        }
+
         var statusCode = (HttpStatusCode)(error.StatusCode ?? 400);
-        var body = error.Body is null ? string.Empty : JsonSerializer.Serialize(error.Body, ProxyUtils.JsonSerializerOptions);
-        // we get a JSON string so need to start with the opening quote
-        if (body.StartsWith("\"@"))
+        string body = ProxyUtils.SerializeBody(error.Body);
+        if (body.StartsWith('@'))
         {
             // we've got a mock body starting with @-token which means we're sending
             // a response from a file on disk
             // if we can read the file, we can immediately send the response and
             // skip the rest of the logic in this method
-            // remove the surrounding quotes and the @-token
-            var filePath = Path.Combine(Path.GetDirectoryName(Configuration.ErrorsFile) ?? "", ProxyUtils.ReplacePathTokens(body.Trim('"').Substring(1)));
+            var filePath = Path.Combine(Path.GetDirectoryName(Configuration.ErrorsFile) ?? "", ProxyUtils.ReplacePathTokens(body[1..]));
             if (!File.Exists(filePath))
             {
                 Logger.LogError("File {FilePath} not found. Serving file path in the mock response", (string?)filePath);

@@ -29,7 +29,8 @@ public interface IRootCertificateTrust
     /// <summary>
     /// Unconditionally installs <paramref name="rootCertificate"/> into the OS trust
     /// store, bypassing the first-run/install policy. Used by the explicit
-    /// <c>cert ensure</c> command. Best-effort: failures are logged, not thrown.
+    /// <c>cert ensure</c> command. Installation failures are logged and thrown.
+    /// On platforms without automatic trust installation, logs manual instructions.
     /// </summary>
     void Trust(X509Certificate2 rootCertificate);
 

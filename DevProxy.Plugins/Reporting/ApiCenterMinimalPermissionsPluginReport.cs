@@ -27,6 +27,7 @@ public sealed class ApiCenterMinimalPermissionsPluginReport : IMarkdownReport, I
     public required IEnumerable<ApiPermissionError> Errors { get; init; }
     public required IEnumerable<ApiCenterMinimalPermissionsPluginReportApiResult> Results { get; init; }
     public required IEnumerable<string> UnmatchedRequests { get; init; }
+    public IEnumerable<string>? ExcludedPermissions { get; init; }
 
     public string ToMarkdown()
     {
@@ -100,7 +101,17 @@ public sealed class ApiCenterMinimalPermissionsPluginReport : IMarkdownReport, I
                     .OrderBy(o => o.Request)
                     .Select(e => $"- `{e.Request}`: {e.Error}")).AppendLine()
                 .AppendLine()
-            : sb.AppendLine("No errors occurred.");
+            : sb.AppendLine("No errors occurred.")
+                .AppendLine();
+
+        if (ExcludedPermissions?.Any() == true)
+        {
+            _ = sb.AppendLine("## 🚫 Excluded permissions")
+                .AppendLine()
+                .AppendLine("The following permissions were excluded from the analysis:")
+                .AppendLine()
+                .AppendJoin(Environment.NewLine, ExcludedPermissions.Select(p => $"- `{p}`")).AppendLine();
+        }
 
         return sb.ToString();
     }
@@ -166,7 +177,17 @@ public sealed class ApiCenterMinimalPermissionsPluginReport : IMarkdownReport, I
                     .OrderBy(o => o.Request)
                     .Select(e => $"- `{e.Request}`: {e.Error}")).AppendLine()
                 .AppendLine()
-            : sb.AppendLine("No errors occurred.");
+            : sb.AppendLine("No errors occurred.")
+                .AppendLine();
+
+        if (ExcludedPermissions?.Any() == true)
+        {
+            _ = sb.AppendLine("EXCLUDED PERMISSIONS")
+                .AppendLine()
+                .AppendLine("The following permissions were excluded from the analysis:")
+                .AppendLine()
+                .AppendJoin(", ", ExcludedPermissions).AppendLine();
+        }
 
         return sb.ToString();
     }

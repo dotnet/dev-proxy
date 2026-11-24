@@ -40,6 +40,21 @@ public sealed class DevToolsPluginConfiguration
     /// <remarks>Use this value when you install the browser in a non-standard
     /// path.</remarks>
     public string PreferredBrowserPath { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Port on which the plugin listens for DevTools connections. 0 (default)
+    /// picks a random available port.
+    /// </summary>
+    /// <remarks>Use a fixed port when you need to publish it, eg. when running
+    /// Dev Proxy in a container.</remarks>
+    public int Port { get; set; }
+
+    /// <summary>
+    /// Whether to launch the browser with DevTools. When false, the plugin
+    /// only logs the DevTools URL, which you can open in Microsoft Edge or
+    /// Google Chrome yourself.
+    /// </summary>
+    public bool LaunchBrowser { get; set; } = true;
 }
 
 public sealed class DevToolsPlugin(
@@ -74,6 +89,7 @@ public sealed class DevToolsPlugin(
     private readonly Lock _replayLock = new();
 
     private CancellationToken? _cancellationToken;
+    private bool _isProxyCommand;
     private WebSocketServer? _webSocket;
 
     public override string Name => nameof(DevToolsPlugin);
@@ -91,7 +107,19 @@ public sealed class DevToolsPlugin(
             return;
         }
 
-        InitInspector();
+        _isProxyCommand = true;
+    }
+
+    public override void OptionsLoaded(OptionsLoadedArgs e)
+    {
+        base.OptionsLoaded(e);
+
+        // start the inspector after command-line options have been applied
+        // so that it binds to the IP address specified using --ip-address
+        if (_isProxyCommand)
+        {
+            InitInspector();
+        }
     }
 
     public override async Task BeforeRequestAsync(ProxyRequestArgs e, CancellationToken cancellationToken)
@@ -886,30 +914,63 @@ public sealed class DevToolsPlugin(
     {
         var browserPath = string.Empty;
 
-        try
+        if (Configuration.LaunchBrowser)
         {
-            browserPath = GetBrowserPath();
+            try
+            {
+                browserPath = GetBrowserPath();
+            }
+            catch (NotSupportedException ex)
+            {
+                Logger.LogError(ex, "Error starting {Plugin}. Error finding the browser.", Name);
+                return;
+            }
+
+            // check if the browser is installed
+            if (!File.Exists(browserPath))
+            {
+                Logger.LogError("Error starting {Plugin}. Browser executable not found at {BrowserPath}", Name, browserPath);
+                return;
+            }
         }
-        catch (NotSupportedException ex)
+
+        if (Configuration.Port is < 0 or > IPEndPoint.MaxPort)
         {
-            Logger.LogError(ex, "Error starting {Plugin}. Error finding the browser.", Name);
+            Logger.LogError("Error starting {Plugin}. {Port} must be between 0 and {MaxPort} but was {Value}", Name, nameof(Configuration.Port), IPEndPoint.MaxPort, Configuration.Port);
             return;
         }
 
-        // check if the browser is installed
-        if (!File.Exists(browserPath))
+        var port = Configuration.Port == 0 ? GetFreePort() : Configuration.Port;
+        // random token required in the WebSocket path so that only clients
+        // that got the URL from Dev Proxy can connect
+        var token = Guid.NewGuid().ToString();
+        var (listenerHost, connectHost) = GetWebSocketHosts(ProxyConfiguration.IPAddress);
+
+        _webSocket = TryStartWebSocketServer(listenerHost, port, token, out var startException);
+        if (_webSocket is null && listenerHost == "*")
         {
-            Logger.LogError("Error starting {Plugin}. Browser executable not found at {BrowserPath}", Name, browserPath);
+            // on Windows, listening on all interfaces requires admin rights
+            // or a URL ACL; fall back to loopback so the plugin keeps working
+            Logger.LogWarning(startException, "{Plugin} couldn't listen for DevTools connections on all interfaces. Listening on 127.0.0.1 instead, so DevTools can only connect from this machine", Name);
+            listenerHost = "127.0.0.1";
+            _webSocket = TryStartWebSocketServer(listenerHost, port, token, out startException);
+        }
+
+        if (_webSocket is null)
+        {
+            Logger.LogError(startException, "Error starting {Plugin}. Couldn't listen for DevTools connections on {Host}:{Port}", Name, listenerHost, port);
             return;
         }
 
-        var port = GetFreePort();
-        _webSocket = new(port, Logger);
-        _webSocket.MessageReceived += SocketMessageReceived;
-        _webSocket.ClientConnected += OnWebSocketClientConnected;
-        _ = _webSocket.StartAsync();
+        var webSocketAddress = $"{connectHost}:{port}/{token}";
 
-        var inspectionUrl = $"http://localhost:9222/devtools/inspector.html?ws=127.0.0.1:{port}";
+        if (!Configuration.LaunchBrowser)
+        {
+            Logger.LogInformation("{Name} available at devtools://devtools/bundled/inspector.html?ws={WebSocketAddress}. Open this URL in Microsoft Edge or Google Chrome to inspect requests.", Name, webSocketAddress);
+            return;
+        }
+
+        var inspectionUrl = $"http://localhost:9222/devtools/inspector.html?ws={webSocketAddress}";
         var profilePath = Path.Combine(Path.GetTempPath(), "devtools-devproxy");
         var args = $"{inspectionUrl} --remote-debugging-port=9222 --user-data-dir=\"{profilePath}\"";
 
@@ -1045,6 +1106,55 @@ public sealed class DevToolsPlugin(
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
         listener.Stop();
         return port;
+    }
+
+    /// <summary>
+    /// Gets the host to listen on for DevTools connections, matching the
+    /// proxy's IP address, and the host DevTools should connect to.
+    /// </summary>
+    private WebSocketServer? TryStartWebSocketServer(string host, int port, string token, out Exception? exception)
+    {
+        var server = new WebSocketServer(host, port, token, Logger);
+        try
+        {
+            server.Start();
+        }
+        catch (Exception ex) when (ex is HttpListenerException or SocketException)
+        {
+            server.Dispose();
+            exception = ex;
+            return null;
+        }
+
+        server.MessageReceived += SocketMessageReceived;
+        server.ClientConnected += OnWebSocketClientConnected;
+        exception = null;
+        return server;
+    }
+
+    internal static (string ListenerHost, string ConnectHost) GetWebSocketHosts(string? ipAddress)
+    {
+        if (string.IsNullOrWhiteSpace(ipAddress))
+        {
+            return ("127.0.0.1", "127.0.0.1");
+        }
+
+        if (!IPAddress.TryParse(ipAddress, out var address))
+        {
+            return (ipAddress, ipAddress);
+        }
+
+        if (address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any))
+        {
+            // listen on all interfaces; connect through loopback, which is
+            // where published container ports and forwarded ports end up
+            return ("*", "127.0.0.1");
+        }
+
+        var host = address.AddressFamily == AddressFamily.InterNetworkV6
+            ? $"[{address}]"
+            : address.ToString();
+        return (host, host);
     }
 
     private static string GetRequestId(IProxySession? session)

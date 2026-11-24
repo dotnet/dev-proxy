@@ -131,6 +131,23 @@ internal sealed class InteractiveConsoleService(
     }
 
     /// <summary>
+    /// Flushes an active recording on shutdown (Ctrl+C, <c>devproxy stop</c>, API stop)
+    /// so plugins like HarGeneratorPlugin still process the recorded requests.
+    /// Hosted services stop in reverse registration order, so normal shutdown
+    /// stops the proxy engine before this service flushes the recording.
+    /// </summary>
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        // Stop the hotkey loop first so a concurrent 'S' press can't race this flush.
+        await base.StopAsync(cancellationToken);
+
+        if (controller.ProxyState.IsRecording)
+        {
+            await controller.StopRecordingAsync(cancellationToken);
+        }
+    }
+
+    /// <summary>
     /// Waits for the host to finish starting so the banner is printed after the
     /// engine's startup logs (and the bound port is known). Returns <c>false</c>
     /// if shutdown was requested before the host started.

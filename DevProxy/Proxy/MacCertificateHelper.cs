@@ -9,12 +9,12 @@ namespace DevProxy.Proxy;
 
 internal static class MacCertificateHelper
 {
-    internal static void TrustCertificate(X509Certificate2 certificate, ILogger logger)
+    internal static bool TrustCertificate(X509Certificate2 certificate, ILogger logger)
     {
         var pemFilePath = ExportCertificateToPem(certificate, logger);
         if (pemFilePath is null)
         {
-            return;
+            return false;
         }
 
         try
@@ -22,7 +22,7 @@ internal static class MacCertificateHelper
             var keychainPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 "Library", "Keychains", "login.keychain-db");
-            RunSecurityCommand(
+            return RunSecurityCommand(
                 $"add-trusted-cert -r trustRoot -k \"{keychainPath}\" \"{pemFilePath}\"",
                 "trust",
                 logger);
@@ -77,7 +77,7 @@ internal static class MacCertificateHelper
         }
     }
 
-    private static void RunSecurityCommand(string arguments, string action, ILogger logger)
+    internal static bool RunSecurityCommand(string arguments, string action, ILogger logger)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -96,10 +96,12 @@ internal static class MacCertificateHelper
         if (process.ExitCode != 0)
         {
             logger.LogError("Failed to {Action} certificate: {Error}", action, stderr);
+            return false;
         }
         else
         {
             logger.LogInformation("Successfully completed {Action} certificate operation.", action);
+            return true;
         }
     }
 

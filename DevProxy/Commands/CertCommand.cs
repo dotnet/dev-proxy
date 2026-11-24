@@ -36,7 +36,7 @@ sealed class CertCommand : Command
     private void ConfigureCommand()
     {
         var certEnsureCommand = new Command("ensure", "Ensure certificates are setup (creates root if required). Also makes root certificate trusted.");
-        certEnsureCommand.SetAction(async _ => await EnsureCertAsync());
+        certEnsureCommand.SetAction(_ => EnsureCert());
 
         var certRemoveCommand = new Command("remove", "Remove the certificate from Root Store");
         certRemoveCommand.SetAction(RemoveCert);
@@ -54,9 +54,9 @@ sealed class CertCommand : Command
         ]);
     }
 
-    private Task EnsureCertAsync()
+    private int EnsureCert()
     {
-        _logger.LogTrace("EnsureCertAsync() called");
+        _logger.LogTrace("EnsureCert() called");
 
         try
         {
@@ -64,14 +64,17 @@ sealed class CertCommand : Command
             _logger.LogInformation("Ensuring certificate exists and is trusted...");
             _rootCertificateTrust.Trust(_rootCertificate);
             _logger.LogInformation("DONE");
+            return 0;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error ensuring certificate");
+            return 1;
         }
-
-        _logger.LogTrace("EnsureCertAsync() finished");
-        return Task.CompletedTask;
+        finally
+        {
+            _logger.LogTrace("EnsureCert() finished");
+        }
     }
 
     public int RemoveCert(ParseResult parseResult)
