@@ -29,6 +29,7 @@ To create a new plugin:
 1. Implement the `IPlugin` interface (`DevProxy.Abstractions/Plugins/IPlugin.cs`) either directly or by inheriting from `BasePlugin` / `BaseReportingPlugin`. Optionally implement `IStdioPlugin` for stdio-based communication.
 2. Implement it as a **public class** in a class library project.
 3. Implement the required interface members and override any relevant base class methods/events for your use case.
+4. If the plugin has a configuration class, add `schemas/v<current version>/<lowercased plugin name>.schema.json` matching it (properties, types, defaults). `PluginSchemaConsistencyTests` in `DevProxy.Tests` fails on mismatches.
 
 ## Code Conventions
 
