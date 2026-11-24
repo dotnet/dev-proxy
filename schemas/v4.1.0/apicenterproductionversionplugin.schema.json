@@ -21,6 +21,7 @@
     },
     "workspaceName": {
       "type": "string",
+      "default": "default",
       "description": "Name of the Azure API Center workspace to use. Default is 'default'."
     }
   },
