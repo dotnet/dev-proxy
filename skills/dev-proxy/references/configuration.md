@@ -46,6 +46,28 @@ A configuration file follows a specific property order: `$schema`, then `plugins
 - File paths in Dev Proxy configuration files are relative to the file where they are defined, unless they start with `~/` (or `~\` on Windows), which expands to the user's home directory.
 - Configuration hot-reloads on file save (v2.1.0+) — no restart needed. Works for both the main config and plugin-specific files.
 
+## Environment Variable Placeholders
+
+Reference environment variables in config files and plugin data files (mocks, CRUD API definitions and data, error responses, OpenAPI specs used by MinimalPermissions plugins, and so on) with `${VAR_NAME}`. `${env:VAR_NAME}` works too and also accepts names with characters like `(`, `-`, or `.`, for example `${env:ProgramFiles(x86)}`. Dev Proxy resolves placeholders when it loads the file.
+
+```json
+{
+  "entraAuthConfig": {
+    "audience": "${ENTRA_APP_CLIENT_ID}",
+    "issuer": "https://login.microsoftonline.com/${ENTRA_APP_TENANT_ID}/v2.0"
+  }
+}
+```
+
+- In the config file, variables resolve from `--env` values first, then the config `env` section, then the OS environment. Values in the `env` section can themselves reference OS environment variables or `--env` values.
+- Plugin data files resolve from the process environment, which includes the `env` section and `--env` values.
+- If a variable isn't set, Dev Proxy leaves the placeholder as-is and logs a warning.
+- Use `$${VAR_NAME}` for a literal `${VAR_NAME}`.
+- Placeholders resolve in string values only (not property names). Config values like ports can use a string placeholder (`"port": "${PORT}"`); data files need the value's expected type.
+- `${...}` placeholders resolve once at load; `@`-tokens such as `@dynamic` and `@request.body.*` resolve per request.
+- Exception: RewritePlugin rewrite rules (in rewrites files or inline in the plugin config section) don't resolve placeholders at load because `${name}` in `out.url` refers to regex capture groups. Use `${env:VAR_NAME}`, which RewritePlugin resolves per request.
+- Deprecated: `@VAR_NAME` in Azure API Center plugin settings and `{VAR_NAME}` in OpenAPI specs used by MinimalPermissions plugins still work but log a warning. Use `${VAR_NAME}` instead.
+
 ## Plugin Architecture
 
 Dev Proxy has four plugin types:
