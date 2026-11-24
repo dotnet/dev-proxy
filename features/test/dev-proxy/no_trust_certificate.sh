@@ -11,10 +11,12 @@ set -e
 source dev-container-features-test-lib
 source "$(dirname "$0")/common.sh"
 
-check "devproxy runs" devproxy --version
+# Check for certificates before running devproxy: Dev Proxy itself creates a
+# root certificate in the user's profile on first launch.
 check "no root certificate is generated" devproxy_no_stray_certs
 check "no certificate in the system store" test ! -e "${DEVPROXY_TEST_CERT}"
 check "certificate helper isn't installed" test ! -e /usr/local/share/devproxy/trust-cert.sh
 check "no sudo rule is added" test ! -e /etc/sudoers.d/devproxy
+check "devproxy runs" devproxy --version
 
 reportResults
