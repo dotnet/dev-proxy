@@ -9,6 +9,7 @@
     },
     "mocksFile": {
       "type": "string",
+      "default": "stdio-mocks.json",
       "description": "Path to the file containing the stdio mock responses."
     },
     "blockUnmockedRequests": {
