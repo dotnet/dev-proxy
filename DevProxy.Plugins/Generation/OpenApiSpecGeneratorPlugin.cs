@@ -147,7 +147,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
         var generatedOpenApiSpecs = new Dictionary<string, string>();
         foreach (var openApiDoc in openApiDocs)
         {
-            if (openApiDoc.Servers is null || !openApiDoc.Servers.Any())
+            if (openApiDoc.Servers is null || openApiDoc.Servers.Count == 0)
             {
                 Logger.LogDebug("OpenAPI doc has no servers. Skipping...");
                 continue;
@@ -541,7 +541,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
 
     private void AddOrMergeParameters(OpenApiOperation operation, IList<IOpenApiParameter>? parameters)
     {
-        if (parameters is null || !parameters.Any())
+        if (parameters is null || parameters.Count == 0)
         {
             Logger.LogDebug("    No parameters to process");
             return;
@@ -578,13 +578,13 @@ public sealed class OpenApiSpecGeneratorPlugin(
             return;
         }
 
-        if (source.Properties is null || !source.Properties.Any())
+        if (source.Properties is null || source.Properties.Count == 0)
         {
             Logger.LogDebug("        Source has no properties. Skipping...");
             return;
         }
 
-        if (target.Properties is null || !target.Properties.Any())
+        if (target.Properties is null || target.Properties.Count == 0)
         {
             Logger.LogDebug("        Target has no properties. Skipping...");
             return;
@@ -613,7 +613,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
 
     private void AddOrMergeRequestBody(OpenApiOperation operation, OpenApiRequestBody? requestBody)
     {
-        if (requestBody is null || requestBody.Content is null || !requestBody.Content.Any())
+        if (requestBody is null || requestBody.Content is null || requestBody.Content.Count == 0)
         {
             Logger.LogDebug("    No request body to process");
             return;
@@ -669,7 +669,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
             return;
         }
 
-        if (apiResponse.Content is null || !apiResponse.Content.Any())
+        if (apiResponse.Content is null || apiResponse.Content.Count == 0)
         {
             Logger.LogDebug("    No response content to process");
             return;
