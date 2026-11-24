@@ -9,16 +9,19 @@
     },
     "errorsFile": {
       "type": "string",
+      "default": "errors.json",
       "description": "Path to the file that contains error responses."
     },
     "rate": {
       "type": "integer",
+      "default": 50,
       "minimum": 0,
       "maximum": 100,
       "description": "The percentage of requests to fail with a random error. Value between 0 and 100."
     },
     "retryAfterInSeconds": {
       "type": "integer",
+      "default": 5,
       "minimum": 1,
       "description": "The number of seconds to wait before retrying the request. Included on the Retry-After response header for dynamic throttling. Default: 5."
     }
