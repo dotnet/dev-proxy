@@ -63,8 +63,11 @@ namespace DevProxy.Tests
             using var plugin = new TempPlugin();
             var context = PluginServiceExtensions.GetPluginLoadContext(plugin.PluginPath);
             var assembly = context.LoadFromAssemblyName(new(Path.GetFileNameWithoutExtension(plugin.PluginPath)));
-            // a different assembly on disk has a different MVID and none of the plugin types
-            File.Copy(plugin.DependencyPath, plugin.PluginPath, overwrite: true);
+            // a different assembly on disk has a different MVID and none of the plugin types;
+            // delete first so the loaded (memory-mapped) file isn't overwritten in place,
+            // which would corrupt the loaded image on Linux
+            File.Delete(plugin.PluginPath);
+            File.Copy(plugin.DependencyPath, plugin.PluginPath);
 
             var type = PluginServiceExtensions.FindPluginType(assembly, nameof(LookupPlugin));
 
