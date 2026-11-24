@@ -57,7 +57,10 @@ public sealed class MemoryRetentionTests(ITestOutputHelper output)
 
     private readonly ITestOutputHelper _output = output;
 
+    // Skipped until the linked fix merges; remove the skip and the suppression then.
+#pragma warning disable xUnit1004
     [Fact(Skip = HotReloadSkipReason)]
+#pragma warning restore xUnit1004
     public async Task HotReload_ReleasesPreviousGenerations()
     {
         var result = await MeasureHotReloadAsync(HotReloadGenerations, leakGenerations: false);
@@ -89,7 +92,10 @@ public sealed class MemoryRetentionTests(ITestOutputHelper output)
             $"The managed heap grew by {result.GrowthBytes:N0} bytes over {result.MeasuredRequests:N0} requests; allowed: {AllowedGrowthBytes:N0}.");
     }
 
+    // Skipped until the linked fix merges; remove the skip and the suppression then.
+#pragma warning disable xUnit1004
     [Fact(Skip = FailedRequestsSkipReason)]
+#pragma warning restore xUnit1004
     public async Task FailedAndCancelledRequests_DoNotRetainMemory()
     {
         var result = await MeasureRequestsAsync(
