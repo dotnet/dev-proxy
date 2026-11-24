@@ -55,6 +55,8 @@ internal sealed class ApiCenterClient : IDisposable
             throw new ArgumentException("Specify workspaceName in the configuration.");
         }
 
+        _logger = logger;
+
         // load configuration from env vars
         configuration.SubscriptionId = ResolveEnvironmentVariable(configuration.SubscriptionId, "subscriptionId");
         configuration.ResourceGroupName = ResolveEnvironmentVariable(configuration.ResourceGroupName, "resourceGroupName");
@@ -62,7 +64,6 @@ internal sealed class ApiCenterClient : IDisposable
         configuration.WorkspaceName = ResolveEnvironmentVariable(configuration.WorkspaceName, "workspaceName");
 
         _configuration = configuration;
-        _logger = logger;
 
         _authenticationHandler = new(_credential, _scopes)
         {
@@ -79,7 +80,7 @@ internal sealed class ApiCenterClient : IDisposable
         }
     }
 
-    private static string ResolveEnvironmentVariable(string value, string settingName)
+    private string ResolveEnvironmentVariable(string value, string settingName)
     {
         if (!value.StartsWith('@'))
         {
@@ -87,6 +88,9 @@ internal sealed class ApiCenterClient : IDisposable
         }
 
         var variableName = value[1..];
+        _logger.LogWarning(
+            "Referencing environment variables using @{VariableName} in {SettingName} is deprecated and will be removed in a future version. Use ${{NAME}} instead",
+            variableName, settingName);
         var variableValue = Environment.GetEnvironmentVariable(variableName);
         return string.IsNullOrEmpty(variableValue)
             ? throw new ArgumentException($"Environment variable {variableName} referenced by {settingName} isn't set.")
