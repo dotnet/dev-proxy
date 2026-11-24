@@ -1,0 +1,10 @@
+# Pinned (including transitive dependencies) so CI runs are reproducible.
+httpx==0.28.1
+websockets==17.4
+anyio==4.16.0
+certifi==2026.10.23
+exceptiongroup==1.3.1 ; python_version < "3.11"
+h11==0.16.0
+httpcore==1.0.9
+idna==3.20
+typing_extensions==4.16.0 ; python_version < "3.13"
