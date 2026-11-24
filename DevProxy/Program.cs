@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using DevProxy;
+using DevProxy.Abstractions.Utils;
 using DevProxy.Commands;
 using DevProxy.Proxy;
 using DevProxy.State;
@@ -90,33 +91,6 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
             await Console.Error.WriteLineAsync("Use 'devproxy stop' to stop it first.");
         }
         return 1;
-    }
-
-    // Check for port conflicts with existing instances
-    var existingStates = await StateManager.LoadAllStatesAsync();
-    if (existingStates.Count > 0)
-    {
-        var earlyOptions = new DevProxyConfigOptions();
-        earlyOptions.ParseOptions(args);
-        var requestedPort = earlyOptions.Port ?? 8000;
-        var requestedApiPort = earlyOptions.ApiPort ?? 8897;
-
-        foreach (var existing in existingStates)
-        {
-            if (requestedPort != 0 && existing.Port == requestedPort)
-            {
-                await Console.Error.WriteLineAsync($"Port {requestedPort} is already in use by Dev Proxy instance (PID: {existing.Pid}).");
-                await Console.Error.WriteLineAsync("Use a different --port or stop the existing instance first.");
-                return 1;
-            }
-
-            if (requestedApiPort != 0 && existing.ApiUrl.EndsWith($":{requestedApiPort}", StringComparison.Ordinal))
-            {
-                await Console.Error.WriteLineAsync($"API port {requestedApiPort} is already in use by Dev Proxy instance (PID: {existing.Pid}).");
-                await Console.Error.WriteLineAsync("Use a different --api-port or stop the existing instance first.");
-                return 1;
-            }
-        }
     }
 
     // Clean up old log files
@@ -234,9 +208,19 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
             {
                 var errorOutput = await process.StandardError.ReadToEndAsync();
                 var standardOutput = await process.StandardOutput.ReadToEndAsync();
+                // The daemon redirects its console to its log file, so that's where
+                // the reason for the failure (like a port conflict) ends up.
+                var logOutput = await ReadDaemonLogAsync(process.Id);
 
                 if (isJsonOutput)
                 {
+                    if (!string.IsNullOrEmpty(logOutput))
+                    {
+                        foreach (var entry in ToJsonLogEntries(logOutput))
+                        {
+                            await Console.Error.WriteLineAsync(entry);
+                        }
+                    }
                     var message = "Dev Proxy failed to start.";
                     if (!string.IsNullOrEmpty(errorOutput))
                     {
@@ -251,6 +235,10 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
                 else
                 {
                     await Console.Error.WriteLineAsync("Dev Proxy failed to start.");
+                    if (!string.IsNullOrEmpty(logOutput))
+                    {
+                        await Console.Error.WriteLineAsync(logOutput.TrimEnd());
+                    }
                     if (!string.IsNullOrEmpty(errorOutput))
                     {
                         await Console.Error.WriteLineAsync(errorOutput);
@@ -336,6 +324,72 @@ static string FormatJsonLogEntry(string level, string message)
     return JsonSerializer.Serialize(entry, jsonlOptions);
 }
 
+// The daemon logs JSONL, but output it doesn't control (like unhandled
+// exception stack traces) can end up in its log too. Keep JSON entries as-is
+// and wrap other runs of lines so the output stays valid JSONL.
+static IEnumerable<string> ToJsonLogEntries(string log)
+{
+    var pending = new List<string>();
+    foreach (var line in log.TrimEnd().Split('\n'))
+    {
+        var trimmed = line.TrimEnd('\r');
+        if (IsJsonObject(trimmed))
+        {
+            if (pending.Count > 0)
+            {
+                yield return FormatJsonLogEntry("error", string.Join(Environment.NewLine, pending));
+                pending.Clear();
+            }
+            yield return trimmed;
+        }
+        else if (pending.Count > 0 || !string.IsNullOrWhiteSpace(trimmed))
+        {
+            pending.Add(trimmed);
+        }
+    }
+    if (pending.Count > 0)
+    {
+        yield return FormatJsonLogEntry("error", string.Join(Environment.NewLine, pending).TrimEnd());
+    }
+}
+
+static bool IsJsonObject(string line)
+{
+    if (!line.StartsWith('{', StringComparison.Ordinal))
+    {
+        return false;
+    }
+    try
+    {
+        using var document = JsonDocument.Parse(line);
+        return document.RootElement.ValueKind == JsonValueKind.Object;
+    }
+    catch (JsonException)
+    {
+        return false;
+    }
+}
+
+static async Task<string?> ReadDaemonLogAsync(int pid)
+{
+    try
+    {
+        var logsFolder = StateManager.GetLogsFolder();
+        if (!Directory.Exists(logsFolder))
+        {
+            return null;
+        }
+        var logFile = Directory.GetFiles(logsFolder, $"devproxy-{pid}-*.log")
+            .OrderByDescending(File.GetLastWriteTimeUtc)
+            .FirstOrDefault();
+        return logFile is null ? null : await File.ReadAllTextAsync(logFile);
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+    {
+        return null;
+    }
+}
+
 static bool IsJsonOutputRequested(string[] args)
 {
     for (var i = 0; i < args.Length; i++)
@@ -359,6 +413,19 @@ static string EscapeArgument(string arg)
     return arg;
 }
 
+static void WriteUnresolvedEnvironmentVariables(IConfiguration configuration, DevProxyConfigOptions options)
+{
+    var isJson = options.Output == DevProxy.Abstractions.Proxy.OutputFormat.Json || IsJsonOutputRequested(Environment.GetCommandLineArgs());
+    foreach (var provider in ((IConfigurationRoot)configuration).Providers.OfType<IEnvironmentVariablePlaceholderProvider>())
+    {
+        foreach (var name in provider.UnresolvedEnvironmentVariables)
+        {
+            var message = $"Environment variable {name} referenced in {provider.Path ?? "configuration file"} isn't set. Leaving the placeholder as-is";
+            Console.Error.WriteLine(isJson ? FormatJsonLogEntry("warning", message) : message);
+        }
+    }
+}
+
 static WebApplication BuildApplication(
     DevProxyConfigOptions options, ProcessEnvironment environment, HttpProxyEnvironment proxyEnvironment)
 {
@@ -368,6 +435,22 @@ static WebApplication BuildApplication(
     var builder = WebApplication.CreateBuilder();
 
     _ = builder.Configuration.ConfigureDevProxyConfig(options);
+    try
+    {
+        return BuildApplicationCore(builder, options, environment, proxyEnvironment);
+    }
+    catch
+    {
+        // config values with unresolved placeholders can fail startup before
+        // they're logged, so report them to help troubleshoot
+        WriteUnresolvedEnvironmentVariables(builder.Configuration, options);
+        throw;
+    }
+}
+
+static WebApplication BuildApplicationCore(
+    WebApplicationBuilder builder, DevProxyConfigOptions options, ProcessEnvironment environment, HttpProxyEnvironment proxyEnvironment)
+{
     environment.Apply(builder.Configuration, options.Env);
     var changedProxyVariables = proxyEnvironment.GetChangedVariables();
     _ = Announcement.ShowOnceAsync();
@@ -389,6 +472,12 @@ static WebApplication BuildApplication(
     });
 
     var app = builder.Build();
+
+    foreach (var provider in ((IConfigurationRoot)builder.Configuration).Providers.OfType<IEnvironmentVariablePlaceholderProvider>())
+    {
+        EnvironmentVariablePlaceholders.LogUnresolvedVariables(
+            app.Logger, provider.UnresolvedEnvironmentVariables, provider.Path ?? "configuration file");
+    }
 
     if (changedProxyVariables.Length > 0)
     {
