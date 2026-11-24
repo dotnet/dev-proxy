@@ -45,6 +45,42 @@ public sealed class CertificateAuthorityTests : IDisposable
         }
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void ResolveRootPfxPath_NoEnvPath_UsesDefaultFileInConfigDirectory(string? envPath)
+    {
+        Assert.Equal(_rootPath, CertificateAuthority.ResolveRootPfxPath(envPath, _dir));
+    }
+
+    [Fact]
+    public void ResolveRootPfxPath_RelativeEnvPath_ResolvesAgainstConfigDirectory()
+    {
+        var relative = Path.Combine("rootCert", "rootCert.pfx");
+
+        Assert.Equal(
+            Path.Combine(_dir, "rootCert", "rootCert.pfx"),
+            CertificateAuthority.ResolveRootPfxPath(relative, _dir));
+    }
+
+    [Fact]
+    public void ResolveRootPfxPath_RootedEnvPath_IsUsedAsIs()
+    {
+        var rooted = Path.Combine(_dir, "elsewhere", "custom.pfx");
+
+        Assert.Equal(rooted, CertificateAuthority.ResolveRootPfxPath(rooted, Path.Combine(_dir, "config")));
+    }
+
+    [Fact]
+    public void RelativeEnvPath_PersistsRootInSubfolder()
+    {
+        var rootPath = CertificateAuthority.ResolveRootPfxPath("rootCert/rootCert.pfx", _dir);
+
+        using var ca = new CertificateAuthority(rootPath, _leafDir);
+
+        Assert.True(File.Exists(Path.Combine(_dir, "rootCert", "rootCert.pfx")));
+    }
+
     [Fact]
     public void FirstRun_CreatesValidRoot_AndPersistsToDisk()
     {

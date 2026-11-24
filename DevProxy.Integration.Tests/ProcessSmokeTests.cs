@@ -3,7 +3,11 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Diagnostics;
+using System.Collections.Concurrent;
 using System.Net;
+using System.Net.Sockets;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Xunit;
 
 namespace DevProxy.Integration.Tests;
@@ -26,6 +30,335 @@ namespace DevProxy.Integration.Tests;
 public sealed class ProcessSmokeTests
 {
     private static readonly TimeSpan s_startupTimeout = TimeSpan.FromSeconds(90);
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Startup_EnvironmentOverrides_PreserveTildeConfigPathAndApplyBeforeAnnouncement(bool useCommandLine)
+    {
+        var host = Path.Combine(Path.GetDirectoryName(LocateHostDll())!,
+            OperatingSystem.IsWindows() ? "devproxy.exe" : "devproxy");
+        Assert.True(File.Exists(host), "Build DevProxy before running process smoke tests.");
+
+        var workDir = Directory.CreateTempSubdirectory("devproxy-startup-env-");
+        var managementDir = workDir.CreateSubdirectory("management");
+        var overrideHome = workDir.CreateSubdirectory("override-home");
+        using var inheritedProxy = new TcpListener(IPAddress.Loopback, 0);
+        using var effectiveProxy = new TcpListener(IPAddress.Loopback, 0);
+        inheritedProxy.Start();
+        effectiveProxy.Start();
+        var inheritedProxyUrl = $"http://127.0.0.1:{((IPEndPoint)inheritedProxy.LocalEndpoint).Port}";
+        var effectiveProxyUrl = $"http://127.0.0.1:{((IPEndPoint)effectiveProxy.LocalEndpoint).Port}";
+        var inheritedEnvironment = new Dictionary<string, string>
+        {
+            ["HTTP_PROXY"] = inheritedProxyUrl,
+            ["HTTPS_PROXY"] = inheritedProxyUrl,
+            ["ALL_PROXY"] = inheritedProxyUrl,
+            ["NO_PROXY"] = "",
+            ["http_proxy"] = inheritedProxyUrl,
+            ["https_proxy"] = inheritedProxyUrl,
+            ["all_proxy"] = inheritedProxyUrl,
+            ["no_proxy"] = "",
+        };
+        var overrides = new Dictionary<string, string>
+        {
+            ["HOME"] = overrideHome.FullName,
+            ["http_proxy"] = effectiveProxyUrl,
+            ["https_proxy"] = effectiveProxyUrl,
+            ["all_proxy"] = effectiveProxyUrl,
+            ["no_proxy"] = "",
+        };
+        int? pid = null;
+        string? logFile = null;
+        using var proxyTimeout = new CancellationTokenSource(s_startupTimeout);
+        var requests = new ConcurrentQueue<string>();
+        var inheritedRequests = new ConcurrentQueue<string>();
+        var proxyRequests = RejectProxyRequestsAsync(effectiveProxy, requests, proxyTimeout.Token);
+        var inheritedProxyRequests = RejectProxyRequestsAsync(inheritedProxy, inheritedRequests, proxyTimeout.Token);
+        try
+        {
+            var config = JsonNode.Parse(ConfigFile)!.AsObject();
+            config.Remove("$schema");
+            config["installCert"] = false;
+            config["noFirstRun"] = true;
+            config["validateSchemas"] = false;
+            config["mocksPlugin"]!["mocksFile"] = Path.Combine(workDir.FullName, "mocks.json");
+            var mocks = JsonNode.Parse(MocksFile)!.AsObject();
+            mocks.Remove("$schema");
+            await File.WriteAllTextAsync(Path.Combine(workDir.FullName, "mocks.json"), mocks.ToJsonString());
+            await File.WriteAllTextAsync(Path.Combine(managementDir.FullName, "devproxyrc.json"), config.ToJsonString());
+            if (!useCommandLine)
+            {
+                config["env"] = JsonSerializer.SerializeToNode(overrides);
+            }
+            var configPath = Path.Combine(workDir.FullName, "devproxyrc.json");
+            await File.WriteAllTextAsync(configPath, config.ToJsonString());
+            var tildePath = "~/" + Path.GetRelativePath(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), configPath);
+            var args = new List<string>
+            {
+                "--detach", "--as-system-proxy", "false", "--port", "0", "--api-port", "0",
+                "--install-cert", "false", "--no-first-run", "--output", "json", "-c", tildePath,
+            };
+            if (useCommandLine)
+            {
+                args.Add("--env");
+                args.AddRange(overrides.Select(variable => $"{variable.Key}={variable.Value}"));
+            }
+
+            var startup = await RunCommandAsync(host, workDir.FullName, args, inheritedEnvironment);
+            Assert.Equal(0, startup.ExitCode);
+            var started = GetResultData(startup.Output);
+            pid = started.GetProperty("pid").GetInt32();
+            logFile = started.GetProperty("logFile").GetString();
+
+            Assert.Contains("CONNECT aka.ms:443 HTTP/1.1", requests);
+            Assert.Empty(inheritedRequests);
+
+            var status = await RunCommandAsync(host, managementDir.FullName,
+                ["status", "--pid", pid.Value.ToString(System.Globalization.CultureInfo.InvariantCulture), "--output", "json"]);
+            Assert.Equal(0, status.ExitCode);
+            var statusData = GetResultData(status.Output);
+            Assert.Equal(configPath, statusData.GetProperty("configFile").GetString());
+            Assert.Equal("available", statusData.GetProperty("apiStatus").GetString());
+
+            if (!useCommandLine)
+            {
+                Assert.NotNull(logFile);
+                Assert.DoesNotContain("HTTP proxy settings are cached", await File.ReadAllTextAsync(logFile), StringComparison.Ordinal);
+                config["env"]!.AsObject().Remove("https_proxy");
+                config["env"]!["no_proxy"] = "api.contoso.local";
+                await Task.Delay(600);
+                await File.WriteAllTextAsync(configPath, config.ToJsonString());
+
+                using var reloadTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+                string logs;
+                do
+                {
+                    await Task.Delay(100, reloadTimeout.Token);
+                    logs = await File.ReadAllTextAsync(logFile, reloadTimeout.Token);
+                } while (!logs.Contains("HTTP proxy settings are cached", StringComparison.Ordinal));
+
+                var warning = logs.Split('\n').Single(line => line.Contains("HTTP proxy settings are cached", StringComparison.Ordinal));
+                Assert.Contains(OperatingSystem.IsWindows() ? "HTTPS_PROXY" : "https_proxy", warning, StringComparison.Ordinal);
+                Assert.Contains(OperatingSystem.IsWindows() ? "NO_PROXY" : "no_proxy", warning, StringComparison.Ordinal);
+                Assert.Contains("Stop Dev Proxy and start it again", warning, StringComparison.Ordinal);
+                Assert.DoesNotContain(inheritedProxyUrl, warning, StringComparison.Ordinal);
+                Assert.DoesNotContain(effectiveProxyUrl, warning, StringComparison.Ordinal);
+
+                while (true)
+                {
+                    await Task.Delay(100, reloadTimeout.Token);
+                    var reloadedStatus = await RunCommandAsync(host, managementDir.FullName,
+                        ["status", "--pid", pid.Value.ToString(System.Globalization.CultureInfo.InvariantCulture), "--output", "json"]);
+                    if (reloadedStatus.ExitCode == 0)
+                    {
+                        var data = GetResultData(reloadedStatus.Output);
+                        if (data.GetProperty("apiStatus").GetString() == "available" &&
+                            data.GetProperty("startedAt").GetString() != statusData.GetProperty("startedAt").GetString())
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        finally
+        {
+            try
+            {
+                if (pid.HasValue)
+                {
+                    var stopped = await RunCommandAsync(host, managementDir.FullName,
+                        ["stop", "--pid", pid.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)]);
+                    Assert.Equal(0, stopped.ExitCode);
+                }
+            }
+            finally
+            {
+                await proxyTimeout.CancelAsync();
+                try
+                {
+                    await Task.WhenAll(proxyRequests, inheritedProxyRequests);
+                }
+                catch (OperationCanceledException) when (proxyTimeout.IsCancellationRequested)
+                {
+                }
+                if (logFile is not null)
+                {
+                    File.Delete(logFile);
+                }
+                workDir.Delete(recursive: true);
+            }
+        }
+    }
+
+    private static async Task RejectProxyRequestsAsync(
+        TcpListener listener, ConcurrentQueue<string> requests, CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            using var connection = await listener.AcceptTcpClientAsync(cancellationToken);
+            using var reader = new StreamReader(connection.GetStream(), leaveOpen: true);
+            var request = await reader.ReadLineAsync(cancellationToken);
+            if (request is not null)
+            {
+                requests.Enqueue(request);
+            }
+            await connection.GetStream().WriteAsync(
+                "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"u8.ToArray(),
+                cancellationToken);
+        }
+    }
+
+    [Theory]
+    [InlineData("text", "cli")]
+    [InlineData("json", "cli")]
+    [InlineData("text", "config")]
+    [InlineData("json", "config")]
+    [InlineData("text", null)]
+    [InlineData("json", null)]
+    public async Task Status_HonorsInstanceTokenSuppression_ExplicitRetrievalRemainsAvailable(string output, string? ciSource)
+    {
+        var host = Path.Combine(Path.GetDirectoryName(LocateHostDll())!,
+            OperatingSystem.IsWindows() ? "devproxy.exe" : "devproxy");
+        Assert.True(File.Exists(host), "Build DevProxy before running process smoke tests.");
+
+        var workDir = Directory.CreateTempSubdirectory("devproxy-status-");
+        var managementDir = workDir.CreateSubdirectory("management");
+        int? pid = null;
+        string? logFile = null;
+        try
+        {
+            var config = JsonNode.Parse(ConfigFile)!.AsObject();
+            config["installCert"] = false;
+            config["noFirstRun"] = true;
+            config["validateSchemas"] = false;
+            config["mocksPlugin"]!["mocksFile"] = Path.Combine(workDir.FullName, "mocks.json");
+            await File.WriteAllTextAsync(Path.Combine(workDir.FullName, "mocks.json"), MocksFile);
+            await File.WriteAllTextAsync(Path.Combine(managementDir.FullName, "devproxyrc.json"), config.ToJsonString());
+            if (ciSource == "config")
+            {
+                config["env"] = new JsonObject { ["CI"] = "1" };
+            }
+            await File.WriteAllTextAsync(Path.Combine(workDir.FullName, "devproxyrc.json"), config.ToJsonString());
+
+            var args = new List<string>
+            {
+                "--detach", "--as-system-proxy", "false", "--port", "0", "--api-port", "0",
+                "--install-cert", "false", "--no-first-run", "--output", "json",
+            };
+            if (ciSource == "cli")
+            {
+                args.AddRange(["--env", "CI=1"]);
+            }
+            var startup = await RunCommandAsync(host, workDir.FullName, args);
+            Assert.Equal(0, startup.ExitCode);
+            var started = GetResultData(startup.Output);
+            pid = started.GetProperty("pid").GetInt32();
+            logFile = started.GetProperty("logFile").GetString();
+
+            var tokenResult = await RunCommandAsync(host, managementDir.FullName,
+                ["api", "token", "--pid", pid.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)]);
+            Assert.Equal(0, tokenResult.ExitCode);
+            var token = tokenResult.Output.Split('\n')
+                .Select(line => line.Trim())
+                .Single(line => line.Length == 64 && line.All(Uri.IsHexDigit));
+
+            var status = await RunCommandAsync(host, managementDir.FullName,
+                ["status", "--pid", pid.Value.ToString(System.Globalization.CultureInfo.InvariantCulture), "--output", output]);
+            Assert.Equal(0, status.ExitCode);
+            var shouldDisplayToken = ciSource is null;
+            Assert.Equal(shouldDisplayToken, status.Output.Contains(token, StringComparison.Ordinal));
+            if (output == "json")
+            {
+                var data = GetResultData(status.Output);
+                Assert.Equal("available", data.GetProperty("apiStatus").GetString());
+                Assert.Equal(shouldDisplayToken, data.TryGetProperty("token", out _));
+            }
+            else
+            {
+                Assert.Contains("Dev Proxy is running.", status.Output, StringComparison.Ordinal);
+                Assert.Equal(shouldDisplayToken, status.Output.Contains("API token:", StringComparison.Ordinal));
+            }
+        }
+        finally
+        {
+            try
+            {
+                if (pid.HasValue)
+                {
+                    var stopped = await RunCommandAsync(host, managementDir.FullName,
+                        ["stop", "--pid", pid.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)]);
+                    Assert.Equal(0, stopped.ExitCode);
+                }
+            }
+            finally
+            {
+                if (logFile is not null)
+                {
+                    File.Delete(logFile);
+                }
+                workDir.Delete(recursive: true);
+            }
+        }
+    }
+
+    private static JsonElement GetResultData(string output)
+    {
+        foreach (var line in output.Split('\n').Where(line => line.StartsWith('{')))
+        {
+            using var json = JsonDocument.Parse(line);
+            if (json.RootElement.GetProperty("type").GetString() == "result")
+            {
+                return json.RootElement.GetProperty("data").Clone();
+            }
+        }
+        throw new InvalidOperationException("Command did not emit a JSON result.");
+    }
+
+    private static async Task<(int ExitCode, string Output)> RunCommandAsync(
+        string host, string workDir, IEnumerable<string> args, IReadOnlyDictionary<string, string>? environment = null)
+    {
+        var startInfo = new ProcessStartInfo(host)
+        {
+            WorkingDirectory = workDir,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        startInfo.Environment.Remove("CI");
+        if (environment is not null)
+        {
+            foreach (var (name, value) in environment)
+            {
+                startInfo.Environment[name] = value;
+            }
+        }
+        foreach (var arg in args)
+        {
+            startInfo.ArgumentList.Add(arg);
+        }
+        using var process = new Process { StartInfo = startInfo };
+        Assert.True(process.Start());
+        using var timeout = new CancellationTokenSource(s_startupTimeout);
+        var output = process.StandardOutput.ReadToEndAsync(timeout.Token);
+        var error = process.StandardError.ReadToEndAsync(timeout.Token);
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+            await Task.WhenAll(output, error);
+            return (process.ExitCode, await output);
+        }
+        finally
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync(CancellationToken.None);
+            }
+        }
+    }
 
     [Fact]
     public async Task Host_LoadsMockPluginFromConfig_AndServesMock()
@@ -67,6 +400,133 @@ public sealed class ProcessSmokeTests
             workDir.Delete(recursive: true);
             // The host writes a timestamped log to the working dir's parent in some modes;
             // the temp dir delete above covers logs written under workDir. Best-effort.
+        }
+    }
+
+    [Fact]
+    public async Task Stdio_BackToBackJsonRpcMessages_AreMockedIndividually()
+    {
+        var hostDll = LocateHostDll();
+        Assert.True(File.Exists(hostDll), $"DevProxy host not built at {hostDll}. Run `dotnet build DevProxy` first.");
+
+        var workDir = Directory.CreateTempSubdirectory("devproxy-stdio-");
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(workDir.FullName, "stdio-mocks.json"), StdioMocksFile);
+            await File.WriteAllTextAsync(Path.Combine(workDir.FullName, "devproxyrc.json"), StdioConfigFile);
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = "dotnet",
+                WorkingDirectory = workDir.FullName,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            };
+            psi.ArgumentList.Add(hostDll);
+            psi.ArgumentList.Add("stdio");
+            psi.ArgumentList.Add("--config-file");
+            psi.ArgumentList.Add(Path.Combine(workDir.FullName, "devproxyrc.json"));
+            psi.ArgumentList.Add("--");
+            // Any child that stays alive while reading stdin; unmocked messages are blocked
+            // so it never receives input.
+            if (OperatingSystem.IsWindows())
+            {
+                psi.ArgumentList.Add("cmd.exe");
+                psi.ArgumentList.Add("/c");
+                psi.ArgumentList.Add("more");
+            }
+            else
+            {
+                psi.ArgumentList.Add("cat");
+            }
+
+            using var process = new Process { StartInfo = psi };
+            Assert.True(process.Start(), "Failed to start DevProxy stdio process.");
+            try
+            {
+                // Write an id-less notification and an id-bearing request in a single write so
+                // that they arrive in the same stdin read (#1757).
+                await process.StandardInput.WriteAsync(
+                    "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n" +
+                    "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"accept_eula\"}}\n");
+                await process.StandardInput.FlushAsync();
+
+                using var cts = new CancellationTokenSource(s_startupTimeout);
+                var line = await ReadLineAsync(process.StandardOutput, cts.Token);
+                Assert.NotNull(line);
+
+                using var response = JsonDocument.Parse(line);
+                Assert.Equal(2, response.RootElement.GetProperty("id").GetInt32());
+            }
+            finally
+            {
+                StopHost(process);
+            }
+        }
+        finally
+        {
+            workDir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Stdio_LargeMessageThroughStreamingChild_DoesNotDeadlock()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var hostDll = LocateHostDll();
+        Assert.True(File.Exists(hostDll), $"DevProxy host not built at {hostDll}. Run `dotnet build DevProxy` first.");
+
+        var workDir = Directory.CreateTempSubdirectory("devproxy-stdio-large-");
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(workDir.FullName, "stdio-mocks.json"), StdioMocksFile);
+            await File.WriteAllTextAsync(Path.Combine(workDir.FullName, "devproxyrc.json"),
+                StdioConfigFile.Replace("\"blockUnmockedRequests\": true", "\"blockUnmockedRequests\": false", StringComparison.Ordinal));
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = "dotnet",
+                WorkingDirectory = workDir.FullName,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            };
+            psi.ArgumentList.Add(hostDll);
+            psi.ArgumentList.Add("stdio");
+            psi.ArgumentList.Add("--config-file");
+            psi.ArgumentList.Add(Path.Combine(workDir.FullName, "devproxyrc.json"));
+            psi.ArgumentList.Add("--");
+            psi.ArgumentList.Add("cat");
+
+            using var process = new Process { StartInfo = psi };
+            Assert.True(process.Start(), "Failed to start DevProxy stdio process.");
+            try
+            {
+                // Larger than typical pipe buffers so the child blocks writing stdout
+                // while the proxy is still writing the message to its stdin.
+                var line = new string('x', 1024 * 1024);
+                using var cts = new CancellationTokenSource(s_startupTimeout);
+                var readTask = ReadLineAsync(process.StandardOutput, cts.Token);
+                await process.StandardInput.WriteAsync(line + "\n");
+                await process.StandardInput.FlushAsync();
+
+                Assert.Equal(line, await readTask);
+            }
+            finally
+            {
+                StopHost(process);
+            }
+        }
+        finally
+        {
+            workDir.Delete(recursive: true);
         }
     }
 
@@ -178,7 +638,7 @@ public sealed class ProcessSmokeTests
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null)
         {
-            var candidate = Path.Combine(dir.FullName, "DevProxy", "bin", config, "net10.0", "DevProxy.dll");
+            var candidate = Path.Combine(dir.FullName, "DevProxy", "bin", config, "net10.0", "devproxy.dll");
             if (File.Exists(candidate))
             {
                 return candidate;
@@ -188,8 +648,37 @@ public sealed class ProcessSmokeTests
         }
 
         // Fall back to a path relative to the repo root guess so the assert message is useful.
-        return Path.Combine(AppContext.BaseDirectory, "DevProxy.dll");
+        return Path.Combine(AppContext.BaseDirectory, "devproxy.dll");
     }
+
+    private const string StdioConfigFile = """
+        {
+          "plugins": [
+            {
+              "name": "MockStdioResponsePlugin",
+              "enabled": true,
+              "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll",
+              "configSection": "mockStdioResponsePlugin"
+            }
+          ],
+          "mockStdioResponsePlugin": {
+            "mocksFile": "stdio-mocks.json",
+            "blockUnmockedRequests": true
+          },
+          "validateSchemas": false
+        }
+        """;
+
+    private const string StdioMocksFile = """
+        {
+          "mocks": [
+            {
+              "request": { "bodyFragment": "accept_eula" },
+              "response": { "stdout": "{\"jsonrpc\":\"2.0\",\"id\":@stdin.body.id,\"result\":{}}\n" }
+            }
+          ]
+        }
+        """;
 
     private const string ConfigFile = """
         {

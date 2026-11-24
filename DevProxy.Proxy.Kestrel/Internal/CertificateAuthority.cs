@@ -18,7 +18,8 @@ namespace DevProxy.Proxy.Kestrel.Internal;
 /// <para>
 /// The on-disk layout intentionally mirrors the Titanium engine's
 /// <c>CertificateDiskCache</c>: the root lives at <c>&lt;configDir&gt;/rootCert.pfx</c>
-/// (overridable via <c>DEV_PROXY_CERT_PATH</c>) and leaves at
+/// (overridable via <c>DEV_PROXY_CERT_PATH</c>; relative values resolve against
+/// <c>&lt;configDir&gt;</c>) and leaves at
 /// <c>&lt;configDir&gt;/crts/&lt;host&gt;.pfx</c>, both PKCS#12 with an empty password.
 /// Because the format + path match, this CA will <b>load a root that the Titanium
 /// engine already created and the OS already trusts</b> — so existing users get
@@ -82,13 +83,31 @@ public sealed class CertificateAuthority : IDisposable
     {
         var configDirectory = ResolveConfigDirectory();
 
-        var envPath = Environment.GetEnvironmentVariable("DEV_PROXY_CERT_PATH");
-        var rootPfxPath = !string.IsNullOrEmpty(envPath) && Path.IsPathRooted(envPath)
-            ? envPath
-            : Path.Combine(configDirectory, RootCertFileName);
+        var rootPfxPath = ResolveRootPfxPath(
+            Environment.GetEnvironmentVariable("DEV_PROXY_CERT_PATH"),
+            configDirectory);
 
         var leafDirectory = Path.Combine(configDirectory, LeafDirectoryName);
         return new CertificateAuthority(rootPfxPath, leafDirectory, logger);
+    }
+
+    /// <summary>
+    /// Resolves the root certificate path like Titanium's
+    /// <c>CertificateDiskCache.GetRootCertificatePath</c>: a rooted
+    /// <c>DEV_PROXY_CERT_PATH</c> is used as-is, a relative one is resolved
+    /// against the config directory, and an empty one falls back to
+    /// <c>&lt;configDir&gt;/rootCert.pfx</c>.
+    /// </summary>
+    internal static string ResolveRootPfxPath(string? envPath, string configDirectory)
+    {
+        if (string.IsNullOrEmpty(envPath))
+        {
+            return Path.Combine(configDirectory, RootCertFileName);
+        }
+
+        return Path.IsPathRooted(envPath)
+            ? envPath
+            : Path.Combine(configDirectory, envPath);
     }
 
     /// <summary>The root CA certificate clients must trust to allow interception.</summary>

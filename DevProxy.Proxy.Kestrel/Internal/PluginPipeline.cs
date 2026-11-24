@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Utils;
 using DevProxy.Proxy.Kestrel.Http;
 using Microsoft.Extensions.Logging;
 
@@ -125,9 +126,15 @@ internal sealed class PluginPipeline
             }
 
             _logger.LogRequest("Passed through", MessageType.PassedThrough, loggingContext);
+            AddProxyHeader(request);
         }
         return RequestPhase.Watched;
     }
+
+    // RFC 9110 §7.6.3: a proxy MUST send a Via header in each message it forwards.
+    // Appended as a new field so any existing Via value is preserved.
+    private static void AddProxyHeader(Abstractions.Proxy.Http.IHttpRequest request) =>
+        request.Headers.Add("Via", $"{request.HttpVersion.ToString(2)} dev-proxy/{ProxyUtils.ProductVersion}");
 
     public Task RunResponseAsync(CanonicalProxySession session, CancellationToken ct)
         => RunResponseCoreAsync(session, betweenPhases: null, ct);

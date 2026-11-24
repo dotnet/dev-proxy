@@ -1,0 +1,48 @@
+{
+    "id": "dev-proxy",
+    "version": "1.0.0",
+    "name": "Dev Proxy",
+    "documentationURL": "https://github.com/dotnet/dev-proxy/tree/main/features/src/dev-proxy",
+    "licenseURL": "https://github.com/dotnet/dev-proxy/blob/main/LICENSE",
+    "description": "Installs Dev Proxy, an API simulator that helps you test how your app handles API failures, rate limits, latency, and more. Trusts a per-container Dev Proxy root certificate system-wide.",
+    "keywords": [
+        "dev-proxy",
+        "devproxy",
+        "api",
+        "proxy",
+        "testing",
+        "mocking"
+    ],
+    "options": {
+        "version": {
+            "type": "string",
+            "proposals": [
+                "latest",
+                "beta"
+            ],
+            "default": "latest",
+            "description": "Dev Proxy version to install: 'latest', 'beta', or a specific version like '2.2.0' or 'v2.2.0'."
+        },
+        "trustCertificate": {
+            "type": "boolean",
+            "default": true,
+            "description": "After the container is created, generate a Dev Proxy root certificate unique to the container and trust it system-wide and for common runtimes."
+        }
+    },
+    "containerEnv": {
+        "NODE_EXTRA_CA_CERTS": "/etc/ssl/certs/ca-certificates.crt",
+        "REQUESTS_CA_BUNDLE": "/etc/ssl/certs/ca-certificates.crt",
+        "SSL_CERT_FILE": "/etc/ssl/certs/ca-certificates.crt"
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "garrytrinder.dev-proxy-toolkit"
+            ]
+        }
+    },
+    "postCreateCommand": "/usr/local/share/devproxy/post-create.sh",
+    "installsAfter": [
+        "ghcr.io/devcontainers/features/common-utils"
+    ]
+}

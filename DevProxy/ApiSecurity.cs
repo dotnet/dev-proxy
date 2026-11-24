@@ -7,12 +7,88 @@ namespace DevProxy;
 
 internal static class ApiSecurity
 {
-    private static readonly string Token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-    private static readonly byte[] TokenBytes = Encoding.UTF8.GetBytes(Token);
+    internal const string TokenEnvironmentVariable = "DEV_PROXY_API_TOKEN";
+    internal const int MinimumTokenLength = 32;
+
+    private static readonly Lock TokenLock = new();
+    private static string? _token;
+    private static byte[]? _tokenBytes;
+    private static string Token => EnsureToken().Token;
+    private static byte[] TokenBytes => EnsureToken().TokenBytes;
     private static bool _tokenDisplayed;
+
+    /// <summary>
+    /// Resolves the API token from the value of <c>DEV_PROXY_API_TOKEN</c>.
+    /// When the value is null or whitespace, a random token is generated.
+    /// </summary>
+    internal static bool TryResolveToken(string? environmentValue, out string token, out string? error)
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(environmentValue))
+        {
+            token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+            return true;
+        }
+
+        token = environmentValue.Trim();
+        if (token.TrimEnd('=').Length < MinimumTokenLength)
+        {
+            error = $"{TokenEnvironmentVariable} must be at least {MinimumTokenLength} characters long, not counting trailing = padding.";
+            return false;
+        }
+
+        // RFC 6750 b64token characters, so the value can be sent as a Bearer credential
+        if (!token.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '.' or '_' or '~' or '+' or '/' or '=') ||
+            token.TrimEnd('=').Contains('=', StringComparison.Ordinal))
+        {
+            error = $"{TokenEnvironmentVariable} may contain only ASCII letters, digits, and the characters - . _ ~ + / (optionally followed by trailing = padding).";
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Resolves the API token from the current (effective) value of <c>DEV_PROXY_API_TOKEN</c>.
+    /// Call after environment overrides are applied. Once resolved, the token is kept for the
+    /// lifetime of the process, so it survives configuration reloads.
+    /// </summary>
+    public static bool TryInitializeToken(out string? error)
+    {
+        lock (TokenLock)
+        {
+            error = null;
+            if (_token is not null)
+            {
+                return true;
+            }
+
+            if (!TryResolveToken(Environment.GetEnvironmentVariable(TokenEnvironmentVariable), out var token, out error))
+            {
+                return false;
+            }
+
+            _tokenBytes = Encoding.UTF8.GetBytes(token);
+            _token = token;
+            return true;
+        }
+    }
+
+    private static (string Token, byte[] TokenBytes) EnsureToken()
+    {
+        if (!TryInitializeToken(out var error))
+        {
+            throw new InvalidOperationException(error);
+        }
+
+        return (_token!, _tokenBytes!);
+    }
 
     public static bool ShouldDisplayToken => Environment.GetEnvironmentVariable("CI") is null;
     public static string? DisplayToken => ShouldDisplayToken ? Token : null;
+
+    public static bool ShouldDisplayTokenFor(ProxyInstanceState state) =>
+        ShouldDisplayToken && !state.SuppressTokenOutput;
 
     public static void LogTokenOnce(ILogger logger)
     {
