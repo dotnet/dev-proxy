@@ -28,6 +28,25 @@ public sealed class CommandExitCodeTests
         Assert.True(File.Exists(Path.Combine(workDir.Path, "myconfig.json")), output);
     }
 
+    [Theory]
+    [InlineData("--version")]
+    [InlineData("--help")]
+    [InlineData("jwt --help")]
+    public async Task NonProxyCommands_DoNotCreateRootCertificate(string args)
+    {
+        using var workDir = new TempDir();
+        var rootCertPath = Path.Combine(workDir.Path, "rootCert.pfx");
+        var env = new Dictionary<string, string>
+        {
+            ["DEV_PROXY_CERT_PATH"] = rootCertPath,
+        };
+
+        var (exitCode, output) = await RunHostAsync(workDir.Path, env, args.Split(' '));
+
+        Assert.True(exitCode == 0, output);
+        Assert.False(File.Exists(rootCertPath), output);
+    }
+
     [Fact]
     public async Task ConfigNew_Fails_ReturnsNonZero()
     {

@@ -11,8 +11,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace DevProxy.Proxy.Kestrel.Internal;
 
 /// <summary>
-/// A persistent certificate authority. It loads a self-signed root CA from disk
-/// (creating + saving one on first run), then mints and caches a leaf certificate
+/// A persistent certificate authority. On first use it loads a self-signed root CA
+/// from disk (creating + saving one if needed), then mints and caches a leaf certificate
 /// per host on demand so the proxy can terminate TLS and inspect decrypted traffic.
 ///
 /// <para>
@@ -61,7 +61,7 @@ public sealed class CertificateAuthority : IDisposable
     private readonly string _rootPfxPath;
     private readonly string _leafDirectory;
     private readonly ILogger _logger;
-    private readonly X509Certificate2 _ca;
+    private readonly Lazy<X509Certificate2> _root;
     private readonly ConcurrentDictionary<string, X509Certificate2> _cache = new(StringComparer.OrdinalIgnoreCase);
 
     public CertificateAuthority(string rootPfxPath, string leafDirectory, ILogger? logger = null)
@@ -72,7 +72,9 @@ public sealed class CertificateAuthority : IDisposable
         _rootPfxPath = rootPfxPath;
         _leafDirectory = leafDirectory;
         _logger = logger ?? NullLogger.Instance;
-        _ca = LoadOrCreateRoot();
+        // Defer loading/creating the root until it's actually needed so that merely
+        // constructing the CA (e.g. while building the CLI) doesn't write a root to disk.
+        _root = new(LoadOrCreateRoot, LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
     /// <summary>
@@ -111,9 +113,16 @@ public sealed class CertificateAuthority : IDisposable
     }
 
     /// <summary>The root CA certificate clients must trust to allow interception.</summary>
-    public X509Certificate2 RootCertificate => _ca;
+    /// <remarks>Loads or creates (and persists) the root on first access.</remarks>
+    public X509Certificate2 RootCertificate => _root.Value;
 
-    public X509Certificate2 GetCertificateForHost(string host) => _cache.GetOrAdd(host, LoadOrCreateLeaf);
+    public X509Certificate2 GetCertificateForHost(string host)
+    {
+        // Initialize the root first: creating a fresh root purges stale on-disk leaves,
+        // which must happen before any leaf is loaded from disk.
+        _ = RootCertificate;
+        return _cache.GetOrAdd(host, LoadOrCreateLeaf);
+    }
 
     // Mirrors Titanium's CertificateDiskCache.GetRootCertificateDirectory: on Windows the
     // root lives next to the executable; on mac/Linux under ApplicationData/dev-proxy.
@@ -255,7 +264,7 @@ public sealed class CertificateAuthority : IDisposable
                 string.Empty,
                 X509KeyStorageFlags.Exportable);
 
-            var ski = _ca.Extensions
+            var ski = RootCertificate.Extensions
                 .OfType<X509SubjectKeyIdentifierExtension>()
                 .FirstOrDefault()?.SubjectKeyIdentifierBytes;
 
@@ -367,7 +376,7 @@ public sealed class CertificateAuthority : IDisposable
 
         request.CertificateExtensions.Add(
             X509AuthorityKeyIdentifierExtension.CreateFromCertificate(
-                _ca, includeKeyIdentifier: true, includeIssuerAndSerial: false));
+                RootCertificate, includeKeyIdentifier: true, includeIssuerAndSerial: false));
 
         var serialNumber = new byte[8];
         RandomNumberGenerator.Fill(serialNumber);
@@ -375,21 +384,21 @@ public sealed class CertificateAuthority : IDisposable
         // A leaf may not outlive its issuer. When reusing an existing (possibly
         // near-expiry) root, clamp the leaf's validity window to the root's.
         var notBefore = DateTimeOffset.UtcNow.AddDays(-1);
-        var rootNotBefore = new DateTimeOffset(_ca.NotBefore.ToUniversalTime());
+        var rootNotBefore = new DateTimeOffset(RootCertificate.NotBefore.ToUniversalTime());
         if (notBefore < rootNotBefore)
         {
             notBefore = rootNotBefore;
         }
 
         var notAfter = DateTimeOffset.UtcNow.AddDays(LeafValidityDays);
-        var rootNotAfter = new DateTimeOffset(_ca.NotAfter.ToUniversalTime());
+        var rootNotAfter = new DateTimeOffset(RootCertificate.NotAfter.ToUniversalTime());
         if (notAfter > rootNotAfter)
         {
             notAfter = rootNotAfter;
         }
 
         using var leaf = request.Create(
-            _ca,
+            RootCertificate,
             notBefore,
             notAfter,
             serialNumber);
@@ -406,7 +415,10 @@ public sealed class CertificateAuthority : IDisposable
 
     public void Dispose()
     {
-        _ca.Dispose();
+        if (_root.IsValueCreated)
+        {
+            _root.Value.Dispose();
+        }
         foreach (var leaf in _cache.Values)
         {
             leaf.Dispose();

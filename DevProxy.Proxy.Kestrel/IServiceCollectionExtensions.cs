@@ -20,6 +20,11 @@ namespace Microsoft.Extensions.DependencyInjection;
 /// plugin (signing-key chain) all resolve the <b>same</b> certificate rather than each
 /// loading its own copy.
 /// </para>
+///
+/// <para>
+/// The root is loaded or created on first use, not when the CA is constructed, so
+/// commands that never need it (such as <c>--version</c>) don't write it to disk.
+/// </para>
 /// </summary>
 public static class KestrelProxyServiceCollectionExtensions
 {
@@ -31,6 +36,9 @@ public static class KestrelProxyServiceCollectionExtensions
             CertificateAuthority.CreateDefault(
                 sp.GetRequiredService<ILoggerFactory>().CreateLogger<CertificateAuthority>()));
         _ = services.AddSingleton(sp => sp.GetRequiredService<CertificateAuthority>().RootCertificate);
+        // Lets consumers built eagerly (e.g. CLI commands) defer loading/creating the root
+        // until they actually need it.
+        _ = services.AddSingleton(sp => new Lazy<X509Certificate2>(sp.GetRequiredService<X509Certificate2>));
 
         return services;
     }

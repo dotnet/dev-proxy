@@ -13,7 +13,7 @@ namespace DevProxy.Commands;
 sealed class CertCommand : Command
 {
     private readonly ILogger _logger;
-    private readonly X509Certificate2 _rootCertificate;
+    private readonly Lazy<X509Certificate2> _rootCertificate;
     private readonly IRootCertificateTrust _rootCertificateTrust;
     private readonly Option<bool> _forceOption = new("--force", "-f")
     {
@@ -22,7 +22,7 @@ sealed class CertCommand : Command
 
     public CertCommand(
         ILogger<CertCommand> logger,
-        X509Certificate2 rootCertificate,
+        Lazy<X509Certificate2> rootCertificate,
         IRootCertificateTrust rootCertificateTrust) :
         base("cert", "Manage the Dev Proxy certificate")
     {
@@ -62,7 +62,7 @@ sealed class CertCommand : Command
         {
             // Resolving the shared root certificate creates + persists it on first run.
             _logger.LogInformation("Ensuring certificate exists and is trusted...");
-            _rootCertificateTrust.Trust(_rootCertificate);
+            _rootCertificateTrust.Trust(_rootCertificate.Value);
             _logger.LogInformation("DONE");
             return 0;
         }
@@ -102,7 +102,7 @@ sealed class CertCommand : Command
 
             _logger.LogInformation("Uninstalling the root certificate...");
 
-            _rootCertificateTrust.Untrust(_rootCertificate);
+            _rootCertificateTrust.Untrust(_rootCertificate.Value);
 
             _logger.LogInformation("DONE");
             return 0;
