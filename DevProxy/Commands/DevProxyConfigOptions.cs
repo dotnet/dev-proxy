@@ -66,7 +66,7 @@ sealed class DevProxyConfigOptions : RootCommand
         {
             CustomParser = result =>
             {
-                if (!result.Tokens.Any())
+                if (result.Tokens.Count == 0)
                 {
                     return null;
                 }
@@ -87,7 +87,7 @@ sealed class DevProxyConfigOptions : RootCommand
         {
             CustomParser = result =>
             {
-                if (!result.Tokens.Any())
+                if (result.Tokens.Count == 0)
                 {
                     return null;
                 }
@@ -119,7 +119,7 @@ sealed class DevProxyConfigOptions : RootCommand
         {
             CustomParser = result =>
             {
-                if (!result.Tokens.Any())
+                if (result.Tokens.Count == 0)
                 {
                     return null;
                 }
@@ -139,7 +139,7 @@ sealed class DevProxyConfigOptions : RootCommand
         {
             CustomParser = result =>
             {
-                if (!result.Tokens.Any())
+                if (result.Tokens.Count == 0)
                 {
                     return null;
                 }
@@ -196,7 +196,7 @@ sealed class DevProxyConfigOptions : RootCommand
         {
             CustomParser = result =>
             {
-                if (!result.Tokens.Any())
+                if (result.Tokens.Count == 0)
                 {
                     return null;
                 }
