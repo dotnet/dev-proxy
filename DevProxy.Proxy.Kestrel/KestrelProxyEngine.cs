@@ -35,7 +35,44 @@ public sealed class KestrelProxyEngine(
 {
     private readonly ILogger _logger = loggerFactory.CreateLogger<KestrelProxyEngine>();
 
+    /// <summary>
+    /// True when the engine stopped the host because the proxy port was already in use.
+    /// </summary>
+    public bool PortInUse { get; private set; }
+
+    private readonly TaskCompletionSource<bool> _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>
+    /// Completes with true once the proxy is listening, or with false if it
+    /// stopped before it could start listening (for example, port in use).
+    /// </summary>
+    public Task<bool> Started => _started.Task;
+
+    private static bool IsAddressInUse(Exception? ex)
+    {
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            if (current is AddressInUseException)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            await RunAsync(stoppingToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _ = _started.TrySetResult(false);
+        }
+    }
+
+    private async Task RunAsync(CancellationToken stoppingToken)
     {
         var ipAddress = string.IsNullOrWhiteSpace(configuration.IPAddress)
             ? IPAddress.Loopback
@@ -94,7 +131,20 @@ public sealed class KestrelProxyEngine(
 
         await using var app = builder.Build();
 
-        await app.StartAsync(stoppingToken).ConfigureAwait(false);
+        try
+        {
+            await app.StartAsync(stoppingToken).ConfigureAwait(false);
+        }
+        catch (IOException ex) when (hostApplicationLifetime is not null && IsAddressInUse(ex))
+        {
+            // Let the host report a friendly message instead of crashing with a stack trace.
+            PortInUse = true;
+            _logger.LogDebug(ex, "Failed to bind the proxy to {Address}:{Port}", ipAddress, port);
+            // Stopping while the host is still starting surfaces as a cancellation
+            // instead of a clean shutdown, so wait until it has started.
+            _ = hostApplicationLifetime.ApplicationStarted.Register(hostApplicationLifetime.StopApplication);
+            return;
+        }
         inactivityTimer?.Reset();
         // When --port 0 is used the OS assigns a free port; Kestrel rewrites the
         // ListenOptions endpoint to the bound port after StartAsync, so log THAT
@@ -117,6 +167,8 @@ public sealed class KestrelProxyEngine(
             systemProxyManager.Enable(configuration.IPAddress, boundPort);
             systemProxyEnabled = true;
         }
+
+        _ = _started.TrySetResult(true);
 
         try
         {
