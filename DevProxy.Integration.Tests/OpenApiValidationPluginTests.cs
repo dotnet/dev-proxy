@@ -1145,7 +1145,7 @@ public sealed class OpenApiValidationPluginTests : IDisposable
     [Fact]
     public async Task ReportsDiscriminatorMappingsOutsideOneOf()
     {
-        var spec = DiscriminatorSpec
+        var spec = DiscriminatorSpec.ReplaceLineEndings("\n")
             .Replace("doggo: '#/components/schemas/Dog'", "doggo: '#/components/schemas/Dog'\n                  fish: '#/components/schemas/Fish'", StringComparison.Ordinal)
             .Replace("    Lizard:", "    Fish:\n      type: object\n      properties: { fins: { type: integer } }\n    Lizard:", StringComparison.Ordinal);
         var defaultSpec = spec
@@ -1169,7 +1169,7 @@ public sealed class OpenApiValidationPluginTests : IDisposable
     [Fact]
     public async Task FallsBackToDiscriminatorDefaultMapping()
     {
-        var spec = DiscriminatorSpec
+        var spec = DiscriminatorSpec.ReplaceLineEndings("\n")
             .Replace("openapi: 3.0.3", "openapi: 3.2.0", StringComparison.Ordinal)
             .Replace("propertyName: petType", "propertyName: petType\n                defaultMapping: '#/components/schemas/Lizard'", StringComparison.Ordinal)
             .Replace("Lizard:\n      type: object\n      required: [ petType ]", "Lizard:\n      type: object\n      required: [ name ]", StringComparison.Ordinal);
