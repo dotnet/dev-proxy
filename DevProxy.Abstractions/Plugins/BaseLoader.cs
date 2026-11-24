@@ -63,6 +63,19 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
 
     protected abstract void LoadData(string fileContents);
 
+    /// <summary>
+    /// Removes <c>null</c> entries from non-nullable collections and dictionaries in the
+    /// loaded data and logs a warning for each removed entry, so that consumers don't
+    /// need to guard against them.
+    /// </summary>
+    protected void RemoveNullEntries(object? data)
+    {
+        foreach (var path in NullEntryRemover.RemoveNullEntries(data))
+        {
+            Logger.LogWarning("Ignoring null entry {Path} in {File}", path, FilePath);
+        }
+    }
+
     protected virtual void Dispose(bool disposing)
     {
         if (_isDisposed)

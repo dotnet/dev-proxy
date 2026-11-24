@@ -26,6 +26,7 @@ internal sealed class CrudApiDefinitionLoader(
         try
         {
             var apiDefinitionConfig = JsonSerializer.Deserialize<CrudApiConfiguration>(fileContents, ProxyUtils.JsonSerializerOptions);
+            RemoveNullEntries(apiDefinitionConfig);
             _configuration.BaseUrl = apiDefinitionConfig?.BaseUrl ?? string.Empty;
             _configuration.DataFile = apiDefinitionConfig?.DataFile ?? string.Empty;
             _configuration.Auth = apiDefinitionConfig?.Auth ?? CrudApiAuthType.None;

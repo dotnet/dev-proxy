@@ -327,6 +327,53 @@ public sealed class BehaviorPluginsIntegrationTests
     }
 
     [Fact]
+    public async Task GenericRandomError_NullEntriesInErrorsFile_AreIgnored()
+    {
+        await using var origin = await FakeOrigin.StartAsync();
+        var dir = Directory.CreateTempSubdirectory("devproxy-errors-");
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(dir.FullName, "errors.json"),
+                $$"""
+                {
+                  "errors": [
+                    null,
+                    {
+                      "request": { "url": "http://{{origin.Host}}/*" },
+                      "responses": [ null, { "statusCode": 503, "headers": [ null ] } ]
+                    }
+                  ]
+                }
+                """);
+            var proxyConfig = new TestProxyConfiguration
+            {
+                ConfigFile = Path.Combine(dir.FullName, "devproxyrc.json"),
+            };
+            var plugin = new GenericRandomErrorPlugin(
+                SharedHttpClient,
+                NullLogger<GenericRandomErrorPlugin>.Instance,
+                KestrelProxyHarness.BuildUrlsToWatch(origin.Host),
+                proxyConfig,
+                PluginConfig.FromJson("""{ "rate": 100 }"""));
+
+            using var host = new PluginTestHost(proxyConfig);
+            await plugin.InitializeAsync(host.CreateInitArgs(), CancellationToken.None);
+
+            await using var proxy = await KestrelProxyHarness.StartAsync(origin.Host, [plugin]);
+            using var client = proxy.CreateHttpClient();
+
+            using var response = await client.GetAsync(new Uri($"http://{origin.Host}/get"));
+
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Latency_AddsConfiguredDelayBeforeForwarding()
     {
         await using var origin = await FakeOrigin.StartAsync();
