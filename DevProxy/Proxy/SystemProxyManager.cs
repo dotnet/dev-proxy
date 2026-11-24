@@ -481,13 +481,16 @@ internal sealed class SystemProxyManager : ISystemProxyManager
     /// </summary>
     public static async Task<OrphanReconciliation> ReconcileOrphanedSystemProxiesAsync(ILogger<SystemProxyManager>? logger = null, CancellationToken cancellationToken = default)
     {
-        var orphanedPids = (await StateManager.GetOrphanedSystemProxyStatesAsync(cancellationToken))
-            .Select(o => o.Pid)
-            .ToList();
+        var orphans = await StateManager.GetOrphanedSystemProxyStatesAsync(cancellationToken);
+        var orphanedPids = orphans.Select(o => o.Pid).ToList();
 
+        // A snapshot left by a dead instance without a state record (e.g. a crashed
+        // foreground instance) is also an orphan.
+        int? snapshotOnlyPid = null;
         var snapshot = SystemProxySnapshotStore.Load(SystemProxySnapshotStore.DefaultPath);
         if (snapshot is not null && !StateManager.IsProcessRunning(snapshot.Pid) && !orphanedPids.Contains(snapshot.Pid))
         {
+            snapshotOnlyPid = snapshot.Pid;
             orphanedPids.Add(snapshot.Pid);
         }
 
@@ -507,7 +510,12 @@ internal sealed class SystemProxyManager : ISystemProxyManager
             outcome = OrphanRestoreOutcome.Restored;
         }
 
-        foreach (var pid in orphanedPids)
+        foreach (var orphan in orphans)
+        {
+            await StateManager.DeleteStateAsync(orphan, cancellationToken);
+        }
+
+        if (snapshotOnlyPid is int pid)
         {
             await StateManager.DeleteStateAsync(pid, cancellationToken);
         }

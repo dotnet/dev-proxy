@@ -20,6 +20,9 @@ internal sealed class RewritesLoader(
     private readonly RewritePluginConfiguration _configuration = configuration;
 
     protected override string FilePath => _configuration.RewritesFile;
+    // ${name} in out.url is a regex named group reference, so leave placeholders
+    // as-is. RewritePlugin resolves ${env:NAME} per request.
+    protected override bool ResolveEnvironmentVariables => false;
 
     protected override void LoadData(string fileContents)
     {

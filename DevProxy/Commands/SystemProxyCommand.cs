@@ -145,7 +145,7 @@ sealed class SystemProxyCommand : Command
         // system proxy are stale. Remove them so they don't trigger another restore later.
         foreach (var orphan in await StateManager.GetOrphanedSystemProxyStatesAsync(cancellationToken))
         {
-            await StateManager.DeleteStateAsync(orphan.Pid, cancellationToken);
+            await StateManager.DeleteStateAsync(orphan, cancellationToken);
         }
 
         Console.WriteLine(result is SystemProxyRestoreResult.RestoredPrevious
