@@ -17,6 +17,7 @@
     },
     "specVersion": {
       "type": "string",
+      "default": "v3_0",
       "enum": [
         "v2_0",
         "v3_0",
@@ -27,6 +28,7 @@
     },
     "specFormat": {
       "type": "string",
+      "default": "Json",
       "enum": [
         "Json",
         "Yaml"

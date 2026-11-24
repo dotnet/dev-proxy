@@ -141,6 +141,46 @@ public class WebSocketRelayTests
     }
 
     [Fact]
+    public async Task RelayAsync_ClientInitiatedClose_RelaysOriginCloseReply()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var originListener = new TcpListener(IPAddress.Loopback, 0);
+        originListener.Start();
+        var originPort = ((IPEndPoint)originListener.LocalEndpoint).Port;
+        var originTask = RunFakeOriginAsync(originListener, new TaskCompletionSource<string>(), cts.Token);
+        var (clientSide, proxySide) = await TestSockets.ConnectedPairAsync();
+
+        var headers = new HeaderCollection();
+        headers.Add("Upgrade", "websocket");
+        headers.Add("Connection", "Upgrade");
+        headers.Add("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==");
+        var request = new MutableHttpRequest(
+            "GET", new Uri($"http://127.0.0.1:{originPort}/chat"), HttpVersion.Version11, headers, ReadOnlyMemory<byte>.Empty);
+
+        var relay = new WebSocketRelay(NullLogger.Instance);
+        var relayTask = relay.RelayAsync(
+            proxySide, request, request.RequestUri, _ => Task.CompletedTask,
+            onMessage: null, messageInterceptor: null, onConnected: null, cts.Token);
+
+        _ = await ReadUntilDoubleCrlfAsync(clientSide, cts.Token);
+        using var clientWs = WebSocket.CreateFromStream(
+            clientSide, new WebSocketCreationOptions { IsServer = false, KeepAliveInterval = Timeout.InfiniteTimeSpan });
+        var buffer = new byte[1024];
+        _ = await clientWs.ReceiveAsync(buffer, cts.Token);
+        await clientWs.SendAsync(
+            Encoding.UTF8.GetBytes("client-frame"), WebSocketMessageType.Text, endOfMessage: true, cts.Token);
+
+        // CloseAsync completes only once the origin's Close reply comes back through the relay.
+        await clientWs.CloseAsync(WebSocketCloseStatus.NormalClosure, null, cts.Token);
+
+        Assert.Equal(WebSocketState.Closed, clientWs.State);
+        Assert.Equal(WebSocketCloseStatus.NormalClosure, clientWs.CloseStatus);
+        _ = await originTask;
+        await relayTask;
+        proxySide.Dispose();
+    }
+
+    [Fact]
     public async Task RelayAsync_NonSwitchingResponse_ReadsDeclaredBodyWithoutWaitingForClose()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
