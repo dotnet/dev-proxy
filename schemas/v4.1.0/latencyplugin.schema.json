@@ -14,6 +14,7 @@
     },
     "maxMs": {
       "type": "integer",
+      "default": 5000,
       "minimum": 0,
       "description": "The maximum amount of delay (in milliseconds) added to a request. Default: 5000."
     }
