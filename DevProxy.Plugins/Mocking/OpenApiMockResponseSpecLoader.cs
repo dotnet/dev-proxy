@@ -19,7 +19,7 @@ internal sealed class OpenApiMockResponseSpecLoader(
     private readonly OpenApiMockResponsePluginConfiguration _configuration = configuration;
     private readonly Action<string> _onSpecLoaded = onSpecLoaded;
 
-    protected override string FilePath => _configuration.SpecFile!;
+    protected override string FilePath => _configuration.SpecFile;
 
     protected override void LoadData(string fileContents) => _onSpecLoaded(fileContents);
 }

@@ -24,7 +24,7 @@ namespace DevProxy.Plugins.Mocking;
 
 public sealed class OpenApiMockResponsePluginConfiguration
 {
-    public string? SpecFile { get; set; }
+    public string SpecFile { get; set; } = string.Empty;
 }
 
 public sealed class OpenApiMockResponsePlugin(
