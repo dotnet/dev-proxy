@@ -14,7 +14,21 @@ public sealed class ConfigCommandTests : IDisposable
 {
     private readonly string _folder = Directory.CreateTempSubdirectory("devproxy-config").FullName;
 
-    public void Dispose() => Directory.Delete(_folder, true);
+    public void Dispose()
+    {
+        try
+        {
+            Directory.Delete(_folder, true);
+        }
+        // On Windows, the plugin assembly loaded during validation stays locked
+        // for the lifetime of the test host, so leave the temp folder behind
+        catch (UnauthorizedAccessException)
+        {
+        }
+        catch (IOException)
+        {
+        }
+    }
 
     [Fact]
     public async Task ValidateConfigCoreAsync_SchemaCannotBeRetrieved_ReportsWarningInsteadOfError()
