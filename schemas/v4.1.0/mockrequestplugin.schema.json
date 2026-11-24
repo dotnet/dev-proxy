@@ -9,6 +9,7 @@
     },
     "mockFile": {
       "type": "string",
+      "default": "mock-request.json",
       "description": "Path to the file containing the mock request."
     }
   },
