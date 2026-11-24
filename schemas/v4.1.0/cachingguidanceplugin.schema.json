@@ -9,6 +9,7 @@
     },
     "cacheThresholdSeconds": {
       "type": "integer",
+      "default": 5,
       "description": "The number of seconds between the same request that triggers the guidance warning. Default is 5."
     }
   },

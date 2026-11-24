@@ -50,6 +50,9 @@ public sealed class EngineInactivityTimeoutTests
     {
         var configuration = CreateConfiguration(timeoutSeconds: 2);
         var lifetime = new FakeLifetime();
+        // A live origin keeps each request fast; connecting to a closed port takes ~2s on
+        // Windows (SYN retries), which would consume the whole inactivity window.
+        await using var origin = await FakeOrigin.StartAsync();
 
         await RunEngineAsync(configuration, lifetime, async () =>
         {
@@ -64,14 +67,7 @@ public sealed class EngineInactivityTimeoutTests
             var until = Environment.TickCount64 + 3_500;
             while (Environment.TickCount64 < until)
             {
-                try
-                {
-                    using var _ = await client.GetAsync(new Uri("http://127.0.0.1:9/"));
-                }
-                catch (HttpRequestException)
-                {
-                    // The origin is unreachable; only the proxy seeing the request matters.
-                }
+                using var _ = await client.GetAsync(new Uri($"http://{origin.Host}/get"));
                 Assert.False(lifetime.StopRequested.Task.IsCompleted, "Dev Proxy stopped despite ongoing requests.");
                 await Task.Delay(400);
             }
