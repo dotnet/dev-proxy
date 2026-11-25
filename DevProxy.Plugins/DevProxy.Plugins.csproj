@@ -21,15 +21,15 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.14">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.15">
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.14">
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.15">
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Extensions.FileSystemGlobbing" Version="10.0.14">
+    <PackageReference Include="Microsoft.Extensions.FileSystemGlobbing" Version="10.0.15">
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
