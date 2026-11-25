@@ -72,9 +72,9 @@
       },
       "Microsoft.OpenApi": {
         "type": "Direct",
-        "requested": "[3.11.0, )",
-        "resolved": "3.11.0",
-        "contentHash": "kvQz+mL/fnDw2VaE8zMyQhbMv7FmOYUydIhCVNKxQdrLu9XiMT/07DHwJ5YkRO2uzcxTFvMAKFKKywxoyLKHcA=="
+        "requested": "[3.11.1, )",
+        "resolved": "3.11.1",
+        "contentHash": "WZL9g2+9NPICW4Es6zjIBj4mmKxAnI8RCru3gAZUliCMZPnuaxRynXq4cXoU+IYvI7kXY4ydSrrJ1R9EEHr+Lw=="
       },
       "Microsoft.OpenApi.YamlReader": {
         "type": "Direct",
