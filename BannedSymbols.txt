@@ -1,0 +1,1 @@
+T:System.Console;Don't use Console directly. Write output through ILogger (LogStructuredOutput for --output json) so it honors --output and --log-level

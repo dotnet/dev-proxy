@@ -266,3 +266,16 @@ dotnet_diagnostic.VSTHRD104.severity = none
 dotnet_diagnostic.VSTHRD111.severity = none
 
 dotnet_analyzer_diagnostic.severity = warning
+
+# Direct console output (RS0030, see BannedSymbols.txt) is banned in plugins, abstractions,
+# the proxy engine and CLI commands. Commands write through ILogger so output honors --output.
+[DevProxy/**.cs]
+dotnet_diagnostic.RS0030.severity = none
+
+[DevProxy/Commands/**.cs]
+dotnet_diagnostic.RS0030.severity = warning
+
+# Existing commands that intentionally write raw stdout/stderr (secrets, log streaming, prompts,
+# help output). Don't add new files to this list; use ILogger instead.
+[DevProxy/Commands/{ApiCommand,CertCommand,DevProxyHelpAction,ExitCodeHelpAction,HelpExamples,JwtCommand,LogsCommand,StatusCommand,StdioCommand,StopCommand}.cs]
+dotnet_diagnostic.RS0030.severity = none
