@@ -38,8 +38,8 @@ sealed class OutdatedCommand : Command
         Add(outdatedShortOption);
 
         HelpExamples.Add(this, [
-            "devproxy outdated                                   Check for updates (human output)",
-            "devproxy outdated --short                           Version number only",
+            ("devproxy outdated", "Check for updates (human output)"),
+            ("devproxy outdated --short", "Version number only"),
         ]);
 
         SetAction(async (parseResult) =>
