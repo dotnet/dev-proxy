@@ -80,10 +80,10 @@ sealed class CertCommand : Command
         }.OrderByName());
 
         HelpExamples.Add(this, [
-            "devproxy cert ensure                                Install and trust certificate",
-            "devproxy cert export                                Write root certificate to dev-proxy-ca.pem",
-            "devproxy cert export --format crt --file ca.crt     Write root certificate as PEM to ca.crt",
-            "devproxy cert remove --force                        Remove certificate (no prompt)",
+            ("devproxy cert ensure", "Install and trust certificate"),
+            ("devproxy cert export", "Write root certificate to dev-proxy-ca.pem"),
+            ("devproxy cert export --format crt --file ca.crt", "Write root certificate as PEM to ca.crt"),
+            ("devproxy cert remove --force", "Remove certificate (no prompt)"),
         ]);
     }
 
