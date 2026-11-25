@@ -11,11 +11,20 @@ namespace DevProxy.Commands;
 
 static class HelpExamples
 {
+    // Keeps example descriptions in the same column across all commands.
+    internal const int MinDescriptionColumn = 52;
+
     private static readonly ConditionalWeakTable<Command, string[]> _examples = new();
 
-    public static void Add(Command command, string[] examples)
+    public static void Add(Command command, (string Command, string Description)[] examples)
     {
-        _examples.AddOrUpdate(command, examples);
+        _examples.AddOrUpdate(command, [.. Format(examples)]);
+    }
+
+    internal static IEnumerable<string> Format(IReadOnlyCollection<(string Command, string Description)> examples)
+    {
+        var column = Math.Max(MinDescriptionColumn, examples.Max(e => e.Command.Length) + 2);
+        return examples.Select(e => e.Command.PadRight(column) + e.Description);
     }
 
     public static void Install(RootCommand rootCommand)
