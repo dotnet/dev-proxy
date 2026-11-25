@@ -31,6 +31,17 @@ To create a new plugin:
 3. Implement the required interface members and override any relevant base class methods/events for your use case.
 4. If the plugin has a configuration class, add `schemas/v<current version>/<lowercased plugin name>.schema.json` matching it (properties, types, defaults). `PluginSchemaConsistencyTests` in `DevProxy.Tests` fails on mismatches.
 
+## Code Conventions
+
+Path-specific rules live in `.github/instructions/` (CLI commands, JSON schemas).
+
+- **Build before review:** `dotnet restore DevProxy.sln --locked-mode`, `dotnet build DevProxy.sln --no-restore` (warnings are errors) and `dotnet test DevProxy.sln` must pass before you request review.
+- **Lock files:** only change `packages.lock.json` when you change package references (then run `dotnet restore DevProxy.sln --force-evaluate`). Revert lock file changes that a restore produced without a dependency change.
+- **No direct console output** in plugins, abstractions, the proxy engine or CLI commands; log through `ILogger`. Enforced by analyzer `RS0030` with `BannedSymbols.txt` (scope in `.editorconfig`).
+- **Reuse, don't duplicate:** search for existing utilities (e.g. `DevProxy.Abstractions/Utils/ProxyUtils.cs`) and global options before adding new ones.
+- **Minimal visibility:** make helpers `internal` or `private` unless another assembly needs them. Plugin classes and the plugin API in `DevProxy.Abstractions` are the exceptions that must be `public`.
+- **Focused, clear changes:** keep a PR to one issue without unrelated refactoring; give members names that state their purpose and put helpers in a class that matches their domain (e.g. nothing unrelated to Graph in `GraphUtils`).
+
 ## Commits & Releases
 
 - **Commit messages:** Clear, succinct, and reference the issue they close when applicable
