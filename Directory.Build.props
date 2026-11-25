@@ -3,4 +3,9 @@
     <!-- Suppress until SQLitePCLRaw releases a fix for GHSA-2m69-gcr7-jv3q -->
     <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-2m69-gcr7-jv3q" />
   </ItemGroup>
+  <!-- Ban direct console output in product code; scope is configured in .editorconfig (RS0030) -->
+  <ItemGroup Condition="!$(MSBuildProjectName.EndsWith('.Tests'))">
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" PrivateAssets="all" />
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.txt" Visible="false" />
+  </ItemGroup>
 </Project>

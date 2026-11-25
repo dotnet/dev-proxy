@@ -231,12 +231,12 @@ sealed class ConfigCommand : Command
         }.OrderByName());
 
         HelpExamples.Add(this, [
-            "devproxy config new                                 Create default devproxyrc.json",
-            "devproxy config new --format yaml                   Create default devproxyrc.yaml",
-            "devproxy config new myconfig.json                   Create named config file",
-            "devproxy config get <config-id>                     Download config from gallery",
-            "devproxy config open                                Open config in default editor",
-            "devproxy config validate -c myconfig.json           Validate config without starting",
+            ("devproxy config new", "Create default devproxyrc.json"),
+            ("devproxy config new --format yaml", "Create default devproxyrc.yaml"),
+            ("devproxy config new myconfig.json", "Create named config file"),
+            ("devproxy config get <config-id>", "Download config from gallery"),
+            ("devproxy config open", "Open config in default editor"),
+            ("devproxy config validate -c myconfig.json", "Validate config without starting"),
         ]);
     }
 

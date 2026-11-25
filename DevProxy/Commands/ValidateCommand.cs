@@ -45,9 +45,9 @@ sealed class ValidateCommand : Command
         });
 
         HelpExamples.Add(this, [
-            "devproxy validate                                   Validate the default config",
-            "devproxy validate -c myconfig.json                  Validate a specific config file",
-            "devproxy validate -c myconfig.json --output json    Validate and output JSON results",
+            ("devproxy validate", "Validate the default config"),
+            ("devproxy validate -c myconfig.json", "Validate a specific config file"),
+            ("devproxy validate -c myconfig.json --output json", "Validate and output JSON results"),
         ]);
     }
 }
