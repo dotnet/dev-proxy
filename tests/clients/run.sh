@@ -40,7 +40,8 @@ isolated_pids() {
   for environ in /proc/[0-9]*/environ; do
     pid=${environ#/proc/}
     pid=${pid%/environ}
-    tr '\0' '\n' <"$environ" 2>/dev/null | grep -qxF "XDG_CONFIG_HOME=$proxy_home/.config" && echo "$pid"
+    # Silence stderr before the input redirect: other users' environ files are unreadable.
+    tr '\0' '\n' 2>/dev/null <"$environ" | grep -qxF "XDG_CONFIG_HOME=$proxy_home/.config" && echo "$pid"
   done
   return 0
 }
