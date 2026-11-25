@@ -21,7 +21,7 @@ sealed class MsGraphDbCommand : Command
     private void ConfigureCommand()
     {
         HelpExamples.Add(this, [
-            "devproxy msgraphdb                                  Generate Microsoft Graph DB",
+            ("devproxy msgraphdb", "Generate Microsoft Graph DB"),
         ]);
 
         SetAction(GenerateMsGraphDbAsync);
