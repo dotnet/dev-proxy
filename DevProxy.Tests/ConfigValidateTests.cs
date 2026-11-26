@@ -123,6 +123,23 @@ public sealed class ConfigValidateTests : IDisposable
     }
 
     [Fact]
+    public async Task ValidatesConfigSectionWithSchemaFromRootColonKey()
+    {
+        var result = await ValidateAsync($$"""
+            {
+              "plugins": [
+                { "name": "Plugin", "enabled": true, "pluginPath": "plugin.dll", "configSection": "mySection" }
+              ],
+              "urlsToWatch": ["https://api.example.com/*"],
+              "mySection:$schema": "{{SectionSchemaUrl}}",
+              "mySection": { "rate": "high" }
+            }
+            """);
+
+        Assert.Contains("mySection", GetPaths(result, "errors"));
+    }
+
+    [Fact]
     public async Task ResolvesEnvironmentPlaceholdersInPluginSettings()
     {
         var result = await ValidateAsync($$"""
@@ -350,6 +367,8 @@ public sealed class ConfigValidateTests : IDisposable
     [InlineData(new[] { "config", "validate" }, true)]
     [InlineData(new[] { "--output", "json", "validate" }, true)]
     [InlineData(new[] { "--output=json", "config", "validate" }, true)]
+    [InlineData(new[] { "--output:json", "validate" }, true)]
+    [InlineData(new[] { "--log-level:Warning", "validate" }, true)]
     [InlineData(new[] { "validate", "--help" }, false)]
     [InlineData(new[] { "config", "get", "validate" }, false)]
     [InlineData(new[] { "--config-file", "validate" }, false)]

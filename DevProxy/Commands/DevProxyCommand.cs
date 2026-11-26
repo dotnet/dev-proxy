@@ -154,7 +154,9 @@ sealed class DevProxyCommand : RootCommand
                 continue;
             }
             if (arg.StartsWith(OutputOptionName + "=", StringComparison.OrdinalIgnoreCase) ||
+                arg.StartsWith(OutputOptionName + ":", StringComparison.OrdinalIgnoreCase) ||
                 arg.StartsWith(LogLevelOptionName + "=", StringComparison.OrdinalIgnoreCase) ||
+                arg.StartsWith(LogLevelOptionName + ":", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(arg, NoColorOptionName, StringComparison.OrdinalIgnoreCase) ||
                 (commandTokens.Count > 0 && arg.StartsWith('-')))
             {

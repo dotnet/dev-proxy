@@ -911,20 +911,26 @@ sealed class ConfigCommand : Command
 
             if (!validateSchemas ||
                 !hasRawSection ||
-                configSection.ValueKind != JsonValueKind.Object ||
-                !TryGetPropertyIgnoreCase(configSection, "$schema", out var sectionSchemaProp) ||
-                sectionSchemaProp.ValueKind == JsonValueKind.Null)
+                configSection.ValueKind != JsonValueKind.Object)
             {
                 continue;
             }
 
-            if (sectionSchemaProp.ValueKind != JsonValueKind.String)
+            string? rawSectionSchemaUrl = null;
+            if (TryGetPropertyIgnoreCase(configSection, "$schema", out var sectionSchemaProp) &&
+                sectionSchemaProp.ValueKind != JsonValueKind.Null)
             {
-                errors.Add(new($"{configSectionName}.$schema", $"Expected a string but got {sectionSchemaProp.ValueKind}"));
-                continue;
+                if (sectionSchemaProp.ValueKind != JsonValueKind.String)
+                {
+                    errors.Add(new($"{configSectionName}.$schema", $"Expected a string but got {sectionSchemaProp.ValueKind}"));
+                    continue;
+                }
+                rawSectionSchemaUrl = sectionSchemaProp.GetString();
             }
 
-            var sectionSchemaUrl = configuration?.GetSection(configSectionName)["$schema"] ?? sectionSchemaProp.GetString();
+            // the schema URL can also come from a root key like "mySection:$schema",
+            // which startup reads through IConfiguration
+            var sectionSchemaUrl = configuration?.GetSection(configSectionName)["$schema"] ?? rawSectionSchemaUrl;
             if (string.IsNullOrWhiteSpace(sectionSchemaUrl))
             {
                 continue;
