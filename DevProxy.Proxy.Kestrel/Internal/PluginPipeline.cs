@@ -179,41 +179,48 @@ internal sealed class PluginPipeline
             // flushed together on FinishedProcessingRequest.
             using (BeginRequestScope(session))
             {
-                foreach (var plugin in _plugins.Where(p => p.Enabled))
+                try
                 {
-                    ct.ThrowIfCancellationRequested();
-                    try
+                    foreach (var plugin in _plugins.Where(p => p.Enabled))
                     {
-                        await plugin.BeforeResponseAsync(beforeArgs, ct).ConfigureAwait(false);
+                        ct.ThrowIfCancellationRequested();
+                        try
+                        {
+                            await plugin.BeforeResponseAsync(beforeArgs, ct).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "An error occurred in a plugin");
+                        }
                     }
-                    catch (Exception ex)
+
+                    _logger.LogRequest(message, MessageType.InterceptedResponse, loggingContext);
+
+                    if (betweenPhases is not null)
                     {
-                        _logger.LogError(ex, "An error occurred in a plugin");
+                        // Streamed response: write the head + pump the body to the client now.
+                        await betweenPhases(ct).ConfigureAwait(false);
+                    }
+
+                    foreach (var plugin in _plugins.Where(p => p.Enabled))
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        try
+                        {
+                            await plugin.AfterResponseAsync(beforeArgs, ct).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "An error occurred in a plugin");
+                        }
                     }
                 }
-
-                _logger.LogRequest(message, MessageType.InterceptedResponse, loggingContext);
-
-                if (betweenPhases is not null)
+                finally
                 {
-                    // Streamed response: write the head + pump the body to the client now.
-                    await betweenPhases(ct).ConfigureAwait(false);
+                    // Also on cancellation or failure, so the console formatter prints
+                    // and releases the lines it buffered for this request.
+                    _logger.LogRequest(message, MessageType.FinishedProcessingRequest, loggingContext);
                 }
-
-                foreach (var plugin in _plugins.Where(p => p.Enabled))
-                {
-                    ct.ThrowIfCancellationRequested();
-                    try
-                    {
-                        await plugin.AfterResponseAsync(beforeArgs, ct).ConfigureAwait(false);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "An error occurred in a plugin");
-                    }
-                }
-
-                _logger.LogRequest(message, MessageType.FinishedProcessingRequest, loggingContext);
             }
         }
         finally
@@ -233,8 +240,31 @@ internal sealed class PluginPipeline
             ["requestId"] = session.RequestId,
         });
 
-    /// <summary>Drops any per-exchange state for a session that never reached the response phase.</summary>
-    public void Forget(string sessionId) => _sessionData.TryRemove(sessionId, out _);
+    /// <summary>
+    /// Ends an exchange that never completes the response phase (pipeline error, upstream
+    /// failure, cancellation): drops its per-exchange state and, for a watched request,
+    /// emits <see cref="MessageType.FinishedProcessingRequest"/> so the console formatter
+    /// prints and releases the lines it buffered for it. Safe to call more than once.
+    /// </summary>
+    public void Forget(CanonicalProxySession session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        // Session data exists only for a watched request that hasn't finished yet, so a
+        // non-watched or already-finished request doesn't log a second terminator.
+        if (!_sessionData.TryRemove(session.SessionId, out _))
+        {
+            return;
+        }
+
+        using (BeginRequestScope(session))
+        {
+            _logger.LogRequest(
+                $"{session.Request.Method} {session.Request.Url}",
+                MessageType.FinishedProcessingRequest,
+                new LoggingContext(session));
+        }
+    }
 
     private bool IsIncludedByHeaders(Abstractions.Proxy.Http.IHttpRequest request)
     {
