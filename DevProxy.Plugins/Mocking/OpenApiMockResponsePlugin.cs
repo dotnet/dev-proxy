@@ -379,7 +379,11 @@ public sealed class OpenApiMockResponsePlugin(
                 return null;
             }
 
-            var schemaDescription = OpenApiSchemaSampleGenerator.Describe(schema);
+            if (!OpenApiSchemaSampleGenerator.TryDescribe(schema, out var schemaDescription))
+            {
+                Logger.LogDebug("Schema for {Method} {Path} is too complex to describe to the language model", method, pathTemplate);
+                return null;
+            }
             var expectedType = schemaDescription["type"]?.GetValue<string>();
             if (expectedType == "null")
             {

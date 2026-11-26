@@ -111,10 +111,70 @@ public sealed class OpenApiMockResponsePluginTests
     [InlineData("{ type: array, minItems: 11112, items: { type: string, minLength: 8 } }")]
     // over the limit: the array plus 14286 "string" values of 1 node and 6 characters
     [InlineData("{ type: array, minItems: 14286, items: { type: string } }")]
+    // over the limit: unique variants grow, eg. "string10999"
+    [InlineData("{ type: array, minItems: 11000, uniqueItems: true, items: { type: string } }")]
+    [InlineData("{ type: array, minItems: 11000, uniqueItems: true, items: { type: object, properties: { a: { type: string } } } }")]
     public void TryGenerateSample_DeclinesSamplesExceedingMaxSize(string schema)
     {
         Assert.False(OpenApiSchemaSampleGenerator.TryGenerateSample(ParseSchema(schema), out var sample));
         Assert.Null(sample);
+    }
+
+    [Fact]
+    public void TryGenerateSample_DeclinesUniqueEnumVariantsExceedingMaxSize()
+    {
+        var schema = new OpenApiSchema
+        {
+            Type = JsonSchemaType.Array,
+            MinItems = 2,
+            UniqueItems = true,
+            Items = new OpenApiSchema
+            {
+                Type = JsonSchemaType.String,
+                Enum = [JsonValue.Create("a"), JsonValue.Create(new string('x', 100_000))]
+            }
+        };
+
+        Assert.False(OpenApiSchemaSampleGenerator.TryGenerateSample(schema, out var sample));
+        Assert.Null(sample);
+    }
+
+    [Fact]
+    public async Task UniqueItemsExceedingSampleSize_PassesThrough()
+    {
+        var (_, _, received) = await GetAsync("/unique-growing", """
+            content:
+              application/json:
+                schema: { type: array, minItems: 11000, uniqueItems: true, items: { type: string } }
+            """);
+
+        Assert.True(received);
+    }
+
+    [Fact]
+    public void ExponentialAllOfComposition_IsDeclined()
+    {
+        // each level references the next one ten times, which expands to
+        // billions of schemas when flattened
+        var levels = Enumerable.Range(0, 10).Select(i => i == 9 ?
+            $"    L{i}: {{ type: integer }}" :
+            $"    L{i}: {{ allOf: [{string.Join(", ", Enumerable.Repeat($"{{ $ref: '#/components/schemas/L{i + 1}' }}", 10))}] }}");
+        var spec = string.Join('\n', [
+            "openapi: 3.0.1",
+            "info: { title: Test, version: '1.0' }",
+            "paths: {}",
+            "components:",
+            "  schemas:",
+            .. levels
+        ]);
+        var settings = new OpenApiReaderSettings();
+        settings.AddYamlReader();
+        var schema = OpenApiDocument.Parse(spec, null, settings).Document!.Components!.Schemas!["L0"];
+
+        Assert.False(OpenApiSchemaSampleGenerator.TryGenerateSample(schema, out var sample));
+        Assert.Null(sample);
+        Assert.False(OpenApiSchemaSampleGenerator.TryDescribe(schema, out _));
+        Assert.False(OpenApiSchemaSampleGenerator.IsStringSchema(schema));
     }
 
     [Theory]

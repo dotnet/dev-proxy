@@ -20,6 +20,10 @@ internal static class OpenApiSchemaSampleGenerator
     // string characters, so that specs with huge minItems/minLength values
     // don't exhaust memory
     internal const int MaxSampleSize = 100_000;
+    // limits the number of schemas visited while resolving compositions, so
+    // that specs with nested allOf/oneOf/anyOf references don't cause
+    // exponential expansion
+    private const int MaxSchemaVisits = 1_000_000;
 
     /// <summary>
     /// Generates a sample value for the schema. Returns <c>false</c> when
@@ -41,10 +45,29 @@ internal static class OpenApiSchemaSampleGenerator
     /// Returns a simplified JSON Schema-like representation of the schema with
     /// all references resolved, suitable to pass to a language model.
     /// </summary>
-    public static JsonObject Describe(IOpenApiSchema? schema) => Describe(schema, 0, []) ?? [];
+    public static JsonObject Describe(IOpenApiSchema? schema) =>
+        TryDescribe(schema, out var description) ? description : [];
+
+    /// <summary>
+    /// Returns a simplified JSON Schema-like representation of the schema.
+    /// Returns <c>false</c> when the description would be larger than
+    /// <see cref="MaxSampleSize"/> schemas.
+    /// </summary>
+    public static bool TryDescribe(IOpenApiSchema? schema, out JsonObject description)
+    {
+        var context = new DescribeContext();
+        description = Describe(schema, 0, context) ?? [];
+        if (context.IsExceeded)
+        {
+            description = [];
+            return false;
+        }
+        return true;
+    }
 
     public static bool IsStringSchema(IOpenApiSchema? schema) =>
-        schema is not null && Describe(schema)["type"]?.GetValue<string>() == "string";
+        schema is not null && TryDescribe(schema, out var description) &&
+        description["type"]?.GetValue<string>() == "string";
 
     private static string? GetReferenceId(IOpenApiSchema schema) =>
         schema is OpenApiSchemaReference reference ? reference.Reference?.ReferenceV3 : null;
@@ -138,7 +161,11 @@ internal static class OpenApiSchemaSampleGenerator
     // the first alternative of oneOf/anyOf
     private static JsonNode? GenerateCompositionSample(IOpenApiSchema schema, int depth, GenerationContext context)
     {
-        var flattened = FlattenAllOf(schema, depth).ToList();
+        var flattened = FlattenAllOf(schema, depth, context).ToList();
+        if (context.IsExceeded)
+        {
+            return null;
+        }
 
         // for non-object values, combine the constraints of the schema, its
         // allOf branches and the selected alternative so that the value
@@ -202,8 +229,13 @@ internal static class OpenApiSchemaSampleGenerator
             .Select(p => (p.Key, p.Value));
     }
 
-    private static IEnumerable<IOpenApiSchema> FlattenAllOf(IOpenApiSchema schema, int depth)
+    private static IEnumerable<IOpenApiSchema> FlattenAllOf(IOpenApiSchema schema, int depth, GenerationContext context)
     {
+        if (!context.TryVisitSchema())
+        {
+            yield break;
+        }
+
         yield return schema;
 
         if (depth > MaxDepth)
@@ -218,7 +250,7 @@ internal static class OpenApiSchemaSampleGenerator
                 continue;
             }
 
-            foreach (var nested in FlattenAllOf(subSchema, depth + 1))
+            foreach (var nested in FlattenAllOf(subSchema, depth + 1, context))
             {
                 yield return nested;
             }
@@ -228,7 +260,7 @@ internal static class OpenApiSchemaSampleGenerator
         var alternative = GetSelectedAlternative(schema);
         if (alternative is not null)
         {
-            foreach (var nested in FlattenAllOf(alternative, depth + 1))
+            foreach (var nested in FlattenAllOf(alternative, depth + 1, context))
             {
                 yield return nested;
             }
@@ -399,16 +431,16 @@ internal static class OpenApiSchemaSampleGenerator
             count = Math.Min(count, Math.Max(maxItems, 0));
         }
 
-        // the item is already accounted for. Reserve the remaining items
-        // before allocating them
-        if (count > 1 && !context.TryConsume((long)(count - 1) * GetSize(item, context.Remaining + 1)))
-        {
-            return [];
-        }
-
         var array = new JsonArray();
         if (schema.UniqueItems != true)
         {
+            // the item is already accounted for. Reserve the remaining items
+            // before allocating them
+            if (count > 1 && !context.TryConsume((long)(count - 1) * GetSize(item, context.Remaining + 1)))
+            {
+                return [];
+            }
+
             for (var i = 0; i < count; i++)
             {
                 array.Add(item?.DeepClone());
@@ -422,17 +454,28 @@ internal static class OpenApiSchemaSampleGenerator
         {
             return array;
         }
+        // variants differ in size, so they're accounted for one by one. Each
+        // item takes at least one unit, so fail early when they can't fit
+        if (!context.EnsureAvailable(count - 1L))
+        {
+            return [];
+        }
         array.Add(item?.DeepClone());
         var seen = new HashSet<string> { GetCanonicalJson(item) };
-        for (var attempt = 1; array.Count < count && attempt < count * 4; attempt++)
+        for (var attempt = 1; array.Count < count && attempt < count * 4 && !context.IsExceeded; attempt++)
         {
-            var variant = CreateVariant(item, schema.Items, attempt, depth);
-            if (variant is not null && seen.Add(GetCanonicalJson(variant)))
+            var variant = CreateVariant(item, schema.Items, attempt, depth, context);
+            if (variant is null || !seen.Add(GetCanonicalJson(variant)))
             {
-                array.Add(variant);
+                continue;
             }
+            if (!context.TryConsume(GetSize(variant, context.Remaining + 1)))
+            {
+                return [];
+            }
+            array.Add(variant);
         }
-        return array;
+        return context.IsExceeded ? [] : array;
     }
 
     // JSON with sorted object properties, so that structurally equal values,
@@ -455,34 +498,50 @@ internal static class OpenApiSchemaSampleGenerator
         }
     }
 
-    private static JsonNode? CreateVariant(JsonNode? sample, IOpenApiSchema? schema, int index, int depth)
+    // creates a variant of the sample. Doesn't consume the variant's size, but
+    // fails when it can't fit in the remaining budget before allocating it
+    private static JsonNode? CreateVariant(JsonNode? sample, IOpenApiSchema? schema, int index, int depth, GenerationContext context)
     {
-        if (schema is null || sample is null || depth > MaxDepth)
+        if (schema is null || sample is null || depth > MaxDepth || context.IsExceeded)
         {
             return null;
         }
 
         var constraints = schema.AllOf is { Count: > 0 } || GetSelectedAlternative(schema) is not null ?
-            CombineConstraints(FlattenAllOf(schema, depth)) :
+            CombineConstraints(FlattenAllOf(schema, depth, context)) :
             schema;
+        if (context.IsExceeded)
+        {
+            return null;
+        }
         var enumValues = constraints.Enum?.Where(e => e is not null).ToArray();
         if (enumValues is { Length: > 0 })
         {
-            return index < enumValues.Length ? enumValues[index]!.DeepClone() : null;
+            if (index >= enumValues.Length)
+            {
+                return null;
+            }
+            var enumValue = enumValues[index]!;
+            return context.EnsureAvailable(GetSize(enumValue, context.Remaining + 1)) ? enumValue.DeepClone() : null;
         }
 
         if (sample is JsonObject obj)
         {
             foreach (var (name, value) in obj)
             {
-                if (value is not JsonValue || FindPropertySchema(schema, name, depth) is not IOpenApiSchema propertySchema)
+                if (value is not JsonValue || FindPropertySchema(schema, name, depth, context) is not IOpenApiSchema propertySchema)
                 {
                     continue;
                 }
 
-                var variant = CreateVariant(value, propertySchema, index, depth + 1);
+                var variant = CreateVariant(value, propertySchema, index, depth + 1, context);
                 if (variant is not null)
                 {
+                    var limit = context.Remaining + 1;
+                    if (!context.EnsureAvailable(GetSize(obj, limit) - GetSize(value, limit) + GetSize(variant, limit)))
+                    {
+                        return null;
+                    }
                     var clone = obj.DeepClone().AsObject();
                     clone[name] = variant;
                     return clone;
@@ -558,9 +617,9 @@ internal static class OpenApiSchemaSampleGenerator
         }
     }
 
-    private static IOpenApiSchema? FindPropertySchema(IOpenApiSchema schema, string name, int depth)
+    private static IOpenApiSchema? FindPropertySchema(IOpenApiSchema schema, string name, int depth, GenerationContext context)
     {
-        foreach (var candidate in FlattenAllOf(schema, depth))
+        foreach (var candidate in FlattenAllOf(schema, depth, context))
         {
             if (candidate.Properties?.TryGetValue(name, out var propertySchema) == true)
             {
@@ -819,33 +878,33 @@ internal static class OpenApiSchemaSampleGenerator
         }
     }
 
-    private static JsonObject? Describe(IOpenApiSchema? schema, int depth, HashSet<string> visiting)
+    private static JsonObject? Describe(IOpenApiSchema? schema, int depth, DescribeContext context)
     {
-        if (schema is null || depth > MaxDepth)
+        if (schema is null || depth > MaxDepth || !context.TryVisitSchema())
         {
             return null;
         }
 
         var referenceId = GetReferenceId(schema);
-        if (referenceId is not null && !visiting.Add(referenceId))
+        if (referenceId is not null && !context.Visiting.Add(referenceId))
         {
             return null;
         }
 
         try
         {
-            return DescribeCore(schema, depth, visiting);
+            return DescribeCore(schema, depth, context);
         }
         finally
         {
             if (referenceId is not null)
             {
-                _ = visiting.Remove(referenceId);
+                _ = context.Visiting.Remove(referenceId);
             }
         }
     }
 
-    private static JsonObject DescribeCore(IOpenApiSchema schema, int depth, HashSet<string> visiting)
+    private static JsonObject DescribeCore(IOpenApiSchema schema, int depth, DescribeContext context)
     {
         var description = new JsonObject();
 
@@ -854,14 +913,14 @@ internal static class OpenApiSchemaSampleGenerator
         {
             foreach (var subSchema in allOfSchemas)
             {
-                MergeDescription(description, Describe(subSchema, depth + 1, visiting));
+                MergeDescription(description, Describe(subSchema, depth + 1, context));
             }
         }
 
         var alternative = GetSelectedAlternative(schema);
         if (alternative is not null)
         {
-            MergeDescription(description, Describe(alternative, depth + 1, visiting));
+            MergeDescription(description, Describe(alternative, depth + 1, context));
         }
 
         var type = GetEffectiveType(schema);
@@ -913,7 +972,7 @@ internal static class OpenApiSchemaSampleGenerator
                 {
                     continue;
                 }
-                var propertyDescription = Describe(propertySchema, depth + 1, visiting);
+                var propertyDescription = Describe(propertySchema, depth + 1, context);
                 if (propertyDescription is null)
                 {
                     continue;
@@ -967,11 +1026,11 @@ internal static class OpenApiSchemaSampleGenerator
         }
         if (schema.Items is not null)
         {
-            MergeDescription(description, new JsonObject { ["items"] = Describe(schema.Items, depth + 1, visiting) ?? [] });
+            MergeDescription(description, new JsonObject { ["items"] = Describe(schema.Items, depth + 1, context) ?? [] });
         }
         if (schema.AdditionalProperties is not null)
         {
-            description["additionalProperties"] = Describe(schema.AdditionalProperties, depth + 1, visiting) ?? [];
+            description["additionalProperties"] = Describe(schema.AdditionalProperties, depth + 1, context) ?? [];
         }
 
         return description;
@@ -1121,18 +1180,60 @@ internal static class OpenApiSchemaSampleGenerator
         public long Remaining { get; private set; } = MaxSampleSize;
         public bool IsExceeded { get; private set; }
 
+        private long _remainingSchemaVisits = MaxSchemaVisits;
+
         public bool TryConsume(long size)
         {
-            if (IsExceeded || size > Remaining)
+            if (!EnsureAvailable(size))
             {
-                IsExceeded = true;
                 return false;
             }
             Remaining -= size;
             return true;
         }
 
+        // checks that size fits in the remaining budget without consuming it
+        public bool EnsureAvailable(long size)
+        {
+            if (IsExceeded || size > Remaining)
+            {
+                IsExceeded = true;
+                return false;
+            }
+            return true;
+        }
+
+        public bool TryVisitSchema()
+        {
+            if (IsExceeded || _remainingSchemaVisits <= 0)
+            {
+                IsExceeded = true;
+                return false;
+            }
+            _remainingSchemaVisits--;
+            return true;
+        }
+
         public JsonNode? Clone(JsonNode node) =>
             TryConsume(GetSize(node, Remaining + 1)) ? node.DeepClone() : null;
+    }
+
+    private sealed class DescribeContext
+    {
+        private int _remainingSchemaVisits = MaxSampleSize;
+
+        public HashSet<string> Visiting { get; } = [];
+        public bool IsExceeded { get; private set; }
+
+        public bool TryVisitSchema()
+        {
+            if (IsExceeded || _remainingSchemaVisits <= 0)
+            {
+                IsExceeded = true;
+                return false;
+            }
+            _remainingSchemaVisits--;
+            return true;
+        }
     }
 }
