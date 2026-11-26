@@ -3,25 +3,30 @@
 // See the LICENSE file in the project root for more information.
 
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Utils;
 using DevProxy.Logging;
 using DevProxy.Proxy;
 using DevProxy.State;
 using System.CommandLine;
+using System.CommandLine.Parsing;
+using System.Text.Json;
 
 namespace DevProxy.Commands;
 
 sealed class SystemProxyCommand : Command
 {
     private readonly ILogger<SystemProxyManager> _systemProxyLogger;
+    private readonly ILogger<SystemProxyCommand> _logger;
     private readonly Option<bool> _forceOption = new("--force", "-f")
     {
         Description = "Reset the system proxy even if a running Dev Proxy instance owns it"
     };
 
-    public SystemProxyCommand(ILogger<SystemProxyManager> systemProxyLogger) :
+    public SystemProxyCommand(ILogger<SystemProxyManager> systemProxyLogger, ILogger<SystemProxyCommand> logger) :
         base("system-proxy", "Manage the system proxy settings changed by Dev Proxy")
     {
         _systemProxyLogger = systemProxyLogger;
+        _logger = logger;
 
         var resetCommand = new Command("reset", "Restore the system proxy settings that Dev Proxy changed. Use after Dev Proxy was killed or crashed.");
         resetCommand.Add(_forceOption);
@@ -29,16 +34,18 @@ sealed class SystemProxyCommand : Command
         Add(resetCommand);
 
         HelpExamples.Add(this, [
-            "devproxy system-proxy reset                         Restore system proxy settings",
+            ("devproxy system-proxy reset", "Restore system proxy settings"),
         ]);
         HelpExamples.Add(resetCommand, [
-            "devproxy system-proxy reset                         Restore system proxy settings",
-            "devproxy system-proxy reset --force                 Restore even if Dev Proxy is running",
+            ("devproxy system-proxy reset", "Restore system proxy settings"),
+            ("devproxy system-proxy reset --force", "Restore even if Dev Proxy is running"),
         ]);
     }
 
     private Task<int> ResetAsync(ParseResult parseResult, CancellationToken cancellationToken) =>
-        ResetCoreAsync(parseResult.GetValue(_forceOption), _systemProxyLogger, cancellationToken);
+        ResetCoreAsync(parseResult.GetValue(_forceOption),
+            parseResult.GetValueOrDefault<OutputFormat?>(DevProxyCommand.OutputOptionName) ?? OutputFormat.Text,
+            _logger, _systemProxyLogger, cancellationToken);
 
     /// <summary>
     /// Builds a minimal command tree mirroring the registered <c>system-proxy reset</c>
@@ -80,55 +87,66 @@ sealed class SystemProxyCommand : Command
     {
         var (rootCommand, forceOption) = CreateStandaloneResetParser();
         var parseResult = rootCommand.Parse(args);
-        if (parseResult.Errors.Count > 0)
-        {
-            foreach (var error in parseResult.Errors)
-            {
-                await Console.Error.WriteLineAsync(error.Message);
-            }
-            return 1;
-        }
-        var force = parseResult.GetValue(forceOption);
+        var outputFormat = parseResult.GetValueOrDefault<OutputFormat?>(DevProxyCommand.OutputOptionName) ?? OutputFormat.Text;
+        var logLevel = parseResult.GetValueOrDefault<LogLevel?>(DevProxyCommand.LogLevelOptionName) ?? LogLevel.Information;
 
         using var loggerFactory = LoggerFactory.Create(builder =>
         {
             _ = builder
-                .SetMinimumLevel(LogLevel.Information)
+                .SetMinimumLevel(logLevel)
                 .AddConsole(consoleOptions =>
                 {
-                    consoleOptions.FormatterName = ProxyConsoleFormatter.DefaultCategoryName;
+                    consoleOptions.FormatterName = outputFormat == OutputFormat.Json
+                        ? JsonConsoleFormatter.FormatterName
+                        : ProxyConsoleFormatter.DefaultCategoryName;
                     consoleOptions.LogToStandardErrorThreshold = LogLevel.Warning;
                 })
                 .AddConsoleFormatter<ProxyConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
                 {
                     formatterOptions.IncludeScopes = false;
                     formatterOptions.ShowTimestamps = false;
+                })
+                .AddConsoleFormatter<JsonConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
+                {
+                    formatterOptions.IncludeScopes = false;
+                    formatterOptions.ShowTimestamps = false;
                 });
         });
+        var logger = loggerFactory.CreateLogger<SystemProxyCommand>();
+        if (parseResult.Errors.Count > 0)
+        {
+            foreach (var error in parseResult.Errors)
+            {
+                logger.LogError("{Message}", error.Message);
+            }
+            return 2;
+        }
 
-        return await ResetCoreAsync(force, loggerFactory.CreateLogger<SystemProxyManager>(), CancellationToken.None);
+        return await ResetCoreAsync(parseResult.GetValue(forceOption), outputFormat, logger,
+            loggerFactory.CreateLogger<SystemProxyManager>(), CancellationToken.None);
     }
 
-    private static async Task<int> ResetCoreAsync(bool force, ILogger<SystemProxyManager> logger, CancellationToken cancellationToken)
+    private static async Task<int> ResetCoreAsync(bool force, OutputFormat outputFormat,
+        ILogger<SystemProxyCommand> logger, ILogger<SystemProxyManager> systemProxyLogger, CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsWindows() && !OperatingSystem.IsMacOS())
         {
-            Console.WriteLine("Dev Proxy doesn't change the system proxy settings on this operating system. Nothing to reset.");
+            LogResult("Dev Proxy doesn't change the system proxy settings on this operating system. Nothing to reset.", outputFormat, logger);
             return 0;
         }
 
         var liveOwner = await SystemProxyManager.FindLiveSystemProxyOwnerAsync(cancellationToken);
         if (liveOwner is not null && !force)
         {
-            await Console.Error.WriteLineAsync($"Dev Proxy (PID: {liveOwner}) is running as the system proxy.");
-            await Console.Error.WriteLineAsync("Use 'devproxy stop' to stop it, or 'devproxy system-proxy reset --force' to reset anyway.");
+            logger.LogError("Dev Proxy (PID: {Pid}) is running as the system proxy.", liveOwner);
+            logger.LogError("Use 'devproxy stop' to stop it, or 'devproxy system-proxy reset --force' to reset anyway.");
             return 1;
         }
 
-        var result = new SystemProxyManager(logger).Restore();
+        var result = new SystemProxyManager(systemProxyLogger).Restore();
         if (result is SystemProxyRestoreResult.Failed)
         {
-            await Console.Error.WriteLineAsync("Couldn't restore the system proxy settings. To reset them manually, see https://go.devproxy.net?go=proxy-reset.");
+            logger.LogError("Couldn't restore the system proxy settings. To reset them manually, see https://go.devproxy.net?go=proxy-reset.");
             return 1;
         }
 
@@ -148,9 +166,21 @@ sealed class SystemProxyCommand : Command
             await StateManager.DeleteStateAsync(orphan, cancellationToken);
         }
 
-        Console.WriteLine(result is SystemProxyRestoreResult.RestoredPrevious
+        LogResult(result is SystemProxyRestoreResult.RestoredPrevious
             ? "Restored the system proxy settings from before Dev Proxy started."
-            : "Turned off the system proxy.");
+            : "Turned off the system proxy.", outputFormat, logger);
         return 0;
+    }
+
+    private static void LogResult(string message, OutputFormat outputFormat, ILogger<SystemProxyCommand> logger)
+    {
+        if (outputFormat == OutputFormat.Json)
+        {
+            logger.LogStructuredOutput(JsonSerializer.Serialize(new { message }, ProxyUtils.JsonSerializerOptions));
+        }
+        else
+        {
+            logger.LogInformation("{Message}", message);
+        }
     }
 }

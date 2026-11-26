@@ -147,6 +147,19 @@ public class SystemProxySnapshotStoreTests
 public class SystemProxyResetDetectionTests
 {
     [Theory]
+    [InlineData("--bogus")]
+    [InlineData("--output", "invalid")]
+    [InlineData("--log-level", "invalid")]
+    [InlineData("--output=json", "--bogus")]
+    public async Task RunResetStandalone_InvalidArguments_ReturnsUsageError(params string[] args)
+    {
+        var exitCode = await DevProxy.Commands.SystemProxyCommand.RunResetStandaloneAsync(
+            ["system-proxy", "reset", .. args]);
+
+        Assert.Equal(2, exitCode);
+    }
+
+    [Theory]
     [InlineData("system-proxy", "reset")]
     [InlineData("system-proxy", "reset", "--force")]
     [InlineData("--output=json", "system-proxy", "reset")]
