@@ -11,7 +11,6 @@ using DevProxy.Plugins.Models.TypeSpec;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
-using System.IdentityModel.Tokens.Jwt;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Web;
@@ -176,157 +175,37 @@ public sealed class TypeSpecGeneratorPlugin(
     {
         Logger.LogTrace("Entered {Name}", nameof(ProcessAuth));
 
-        var authHeaders = httpRequest.Headers
-            .Where(h => Models.Http.AuthHeaders.Contains(h.Name.ToLowerInvariant()))
-            .Select(h => (h.Name, h.Value));
-
-        foreach (var (name, value) in authHeaders)
+#pragma warning disable IDE0010
+        switch (AuthDetector.Detect(httpRequest, Logger))
+#pragma warning restore IDE0010
         {
-            if (name.Equals("cookie", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            if (!name.Equals("authorization", StringComparison.OrdinalIgnoreCase) ||
-                !value.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-            {
-                AddApiKeyAuth(op, name, ApiKeyLocation.Header);
-                return;
-            }
-
-            var bearerToken = value["Bearer ".Length..].Trim();
-            AddAuthorizationAuth(op, bearerToken, doc);
-            return;
-        }
-
-        var query = HttpUtility.ParseQueryString(httpRequest.RequestUri.Query);
-        var authQueryParam = query.AllKeys
-            .FirstOrDefault(k => k is not null && Models.Http.AuthHeaders.Contains(k.ToLowerInvariant()));
-        if (authQueryParam is not null)
-        {
-            Logger.LogDebug("Found auth query parameter: {AuthQueryParam}", authQueryParam);
-            AddApiKeyAuth(op, authQueryParam, ApiKeyLocation.Query);
-        }
-        else
-        {
-            Logger.LogDebug("No auth headers or query parameters found");
+            case DetectedApiKeyAuth apiKey:
+                op.Auth = new ApiKeyAuth
+                {
+                    Name = apiKey.Name,
+                    In = apiKey.In == DetectedApiKeyLocation.Query ? ApiKeyLocation.Query : ApiKeyLocation.Header
+                };
+                break;
+            case DetectedBearerAuth:
+                op.Auth = new BearerAuth();
+                break;
+            case DetectedOAuth2Auth oauth2:
+                var auth = new OAuth2Auth
+                {
+                    Name = oauth2.Name,
+                    FlowType = oauth2.FlowType == DetectedOAuth2FlowType.ClientCredentials ?
+                        FlowType.ClientCredentials : FlowType.AuthorizationCode,
+                    TokenUrl = oauth2.TokenUrl,
+                    AuthorizationUrl = oauth2.AuthorizationUrl,
+                    RefreshUrl = oauth2.RefreshUrl,
+                    Scopes = [.. oauth2.Scopes]
+                };
+                doc.Service.Namespace.Auth = auth;
+                op.Auth = auth;
+                break;
         }
 
         Logger.LogTrace("Left {Name}", nameof(ProcessAuth));
-    }
-
-    private void AddAuthorizationAuth(Operation op, string bearerToken, TypeSpecFile doc)
-    {
-        Logger.LogTrace("Entered {Name}", nameof(AddAuthorizationAuth));
-
-        if (IsJwtToken(bearerToken, out var jwtToken))
-        {
-            var issuer = jwtToken.Issuer;
-            Logger.LogDebug("Issuer: {Issuer}", issuer);
-            var scopes = jwtToken.Claims
-                .Where(c => c.Type == "scp")
-                .SelectMany(c => c.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
-                .Distinct()
-                .ToList();
-            if (Logger.IsEnabled(LogLevel.Debug))
-            {
-                Logger.LogDebug("Scopes: {Scopes}", string.Join(", ", scopes));
-            }
-            var roles = jwtToken.Claims
-                .Where(c => c.Type == "roles")
-                .SelectMany(c => c.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
-                .Distinct();
-            if (Logger.IsEnabled(LogLevel.Debug))
-            {
-                Logger.LogDebug("Roles: {Roles}", string.Join(", ", roles));
-            }
-            scopes.AddRange(roles);
-
-            OAuth2Auth? auth = null;
-            if (IsEntraToken(issuer))
-            {
-                var version = jwtToken.Claims
-                    .FirstOrDefault(c => c.Type == "ver")?.Value ?? "1.0";
-                var baseUrl = issuer.Contains("v2.0", StringComparison.OrdinalIgnoreCase) ?
-                    issuer.Replace("v2.0", "", StringComparison.OrdinalIgnoreCase) : issuer;
-                auth = new()
-                {
-                    Name = $"EntraOAuth2Auth",
-                    FlowType = roles.Any() ? FlowType.ClientCredentials : FlowType.AuthorizationCode,
-                    TokenUrl = version == "1.0" ? $"{baseUrl}oauth2/token" : $"{baseUrl}oauth2/v2.0/token",
-                    AuthorizationUrl = version == "1.0" ? $"{baseUrl}oauth2/authorize" : $"{baseUrl}oauth2/v2.0/authorize",
-                    RefreshUrl = version == "1.0" ? $"{baseUrl}oauth2/token" : $"{baseUrl}oauth2/v2.0/token",
-                    Scopes = [.. scopes]
-                };
-            }
-            else
-            {
-                auth = new()
-                {
-                    Name = $"APIOAuth2Auth",
-                    FlowType = FlowType.AuthorizationCode,
-                    TokenUrl = jwtToken.Issuer,
-                    AuthorizationUrl = jwtToken.Issuer,
-                    Scopes = [.. scopes]
-                };
-            }
-            doc.Service.Namespace.Auth = auth;
-            op.Auth = auth;
-        }
-        else
-        {
-            op.Auth = new BearerAuth();
-        }
-
-        Logger.LogTrace("Left {Name}", nameof(AddAuthorizationAuth));
-    }
-
-    private bool IsEntraToken(string issuer)
-    {
-        Logger.LogTrace("Entered {Name}", nameof(IsEntraToken));
-
-        var isEntraToken = issuer.Contains("https://login.microsoftonline.com/", StringComparison.OrdinalIgnoreCase) ||
-            issuer.Contains("https://sts.windows.net/", StringComparison.OrdinalIgnoreCase);
-
-        Logger.LogDebug("Is token from Entra? {IsEntraToken}", isEntraToken);
-        Logger.LogTrace("Left {Name}", nameof(IsEntraToken));
-
-        return isEntraToken;
-    }
-
-    private void AddApiKeyAuth(Operation op, string name, ApiKeyLocation location)
-    {
-        Logger.LogTrace("Entered {Name}", nameof(AddApiKeyAuth));
-
-        var apiKeyAuth = new ApiKeyAuth
-        {
-            Name = name,
-            In = location
-        };
-        op.Auth = apiKeyAuth;
-
-        Logger.LogTrace("Left {Name}", nameof(AddApiKeyAuth));
-    }
-
-    private bool IsJwtToken(string bearerToken, out JwtSecurityToken jwtToken)
-    {
-        Logger.LogTrace("Entered {Name}", nameof(IsJwtToken));
-
-        jwtToken = new();
-
-        try
-        {
-            jwtToken = new(bearerToken);
-            Logger.LogTrace("Left {Name}", nameof(IsJwtToken));
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Logger.LogDebug("Failed to parse JWT token: {Ex}", ex.Message);
-        }
-
-        Logger.LogTrace("Left {Name}", nameof(IsJwtToken));
-        return false;
     }
 
     private async Task ProcessRequestBodyAsync(IHttpRequest httpRequest, TypeSpecFile doc, Operation op, string lastSegment)
@@ -696,7 +575,9 @@ public sealed class TypeSpecGeneratorPlugin(
             var query = HttpUtility.ParseQueryString(url.Query);
             foreach (string key in query.Keys)
             {
-                if (Models.Http.AuthHeaders.Contains(key.ToLowerInvariant()))
+                var lowerCaseKey = key.ToLowerInvariant();
+                if (Models.Http.AuthHeaders.Contains(lowerCaseKey) ||
+                    Models.Http.AuthQueryParameters.Contains(lowerCaseKey))
                 {
                     Logger.LogDebug("Skipping auth header: {Key}", key);
                     continue;
