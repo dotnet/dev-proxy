@@ -354,7 +354,8 @@ public sealed class OpenApiValidationPlugin(
             var values = new Dictionary<string, string>(StringComparer.Ordinal);
             for (var i = 0; i < path.ParameterNames.Count; i++)
             {
-                values[path.ParameterNames[i]] = Uri.UnescapeDataString(m.Groups[i + 1].Value);
+                // values are decoded after splitting arrays, so that encoded delimiters are kept in items
+                values[path.ParameterNames[i]] = m.Groups[i + 1].Value;
             }
             yield return (path, values);
         }
@@ -373,18 +374,21 @@ public sealed class OpenApiValidationPlugin(
             }
 
             List<string>? values = null;
+            Func<string, string>? decode = null;
             switch (parameter.In)
             {
                 case ParameterLocation.Path:
                     if (match.PathValues.TryGetValue(parameter.Name, out var pathValue))
                     {
                         values = [pathValue];
+                        decode = Uri.UnescapeDataString;
                     }
                     break;
                 case ParameterLocation.Query:
                     if (query.TryGetValue(parameter.Name, out var queryValues))
                     {
                         values = queryValues;
+                        decode = Unescape;
                     }
                     else if (GetObjectQueryKeys(parameter).Any(k => query.Keys.Any(k.IsMatch)))
                     {
@@ -426,7 +430,7 @@ public sealed class OpenApiValidationPlugin(
 
             ValidateParameterValue(parameter.Name, $"{locationName} parameter", values, parameter.Schema,
                 parameter.Style ?? GetDefaultStyle(parameter.In.Value), parameter.Explode,
-                OpenApiValidationIssueLocation.Request, issues, match.Spec.StrictNullableEnums);
+                OpenApiValidationIssueLocation.Request, issues, match.Spec.StrictNullableEnums, decode);
         }
 
         // unknown query parameters
@@ -496,38 +500,41 @@ public sealed class OpenApiValidationPlugin(
         return [];
     }
 
+    /// <param name="decode">Function to decode <paramref name="values"/>, or null if they aren't encoded.</param>
     private static void ValidateParameterValue(string name, string kind, List<string> values, IOpenApiSchema? schema,
         ParameterStyle style, bool explode, OpenApiValidationIssueLocation location, List<OpenApiValidationIssue> issues,
-        bool strictNullableEnums)
+        bool strictNullableEnums, Func<string, string>? decode = null)
     {
         if (schema is null || OpenApiSchemaValidator.GetEffectiveType(schema) == JsonSchemaType.Object)
         {
             return;
         }
 
-        var value = OpenApiSchemaValidator.CoerceParameterValue(values, schema, name, style, explode);
         var direction = location == OpenApiValidationIssueLocation.Request
             ? SchemaValidationDirection.Request
             : SchemaValidationDirection.Response;
-        var errors = OpenApiSchemaValidator.Validate(value, schema, direction, name, strictNullableEnums);
-        if (errors.Count > 0)
+        // serialized values are ambiguous, e.g. a value might be valid as a string when
+        // the schema allows multiple types, so the value is valid if any interpretation is.
+        // Errors are reported for the most likely interpretation, which comes first
+        List<SchemaValidationError>? errors = null;
+        foreach (var candidate in OpenApiSchemaValidator.GetParameterValueCandidates(values, schema, name, style, explode, decode))
         {
-            // the value might be valid as a string when the schema allows
-            // multiple types, e.g. anyOf: [{ type: integer, enum: [1] }, { type: string }]
-            var raw = OpenApiSchemaValidator.CoerceParameterValue(values, schema, name, style, explode, coerce: false);
-            if (OpenApiSchemaValidator.Validate(raw, schema, direction, name, strictNullableEnums).Count == 0)
+            var candidateErrors = OpenApiSchemaValidator.Validate(candidate, schema, direction, name, strictNullableEnums);
+            if (candidateErrors.Count == 0)
             {
                 return;
             }
+            errors ??= candidateErrors;
         }
 
-        foreach (var error in errors)
+        var displayValue = string.Join(",", decode is null ? values : values.Select(decode));
+        foreach (var error in errors ?? [])
         {
             issues.Add(new()
             {
                 Location = location,
                 Path = error.Path,
-                Message = $"Invalid {kind} value '{string.Join(",", values)}': {error.Message}"
+                Message = $"Invalid {kind} value '{displayValue}': {error.Message}"
             });
         }
     }
@@ -679,7 +686,11 @@ public sealed class OpenApiValidationPlugin(
         JsonDocument json;
         try
         {
-            json = JsonDocument.Parse(message.Body);
+            // BodyString decodes the body using the declared charset; UTF-8 bodies
+            // are parsed as bytes, which also handles a byte order mark
+            json = HasNonUtf8Charset(message.ContentType)
+                ? JsonDocument.Parse(message.BodyString.TrimStart('\uFEFF'))
+                : JsonDocument.Parse(message.Body);
         }
         catch (JsonException ex)
         {
@@ -740,6 +751,17 @@ public sealed class OpenApiValidationPlugin(
         return contentType.Split(';')[0].Trim().ToLowerInvariant();
     }
 
+    private static bool HasNonUtf8Charset(string? contentType)
+    {
+        var charset = contentType?.Split(';')
+            .Select(p => p.Trim())
+            .FirstOrDefault(p => p.StartsWith("charset=", StringComparison.OrdinalIgnoreCase))?["charset=".Length..]
+            .Trim('"');
+        return !string.IsNullOrEmpty(charset) &&
+            !charset.Equals("utf-8", StringComparison.OrdinalIgnoreCase) &&
+            !charset.Equals("utf8", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool IsJsonMediaType(string mediaType) =>
         mediaType == "application/json" ||
         mediaType.EndsWith("+json", StringComparison.Ordinal);
@@ -749,10 +771,14 @@ public sealed class OpenApiValidationPlugin(
         var parameters = new List<IOpenApiParameter>();
         parameters.AddRange(pathItem.Parameters ?? []);
 
-        // operation-level parameters override path-level parameters with the same name and location
+        // operation-level parameters override path-level parameters with the same name
+        // and location; header names are case-insensitive
         foreach (var parameter in operation.Parameters ?? [])
         {
-            _ = parameters.RemoveAll(p => p.Name == parameter.Name && p.In == parameter.In);
+            var comparison = parameter.In == ParameterLocation.Header
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+            _ = parameters.RemoveAll(p => p.In == parameter.In && string.Equals(p.Name, parameter.Name, comparison));
             parameters.Add(parameter);
         }
 
@@ -771,7 +797,8 @@ public sealed class OpenApiValidationPlugin(
         {
             var separatorIndex = pair.IndexOf('=', StringComparison.Ordinal);
             var name = Unescape(separatorIndex < 0 ? pair : pair[..separatorIndex]);
-            var value = separatorIndex < 0 ? string.Empty : Unescape(pair[(separatorIndex + 1)..]);
+            // values are decoded after splitting arrays, so that encoded delimiters are kept in items
+            var value = separatorIndex < 0 ? string.Empty : pair[(separatorIndex + 1)..];
 
             if (!result.TryGetValue(name, out var values))
             {

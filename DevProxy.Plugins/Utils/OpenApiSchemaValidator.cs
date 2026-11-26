@@ -36,7 +36,7 @@ internal static class OpenApiSchemaValidator
         public int Evaluations { get; set; }
         public bool BudgetExceeded { get; set; }
         public bool StrictNullableEnums { get; init; }
-        public Dictionary<(IOpenApiSchema Schema, string Path, int Depth), List<SchemaValidationError>> Memo { get; } = [];
+        public Dictionary<(IOpenApiSchema Schema, string Path, int Depth), List<SchemaValidationError>> Memo { get; set; } = [];
     }
 
     public static List<SchemaValidationError> Validate(
@@ -68,35 +68,61 @@ internal static class OpenApiSchemaValidator
     }
 
     /// <summary>
-    /// Converts raw (string) parameter values into a JSON value, decoding them
-    /// according to the parameter's serialization style and coercing them
-    /// to the primitive type declared by the schema when possible, so that they
-    /// can be validated with <see cref="Validate(JsonNode?, IOpenApiSchema?, SchemaValidationDirection, string)"/>.
-    /// When <paramref name="coerce"/> is false, values are kept as strings.
+    /// Gets the possible interpretations of raw (string) parameter values as JSON
+    /// values, decoding them according to the parameter's serialization style, so that
+    /// they can be validated with <see cref="Validate(JsonNode?, IOpenApiSchema?, SchemaValidationDirection, string, bool)"/>.
+    /// Serialized values are ambiguous, so the parameter is valid if any of the
+    /// interpretations is valid. The first interpretation is the most likely one:
+    /// values coerced to the primitive type declared by the schema when possible.
+    /// Other interpretations keep values as strings, treat values as scalars when the
+    /// schema allows both arrays and scalars, and when <paramref name="decode"/> is set,
+    /// decode array items after splitting, so that encoded delimiters are kept in items.
     /// </summary>
-    public static JsonNode? CoerceParameterValue(
+    /// <param name="values">Raw values; when <paramref name="decode"/> is set, they're still encoded.</param>
+    /// <param name="decode">Function to decode (e.g. URI-unescape) values, or null if they aren't encoded.</param>
+    public static IEnumerable<JsonNode?> GetParameterValueCandidates(
         IReadOnlyList<string> values,
         IOpenApiSchema? schema,
         string name,
         ParameterStyle style,
         bool explode,
-        bool coerce = true)
+        Func<string, string>? decode = null)
     {
         var type = GetEffectiveType(schema);
-        if (type is not null && type.Value.HasFlag(JsonSchemaType.Array))
+        var isArray = type is not null && type.Value.HasFlag(JsonSchemaType.Array);
+        IReadOnlyList<string> decodedValues = decode is null ? values : [.. values.Select(decode)];
+
+        if (isArray)
         {
             var itemsSchema = GetItems(schema);
-            var array = new JsonArray();
-            foreach (var item in SplitArrayValues(values, name, style, explode))
+            var splits = new List<Func<IEnumerable<string>>> { () => SplitArrayValues(decodedValues, name, style, explode) };
+            if (decode is not null)
             {
-                array.Add(coerce ? CoercePrimitive(item, itemsSchema) : JsonValue.Create(item));
+                splits.Add(() => SplitArrayValues(values, name, style, explode).Select(decode));
             }
-            return array;
+
+            foreach (var split in splits)
+            {
+                foreach (var coerce in new[] { true, false })
+                {
+                    var array = new JsonArray();
+                    foreach (var item in split())
+                    {
+                        array.Add(coerce ? CoercePrimitive(item, itemsSchema) : JsonValue.Create(item));
+                    }
+                    yield return array;
+                }
+            }
         }
 
-        var value = values.Count > 0 ? values[0] : string.Empty;
-        var stripped = StripStylePrefix(value, name, style);
-        return coerce ? CoercePrimitive(stripped, schema) : JsonValue.Create(stripped);
+        // e.g. anyOf: [{ type: array }, { type: string }]
+        if (!isArray || (type!.Value & ~JsonSchemaType.Array) != 0)
+        {
+            var value = decodedValues.Count > 0 ? decodedValues[0] : string.Empty;
+            var stripped = StripStylePrefix(value, name, style);
+            yield return CoercePrimitive(stripped, schema);
+            yield return JsonValue.Create(stripped);
+        }
     }
 
     private static IEnumerable<string> SplitArrayValues(IReadOnlyList<string> values, string name, ParameterStyle style, bool explode)
@@ -170,34 +196,45 @@ internal static class OpenApiSchemaValidator
             .SelectMany(s => s.Properties?.Keys ?? Enumerable.Empty<string>())
             .Distinct(StringComparer.Ordinal);
 
-    // Enumerates the schema and its allOf/anyOf/oneOf subschemas depth-first,
-    // visiting each (resolved) schema once so that repeated references and
-    // cycles don't cause exponential work.
-    private static IEnumerable<IOpenApiSchema> EnumerateComposition(IOpenApiSchema? schema, Func<IOpenApiSchema, bool> descend)
-    {
-        if (schema is null)
-        {
-            yield break;
-        }
+    // Enumerates the schema and its allOf/anyOf/oneOf subschemas depth-first
+    private static IEnumerable<IOpenApiSchema> EnumerateComposition(IOpenApiSchema? schema, Func<IOpenApiSchema, bool> descend) =>
+        schema is null
+            ? []
+            : Traverse(schema, s => descend(s) ? GetComposedSchemas(s) : []);
 
-        var visited = new HashSet<IOpenApiSchema>(ReferenceEqualityComparer.Instance);
+    // Enumerates the schema and its descendants depth-first, yielding each
+    // (resolved) schema once so that repeated references and cycles don't cause
+    // exponential work. A schema first reached at the depth limit is revisited
+    // when it's reached again at a shallower depth, so that its descendants
+    // aren't skipped depending on the order of the branches.
+    private static IEnumerable<IOpenApiSchema> Traverse(IOpenApiSchema schema, Func<IOpenApiSchema, IEnumerable<IOpenApiSchema>> getChildren)
+    {
+        var shallowestDepths = new Dictionary<IOpenApiSchema, int>(ReferenceEqualityComparer.Instance);
         var stack = new Stack<(IOpenApiSchema Schema, int Depth)>();
         stack.Push((schema, 0));
         while (stack.Count > 0)
         {
             var (current, depth) = stack.Pop();
-            if (!visited.Add(ResolveTarget(current)))
+            var target = ResolveTarget(current);
+            if (shallowestDepths.TryGetValue(target, out var shallowestDepth))
             {
-                continue;
+                if (depth >= shallowestDepth)
+                {
+                    continue;
+                }
+                shallowestDepths[target] = depth;
+            }
+            else
+            {
+                shallowestDepths[target] = depth;
+                yield return current;
             }
 
-            yield return current;
-
-            if (depth < MaxDepth && descend(current))
+            if (depth < MaxDepth)
             {
-                foreach (var subSchema in GetComposedSchemas(current).Reverse())
+                foreach (var child in getChildren(current).Reverse())
                 {
-                    stack.Push((subSchema, depth + 1));
+                    stack.Push((child, depth + 1));
                 }
             }
         }
@@ -210,28 +247,11 @@ internal static class OpenApiSchemaValidator
     // subschemas (incl. references), which all apply to the value
     private static IEnumerable<IOpenApiSchema> FindAllOfPropertySchemas(IOpenApiSchema schema, string propertyName)
     {
-        var visited = new HashSet<IOpenApiSchema>(ReferenceEqualityComparer.Instance);
-        var stack = new Stack<(IOpenApiSchema Schema, int Depth)>();
-        stack.Push((schema, 0));
-        while (stack.Count > 0)
+        foreach (var current in Traverse(schema, s => s.AllOf ?? []))
         {
-            var (current, depth) = stack.Pop();
-            if (!visited.Add(ResolveTarget(current)))
-            {
-                continue;
-            }
-
             if (current.Properties?.TryGetValue(propertyName, out var propertySchema) == true)
             {
                 yield return propertySchema;
-            }
-
-            if (depth < MaxDepth)
-            {
-                foreach (var subSchema in current.AllOf ?? [])
-                {
-                    stack.Push((subSchema, depth + 1));
-                }
             }
         }
     }
@@ -482,21 +502,39 @@ internal static class OpenApiSchemaValidator
             }
         }
 
+        var propertyNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var property in value.EnumerateObject())
         {
             var propertyPath = GetPropertyPath(path, property.Name);
-            if (schema.Properties is not null &&
-                schema.Properties.TryGetValue(property.Name, out var propertySchema))
+            var propertySchema = schema.Properties?.TryGetValue(property.Name, out var declaredSchema) == true
+                ? declaredSchema
+                : schema.AdditionalProperties;
+            if (propertySchema is null)
+            {
+                if (!schema.AdditionalPropertiesAllowed)
+                {
+                    errors.Add(new(propertyPath, $"Property '{property.Name}' isn't defined in the schema", property.Name));
+                }
+                continue;
+            }
+
+            if (propertyNames.Add(property.Name))
+            {
+                ValidateCore(property.Value, propertySchema, direction, propertyPath, errors, state, depth + 1);
+                continue;
+            }
+
+            // duplicate property names share paths, which are used as memo keys,
+            // so validate each repeated value without the memoized results of the others
+            var memo = state.Memo;
+            state.Memo = [];
+            try
             {
                 ValidateCore(property.Value, propertySchema, direction, propertyPath, errors, state, depth + 1);
             }
-            else if (schema.AdditionalProperties is not null)
+            finally
             {
-                ValidateCore(property.Value, schema.AdditionalProperties, direction, propertyPath, errors, state, depth + 1);
-            }
-            else if (!schema.AdditionalPropertiesAllowed)
-            {
-                errors.Add(new(propertyPath, $"Property '{property.Name}' isn't defined in the schema", property.Name));
+                state.Memo = memo;
             }
         }
     }

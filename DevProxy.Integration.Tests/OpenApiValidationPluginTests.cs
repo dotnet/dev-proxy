@@ -3,9 +3,12 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Net;
+using System.Text;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Reporting;
+using DevProxy.Proxy.Kestrel.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -1049,6 +1052,149 @@ public sealed class OpenApiValidationPluginTests : IDisposable
 
         Assert.NotNull(plugin.Validate(Call("GET", "https://api.fabrikam.com/items").Session));
         Assert.Contains(logger.Warnings, w => w.Contains("broken.yaml' has errors", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ValidatesBodiesUsingDeclaredCharset()
+    {
+        var plugin = await CreatePluginAsync();
+        var exchange = TestExchange.Request("GET", "https://api.contoso.com/v1/users/me");
+        var headers = new HeaderCollection();
+        headers.Add(new HttpHeader("Content-Type", "application/json; charset=utf-16"));
+        exchange.Session.SetOriginResponse(new MutableHttpResponse(
+            HttpStatusCode.OK,
+            HttpVersion.Version11,
+            headers,
+            Encoding.Unicode.GetBytes("""{ "id": "1", "name": "Alex" }""")));
+
+        Assert.Equal("$.id: Expected integer but got string", Assert.Single(Messages(plugin.Validate(exchange.Session))));
+    }
+
+    [Fact]
+    public async Task AcceptsScalarValuesForSchemasAllowingArraysAndScalars()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("mixed.yaml", """
+            openapi: 3.0.3
+            info: { title: Mixed, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            paths:
+              /items:
+                get:
+                  parameters:
+                    - { name: q, in: query, schema: { anyOf: [ { type: array, items: { type: integer } }, { type: string } ] } }
+                  responses: { '204': { description: ok } }
+            """));
+
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?q=hello").Session)!.Issues);
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?q=1&q=2").Session)!.Issues);
+    }
+
+    [Fact]
+    public async Task CoercesParametersUsingTypesReachedThroughShorterBranches()
+    {
+        // Wrap is first reached through a chain ending at the depth limit,
+        // and then directly from anyOf
+        var chain = string.Join(",\n", Enumerable.Range(0, 63).Select(i =>
+            $$"""      "L{{i}}": { "allOf": [ { "$ref": "#/components/schemas/{{(i < 62 ? $"L{i + 1}" : "Wrap")}}" } ] }"""));
+        var plugin = await CreatePluginWithSpecsAsync(("depth.json", $$"""
+            {
+              "openapi": "3.1.0",
+              "info": { "title": "Depth", "version": "1.0" },
+              "servers": [ { "url": "https://api.fabrikam.com" } ],
+              "paths": {
+                "/items": {
+                  "get": {
+                    "parameters": [
+                      { "name": "n", "in": "query", "schema": { "anyOf": [ { "$ref": "#/components/schemas/L0" }, { "$ref": "#/components/schemas/Wrap" } ] } }
+                    ],
+                    "responses": { "204": { "description": "ok" } }
+                  }
+                }
+              },
+              "components": {
+                "schemas": {
+            {{chain}},
+                  "Wrap": { "allOf": [ { "type": "integer" } ] }
+                }
+              }
+            }
+            """));
+
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?n=42").Session)!.Issues);
+    }
+
+    [Fact]
+    public async Task ValidatesEachOccurrenceOfDuplicateProperties()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("duplicates.yaml", """
+            openapi: 3.0.3
+            info: { title: Duplicates, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            paths:
+              /items:
+                get:
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+                            properties:
+                              x: { allOf: [ { type: string } ] }
+            """));
+
+        var result = plugin.Validate(TestExchange.Request("GET", "https://api.fabrikam.com/items")
+            .WithResponse(HttpStatusCode.OK, headers: [("Content-Type", "application/json")], body: """{"x":"ok","x":123}""").Session);
+
+        Assert.Equal("$.x: Expected string but got integer", Assert.Single(Messages(result)));
+    }
+
+    [Fact]
+    public async Task OverridesPathLevelHeaderParametersCaseInsensitively()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("headers.yaml", """
+            openapi: 3.0.3
+            info: { title: Headers, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            paths:
+              /items:
+                parameters:
+                  - { name: X-Tenant, in: header, required: true, schema: { type: string } }
+                get:
+                  parameters:
+                    - { name: x-tenant, in: header, schema: { type: string } }
+                  responses: { '204': { description: ok } }
+            """));
+
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items").Session)!.Issues);
+    }
+
+    [Fact]
+    public async Task KeepsEncodedDelimitersInArrayItems()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("delimiters.yaml", """
+            openapi: 3.0.3
+            info: { title: Delimiters, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            paths:
+              /items/{names}:
+                get:
+                  parameters:
+                    - { name: names, in: path, required: true, schema: { type: array, items: { type: string, enum: [ 'a,b', c ] } } }
+                    - { name: tags, in: query, explode: false, schema: { type: array, items: { type: string, enum: [ 'a,b', c ] } } }
+                  responses: { '204': { description: ok } }
+            """));
+
+        var valid = plugin.Validate(Call("GET", "https://api.fabrikam.com/items/a%2Cb,c?tags=a%2Cb,c").Session);
+        var invalid = plugin.Validate(Call("GET", "https://api.fabrikam.com/items/c?tags=d").Session);
+
+        Assert.Empty(valid!.Issues);
+        Assert.Contains("isn't one of the allowed values", Assert.Single(Messages(invalid)), StringComparison.Ordinal);
     }
 
     private sealed class WarningLogger : ILogger<OpenApiValidationPlugin>
