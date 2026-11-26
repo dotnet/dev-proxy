@@ -517,9 +517,13 @@ internal sealed class SystemProxyManager : ISystemProxyManager
             await StateManager.DeleteStateAsync(orphan, cancellationToken);
         }
 
-        if (snapshotOnlyPid is int pid)
+        if (snapshotOnlyPid is int pid && snapshot is not null)
         {
-            await StateManager.DeleteStateAsync(pid, cancellationToken);
+            await StateManager.DeleteStateAsync(new ProxyInstanceState
+            {
+                Pid = pid,
+                ProcessStartTime = snapshot.ProcessStartTime,
+            }, cancellationToken);
         }
 
         return new(orphanedPids, outcome);
