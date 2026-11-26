@@ -361,7 +361,7 @@ public sealed class GraphMissingPermissionsGuidancePluginTests
     [Theory]
     [InlineData("https://graph.microsoft.com/v1.0/users('8e6b0bba-5bce-4b1b-9d5b-1f5e8b0d1a6c')")]
     [InlineData("https://graph.microsoft.com/v1.0/users('john@contoso.com')/messages")]
-    public async Task Forbidden_UnparsableUrl_LogsTip(string url)
+    public async Task Forbidden_ParenthesizedKeyUrl_LooksUpPermissions(string url)
     {
         using var handler = new StubPermissionsHandler(MailPermissionsJson);
         var (plugin, factory) = CreatePlugin(handler);
@@ -371,13 +371,12 @@ public sealed class GraphMissingPermissionsGuidancePluginTests
             .WithResponse(HttpStatusCode.Forbidden);
         await plugin.AfterResponseAsync(exchange.ResponseArgs, CancellationToken.None);
 
-        var log = Assert.Single(factory.LogsOfType(MessageType.Tip));
-        Assert.Contains("couldn't analyze missing permissions", log.Message, StringComparison.Ordinal);
-        Assert.Empty(handler.Requests);
+        Assert.Empty(factory.LogsOfType(MessageType.Tip));
+        Assert.Contains("requesturl=%2Fusers%28%3Cvalue%3E%29", Assert.Single(handler.Requests).Query, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task Batch_ForbiddenInnerResponseWithUnparsableUrl_LogsTip()
+    public async Task Batch_ForbiddenInnerResponseWithParenthesizedKeyUrl_LooksUpPermissions()
     {
         using var handler = new StubPermissionsHandler(MailPermissionsJson);
         var (plugin, factory) = CreatePlugin(handler);
@@ -394,10 +393,8 @@ public sealed class GraphMissingPermissionsGuidancePluginTests
             .WithResponse(HttpStatusCode.OK, [("Content-Type", "application/json")], batchResponse);
         await plugin.AfterResponseAsync(exchange.ResponseArgs, CancellationToken.None);
 
-        var log = Assert.Single(factory.LogsOfType(MessageType.Tip));
-        Assert.Contains("Batch request 1", log.Message, StringComparison.Ordinal);
-        Assert.Contains("couldn't analyze missing permissions", log.Message, StringComparison.Ordinal);
-        Assert.Empty(handler.Requests);
+        Assert.Empty(factory.LogsOfType(MessageType.Tip));
+        Assert.Contains("requesturl=%2Fusers%28%3Cvalue%3E%29%2Fmessages", Assert.Single(handler.Requests).Query, StringComparison.Ordinal);
     }
 
     [Fact]
