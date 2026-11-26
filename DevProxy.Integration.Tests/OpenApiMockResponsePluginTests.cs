@@ -86,6 +86,59 @@ public sealed class OpenApiMockResponsePluginTests
         Assert.False(received);
     }
 
+    [Fact]
+    public async Task ResponseExceedingSampleSize_PassesThrough()
+    {
+        var (_, _, received) = await GetAsync("/huge", """
+            content:
+              application/json:
+                schema: { type: array, minItems: 2147483647, items: { type: integer } }
+            """);
+
+        Assert.True(received);
+    }
+
+    [Theory]
+    [InlineData("{ type: array, minItems: 2147483647, items: { type: integer } }")]
+    [InlineData("{ type: string, minLength: 2147483647 }")]
+    [InlineData("{ type: array, minItems: 1000, items: { type: array, minItems: 1000, items: { type: integer } } }")]
+    [InlineData("{ type: array, minItems: 1000, items: { type: object, properties: { a: { type: array, minItems: 1000, items: { type: integer } } } } }")]
+    public void TryGenerateSample_DeclinesSamplesExceedingMaxSize(string schema)
+    {
+        Assert.False(OpenApiSchemaSampleGenerator.TryGenerateSample(ParseSchema(schema), out var sample));
+        Assert.Null(sample);
+    }
+
+    [Theory]
+    [InlineData("{ type: integer, minimum: 0, exclusiveMinimum: true }", "1")]
+    [InlineData("{ type: integer, maximum: 0, exclusiveMaximum: true }", "-1")]
+    [InlineData("{ type: integer, minimum: 2.5, exclusiveMinimum: true }", "3")]
+    [InlineData("{ type: integer, minimum: 0, exclusiveMinimum: true, multipleOf: 5 }", "5")]
+    [InlineData("{ type: integer, minimum: 10, exclusiveMinimum: true, multipleOf: 5 }", "15")]
+    [InlineData("{ type: integer, maximum: 0, exclusiveMaximum: true, multipleOf: 5 }", "-5")]
+    [InlineData("{ type: number, minimum: 0, exclusiveMinimum: true, maximum: 0.5 }", "0.25")]
+    [InlineData("{ type: number, minimum: 0, exclusiveMinimum: true, multipleOf: 0.25 }", "0.25")]
+    [InlineData("{ allOf: [ { type: integer, minimum: 3 }, { minimum: 3, exclusiveMinimum: true } ] }", "4")]
+    [InlineData("{ allOf: [ { type: integer, minimum: 3, exclusiveMinimum: true }, { minimum: 3 } ] }", "4")]
+    public void GenerateSample_HonorsExclusiveBounds(string schema, string expected)
+    {
+        var sample = Generate(ParseSchema(schema));
+
+        Assert.Equal(decimal.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), sample!.GetValue<decimal>());
+    }
+
+    [Theory]
+    [InlineData("{ allOf: [ { type: string, enum: [a, b] }, { type: string, enum: [b, c] } ] }", "\"b\"")]
+    [InlineData("{ allOf: [ { type: array, items: { type: integer, maximum: 10 } }, { type: array, items: { type: integer, minimum: 5 } } ] }", "[5]")]
+    [InlineData("{ allOf: [ { oneOf: [ { type: integer } ] } ] }", "0")]
+    [InlineData("{ allOf: [ { anyOf: [ { type: integer, minimum: 3 } ] }, { maximum: 5 } ] }", "3")]
+    public void GenerateSample_CombinesAllOfConstraints(string schema, string expected)
+    {
+        var sample = Generate(ParseSchema(schema));
+
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(expected), sample), sample?.ToJsonString());
+    }
+
     [Theory]
     [InlineData("{ type: array, minItems: 3, items: { type: integer } }", 3)]
     [InlineData("{ type: array, items: { type: integer } }", 1)]
@@ -95,7 +148,7 @@ public sealed class OpenApiMockResponsePluginTests
     [InlineData("{ allOf: [ { type: array, minItems: 5, items: { type: integer } }, { maxItems: 2 } ] }", 2)]
     public void GenerateSample_HonorsMinItems(string schema, int expectedCount)
     {
-        var sample = OpenApiSchemaSampleGenerator.GenerateSample(ParseSchema(schema));
+        var sample = Generate(ParseSchema(schema));
 
         Assert.Equal(expectedCount, Assert.IsType<JsonArray>(sample).Count);
     }
@@ -112,7 +165,7 @@ public sealed class OpenApiMockResponsePluginTests
     [InlineData("{ allOf: [ { type: integer, multipleOf: 4 }, { minimum: 1, multipleOf: 6 } ] }", "12")]
     public void GenerateSample_HonorsMultipleOf(string schema, string expected)
     {
-        var sample = OpenApiSchemaSampleGenerator.GenerateSample(ParseSchema(schema));
+        var sample = Generate(ParseSchema(schema));
 
         Assert.Equal(decimal.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), sample!.GetValue<decimal>());
     }
@@ -130,7 +183,7 @@ public sealed class OpenApiMockResponsePluginTests
     [InlineData("{ type: array, maxItems: 0, uniqueItems: true, items: { type: integer } }", "[]")]
     public void GenerateSample_HonorsUniqueItems(string schema, string expected)
     {
-        var sample = OpenApiSchemaSampleGenerator.GenerateSample(ParseSchema(schema));
+        var sample = Generate(ParseSchema(schema));
 
         Assert.True(JsonNode.DeepEquals(JsonNode.Parse(expected), sample), sample?.ToJsonString());
     }
@@ -141,7 +194,7 @@ public sealed class OpenApiMockResponsePluginTests
     [InlineData("{ allOf: [ { type: object, properties: { name: { type: string, minLength: 8 } } }, { properties: { name: { type: string, maxLength: 10 }, age: { type: integer } } } ] }", "{\"name\":\"stringxx\",\"age\":0}")]
     public void GenerateSample_IntersectsOverlappingAllOfProperties(string schema, string expected)
     {
-        var sample = OpenApiSchemaSampleGenerator.GenerateSample(ParseSchema(schema));
+        var sample = Generate(ParseSchema(schema));
 
         Assert.True(JsonNode.DeepEquals(JsonNode.Parse(expected), sample), sample?.ToJsonString());
     }
@@ -248,6 +301,36 @@ public sealed class OpenApiMockResponsePluginTests
         Assert.Equal(3, description["minItems"]!.GetValue<int>());
         Assert.Equal(4, description["maxItems"]!.GetValue<int>());
         Assert.Equal(12m, description["multipleOf"]!.GetValue<decimal>());
+    }
+
+    [Fact]
+    public void Describe_MergesAllOfAndSiblingConstraints()
+    {
+        var description = OpenApiSchemaSampleGenerator.Describe(ParseSchema("""
+            allOf:
+              - type: object
+                properties:
+                  id: { type: integer, minimum: 7 }
+                  status: { type: string, enum: [a, b] }
+                  tags: { type: array, items: { type: integer, maximum: 10 } }
+            properties:
+              id: { type: integer, maximum: 10, exclusiveMaximum: true }
+              status: { type: string, enum: [b, c] }
+              tags: { type: array, items: { type: integer, minimum: 5 } }
+            """));
+
+        var properties = description["properties"]!;
+        Assert.Equal(7m, properties["id"]!["minimum"]!.GetValue<decimal>());
+        Assert.Equal(10m, properties["id"]!["exclusiveMaximum"]!.GetValue<decimal>());
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse("[\"b\"]"), properties["status"]!["enum"]));
+        Assert.Equal(10m, properties["tags"]!["items"]!["maximum"]!.GetValue<decimal>());
+        Assert.Equal(5m, properties["tags"]!["items"]!["minimum"]!.GetValue<decimal>());
+    }
+
+    private static JsonNode? Generate(IOpenApiSchema schema)
+    {
+        Assert.True(OpenApiSchemaSampleGenerator.TryGenerateSample(schema, out var sample));
+        return sample;
     }
 
     private static IOpenApiSchema ParseSchema(string schemaYaml)

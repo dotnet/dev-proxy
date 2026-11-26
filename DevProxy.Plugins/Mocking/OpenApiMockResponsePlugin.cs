@@ -136,7 +136,13 @@ public sealed class OpenApiMockResponsePlugin(
                 GenerateBodyAsync(method.Method, pathTemplate, operation, contentType!, mediaType, CancellationToken.None)));
             try
             {
-                body = await lazyBody.Value;
+                var generated = await lazyBody.Value;
+                if (generated is null)
+                {
+                    Logger.LogRequest("Response defined in the OpenAPI spec is too large to generate", MessageType.Skipped, new LoggingContext(e.ProxySession));
+                    return;
+                }
+                body = generated.Body;
             }
             catch (Exception ex)
             {
@@ -303,7 +309,7 @@ public sealed class OpenApiMockResponsePlugin(
         contentType.Contains("json", StringComparison.OrdinalIgnoreCase) ||
         contentType.Contains('*', StringComparison.Ordinal);
 
-    private async Task<string?> GenerateBodyAsync(string method, string pathTemplate, OpenApiOperation operation, string contentType, IOpenApiMediaType mediaType, CancellationToken cancellationToken)
+    private async Task<GeneratedBody?> GenerateBodyAsync(string method, string pathTemplate, OpenApiOperation operation, string contentType, IOpenApiMediaType mediaType, CancellationToken cancellationToken)
     {
         var isJson = IsJsonContentType(contentType);
 
@@ -311,12 +317,12 @@ public sealed class OpenApiMockResponsePlugin(
         if (example is not null)
         {
             Logger.LogDebug("Using example from the OpenAPI spec for {Method} {Path}", method, pathTemplate);
-            return Serialize(example, isJson);
+            return new(Serialize(example, isJson));
         }
 
         if (mediaType.Schema is null)
         {
-            return null;
+            return new(null);
         }
 
         if (isJson)
@@ -324,18 +330,22 @@ public sealed class OpenApiMockResponsePlugin(
             var generated = await GenerateWithLanguageModelAsync(method, pathTemplate, operation, mediaType.Schema, cancellationToken);
             if (generated is not null)
             {
-                return generated;
+                return new(generated);
             }
         }
 
         Logger.LogDebug("Generating response for {Method} {Path} from schema", method, pathTemplate);
-        var sample = OpenApiSchemaSampleGenerator.GenerateSample(mediaType.Schema);
+        if (!OpenApiSchemaSampleGenerator.TryGenerateSample(mediaType.Schema, out var sample))
+        {
+            Logger.LogWarning("Response for {Method} {Path} defined in the OpenAPI spec exceeds the maximum size of {MaxSize} nodes and characters. Not mocking it", method, pathTemplate, OpenApiSchemaSampleGenerator.MaxSampleSize);
+            return null;
+        }
         if (sample is null)
         {
             // schema allows only null, which is a valid JSON body
-            return isJson ? "null" : null;
+            return new(isJson ? "null" : null);
         }
-        return Serialize(sample, isJson);
+        return new(Serialize(sample, isJson));
     }
 
     private static JsonNode? GetExample(IOpenApiMediaType mediaType)
@@ -490,7 +500,11 @@ public sealed class OpenApiMockResponsePlugin(
 
     private sealed record SpecSnapshot(
         OpenApiDocument Document,
-        ConcurrentDictionary<string, Lazy<Task<string?>>> ResponseCache);
+        ConcurrentDictionary<string, Lazy<Task<GeneratedBody?>>> ResponseCache);
+
+    // Body is null for responses without a body. A null GeneratedBody means
+    // that the response can't be generated
+    private sealed record GeneratedBody(string? Body);
 
     protected override void Dispose(bool disposing)
     {

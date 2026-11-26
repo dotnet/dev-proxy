@@ -16,8 +16,26 @@ namespace DevProxy.Plugins.Mocking;
 internal static class OpenApiSchemaSampleGenerator
 {
     private const int MaxDepth = 8;
+    // limits the size of generated samples, counted in JSON nodes plus
+    // string characters, so that specs with huge minItems/minLength values
+    // don't exhaust memory
+    internal const int MaxSampleSize = 100_000;
 
-    public static JsonNode? GenerateSample(IOpenApiSchema? schema) => GenerateSample(schema, 0, []);
+    /// <summary>
+    /// Generates a sample value for the schema. Returns <c>false</c> when
+    /// satisfying the schema requires a sample larger than <see cref="MaxSampleSize"/>.
+    /// </summary>
+    public static bool TryGenerateSample(IOpenApiSchema? schema, out JsonNode? sample)
+    {
+        var context = new GenerationContext();
+        sample = GenerateSample(schema, 0, context);
+        if (context.IsExceeded)
+        {
+            sample = null;
+            return false;
+        }
+        return true;
+    }
 
     /// <summary>
     /// Returns a simplified JSON Schema-like representation of the schema with
@@ -31,73 +49,73 @@ internal static class OpenApiSchemaSampleGenerator
     private static string? GetReferenceId(IOpenApiSchema schema) =>
         schema is OpenApiSchemaReference reference ? reference.Reference?.ReferenceV3 : null;
 
-    private static JsonNode? GenerateSample(IOpenApiSchema? schema, int depth, HashSet<string> visiting)
+    private static JsonNode? GenerateSample(IOpenApiSchema? schema, int depth, GenerationContext context)
     {
-        if (schema is null || depth > MaxDepth)
+        if (schema is null || depth > MaxDepth || context.IsExceeded)
         {
             return null;
         }
 
         // stop at recursive references to avoid deeply nested samples
         var referenceId = GetReferenceId(schema);
-        if (referenceId is not null && !visiting.Add(referenceId))
+        if (referenceId is not null && !context.Visiting.Add(referenceId))
         {
             return null;
         }
 
         try
         {
-            return GenerateSampleCore(schema, depth, visiting);
+            return GenerateSampleCore(schema, depth, context);
         }
         finally
         {
             if (referenceId is not null)
             {
-                _ = visiting.Remove(referenceId);
+                _ = context.Visiting.Remove(referenceId);
             }
         }
     }
 
-    private static JsonNode? GenerateSampleCore(IOpenApiSchema schema, int depth, HashSet<string> visiting)
+    private static JsonNode? GenerateSampleCore(IOpenApiSchema schema, int depth, GenerationContext context)
     {
         // Example is obsolete in favor of Examples, but OpenAPI 3.0 specs still use it
 #pragma warning disable CS0618
         if (schema.Example is not null)
         {
-            return schema.Example.DeepClone();
+            return context.Clone(schema.Example);
         }
 #pragma warning restore CS0618
 
         var example = schema.Examples?.FirstOrDefault(e => e is not null);
         if (example is not null)
         {
-            return example.DeepClone();
+            return context.Clone(example);
         }
 
         if (schema.Default is not null)
         {
-            return schema.Default.DeepClone();
+            return context.Clone(schema.Default);
         }
 
         var enumValue = schema.Enum?.FirstOrDefault(e => e is not null);
         if (enumValue is not null)
         {
-            return enumValue.DeepClone();
+            return context.Clone(enumValue);
         }
 
         if (schema.AllOf is { Count: > 0 })
         {
-            return GenerateAllOfSample(schema, depth, visiting);
+            return GenerateAllOfSample(schema, depth, context);
         }
 
-        var alternative = schema.OneOf?.FirstOrDefault() ?? schema.AnyOf?.FirstOrDefault();
+        var alternative = GetSelectedAlternative(schema);
         if (alternative is not null)
         {
-            var alternativeSample = GenerateSample(alternative, depth + 1, visiting);
+            var alternativeSample = GenerateSample(alternative, depth + 1, context);
             // keep the properties defined next to oneOf/anyOf
             if (schema.Properties is { Count: > 0 } && alternativeSample is null or JsonObject)
             {
-                var obj = GenerateObjectSample(schema, depth, visiting);
+                var obj = GenerateObjectSample(schema, depth, context);
                 if (alternativeSample is JsonObject alternativeObject)
                 {
                     MergeInto(obj, alternativeObject);
@@ -107,25 +125,39 @@ internal static class OpenApiSchemaSampleGenerator
             return alternativeSample;
         }
 
-        return GetEffectiveType(schema) switch
+        var type = GetEffectiveType(schema);
+        if (type is JsonSchemaType.Object)
         {
-            JsonSchemaType.Object => GenerateObjectSample(schema, depth, visiting),
-            JsonSchemaType.Array => GenerateArraySample(schema, depth, visiting),
+            return GenerateObjectSample(schema, depth, context);
+        }
+        if (type is JsonSchemaType.Array)
+        {
+            return GenerateArraySample(schema, depth, context);
+        }
+        if (type is JsonSchemaType.Null || !context.TryConsume(1))
+        {
+            return null;
+        }
+
+        return type switch
+        {
             JsonSchemaType.Integer => JsonValue.Create(GetNumber(schema, isInteger: true)),
             JsonSchemaType.Number => JsonValue.Create(GetNumber(schema, isInteger: false)),
             JsonSchemaType.Boolean => JsonValue.Create(true),
-            JsonSchemaType.Null => null,
-            _ => JsonValue.Create(GetStringSample(schema))
+            _ => GetStringSample(schema, context) is string text ? JsonValue.Create(text) : null
         };
     }
 
-    private static JsonNode? GenerateAllOfSample(IOpenApiSchema schema, int depth, HashSet<string> visiting)
+    private static IOpenApiSchema? GetSelectedAlternative(IOpenApiSchema schema) =>
+        schema.OneOf?.FirstOrDefault() ?? schema.AnyOf?.FirstOrDefault();
+
+    private static JsonNode? GenerateAllOfSample(IOpenApiSchema schema, int depth, GenerationContext context)
     {
         JsonObject? merged = null;
 
         foreach (var subSchema in schema.AllOf ?? [])
         {
-            if (GenerateSample(subSchema, depth + 1, visiting) is JsonObject obj)
+            if (GenerateSample(subSchema, depth + 1, context) is JsonObject obj)
             {
                 merged ??= [];
                 MergeInto(merged, obj);
@@ -135,7 +167,7 @@ internal static class OpenApiSchemaSampleGenerator
         if (schema.Properties is { Count: > 0 })
         {
             merged ??= [];
-            MergeInto(merged, GenerateObjectSample(schema, depth, visiting));
+            MergeInto(merged, GenerateObjectSample(schema, depth, context));
         }
 
         if (merged is not null)
@@ -143,14 +175,14 @@ internal static class OpenApiSchemaSampleGenerator
             // properties declared in several branches must satisfy all their schemas
             foreach (var (name, propertySchemas) in GetOverlappingProperties(schema, depth))
             {
-                merged[name] = GenerateSample(new OpenApiSchema { AllOf = propertySchemas }, depth + 1, visiting);
+                merged[name] = GenerateSample(new OpenApiSchema { AllOf = propertySchemas }, depth + 1, context);
             }
             return merged;
         }
 
         // for non-object values, combine the constraints of all branches
         // so that the value satisfies all of them
-        return GenerateSample(CombineConstraints(FlattenAllOf(schema, depth)), depth + 1, visiting);
+        return GenerateSample(CombineConstraints(FlattenAllOf(schema, depth)), depth + 1, context);
     }
 
     private static IEnumerable<(string Name, List<IOpenApiSchema> Schemas)> GetOverlappingProperties(IOpenApiSchema schema, int depth)
@@ -200,12 +232,24 @@ internal static class OpenApiSchemaSampleGenerator
                 yield return nested;
             }
         }
+
+        // generation uses the first oneOf/anyOf alternative, so its constraints apply too
+        var alternative = GetSelectedAlternative(schema);
+        if (alternative is not null)
+        {
+            foreach (var nested in FlattenAllOf(alternative, depth + 1))
+            {
+                yield return nested;
+            }
+        }
     }
 
     private static OpenApiSchema CombineConstraints(IEnumerable<IOpenApiSchema?> schemas)
     {
         var combined = new OpenApiSchema();
-        decimal? minimum = null, maximum = null;
+        Bound? lower = null, upper = null;
+        List<JsonNode>? enumValues = null;
+        List<IOpenApiSchema>? itemSchemas = null;
 
         foreach (var schema in schemas)
         {
@@ -218,22 +262,23 @@ internal static class OpenApiSchemaSampleGenerator
             combined.Example ??= schema.Example?.DeepClone();
 #pragma warning restore CS0618
             combined.Default ??= schema.Default?.DeepClone();
-            if (combined.Enum is not { Count: > 0 } && schema.Enum is { Count: > 0 })
+            if (schema.Enum is { Count: > 0 })
             {
-                combined.Enum = [.. schema.Enum];
+                // a value must be in the enums of all branches
+                enumValues = enumValues is null ?
+                    [.. schema.Enum.Where(e => e is not null)] :
+                    [.. enumValues.Where(v => schema.Enum.Any(e => JsonNode.DeepEquals(v, e)))];
             }
             combined.Type ??= schema.Type;
             combined.Format ??= schema.Format;
-            combined.Items ??= schema.Items;
+            if (schema.Items is not null)
+            {
+                (itemSchemas ??= []).Add(schema.Items);
+            }
 
-            if (TryParseBound(schema.Minimum?.ToString(), out var schemaMinimum) && (minimum is null || schemaMinimum > minimum))
-            {
-                minimum = schemaMinimum;
-            }
-            if (TryParseBound(schema.Maximum?.ToString(), out var schemaMaximum) && (maximum is null || schemaMaximum < maximum))
-            {
-                maximum = schemaMaximum;
-            }
+            var (schemaLower, schemaUpper) = GetBounds(schema);
+            lower = GetStricterBound(lower, schemaLower, isLower: true);
+            upper = GetStricterBound(upper, schemaUpper, isLower: false);
             if (schema.MinLength is int minLength && (combined.MinLength is null || minLength > combined.MinLength))
             {
                 combined.MinLength = minLength;
@@ -261,14 +306,51 @@ internal static class OpenApiSchemaSampleGenerator
             }
         }
 
-        combined.Minimum = minimum?.ToString(CultureInfo.InvariantCulture);
-        combined.Maximum = maximum?.ToString(CultureInfo.InvariantCulture);
+        if (enumValues is not null)
+        {
+            combined.Enum = enumValues;
+        }
+        // items must satisfy the item schemas of all branches
+        combined.Items = itemSchemas switch
+        {
+            null => null,
+            [var single] => single,
+            _ => new OpenApiSchema { AllOf = itemSchemas }
+        };
+        if (lower is Bound l)
+        {
+            var value = l.Value.ToString(CultureInfo.InvariantCulture);
+            if (l.IsExclusive)
+            {
+                combined.ExclusiveMinimum = value;
+            }
+            else
+            {
+                combined.Minimum = value;
+            }
+        }
+        if (upper is Bound u)
+        {
+            var value = u.Value.ToString(CultureInfo.InvariantCulture);
+            if (u.IsExclusive)
+            {
+                combined.ExclusiveMaximum = value;
+            }
+            else
+            {
+                combined.Maximum = value;
+            }
+        }
         return combined;
     }
 
-    private static JsonObject GenerateObjectSample(IOpenApiSchema schema, int depth, HashSet<string> visiting)
+    private static JsonObject GenerateObjectSample(IOpenApiSchema schema, int depth, GenerationContext context)
     {
         var obj = new JsonObject();
+        if (!context.TryConsume(1))
+        {
+            return obj;
+        }
         foreach (var (name, propertySchema) in schema.Properties ?? new Dictionary<string, IOpenApiSchema>())
         {
             if (propertySchema is null || propertySchema.WriteOnly)
@@ -276,20 +358,25 @@ internal static class OpenApiSchemaSampleGenerator
                 continue;
             }
 
-            obj[name] = GenerateSample(propertySchema, depth + 1, visiting);
+            obj[name] = GenerateSample(propertySchema, depth + 1, context);
         }
 
         if (obj.Count == 0 && schema.AdditionalProperties is not null)
         {
-            obj["additionalProp1"] = GenerateSample(schema.AdditionalProperties, depth + 1, visiting);
+            obj["additionalProp1"] = GenerateSample(schema.AdditionalProperties, depth + 1, context);
         }
 
         return obj;
     }
 
-    private static JsonArray GenerateArraySample(IOpenApiSchema schema, int depth, HashSet<string> visiting)
+    private static JsonArray GenerateArraySample(IOpenApiSchema schema, int depth, GenerationContext context)
     {
-        var item = GenerateSample(schema.Items, depth + 1, visiting);
+        if (!context.TryConsume(1))
+        {
+            return [];
+        }
+
+        var item = GenerateSample(schema.Items, depth + 1, context);
         // null is a valid item when the item schema allows only null,
         // otherwise it's a recursion cut-off
         if (item is null && (schema.Items is null || GetEffectiveType(schema.Items) != JsonSchemaType.Null))
@@ -301,6 +388,13 @@ internal static class OpenApiSchemaSampleGenerator
         if (schema.MaxItems is int maxItems)
         {
             count = Math.Min(count, Math.Max(maxItems, 0));
+        }
+
+        // the item is already accounted for. Reserve the remaining items
+        // before allocating them
+        if (count > 1 && !context.TryConsume((long)(count - 1) * GetSize(item, context.Remaining + 1)))
+        {
+            return [];
         }
 
         var array = new JsonArray();
@@ -394,16 +488,15 @@ internal static class OpenApiSchemaSampleGenerator
                 step = GetIntegerStep(step);
             }
 
-            var hasMinimum = TryParseBound(schema.Minimum?.ToString(), out var minimum);
-            var hasMaximum = TryParseBound(schema.Maximum?.ToString(), out var maximum);
+            var (lower, upper) = GetBounds(schema);
 
             var up = number + (index * step);
-            if (!hasMaximum || up <= maximum)
+            if (upper is not Bound u || up < u.Value || (up == u.Value && !u.IsExclusive))
             {
                 return JsonValue.Create(up);
             }
             var down = number - (index * step);
-            return !hasMinimum || down >= minimum ? JsonValue.Create(down) : null;
+            return lower is not Bound l || down > l.Value || (down == l.Value && !l.IsExclusive) ? JsonValue.Create(down) : null;
         }
         catch (OverflowException)
         {
@@ -443,11 +536,10 @@ internal static class OpenApiSchemaSampleGenerator
             }
         }
 
-        var alternative = schema.OneOf?.FirstOrDefault() ?? schema.AnyOf?.FirstOrDefault();
-        return alternative is not null && depth <= MaxDepth ? FindPropertySchema(alternative, name, depth + 1) : null;
+        return null;
     }
 
-    private static string GetStringSample(IOpenApiSchema schema)
+    private static string? GetStringSample(IOpenApiSchema schema, GenerationContext context)
     {
         var value = schema.Format?.ToLowerInvariant() switch
         {
@@ -468,7 +560,12 @@ internal static class OpenApiSchemaSampleGenerator
 
         if (schema.MinLength is int minLength && value.Length < minLength)
         {
-            value = value.PadRight(minLength, 'x');
+            var targetLength = schema.MaxLength is int max ? Math.Min(minLength, max) : minLength;
+            if (!context.TryConsume(targetLength))
+            {
+                return null;
+            }
+            value = value.PadRight(targetLength, 'x');
         }
         if (schema.MaxLength is int maxLength && value.Length > maxLength)
         {
@@ -481,20 +578,96 @@ internal static class OpenApiSchemaSampleGenerator
     private static decimal GetNumber(IOpenApiSchema schema, bool isInteger)
     {
         var multipleOf = schema.MultipleOf > 0 ? schema.MultipleOf : null;
+        var (lower, upper) = GetBounds(schema);
 
         // use 0 unless it's outside the allowed range. 0 is a multiple of any number
-        if (TryParseBound(schema.Minimum?.ToString(), out var minimum) && minimum > 0)
+        if (lower is Bound l && (l.Value > 0 || (l.Value == 0 && l.IsExclusive)))
         {
-            var value = isInteger ? decimal.Ceiling(minimum) : minimum;
-            return multipleOf is decimal step ? RoundUpToMultiple(value, step, isInteger) : value;
+            return GetLowestValue(l, upper, multipleOf, isInteger);
         }
-        if (TryParseBound(schema.Maximum?.ToString(), out var maximum) && maximum < 0)
+        if (upper is Bound u && (u.Value < 0 || (u.Value == 0 && u.IsExclusive)))
         {
-            var value = isInteger ? decimal.Floor(maximum) : maximum;
-            return multipleOf is decimal step ? -RoundUpToMultiple(-value, step, isInteger) : value;
+            return -GetLowestValue(u.Negate(), lower?.Negate(), multipleOf, isInteger);
         }
 
         return 0;
+    }
+
+    // the lowest value above the lower bound
+    private static decimal GetLowestValue(Bound lower, Bound? upper, decimal? multipleOf, bool isInteger)
+    {
+        try
+        {
+            if (multipleOf is decimal step)
+            {
+                var value = RoundUpToMultiple(lower.Value, step, isInteger);
+                if (lower.IsExclusive && value <= lower.Value)
+                {
+                    value += isInteger ? GetIntegerStep(step) : step;
+                }
+                return value;
+            }
+            if (isInteger)
+            {
+                return lower.IsExclusive ? decimal.Floor(lower.Value) + 1 : decimal.Ceiling(lower.Value);
+            }
+            if (!lower.IsExclusive)
+            {
+                return lower.Value;
+            }
+            // stay below the upper bound when the range is narrow
+            return upper is Bound u && u.Value - lower.Value <= 1 ?
+                (lower.Value + u.Value) / 2 :
+                lower.Value + 1;
+        }
+        catch (OverflowException)
+        {
+            return lower.Value;
+        }
+    }
+
+    private static (Bound? Lower, Bound? Upper) GetBounds(IOpenApiSchema schema)
+    {
+        Bound? lower = null, upper = null;
+        if (TryParseBound(schema.Minimum?.ToString(), out var minimum))
+        {
+            lower = new(minimum, false);
+        }
+        if (TryParseBound(schema.ExclusiveMinimum?.ToString(), out var exclusiveMinimum))
+        {
+            lower = GetStricterBound(lower, new(exclusiveMinimum, true), isLower: true);
+        }
+        if (TryParseBound(schema.Maximum?.ToString(), out var maximum))
+        {
+            upper = new(maximum, false);
+        }
+        if (TryParseBound(schema.ExclusiveMaximum?.ToString(), out var exclusiveMaximum))
+        {
+            upper = GetStricterBound(upper, new(exclusiveMaximum, true), isLower: false);
+        }
+        return (lower, upper);
+    }
+
+    private static Bound? GetStricterBound(Bound? current, Bound? candidate, bool isLower)
+    {
+        if (current is not Bound c)
+        {
+            return candidate;
+        }
+        if (candidate is not Bound n)
+        {
+            return current;
+        }
+        if (n.Value == c.Value)
+        {
+            return n.IsExclusive ? n : c;
+        }
+        return (isLower ? n.Value > c.Value : n.Value < c.Value) ? n : c;
+    }
+
+    private readonly record struct Bound(decimal Value, bool IsExclusive)
+    {
+        public Bound Negate() => new(-Value, IsExclusive);
     }
 
     private static decimal RoundUpToMultiple(decimal value, decimal step, bool isInteger)
@@ -651,7 +824,7 @@ internal static class OpenApiSchemaSampleGenerator
             }
         }
 
-        var alternative = schema.OneOf?.FirstOrDefault() ?? schema.AnyOf?.FirstOrDefault();
+        var alternative = GetSelectedAlternative(schema);
         if (alternative is not null)
         {
             MergeDescription(description, Describe(alternative, depth + 1, visiting));
@@ -678,9 +851,17 @@ internal static class OpenApiSchemaSampleGenerator
         {
             MergeDescription(description, new JsonObject { ["maximum"] = ToNumberNode(schema.Maximum.ToString()) });
         }
+        if (schema.ExclusiveMinimum is not null)
+        {
+            MergeDescription(description, new JsonObject { ["exclusiveMinimum"] = ToNumberNode(schema.ExclusiveMinimum.ToString()) });
+        }
+        if (schema.ExclusiveMaximum is not null)
+        {
+            MergeDescription(description, new JsonObject { ["exclusiveMaximum"] = ToNumberNode(schema.ExclusiveMaximum.ToString()) });
+        }
         if (schema.Enum is { Count: > 0 })
         {
-            description["enum"] = new JsonArray([.. schema.Enum.Select(e => e?.DeepClone())]);
+            MergeDescription(description, new JsonObject { ["enum"] = new JsonArray([.. schema.Enum.Select(e => e?.DeepClone())]) });
         }
 #pragma warning disable CS0618
         if (schema.Example is not null)
@@ -699,7 +880,16 @@ internal static class OpenApiSchemaSampleGenerator
                     continue;
                 }
                 var propertyDescription = Describe(propertySchema, depth + 1, visiting);
-                if (propertyDescription is not null)
+                if (propertyDescription is null)
+                {
+                    continue;
+                }
+                // keep the constraints collected from allOf for the same property
+                if (properties[name] is JsonObject existing)
+                {
+                    MergeDescription(existing, propertyDescription);
+                }
+                else
                 {
                     properties[name] = propertyDescription;
                 }
@@ -743,7 +933,7 @@ internal static class OpenApiSchemaSampleGenerator
         }
         if (schema.Items is not null)
         {
-            description["items"] = Describe(schema.Items, depth + 1, visiting) ?? [];
+            MergeDescription(description, new JsonObject { ["items"] = Describe(schema.Items, depth + 1, visiting) ?? [] });
         }
         if (schema.AdditionalProperties is not null)
         {
@@ -791,12 +981,25 @@ internal static class OpenApiSchemaSampleGenerator
                 }
                 continue;
             }
+            if (key == "items" && value is JsonObject sourceItems && target["items"] is JsonObject targetItems)
+            {
+                MergeDescription(targetItems, sourceItems);
+                continue;
+            }
+            if (key == "enum" && value is JsonArray sourceEnum && target["enum"] is JsonArray targetEnum)
+            {
+                // a value must be in all enums
+                target["enum"] = new JsonArray([.. targetEnum
+                    .Where(t => sourceEnum.Any(s => JsonNode.DeepEquals(t, s)))
+                    .Select(t => t?.DeepClone())]);
+                continue;
+            }
             // allOf requires all constraints, so keep the stricter bound
-            if (key is "minimum" or "maximum" or "minLength" or "maxLength" or "minItems" or "maxItems" &&
+            if (key is "minimum" or "maximum" or "exclusiveMinimum" or "exclusiveMaximum" or "minLength" or "maxLength" or "minItems" or "maxItems" &&
                 TryGetDecimal(value, out var sourceBound) &&
                 TryGetDecimal(target[key], out var targetBound))
             {
-                var isStricter = key.StartsWith("min", StringComparison.Ordinal) ? sourceBound > targetBound : sourceBound < targetBound;
+                var isStricter = key is "minimum" or "exclusiveMinimum" or "minLength" or "minItems" ? sourceBound > targetBound : sourceBound < targetBound;
                 if (isStricter)
                 {
                     target[key] = value!.DeepClone();
@@ -830,5 +1033,61 @@ internal static class OpenApiSchemaSampleGenerator
 
             target[key] = value?.DeepClone();
         }
+    }
+
+    // returns the size of the node, counted in JSON nodes plus string
+    // characters, or a value larger than limit when it exceeds it
+    private static long GetSize(JsonNode? node, long limit)
+    {
+        long size = 0;
+        var pending = new Stack<JsonNode?>();
+        pending.Push(node);
+        while (pending.Count > 0 && size <= limit)
+        {
+            var current = pending.Pop();
+            size++;
+            switch (current)
+            {
+                case JsonObject obj:
+                    foreach (var (_, child) in obj)
+                    {
+                        pending.Push(child);
+                    }
+                    break;
+                case JsonArray array:
+                    foreach (var child in array)
+                    {
+                        pending.Push(child);
+                    }
+                    break;
+                case JsonValue value when value.GetValueKind() == JsonValueKind.String && value.TryGetValue<string>(out var text):
+                    size += text.Length;
+                    break;
+                default:
+                    break;
+            }
+        }
+        return size;
+    }
+
+    private sealed class GenerationContext
+    {
+        public HashSet<string> Visiting { get; } = [];
+        public long Remaining { get; private set; } = MaxSampleSize;
+        public bool IsExceeded { get; private set; }
+
+        public bool TryConsume(long size)
+        {
+            if (IsExceeded || size > Remaining)
+            {
+                IsExceeded = true;
+                return false;
+            }
+            Remaining -= size;
+            return true;
+        }
+
+        public JsonNode? Clone(JsonNode node) =>
+            TryConsume(GetSize(node, Remaining + 1)) ? node.DeepClone() : null;
     }
 }
