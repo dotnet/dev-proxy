@@ -228,10 +228,31 @@ sealed class DevProxyCommand : RootCommand
         Environment.GetEnvironmentVariable("NO_COLOR"),
         Environment.GetEnvironmentVariable("TERM"));
 
-    // Per https://no-color.org, NO_COLOR disables color only when present and not empty.
     internal static string ResolveReportDirOption(string value) =>
         Path.GetFullPath(ProxyUtils.ReplacePathTokens(value));
 
+    internal static void ValidateReportDir(OptionResult input)
+    {
+        if (input.Tokens.Count == 0)
+        {
+            input.AddError("The report directory path is missing. Specify a folder.");
+            return;
+        }
+
+        var value = input.Tokens[0].Value;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            input.AddError("The report directory path can't be empty.");
+            return;
+        }
+
+        if (File.Exists(ResolveReportDirOption(value)))
+        {
+            input.AddError($"The report directory path '{value}' points to a file. Specify a folder.");
+        }
+    }
+
+    // Per https://no-color.org, NO_COLOR disables color only when present and not empty.
     internal static bool ShouldDisableColor(string[] args, string? noColorEnv, string? termEnv) =>
         args.Contains(NoColorOptionName) ||
         !string.IsNullOrEmpty(noColorEnv) ||
@@ -498,27 +519,10 @@ sealed class DevProxyCommand : RootCommand
         var reportDirOption = new Option<string?>(ReportDirOptionName)
         {
             Description = "Folder where reporters write report files. Overrides reportsFolder from the config file. Relative paths resolve against the current working directory. Default: the current working directory",
-            HelpName = "path"
+            HelpName = "path",
+            Arity = ArgumentArity.ExactlyOne
         };
-        reportDirOption.Validators.Add(input =>
-        {
-            if (input.Tokens.Count == 0)
-            {
-                return;
-            }
-
-            var value = input.Tokens[0].Value;
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                input.AddError("The report directory path can't be empty.");
-                return;
-            }
-
-            if (File.Exists(ResolveReportDirOption(value)))
-            {
-                input.AddError($"The report directory path '{value}' points to a file. Specify a folder.");
-            }
-        });
+        reportDirOption.Validators.Add(ValidateReportDir);
 
         var watchPidsOption = new Option<IEnumerable<int>>(WatchPidsOptionName)
         {

@@ -4,6 +4,7 @@
 
 using DevProxy.Commands;
 using DevProxy.Proxy;
+using System.CommandLine;
 using Microsoft.Extensions.Configuration;
 
 using Xunit;
@@ -89,5 +90,21 @@ public class ReportsFolderTests
         var expected = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "reports");
 
         Assert.Equal(expected, DevProxyCommand.ResolveReportDirOption($"~{Path.DirectorySeparatorChar}reports"));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ReportDirOption_MissingOrEmptyValue_FailsValidation(string? value)
+    {
+        string[] args = value is null ? [DevProxyCommand.ReportDirOptionName] : [DevProxyCommand.ReportDirOptionName, value];
+        var option = new Option<string?>(DevProxyCommand.ReportDirOptionName) { Arity = ArgumentArity.ExactlyOne };
+        option.Validators.Add(DevProxyCommand.ValidateReportDir);
+        var command = new RootCommand { option };
+
+        var result = command.Parse(args);
+
+        Assert.NotEmpty(result.Errors);
     }
 }

@@ -97,10 +97,11 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
     StateManager.CleanupOldLogs();
 
     // Build the arguments for the daemon process
-    // Replace --detach/-d with --_internal-daemon
+    // Replace --detach/-d with --_internal-daemon. Prepend it so that a trailing
+    // option missing its value (like a bare --report-dir) doesn't consume it.
     var daemonArgs = args
         .Where(a => a is not "--detach" and not "-d")
-        .Append("--_internal-daemon")
+        .Prepend(DevProxyCommand.InternalDaemonOptionName)
         .ToArray();
 
     var executablePath = Environment.ProcessPath;
@@ -121,7 +122,6 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
     var startInfo = new ProcessStartInfo
     {
         FileName = executablePath,
-        Arguments = string.Join(" ", daemonArgs.Select(EscapeArgument)),
         UseShellExecute = false,
         CreateNoWindow = true,
         RedirectStandardOutput = true,
@@ -133,6 +133,12 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
     if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
     {
         startInfo.WindowStyle = ProcessWindowStyle.Hidden;
+    }
+
+    // ArgumentList quotes each argument, so empty or quoted values reach the daemon intact
+    foreach (var arg in daemonArgs)
+    {
+        startInfo.ArgumentList.Add(arg);
     }
 
     try
@@ -401,16 +407,6 @@ static bool IsJsonOutputRequested(string[] args)
         }
     }
     return false;
-}
-
-static string EscapeArgument(string arg)
-{
-    // Simple escaping for command line arguments
-    if (arg.Contains(' ', StringComparison.Ordinal) || arg.Contains('"', StringComparison.Ordinal))
-    {
-        return $"\"{arg.Replace("\"", "\\\"", StringComparison.Ordinal)}\"";
-    }
-    return arg;
 }
 
 static void WriteUnresolvedEnvironmentVariables(IConfiguration configuration, DevProxyConfigOptions options)
