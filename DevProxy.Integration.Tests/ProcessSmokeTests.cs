@@ -521,7 +521,7 @@ public sealed class ProcessSmokeTests
         }
         finally
         {
-            workDir.Delete(recursive: true);
+            await DeleteDirectoryAsync(workDir);
             // The host writes a timestamped log to the working dir's parent in some modes;
             // the temp dir delete above covers logs written under workDir. Best-effort.
         }
@@ -591,7 +591,7 @@ public sealed class ProcessSmokeTests
         }
         finally
         {
-            workDir.Delete(recursive: true);
+            await DeleteDirectoryAsync(workDir);
         }
     }
 
@@ -650,7 +650,7 @@ public sealed class ProcessSmokeTests
         }
         finally
         {
-            workDir.Delete(recursive: true);
+            await DeleteDirectoryAsync(workDir);
         }
     }
 
@@ -732,6 +732,30 @@ public sealed class ProcessSmokeTests
         catch (OperationCanceledException)
         {
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Deletes a temp working directory, retrying while Windows releases handles held by
+    /// just-killed processes (e.g. a child whose current directory is <paramref name="dir"/>).
+    /// </summary>
+    private static async Task DeleteDirectoryAsync(DirectoryInfo dir)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                dir.Refresh();
+                if (dir.Exists)
+                {
+                    dir.Delete(recursive: true);
+                }
+                return;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException && attempt < 20)
+            {
+                await Task.Delay(250);
+            }
         }
     }
 
