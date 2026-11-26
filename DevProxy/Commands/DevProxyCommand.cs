@@ -146,15 +146,31 @@ sealed class DevProxyCommand : RootCommand
             return false;
         }
 
-        // Unknown tokens before cert, such as another command (devproxy jwt create --name cert ...),
-        // mean cert isn't the invoked subcommand.
+        // Plugin options aren't registered yet when logging is configured, so allow unknown
+        // options (and their values) before cert. A bare word before cert that no option
+        // consumes means another command was invoked (devproxy jwt create --name cert ...).
         var rootOptionTokens = parseResult.RootCommandResult.Children
             .OfType<OptionResult>()
             .SelectMany(o => o.IdentifierToken is null ? o.Tokens : o.Tokens.Prepend(o.IdentifierToken))
             .ToHashSet();
-        return parseResult.Tokens
-            .TakeWhile(t => !ReferenceEquals(t, certResult.IdentifierToken))
-            .All(rootOptionTokens.Contains);
+        var afterUnknownOption = false;
+        foreach (var token in parseResult.Tokens.TakeWhile(t => !ReferenceEquals(t, certResult.IdentifierToken)))
+        {
+            if (rootOptionTokens.Contains(token))
+            {
+                afterUnknownOption = false;
+            }
+            else if (token.Value.StartsWith('-'))
+            {
+                afterUnknownOption = true;
+            }
+            else if (!afterUnknownOption)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public static bool IsConfigValidateCommand
