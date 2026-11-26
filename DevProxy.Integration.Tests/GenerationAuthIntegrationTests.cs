@@ -258,6 +258,24 @@ public sealed class GenerationAuthIntegrationTests
     }
 
     [Fact]
+    public async Task Generators_EntraTokenWithoutScopesOrRoles_UseClientCredentialsFlow()
+    {
+        var token = Jwt(EntraIssuerV2, version: "2.0", audience: "api://contoso");
+        var logs = new[] { Exchange("https://api.contoso.com/users", ("Authorization", $"Bearer {token}")) };
+
+        var doc = await GenerateOpenApiJsonAsync(logs);
+        var scheme = SecurityScheme(doc, "EntraOAuth2Auth");
+        Assert.Null(scheme["flows"]!["authorizationCode"]);
+        Assert.Equal(["api://contoso/.default"], scheme["flows"]!["clientCredentials"]!["scopes"]!.AsObject().Select(s => s.Key));
+        Assert.Null(scheme["description"]);
+        Assert.Equal(["api://contoso/.default"], RequirementScopes(Operation(doc), "EntraOAuth2Auth"));
+
+        var tsp = await GenerateTypeSpecAsync(logs);
+        Assert.Contains("type: OAuth2FlowType.clientCredentials;", tsp, StringComparison.Ordinal);
+        Assert.DoesNotContain("OAuth2FlowType.authorizationCode", tsp, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task OpenApiSpecGenerator_EntraTokenWithScopesAndRoles_EmitsAuthorizationCodeFlow()
     {
         var token = Jwt(EntraIssuerV2, version: "2.0", scp: "User.Read", roles: ["Admin"]);

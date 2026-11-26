@@ -141,9 +141,10 @@ internal static class AuthDetector
         {
             logger.LogDebug("Roles: {Roles}", string.Join(", ", roles));
         }
-        // delegated tokens can also contain roles, so only treat tokens
-        // without scopes as app-only
-        var isAppOnly = scopes.Count == 0 && roles.Count != 0;
+        // delegated tokens always contain scopes and can also contain roles,
+        // so treat all tokens without scopes as app-only, even those
+        // without roles
+        var isAppOnly = scopes.Count == 0;
         var flowType = isAppOnly ?
             DetectedOAuth2FlowType.ClientCredentials : DetectedOAuth2FlowType.AuthorizationCode;
 
