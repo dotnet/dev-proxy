@@ -149,16 +149,31 @@ internal static class AuthDetector
 
         var version = jwtToken.Claims
             .FirstOrDefault(c => c.Type == "ver")?.Value ?? "1.0";
+        var audience = jwtToken.Audiences.FirstOrDefault();
         if (isAppOnly)
         {
             // app roles aren't requestable scopes. On the v2 endpoint, apps
             // request all their assigned roles with {resource}/.default. The
             // v1 endpoint uses the resource parameter instead of scopes.
-            var audience = jwtToken.Audiences.FirstOrDefault();
             if (version != "1.0" && !string.IsNullOrEmpty(audience))
             {
                 scopes.Add($"{audience}/.default");
             }
+        }
+        else if (!IsMicrosoftGraphAudience(audience))
+        {
+            // Entra treats unqualified scopes as Microsoft Graph permissions,
+            // so scopes for other APIs must be prefixed with the API's
+            // resource identifier
+            if (string.IsNullOrEmpty(audience))
+            {
+                logger.LogDebug("Delegated token without audience. Using bearer auth");
+                logger.LogTrace("Left {Name}", nameof(DetectAuthorizationAuth));
+                return new DetectedBearerAuth(IsJwt: true);
+            }
+
+            var resource = audience.TrimEnd('/');
+            scopes = [.. scopes.Select(s => OidcScopes.Contains(s) ? s : $"{resource}/{s}")];
         }
         var baseUrl = issuer.Contains("v2.0", StringComparison.OrdinalIgnoreCase) ?
             issuer.Replace("v2.0", "", StringComparison.OrdinalIgnoreCase) : issuer;
@@ -178,6 +193,22 @@ internal static class AuthDetector
         logger.LogTrace("Left {Name}", nameof(DetectAuthorizationAuth));
         return auth;
     }
+
+    private const string MicrosoftGraphAppId = "00000003-0000-0000-c000-000000000000";
+
+    // OpenID Connect scopes aren't tied to a resource and stay unqualified
+    private static readonly HashSet<string> OidcScopes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "openid",
+        "profile",
+        "email",
+        "offline_access"
+    };
+
+    private static bool IsMicrosoftGraphAudience(string? audience) =>
+        audience is not null &&
+        (audience.Equals(MicrosoftGraphAppId, StringComparison.OrdinalIgnoreCase) ||
+        audience.TrimEnd('/').Equals("https://graph.microsoft.com", StringComparison.OrdinalIgnoreCase));
 
     private static bool IsEntraToken(string issuer, ILogger logger)
     {

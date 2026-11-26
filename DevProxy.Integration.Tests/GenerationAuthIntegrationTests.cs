@@ -48,7 +48,7 @@ public sealed class GenerationAuthIntegrationTests
                 body: """[ { "id": 1, "name": "alpha" } ]""")
             .AsRequestLog(MessageType.InterceptedResponse);
 
-    private static string Jwt(string issuer, string? version = null, string? scp = null, string? audience = null, params string[] roles)
+    private static string Jwt(string issuer, string? version = null, string? scp = null, string? audience = "https://graph.microsoft.com", params string[] roles)
     {
         var claims = new List<Claim>();
         if (version is not null)
@@ -196,6 +196,35 @@ public sealed class GenerationAuthIntegrationTests
         Assert.Equal(["User.Read", "Mail.Read"], flow["scopes"]!.AsObject().Select(s => s.Key));
         Assert.Null(scheme["flows"]!["clientCredentials"]);
         Assert.Equal(["User.Read", "Mail.Read"], RequirementScopes(Operation(doc), "EntraOAuth2Auth"));
+    }
+
+    [Theory]
+    [InlineData("2.0", "11111111-2222-3333-4444-555555555555")]
+    [InlineData(null, "api://contoso/")]
+    public async Task OpenApiSpecGenerator_CustomApiDelegatedToken_QualifiesScopesWithAudience(string? version, string audience)
+    {
+        var token = Jwt(EntraIssuerV2, version: version, scp: "access_as_user offline_access", audience: audience);
+        var doc = await GenerateOpenApiJsonAsync([Exchange("https://api.contoso.com/users", ("Authorization", $"Bearer {token}"))]);
+
+        var resource = audience.TrimEnd('/');
+        string[] expected = [$"{resource}/access_as_user", "offline_access"];
+        var flow = SecurityScheme(doc, "EntraOAuth2Auth")["flows"]!["authorizationCode"]!;
+        Assert.Equal(expected, flow["scopes"]!.AsObject().Select(s => s.Key));
+        Assert.Equal(expected, RequirementScopes(Operation(doc), "EntraOAuth2Auth"));
+    }
+
+    [Fact]
+    public async Task Generators_EntraDelegatedTokenWithoutAudience_FallBackToBearer()
+    {
+        var token = Jwt(EntraIssuerV2, version: "2.0", scp: "access_as_user", audience: null);
+        var logs = new[] { Exchange("https://api.contoso.com/users", ("Authorization", $"Bearer {token}")) };
+
+        var doc = await GenerateOpenApiJsonAsync(logs);
+        Assert.Equal("JWT", SecurityScheme(doc, "BearerAuth")["bearerFormat"]!.GetValue<string>());
+        Assert.Null(doc["components"]!["securitySchemes"]!["EntraOAuth2Auth"]);
+
+        var tsp = await GenerateTypeSpecAsync(logs);
+        Assert.Contains("@useAuth(BearerAuth)", tsp, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -493,6 +522,15 @@ public sealed class GenerationAuthIntegrationTests
         Assert.Contains($"authorizationUrl: \"{EntraBaseUrl}oauth2/v2.0/authorize\";", tsp, StringComparison.Ordinal);
         Assert.Contains($"tokenUrl: \"{EntraBaseUrl}oauth2/v2.0/token\";", tsp, StringComparison.Ordinal);
         Assert.Contains("@useAuth(EntraOAuth2Auth<[\"User.Read\", \"Mail.Read\"]>)", tsp, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TypeSpecGenerator_CustomApiDelegatedToken_QualifiesScopesWithAudience()
+    {
+        var token = Jwt(EntraIssuerV2, version: "2.0", scp: "access_as_user", audience: "api://contoso");
+        var tsp = await GenerateTypeSpecAsync([Exchange("https://api.contoso.com/users", ("Authorization", $"Bearer {token}"))]);
+
+        Assert.Contains("@useAuth(EntraOAuth2Auth<[\"api://contoso/access_as_user\"]>)", tsp, StringComparison.Ordinal);
     }
 
     [Fact]
