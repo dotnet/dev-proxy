@@ -84,10 +84,12 @@ services, credentials, or platform-specific capabilities are essential, verify
 availability and mark unavailable scenarios as blocked. Do not automate sign-in
 or publish credentials. A mocked substitute does not prove a live integration.
 
-Select the smallest relevant existing build and test commands. Automated tests
-supplement end-to-end scenarios; a successful build alone is not functional
-verification. For documentation-only changes, validate the documented workflow
-when applicable and explain any runtime steps that are not applicable.
+Select the smallest relevant existing build command. Rely on CI checks for the
+tested commit for automated test results; do not rerun automated tests locally
+after building. Focus local validation on the planned functional scenarios; a
+successful build alone is not functional verification. For documentation-only
+changes, validate the documented workflow when applicable and explain any
+runtime steps that are not applicable.
 
 ### 4. Start and verify Dev Proxy
 
@@ -120,9 +122,9 @@ failure, and do not execute dependent scenarios as though startup succeeded.
 
 ### 5. Execute and capture evidence
 
-Run the planned scenarios and targeted automated tests. Record each command or
-request, expected result, actual result, and pass/fail/blocked status. Check
-observable behavior, not just exit codes or the absence of exceptions.
+Run the planned functional scenarios. Record each command or request, expected
+result, actual result, and pass/fail/blocked status. Check observable behavior,
+not just exit codes or the absence of exceptions.
 
 For failures, capture a minimal reproduction and relevant sanitized output.
 Distinguish a PR regression from an environment problem or pre-existing failure;
