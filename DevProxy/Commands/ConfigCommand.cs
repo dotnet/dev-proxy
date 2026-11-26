@@ -538,7 +538,7 @@ sealed class ConfigCommand : Command
         return null;
     }
 
-    private static async Task<int> ValidateConfigCoreAsync(
+    internal static async Task<int> ValidateConfigCoreAsync(
         string? configFilePath,
         bool isJsonOutput,
         HttpClient httpClient,
@@ -607,21 +607,18 @@ sealed class ConfigCommand : Command
                 : null;
             if (!string.IsNullOrEmpty(schemaUrl))
             {
-                try
+                var result = await ProxyUtils.ValidateJsonAgainstSchemaAsync(
+                    configJson, schemaUrl, httpClient, logger, cancellationToken);
+                if (result.Status == SchemaValidationStatus.SchemaUnavailable)
                 {
-                    var (isValid, validationErrors) = await ProxyUtils.ValidateJsonAsync(
-                        configJson, schemaUrl, httpClient, logger, cancellationToken);
-                    if (!isValid)
-                    {
-                        foreach (var error in validationErrors)
-                        {
-                            errors.Add(new("schema", error));
-                        }
-                    }
+                    warnings.Add(new("$schema", $"Could not retrieve schema, skipping schema validation: {string.Join(", ", result.Errors)}"));
                 }
-                catch (Exception ex)
+                else if (result.Status == SchemaValidationStatus.Invalid)
                 {
-                    warnings.Add(new("$schema", $"Could not validate schema: {ex.Message}"));
+                    foreach (var error in result.Errors)
+                    {
+                        errors.Add(new("schema", error));
+                    }
                 }
 
                 ValidateSchemaVersion(schemaUrl, warnings);

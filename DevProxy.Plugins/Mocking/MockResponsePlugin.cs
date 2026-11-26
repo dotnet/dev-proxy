@@ -9,6 +9,7 @@ using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Behavior;
 using DevProxy.Plugins.Models;
+using DevProxy.Plugins.Utils;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileSystemGlobbing;
@@ -18,10 +19,11 @@ using System.CommandLine;
 using System.CommandLine.Parsing;
 using System.Globalization;
 using System.Net;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
 
 namespace DevProxy.Plugins.Mocking;
 
@@ -60,6 +62,19 @@ public class MockResponsePlugin(
     private readonly ConcurrentDictionary<MockRequestKey, int> _requestCounts = [];
 
     private readonly record struct MockRequestKey(string Method, string Url, string? BodyFragment);
+
+    // Serialized form (text + UTF-8) of each loaded mock body, computed once and
+    // reused for every request the mock serves. Keyed weakly on the body object, so
+    // entries go away with the mocks when they're reloaded.
+    private static readonly ConditionalWeakTable<object, SerializedMockBody> s_serializedBodies = [];
+
+    private sealed class SerializedMockBody(string text)
+    {
+        public string Text { get; } = text;
+        public byte[] Utf8 { get; } = Encoding.UTF8.GetBytes(text);
+    }
+
+    private bool? _overridesBodyHooks;
 
     private MockResponsesLoader? _loader;
     private Argument<IEnumerable<string>>? _httpResponseFilesArgument;
@@ -179,7 +194,7 @@ public class MockResponsePlugin(
         {
             // we need to clone the response so that we're not modifying
             // the original that might be used in other requests
-            var clonedResponse = (MockResponse)matchingResponse.Clone();
+            var clonedResponse = CloneForRequest(matchingResponse);
             ProcessMockResponseInternal(e, clonedResponse);
             state.HasBeenSet = true;
             return Task.CompletedTask;
@@ -367,9 +382,58 @@ public class MockResponsePlugin(
         }
 
         // turn mock URL with wildcard into a regex and match against the request URL
-        return Regex.IsMatch(request.Url, ProxyUtils.PatternToRegex(mockResponse.Request.Url), RegexOptions.IgnoreCase) &&
+        return WildcardUrlPattern.IsMatch(request.Url, mockResponse.Request.Url) &&
             HasMatchingBody(mockResponse, request);
     }
+
+    /// <summary>
+    /// Copies a mock so that per-request processing (placeholder replacement,
+    /// subclass hooks) can't modify the loaded original. A body loaded from the mocks
+    /// file is an immutable <see cref="JsonElement"/>, so it's shared instead of
+    /// round-tripping the whole mock through JSON; any other body takes the full
+    /// <see cref="MockResponse.Clone"/>.
+    /// </summary>
+    private static MockResponse CloneForRequest(MockResponse mock)
+    {
+        object? body = mock.Response?.Body;
+        if (body is not (null or JsonElement))
+        {
+            return (MockResponse)mock.Clone();
+        }
+
+        return new()
+        {
+            Request = mock.Request is null ? null : new()
+            {
+                BodyFragment = mock.Request.BodyFragment,
+                Method = mock.Request.Method,
+                Nth = mock.Request.Nth,
+                Url = mock.Request.Url
+            },
+            Response = mock.Response is null ? null : new()
+            {
+                Body = body,
+                Headers = mock.Response.Headers?.Select(h => new MockResponseHeader(h.Name, h.Value)).ToList(),
+                StatusCode = mock.Response.StatusCode
+            },
+            Rate = mock.Rate
+        };
+    }
+
+    /// <summary>
+    /// Whether a subclass overrides either <c>ProcessMockResponse</c> body hook. When
+    /// neither is overridden the hooks are no-ops, so a cached mock body can be sent
+    /// as-is without the string → bytes → string round trip they'd otherwise cost.
+    /// </summary>
+    private bool OverridesBodyHooks => _overridesBodyHooks ??=
+        IsOverridden(typeof(string).MakeByRefType()) || IsOverridden(typeof(byte[]).MakeByRefType());
+
+    private bool IsOverridden(Type bodyType) =>
+        GetType().GetMethod(
+            nameof(ProcessMockResponse),
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            [bodyType, typeof(IList<MockResponseHeader>), typeof(ProxyRequestArgs), typeof(MockResponse)])?
+            .DeclaringType != typeof(MockResponsePlugin);
 
     private void ProcessMockResponseInternal(ProxyRequestArgs e, MockResponse matchingResponse)
     {
@@ -401,11 +465,18 @@ public class MockResponsePlugin(
             ProxyUtils.MergeHeaders(headers, rateLimitingHeaders);
         }
 
+        object? loadedBody = matchingResponse.Response?.Body;
         ReplacePlaceholders(matchingResponse.Response, e.ProxySession.Request, Logger);
 
         if (matchingResponse.Response?.Body is not null)
         {
-            string bodyString = ProxyUtils.SerializeBody(matchingResponse.Response.Body);
+            // Unless placeholder replacement produced a new body, reuse the loaded
+            // body's serialized form instead of serializing it on every request.
+            object currentBody = matchingResponse.Response.Body;
+            var serialized = currentBody is JsonElement && ReferenceEquals(currentBody, loadedBody)
+                ? s_serializedBodies.GetValue(currentBody, static b => new(ProxyUtils.SerializeBody(b)))
+                : null;
+            string bodyString = serialized?.Text ?? ProxyUtils.SerializeBody(currentBody);
             if (bodyString.StartsWith('@', StringComparison.Ordinal))
             {
                 // we've got a mock body starting with @-token which means we're sending
@@ -427,6 +498,12 @@ public class MockResponsePlugin(
                     Logger.LogRequest($"{matchingResponse.Response.StatusCode ?? 200} {matchingResponse.Request?.Url}", MessageType.Mocked, new LoggingContext(e.ProxySession));
                     return;
                 }
+            }
+            else if (serialized is not null && !OverridesBodyHooks)
+            {
+                e.ProxySession.Respond(serialized.Utf8, statusCode, headers.Select(h => new HttpHeader(h.Name, h.Value)));
+                Logger.LogRequest($"{matchingResponse.Response.StatusCode ?? 200} {matchingResponse.Request?.Url}", MessageType.Mocked, new LoggingContext(e.ProxySession));
+                return;
             }
             else
             {
