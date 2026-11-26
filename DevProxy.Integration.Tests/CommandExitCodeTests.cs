@@ -133,6 +133,7 @@ public sealed class CommandExitCodeTests
     [InlineData("--output", "json", "--port", "abc")]
     [InlineData("--port", "abc", "--output", "json")]
     [InlineData("--output", "json", "--unknown-option")]
+    [InlineData("--output", "json", "--log-level", "None", "--port", "abc")]
     [InlineData("jwt", "create", "--valid-for", "abc", "--output", "json")]
     public async Task ParseError_JsonOutput_WritesJsonErrorsAndReturnsTwo(params string[] args)
     {

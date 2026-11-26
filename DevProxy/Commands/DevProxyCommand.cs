@@ -266,7 +266,7 @@ sealed class DevProxyCommand : RootCommand
         {
             if (IsJsonOutputRequested(parseResult))
             {
-                WriteJsonParseErrors(parseResult, Console.Error);
+                WriteJsonParseErrors(parseResult);
                 return 2;
             }
 
@@ -292,11 +292,23 @@ sealed class DevProxyCommand : RootCommand
         parseResult.GetResult(OutputOptionName) is OptionResult { Tokens: [var token, ..] } &&
         string.Equals(token.Value, nameof(OutputFormat.Json), StringComparison.OrdinalIgnoreCase);
 
-    internal static void WriteJsonParseErrors(ParseResult parseResult, TextWriter writer)
+    private static void WriteJsonParseErrors(ParseResult parseResult)
     {
+        // Usage errors must still be visible when normal logging is disabled,
+        // for example by the jwt command or --log-level None.
+        using var loggerFactory = LoggerFactory.Create(builder => builder
+            .SetMinimumLevel(LogLevel.Error)
+            .AddConsole(options =>
+            {
+                options.FormatterName = JsonConsoleFormatter.FormatterName;
+                options.LogToStandardErrorThreshold = LogLevel.Error;
+            })
+            .AddConsoleFormatter<JsonConsoleFormatter, ProxyConsoleFormatterOptions>());
+        var logger = loggerFactory.CreateLogger<DevProxyCommand>();
+
         foreach (var error in parseResult.Errors)
         {
-            writer.WriteLine(JsonConsoleFormatter.FormatLogEntry(LogLevel.Error, error.Message));
+            logger.LogError("{ParseError}", error.Message);
         }
     }
 
