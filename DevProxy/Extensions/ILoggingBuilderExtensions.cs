@@ -110,6 +110,14 @@ static class ILoggingBuilderExtensions
             ? LogLevel.Trace
             : LogLevel.Warning;
 
+        // Structured results are logged at Information. When JSON output is
+        // requested with a higher log level, let Information through the
+        // pipeline and have the JSON formatter drop diagnostic messages below
+        // the configured level, so that result records are always emitted.
+        var pipelineLogLevel = configuredOutput == OutputFormat.Json && configuredLogLevel > LogLevel.Information
+            ? LogLevel.Information
+            : configuredLogLevel;
+
         _ = builder
             .AddFilter("Microsoft.Hosting.*", LogLevel.Error)
             .AddFilter("Microsoft.AspNetCore.*", LogLevel.Error)
@@ -134,9 +142,10 @@ static class ILoggingBuilderExtensions
                     formatterOptions.IncludeScopes = true;
                     formatterOptions.ShowSkipMessages = showSkipMessages;
                     formatterOptions.ShowTimestamps = showTimestamps;
+                    formatterOptions.MinimumLogLevel = configuredLogLevel;
                 }
             )
-            .SetMinimumLevel(configuredLogLevel);
+            .SetMinimumLevel(pipelineLogLevel);
 
         return builder;
     }

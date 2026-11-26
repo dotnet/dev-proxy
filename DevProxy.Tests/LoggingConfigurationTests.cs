@@ -90,4 +90,22 @@ public class LoggingConfigurationTests
 
         Assert.DoesNotMatch(@"\[\d{4}-\d{2}-\d{2}T", writer.ToString());
     }
+
+    [Fact]
+    public void JsonFormatter_BelowMinimumLevel_DropsDiagnosticsButKeepsStructuredOutput()
+    {
+        var formatter = new JsonConsoleFormatter(Options.Create(new ProxyConsoleFormatterOptions
+        {
+            MinimumLogLevel = LogLevel.Warning
+        }));
+        using var writer = new StringWriter(CultureInfo.InvariantCulture);
+        var info = new LogEntry<string>(LogLevel.Information, "Tests", new EventId(0), "diagnostic", null, (state, _) => state);
+        var result = new LogEntry<string>(LogLevel.Information, "Tests", LogEvents.StructuredOutput, "{\"ok\":true}", null, (state, _) => state);
+
+        formatter.Write(info, null, writer);
+        formatter.Write(result, null, writer);
+
+        var line = Assert.Single(writer.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        Assert.Contains("\"type\":\"result\"", line, StringComparison.Ordinal);
+    }
 }
