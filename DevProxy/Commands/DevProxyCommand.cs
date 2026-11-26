@@ -332,7 +332,7 @@ sealed class DevProxyCommand : RootCommand
         parseResult.GetResult(OutputOptionName) is OptionResult { Tokens: [var token, ..] } &&
         string.Equals(token.Value, nameof(OutputFormat.Json), StringComparison.OrdinalIgnoreCase);
 
-    private static void WriteJsonParseErrors(ParseResult parseResult)
+    internal static void WriteJsonParseErrors(ParseResult parseResult)
     {
         // Usage errors must still be visible when normal logging is disabled,
         // for example by the jwt command or --log-level None.

@@ -153,6 +153,7 @@ public sealed class CommandExitCodeTests
     [InlineData("--output", "json", "--unknown-option")]
     [InlineData("--output", "json", "--log-level", "None", "--port", "abc")]
     [InlineData("jwt", "create", "--valid-for", "abc", "--output", "json")]
+    [InlineData("plugin", "list", "--output", "json", "--unknown-option")]
     public async Task ParseError_JsonOutput_WritesJsonErrorsAndReturnsTwo(params string[] args)
     {
         using var workDir = new TempDir();
