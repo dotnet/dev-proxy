@@ -189,6 +189,41 @@ public sealed class OpenApiMockResponsePluginTests
         Assert.Equal(expectedCount, Assert.IsType<JsonArray>(Generate(ParseSchema(schema))).Count);
     }
 
+    [Theory]
+    // exactly at the limit: the array plus 99999 nulls
+    [InlineData(99999, true)]
+    // one node over the limit: the array plus 100000 nulls
+    [InlineData(100000, false)]
+    public void TryGenerateSample_CountsNullItemsTowardsMaxSize(int minItems, bool expected)
+    {
+        var schema = ParseSchema($"{{ type: array, minItems: {minItems}, items: {{ type: 'null' }} }}", "3.1.0");
+
+        Assert.Equal(expected, OpenApiSchemaSampleGenerator.TryGenerateSample(schema, out var sample));
+        Assert.Equal(expected ? minItems : null, (sample as JsonArray)?.Count);
+    }
+
+    [Fact]
+    public void TryGenerateSample_GeneratesOverlappingAllOfPropertyOnce()
+    {
+        // each branch's value alone takes 40001 units, so generating them
+        // before intersecting them would exceed the limit
+        var sample = Generate(ParseSchema("""
+            allOf:
+              - { type: object, properties: { value: { type: string, minLength: 40000 } } }
+              - { type: object, properties: { value: { type: string, minLength: 40000 } } }
+            """));
+
+        Assert.Equal(40000, sample!["value"]!.GetValue<string>().Length);
+    }
+
+    [Fact]
+    public void TryGenerateSample_DoesntGenerateItemsForEmptyArray()
+    {
+        var sample = Generate(ParseSchema("{ type: array, maxItems: 0, items: { type: string, minLength: 100000 } }"));
+
+        Assert.Empty(Assert.IsType<JsonArray>(sample));
+    }
+
     [Fact]
     public void TryGenerateSample_GeneratesStringAtMaxSize()
     {
@@ -425,10 +460,10 @@ public sealed class OpenApiMockResponsePluginTests
         return sample;
     }
 
-    private static IOpenApiSchema ParseSchema(string schemaYaml)
+    private static IOpenApiSchema ParseSchema(string schemaYaml, string openApiVersion = "3.0.1")
     {
         var spec = string.Join('\n', [
-            "openapi: 3.0.1",
+            $"openapi: {openApiVersion}",
             "info: { title: Test, version: '1.0' }",
             "paths: {}",
             "components:",

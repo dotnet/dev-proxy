@@ -99,31 +99,24 @@ internal static class OpenApiSchemaSampleGenerator
         }
     }
 
-    private static JsonNode? GenerateSampleCore(IOpenApiSchema schema, int depth, GenerationContext context)
+    // returns the value specified in the schema's example, default or enum
+    private static JsonNode? GetLiteralValue(IOpenApiSchema schema)
     {
         // Example is obsolete in favor of Examples, but OpenAPI 3.0 specs still use it
 #pragma warning disable CS0618
-        if (schema.Example is not null)
-        {
-            return context.Clone(schema.Example);
-        }
+        return schema.Example ??
 #pragma warning restore CS0618
+            schema.Examples?.FirstOrDefault(e => e is not null) ??
+            schema.Default ??
+            schema.Enum?.FirstOrDefault(e => e is not null);
+    }
 
-        var example = schema.Examples?.FirstOrDefault(e => e is not null);
-        if (example is not null)
+    private static JsonNode? GenerateSampleCore(IOpenApiSchema schema, int depth, GenerationContext context)
+    {
+        var literal = GetLiteralValue(schema);
+        if (literal is not null)
         {
-            return context.Clone(example);
-        }
-
-        if (schema.Default is not null)
-        {
-            return context.Clone(schema.Default);
-        }
-
-        var enumValue = schema.Enum?.FirstOrDefault(e => e is not null);
-        if (enumValue is not null)
-        {
-            return context.Clone(enumValue);
+            return context.Clone(literal);
         }
 
         if (schema.AllOf is { Count: > 0 } || GetSelectedAlternative(schema) is not null)
@@ -140,7 +133,8 @@ internal static class OpenApiSchemaSampleGenerator
         {
             return GenerateArraySample(schema, depth, context);
         }
-        if (type is JsonSchemaType.Null || !context.TryConsume(1))
+        // null takes one unit like any other value
+        if (!context.TryConsume(1) || type is JsonSchemaType.Null)
         {
             return null;
         }
@@ -181,30 +175,63 @@ internal static class OpenApiSchemaSampleGenerator
             return merged;
         }
 
-        var branches = (schema.AllOf ?? []).Append(GetSelectedAlternative(schema));
-        foreach (var branch in branches)
+        // mark the composed references as visited, like when generating
+        // them separately, to stop at recursive references
+        var addedReferences = new List<string>();
+        foreach (var candidate in flattened)
         {
-            if (GenerateSample(branch, depth + 1, context) is JsonObject obj)
+            if (GetReferenceId(candidate) is string referenceId && context.Visiting.Add(referenceId))
             {
-                MergeInto(merged, obj);
+                addedReferences.Add(referenceId);
             }
         }
 
-        if (schema.Properties is { Count: > 0 })
+        try
         {
-            MergeInto(merged, GenerateObjectSample(schema, depth, context));
-        }
+            // the schema itself has no literal value, or it wouldn't be composed
+            foreach (var candidate in flattened.Skip(1))
+            {
+                // the literal's root object isn't kept, only its properties
+                if (GetLiteralValue(candidate) is JsonObject literal &&
+                    context.TryConsume(GetSize(literal, context.Remaining + 2) - 1))
+                {
+                    MergeInto(merged, literal);
+                }
+            }
 
-        // properties declared in several branches must satisfy all their schemas
-        foreach (var (name, propertySchemas) in GetOverlappingProperties(flattened))
-        {
-            merged[name] = GenerateSample(new OpenApiSchema { AllOf = propertySchemas }, depth + 1, context);
+            // generate each property once. Properties declared in several
+            // schemas must satisfy all of them
+            foreach (var (name, propertySchemas) in GetComposedProperties(flattened))
+            {
+                if (propertySchemas.Count == 1 && merged.ContainsKey(name))
+                {
+                    continue;
+                }
+
+                var propertySchema = propertySchemas.Count == 1 ?
+                    propertySchemas[0] :
+                    new OpenApiSchema { AllOf = propertySchemas };
+                merged[name] = GenerateSample(propertySchema, depth + 1, context);
+            }
+
+            if (merged.Count == 0 && flattened.FirstOrDefault(s => s.AdditionalProperties is not null) is IOpenApiSchema withAdditionalProperties)
+            {
+                merged["additionalProp1"] = GenerateSample(withAdditionalProperties.AdditionalProperties, depth + 1, context);
+            }
+            return merged;
         }
-        return merged;
+        finally
+        {
+            foreach (var referenceId in addedReferences)
+            {
+                _ = context.Visiting.Remove(referenceId);
+            }
+        }
     }
 
-    private static IEnumerable<(string Name, List<IOpenApiSchema> Schemas)> GetOverlappingProperties(IEnumerable<IOpenApiSchema> candidates)
+    private static List<(string Name, List<IOpenApiSchema> Schemas)> GetComposedProperties(IEnumerable<IOpenApiSchema> candidates)
     {
+        var properties = new List<(string Name, List<IOpenApiSchema> Schemas)>();
         var propertySchemas = new Dictionary<string, List<IOpenApiSchema>>();
         foreach (var candidate in candidates)
         {
@@ -219,14 +246,14 @@ internal static class OpenApiSchemaSampleGenerator
                 {
                     schemas = [];
                     propertySchemas[name] = schemas;
+                    // keep the order in which properties are declared
+                    properties.Add((name, schemas));
                 }
                 schemas.Add(propertySchema);
             }
         }
 
-        return propertySchemas
-            .Where(p => p.Value.Count > 1)
-            .Select(p => (p.Key, p.Value));
+        return properties;
     }
 
     private static IEnumerable<IOpenApiSchema> FlattenAllOf(IOpenApiSchema schema, int depth, GenerationContext context)
@@ -417,18 +444,23 @@ internal static class OpenApiSchemaSampleGenerator
             return [];
         }
 
+        var count = Math.Max(schema.MinItems ?? 1, 1);
+        if (schema.MaxItems is int maxItems)
+        {
+            count = Math.Min(count, Math.Max(maxItems, 0));
+        }
+        // don't generate an item that won't be used
+        if (count == 0)
+        {
+            return [];
+        }
+
         var item = GenerateSample(schema.Items, depth + 1, context);
         // null is a valid item when the item schema allows only null,
         // otherwise it's a recursion cut-off
         if (item is null && (schema.Items is null || GetEffectiveType(schema.Items) != JsonSchemaType.Null))
         {
             return [];
-        }
-
-        var count = Math.Max(schema.MinItems ?? 1, 1);
-        if (schema.MaxItems is int maxItems)
-        {
-            count = Math.Min(count, Math.Max(maxItems, 0));
         }
 
         var array = new JsonArray();
@@ -450,10 +482,6 @@ internal static class OpenApiSchemaSampleGenerator
 
         // best-effort: vary the sample to get distinct items. If we can't,
         // return fewer items rather than duplicates
-        if (count == 0)
-        {
-            return array;
-        }
         // variants differ in size, so they're accounted for one by one. Each
         // item takes at least one unit, so fail early when they can't fit
         if (!context.EnsureAvailable(count - 1L))
