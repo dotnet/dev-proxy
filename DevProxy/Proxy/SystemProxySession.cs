@@ -48,7 +48,7 @@ internal interface IConfirmingSystemProxyManager : ISystemProxyManager
 ///         until the new run binds.</item>
 ///   <item>When applying a changed endpoint fails, the OS can keep pointing at the
 ///         previous run's stopped endpoint until a later run applies it or the process
-///         exits.</item>
+///         exits. The bypass keeps covering that endpoint in the meantime.</item>
 /// </list>
 /// </summary>
 internal sealed class SystemProxySession(Func<bool> isRestarting)
@@ -57,9 +57,10 @@ internal sealed class SystemProxySession(Func<bool> isRestarting)
     private IConfirmingSystemProxyManager? _currentManager;
     // Endpoint confirmed as applied; null when not registered or when the last attempt failed.
     private string? _appliedEndpoint;
-    // Endpoint last passed to the OS; set while the system proxy may point to Dev Proxy,
-    // including after a failed attempt.
-    private string? _registeredEndpoint;
+    // Endpoints the system proxy may point to: the last confirmed endpoint plus any
+    // attempted since, because a failed attempt can leave the OS on the previous one.
+    // Empty when Dev Proxy isn't registered.
+    private readonly HashSet<string> _registeredEndpoints = new(StringComparer.Ordinal);
     private bool _claimedInCurrentRun;
 
     public SystemProxySession() : this(() => ConfigFileWatcher.IsRestarting)
@@ -90,13 +91,17 @@ internal sealed class SystemProxySession(Func<bool> isRestarting)
 
         lock (_lock)
         {
+            if (_claimedInCurrentRun)
+            {
+                return false;
+            }
+
             // Compare as URIs so different spellings of the same address match
             // (for example, an expanded IPv6 address and its compressed form).
-            return _registeredEndpoint is not null &&
-                !_claimedInCurrentRun &&
-                Uri.TryCreate($"http://{_registeredEndpoint}", UriKind.Absolute, out var registered) &&
+            return _registeredEndpoints.Any(endpoint =>
+                Uri.TryCreate($"http://{endpoint}", UriKind.Absolute, out var registered) &&
                 string.Equals(registered.Host, proxy.Host, StringComparison.OrdinalIgnoreCase) &&
-                registered.Port == proxy.Port;
+                registered.Port == proxy.Port);
         }
     }
 
@@ -134,14 +139,14 @@ internal sealed class SystemProxySession(Func<bool> isRestarting)
     {
         lock (_lock)
         {
-            if (_registeredEndpoint is null || _claimedInCurrentRun || _currentManager is null)
+            if (_registeredEndpoints.Count == 0 || _claimedInCurrentRun || _currentManager is null)
             {
                 return;
             }
 
             _currentManager.Disable();
             _appliedEndpoint = null;
-            _registeredEndpoint = null;
+            _registeredEndpoints.Clear();
         }
     }
 
@@ -155,14 +160,14 @@ internal sealed class SystemProxySession(Func<bool> isRestarting)
 
         lock (_lock)
         {
-            if (_registeredEndpoint is null)
+            if (_registeredEndpoints.Count == 0)
             {
                 return;
             }
 
             manager.Disable();
             _appliedEndpoint = null;
-            _registeredEndpoint = null;
+            _registeredEndpoints.Clear();
         }
     }
 
@@ -177,8 +182,17 @@ internal sealed class SystemProxySession(Func<bool> isRestarting)
                 return;
             }
 
-            _registeredEndpoint = endpoint;
-            _appliedEndpoint = manager.TryEnable(ipAddress, port) ? endpoint : null;
+            _ = _registeredEndpoints.Add(endpoint);
+            if (manager.TryEnable(ipAddress, port))
+            {
+                _registeredEndpoints.Clear();
+                _ = _registeredEndpoints.Add(endpoint);
+                _appliedEndpoint = endpoint;
+            }
+            else
+            {
+                _appliedEndpoint = null;
+            }
         }
     }
 
@@ -186,14 +200,14 @@ internal sealed class SystemProxySession(Func<bool> isRestarting)
     {
         lock (_lock)
         {
-            if (_registeredEndpoint is not null && isRestarting())
+            if (_registeredEndpoints.Count > 0 && isRestarting())
             {
                 return;
             }
 
             manager.Disable();
             _appliedEndpoint = null;
-            _registeredEndpoint = null;
+            _registeredEndpoints.Clear();
         }
     }
 

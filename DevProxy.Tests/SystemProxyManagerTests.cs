@@ -181,6 +181,44 @@ public class SystemProxyManagerTests
     }
 
     [Fact]
+    public void RetainedSystemProxyBypass_AfterFailedPortChange_SkipsPreviousAndAttemptedEndpoints()
+    {
+        var restarting = false;
+        var manager = new CountingSystemProxyManager();
+        var session = new SystemProxySession(() => restarting);
+        var destination = new Uri("https://example.com/schema.json");
+        var previous = new RetainedSystemProxyBypass(new WebProxy("http://127.0.0.1:8000"), session);
+        var attempted = new RetainedSystemProxyBypass(new WebProxy("http://127.0.0.1:8001"), session);
+
+        session.BeginRun();
+        session.Track(manager).Enable("127.0.0.1", 8000);
+        restarting = true;
+        session.Track(manager).Disable();
+        restarting = false;
+
+        manager.EnableSucceeds = false;
+        session.BeginRun();
+        session.Track(manager).Enable("127.0.0.1", 8001);
+        restarting = true;
+        session.Track(manager).Disable();
+        restarting = false;
+
+        session.BeginRun();
+        Assert.Null(previous.GetProxy(destination));
+        Assert.Null(attempted.GetProxy(destination));
+
+        manager.EnableSucceeds = true;
+        session.Track(manager).Enable("127.0.0.1", 8002);
+        restarting = true;
+        session.Track(manager).Disable();
+        restarting = false;
+
+        session.BeginRun();
+        Assert.NotNull(previous.GetProxy(destination));
+        Assert.NotNull(attempted.GetProxy(destination));
+    }
+
+    [Fact]
     public void RetainedSystemProxyBypass_ExpandedIPv6Endpoint_MatchesCompressedProxyAddress()
     {
         var restarting = false;
