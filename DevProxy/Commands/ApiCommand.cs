@@ -124,7 +124,7 @@ sealed class ApiCommand : Command
         new() { Method = "POST", Path = "/proxy/mockRequest", Description = "Issue a mock request" },
         new() { Method = "POST", Path = "/proxy/stopProxy", Description = "Stop the proxy" },
         new() { Method = "POST", Path = "/proxy/jwtToken", Description = "Create a JWT token", Body = """{"name": "...", "audiences": ["..."], "issuer": "...", "roles": ["..."], "scopes": ["..."], "claims": {"key": "value"}, "validFor": 60, "signingKey": "..."} (all optional; validFor in minutes)""" },
-        new() { Method = "GET", Path = "/proxy/rootCertificate", Description = "Get the root certificate", Query = "format=crt (required)" },
+        new() { Method = "GET", Path = "/proxy/rootCertificate", Description = "Get the root certificate in PEM format", Query = "format=crt|pem (optional, default crt)" },
         new() { Method = "GET", Path = "/proxy/logs", Description = "Get proxy logs (for detached mode access)", Query = "lines=50&follow=true&since=5m (all optional)" }
     ];
 

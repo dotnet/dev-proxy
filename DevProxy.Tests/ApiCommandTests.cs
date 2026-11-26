@@ -18,11 +18,11 @@ public class ApiCommandTests
     }
 
     [Fact]
-    public void Endpoints_RootCertificate_ShowsRequiredFormatQuery()
+    public void Endpoints_RootCertificate_ShowsOptionalFormatQuery()
     {
         var endpoint = ApiCommand.Endpoints.Single(e => e.Path == "/proxy/rootCertificate");
 
-        Assert.Contains("query: format=crt", ApiCommand.FormatDescription(endpoint), StringComparison.Ordinal);
+        Assert.Contains("query: format=crt|pem (optional", ApiCommand.FormatDescription(endpoint), StringComparison.Ordinal);
     }
 
     [Fact]

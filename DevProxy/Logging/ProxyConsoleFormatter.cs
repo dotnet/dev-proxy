@@ -130,7 +130,8 @@ sealed class ProxyConsoleFormatter : ConsoleFormatter
 
     private void FlushLogsForRequest(int requestId, TextWriter textWriter)
     {
-        if (!_messages.TryGetValue(requestId, out var messages))
+        // Remove before printing so the buffer is released even if writing fails.
+        if (!_messages.TryRemove(requestId, out var messages))
         {
             return;
         }
@@ -152,7 +153,6 @@ sealed class ProxyConsoleFormatter : ConsoleFormatter
                     break;
             }
         }
-        _ = _messages.TryRemove(requestId, out _);
     }
 
     private void BufferRequestLog(RequestLog requestLog, string category, int requestId)
