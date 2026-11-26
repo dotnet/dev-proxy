@@ -103,26 +103,9 @@ internal static class OpenApiSchemaSampleGenerator
             return context.Clone(enumValue);
         }
 
-        if (schema.AllOf is { Count: > 0 })
+        if (schema.AllOf is { Count: > 0 } || GetSelectedAlternative(schema) is not null)
         {
-            return GenerateAllOfSample(schema, depth, context);
-        }
-
-        var alternative = GetSelectedAlternative(schema);
-        if (alternative is not null)
-        {
-            var alternativeSample = GenerateSample(alternative, depth + 1, context);
-            // keep the properties defined next to oneOf/anyOf
-            if (schema.Properties is { Count: > 0 } && alternativeSample is null or JsonObject)
-            {
-                var obj = GenerateObjectSample(schema, depth, context);
-                if (alternativeSample is JsonObject alternativeObject)
-                {
-                    MergeInto(obj, alternativeObject);
-                }
-                return obj;
-            }
-            return alternativeSample;
+            return GenerateCompositionSample(schema, depth, context);
         }
 
         var type = GetEffectiveType(schema);
@@ -151,44 +134,52 @@ internal static class OpenApiSchemaSampleGenerator
     private static IOpenApiSchema? GetSelectedAlternative(IOpenApiSchema schema) =>
         schema.OneOf?.FirstOrDefault() ?? schema.AnyOf?.FirstOrDefault();
 
-    private static JsonNode? GenerateAllOfSample(IOpenApiSchema schema, int depth, GenerationContext context)
+    // generates a sample for a schema with allOf and/or oneOf/anyOf, using
+    // the first alternative of oneOf/anyOf
+    private static JsonNode? GenerateCompositionSample(IOpenApiSchema schema, int depth, GenerationContext context)
     {
-        JsonObject? merged = null;
+        var flattened = FlattenAllOf(schema, depth).ToList();
 
-        foreach (var subSchema in schema.AllOf ?? [])
+        // for non-object values, combine the constraints of the schema, its
+        // allOf branches and the selected alternative so that the value
+        // satisfies all of them
+        if (!flattened.Any(s => GetEffectiveType(s) == JsonSchemaType.Object))
         {
-            if (GenerateSample(subSchema, depth + 1, context) is JsonObject obj)
+            return GenerateSample(CombineConstraints(flattened), depth + 1, context);
+        }
+
+        var merged = new JsonObject();
+        if (!context.TryConsume(1))
+        {
+            return merged;
+        }
+
+        var branches = (schema.AllOf ?? []).Append(GetSelectedAlternative(schema));
+        foreach (var branch in branches)
+        {
+            if (GenerateSample(branch, depth + 1, context) is JsonObject obj)
             {
-                merged ??= [];
                 MergeInto(merged, obj);
             }
         }
 
         if (schema.Properties is { Count: > 0 })
         {
-            merged ??= [];
             MergeInto(merged, GenerateObjectSample(schema, depth, context));
         }
 
-        if (merged is not null)
+        // properties declared in several branches must satisfy all their schemas
+        foreach (var (name, propertySchemas) in GetOverlappingProperties(flattened))
         {
-            // properties declared in several branches must satisfy all their schemas
-            foreach (var (name, propertySchemas) in GetOverlappingProperties(schema, depth))
-            {
-                merged[name] = GenerateSample(new OpenApiSchema { AllOf = propertySchemas }, depth + 1, context);
-            }
-            return merged;
+            merged[name] = GenerateSample(new OpenApiSchema { AllOf = propertySchemas }, depth + 1, context);
         }
-
-        // for non-object values, combine the constraints of all branches
-        // so that the value satisfies all of them
-        return GenerateSample(CombineConstraints(FlattenAllOf(schema, depth)), depth + 1, context);
+        return merged;
     }
 
-    private static IEnumerable<(string Name, List<IOpenApiSchema> Schemas)> GetOverlappingProperties(IOpenApiSchema schema, int depth)
+    private static IEnumerable<(string Name, List<IOpenApiSchema> Schemas)> GetOverlappingProperties(IEnumerable<IOpenApiSchema> candidates)
     {
         var propertySchemas = new Dictionary<string, List<IOpenApiSchema>>();
-        foreach (var candidate in FlattenAllOf(schema, depth))
+        foreach (var candidate in candidates)
         {
             foreach (var (name, propertySchema) in candidate.Properties ?? new Dictionary<string, IOpenApiSchema>())
             {
@@ -269,7 +260,10 @@ internal static class OpenApiSchemaSampleGenerator
                     [.. schema.Enum.Where(e => e is not null)] :
                     [.. enumValues.Where(v => schema.Enum.Any(e => JsonNode.DeepEquals(v, e)))];
             }
-            combined.Type ??= schema.Type;
+            if (schema.Type is JsonSchemaType schemaType)
+            {
+                combined.Type = combined.Type is JsonSchemaType current ? IntersectTypes(current, schemaType) : schemaType;
+            }
             combined.Format ??= schema.Format;
             if (schema.Items is not null)
             {
@@ -344,6 +338,21 @@ internal static class OpenApiSchemaSampleGenerator
         return combined;
     }
 
+    private static JsonSchemaType IntersectTypes(JsonSchemaType a, JsonSchemaType b)
+    {
+        // integer is a subset of number
+        static JsonSchemaType Expand(JsonSchemaType type) =>
+            type.HasFlag(JsonSchemaType.Number) ? type | JsonSchemaType.Integer : type;
+
+        var intersection = Expand(a) & Expand(b);
+        if (!a.HasFlag(JsonSchemaType.Number) || !b.HasFlag(JsonSchemaType.Number))
+        {
+            intersection &= ~JsonSchemaType.Number;
+        }
+        // keep the first type for contradictory schemas
+        return intersection == 0 ? a : intersection;
+    }
+
     private static JsonObject GenerateObjectSample(IOpenApiSchema schema, int depth, GenerationContext context)
     {
         var obj = new JsonObject();
@@ -414,15 +423,36 @@ internal static class OpenApiSchemaSampleGenerator
             return array;
         }
         array.Add(item?.DeepClone());
+        var seen = new HashSet<string> { GetCanonicalJson(item) };
         for (var attempt = 1; array.Count < count && attempt < count * 4; attempt++)
         {
             var variant = CreateVariant(item, schema.Items, attempt, depth);
-            if (variant is not null && !array.Any(i => JsonNode.DeepEquals(i, variant)))
+            if (variant is not null && seen.Add(GetCanonicalJson(variant)))
             {
                 array.Add(variant);
             }
         }
         return array;
+    }
+
+    // JSON with sorted object properties, so that structurally equal values,
+    // like for JsonNode.DeepEquals, have the same representation
+    private static string GetCanonicalJson(JsonNode? node)
+    {
+        switch (node)
+        {
+            case JsonObject obj:
+                return "{" + string.Join(",", obj
+                    .OrderBy(p => p.Key, StringComparer.Ordinal)
+                    .Select(p => JsonValue.Create(p.Key).ToJsonString() + ":" + GetCanonicalJson(p.Value))) + "}";
+            case JsonArray array:
+                return "[" + string.Join(",", array.Select(GetCanonicalJson)) + "]";
+            case JsonValue value when value.GetValueKind() == JsonValueKind.Number && TryParseBound(value.ToJsonString(), out var number):
+                // 1 and 1.0 are equal numbers
+                return (number / 1.0000000000000000000000000000m).ToString(CultureInfo.InvariantCulture);
+            default:
+                return node?.ToJsonString() ?? "null";
+        }
     }
 
     private static JsonNode? CreateVariant(JsonNode? sample, IOpenApiSchema? schema, int index, int depth)
@@ -432,7 +462,9 @@ internal static class OpenApiSchemaSampleGenerator
             return null;
         }
 
-        var constraints = schema.AllOf is { Count: > 0 } ? CombineConstraints(FlattenAllOf(schema, depth)) : schema;
+        var constraints = schema.AllOf is { Count: > 0 } || GetSelectedAlternative(schema) is not null ?
+            CombineConstraints(FlattenAllOf(schema, depth)) :
+            schema;
         var enumValues = constraints.Enum?.Where(e => e is not null).ToArray();
         if (enumValues is { Length: > 0 })
         {
@@ -833,7 +865,7 @@ internal static class OpenApiSchemaSampleGenerator
         var type = GetEffectiveType(schema);
         if (type is not null)
         {
-            description["type"] = type.Value.ToString().ToLowerInvariant();
+            MergeDescription(description, new JsonObject { ["type"] = type.Value.ToString().ToLowerInvariant() });
         }
         if (!string.IsNullOrEmpty(schema.Format))
         {
@@ -978,6 +1010,17 @@ internal static class OpenApiSchemaSampleGenerator
                     {
                         targetProperties[name] = sourceProperty?.DeepClone();
                     }
+                }
+                continue;
+            }
+            // integer is a subset of number
+            if (key == "type" && value is JsonValue sourceType && target["type"] is JsonValue targetType &&
+                sourceType.TryGetValue<string>(out var sourceTypeName) && targetType.TryGetValue<string>(out var targetTypeName) &&
+                sourceTypeName is "number" or "integer" && targetTypeName is "number" or "integer")
+            {
+                if (sourceTypeName == "integer")
+                {
+                    target["type"] = "integer";
                 }
                 continue;
             }

@@ -110,6 +110,14 @@ public sealed class OpenApiMockResponsePluginTests
     }
 
     [Theory]
+    [InlineData("{ allOf: [ { type: array, minItems: 60000, items: { type: integer } } ] }", 60000)]
+    [InlineData("{ type: array, minItems: 60000, uniqueItems: true, items: { type: integer } }", 60000)]
+    public void TryGenerateSample_GeneratesLargeSamplesWithinMaxSize(string schema, int expectedCount)
+    {
+        Assert.Equal(expectedCount, Assert.IsType<JsonArray>(Generate(ParseSchema(schema))).Count);
+    }
+
+    [Theory]
     [InlineData("{ type: integer, minimum: 0, exclusiveMinimum: true }", "1")]
     [InlineData("{ type: integer, maximum: 0, exclusiveMaximum: true }", "-1")]
     [InlineData("{ type: integer, minimum: 2.5, exclusiveMinimum: true }", "3")]
@@ -132,6 +140,11 @@ public sealed class OpenApiMockResponsePluginTests
     [InlineData("{ allOf: [ { type: array, items: { type: integer, maximum: 10 } }, { type: array, items: { type: integer, minimum: 5 } } ] }", "[5]")]
     [InlineData("{ allOf: [ { oneOf: [ { type: integer } ] } ] }", "0")]
     [InlineData("{ allOf: [ { anyOf: [ { type: integer, minimum: 3 } ] }, { maximum: 5 } ] }", "3")]
+    [InlineData("{ type: integer, minimum: 10, oneOf: [ { type: integer } ] }", "10")]
+    [InlineData("{ type: array, minItems: 2, anyOf: [ { type: array, items: { type: integer } } ] }", "[0,0]")]
+    [InlineData("{ allOf: [ { type: number, minimum: 0.5 }, { type: integer } ] }", "1")]
+    [InlineData("{ allOf: [ { type: integer }, { type: number, minimum: 0.5 } ] }", "1")]
+    [InlineData("{ properties: { id: { type: integer } }, oneOf: [ { properties: { name: { type: string } } } ] }", "{\"name\":\"string\",\"id\":0}")]
     public void GenerateSample_CombinesAllOfConstraints(string schema, string expected)
     {
         var sample = Generate(ParseSchema(schema));
