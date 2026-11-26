@@ -361,9 +361,14 @@ internal sealed class ProxyConnectionHandler(
         {
             phase = await pipeline.RunRequestAsync(session, ct).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (OperationCanceledException)
         {
-            pipeline.Forget(session.SessionId);
+            pipeline.Forget(session);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            pipeline.Forget(session);
             logger.LogError(ex, "Error running request pipeline");
             await WriteErrorAsync(clientStream, HttpStatusCode.BadGateway, "Plugin pipeline error", ct).ConfigureAwait(false);
             return false;
@@ -467,7 +472,7 @@ internal sealed class ProxyConnectionHandler(
                 }
                 else
                 {
-                    pipeline.Forget(session.SessionId);
+                    pipeline.Forget(session);
                 }
             }
             return false;
@@ -480,7 +485,7 @@ internal sealed class ProxyConnectionHandler(
         }
         catch (Exception ex)
         {
-            pipeline.Forget(session.SessionId);
+            pipeline.Forget(session);
 
             // An HttpClient timeout throws TaskCanceledException (an OperationCanceledException),
             // the same type a client disconnect produces — UpstreamFailure tells them apart by
@@ -534,10 +539,10 @@ internal sealed class ProxyConnectionHandler(
             return body;
         }
 
-        ReadOnlyMemory<byte> decoded = body;
+        var decoded = body;
         for (var i = encodings.Length - 1; i >= 0; i--)
         {
-            using var input = new MemoryStream(decoded.ToArray());
+            using var input = new MemoryStream(decoded, writable: false);
             using Stream decoder = encodings[i].ToLowerInvariant() switch
             {
                 "gzip" => new System.IO.Compression.GZipStream(input, System.IO.Compression.CompressionMode.Decompress),
@@ -546,11 +551,10 @@ internal sealed class ProxyConnectionHandler(
                 "identity" => input,
                 _ => throw new InvalidOperationException($"Unsupported Content-Encoding '{encodings[i]}'."),
             };
-            using var output = new MemoryStream();
-            var buffer = new byte[81920];
+            using var output = new BodyAccumulator();
             while (true)
             {
-                var read = decoder.Read(buffer);
+                var read = decoder.Read(output.GetMemory().Span);
                 if (read == 0)
                 {
                     break;
@@ -559,7 +563,7 @@ internal sealed class ProxyConnectionHandler(
                 {
                     throw new InvalidOperationException("Decoded request body too large.");
                 }
-                output.Write(buffer, 0, read);
+                output.Advance(read);
             }
             decoded = output.ToArray();
         }
@@ -567,7 +571,7 @@ internal sealed class ProxyConnectionHandler(
         _ = headers.Remove("Content-Encoding");
         _ = headers.Remove("Content-Length");
         _ = headers.Remove("Transfer-Encoding");
-        return decoded.ToArray();
+        return decoded;
     }
 
     /// <summary>

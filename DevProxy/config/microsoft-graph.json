@@ -44,6 +44,11 @@
       "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll"
     },
     {
+      "name": "GraphMissingPermissionsGuidancePlugin",
+      "enabled": true,
+      "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll"
+    },
+    {
       "name": "GraphRandomErrorPlugin",
       "enabled": true,
       "pluginPath": "~appFolder/plugins/DevProxy.Plugins.dll",
