@@ -215,6 +215,22 @@ public class Http1ConnectionReaderTests
     }
 
     [Fact]
+    public async Task ReadChunkedBodyAsync_Throws_OnOversizedChunkLine()
+    {
+        // A 100 KB chunk extension exceeds the 64 KB line limit even when the whole
+        // line is available in one read.
+        var reader = ReaderOver(
+            "POST /a HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n" +
+            "5;ext=" + new string('x', 100 * 1024) + "\r\nhello\r\n0\r\n\r\n");
+
+        _ = await reader.ReadHeadAsync(CancellationToken.None);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await reader.ReadChunkedBodyAsync(CancellationToken.None));
+        Assert.Equal("Chunk header line too large.", ex.Message);
+    }
+
+    [Fact]
     public async Task ReadChunkedBodyAsync_Throws_OnMalformedChunkSize()
     {
         var reader = ReaderOver(
@@ -240,6 +256,59 @@ public class Http1ConnectionReaderTests
         _ = await Assert.ThrowsAsync<InvalidOperationException>(
             async () => await reader.ReadChunkedBodyAsync(CancellationToken.None));
     }
+
+    [Theory]
+    [InlineData(int.MaxValue)]
+    [InlineData(3000)]
+    [InlineData(1)]
+    public async Task ReadChunkedBodyAsync_DecodesLargeBody_AcrossReadsAndBufferSegments(int maxBytesPerRead)
+    {
+        // Chunk sizes straddle the 4 KB read size and the 64 KB body segment size, so
+        // chunk data, chunk headers and CRLFs land at every kind of boundary.
+        int[] chunkSizes = [1, 4095, 4096, 4097, 65535, 65536, 70000, 200_000, 3];
+        var payload = new byte[chunkSizes.Sum()];
+        for (var i = 0; i < payload.Length; i++)
+        {
+            payload[i] = (byte)(i * 31 % 251);
+        }
+
+        using var raw = new MemoryStream();
+        WriteAscii(raw, "POST /a HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n");
+        var offset = 0;
+        foreach (var size in chunkSizes)
+        {
+            WriteAscii(raw, $"{size:x}\r\n");
+            raw.Write(payload, offset, size);
+            WriteAscii(raw, "\r\n");
+            offset += size;
+        }
+        WriteAscii(raw, "0\r\n\r\nGET /b HTTP/1.1\r\n\r\n");
+
+        var reader = new Http1ConnectionReader(new ChunkedStream(raw.ToArray(), maxBytesPerRead));
+        _ = await reader.ReadHeadAsync(CancellationToken.None);
+        var body = await reader.ReadChunkedBodyAsync(CancellationToken.None);
+
+        Assert.Equal(payload, body);
+        var next = await reader.ReadHeadAsync(CancellationToken.None);
+        Assert.Equal("/b", next!.Target);
+    }
+
+    [Fact]
+    public async Task ReadChunkedBodyAsync_Throws_BeforeReadingChunkThatExceedsCap()
+    {
+        // The chunk declares one byte more than the cap and no data follows; the cap is
+        // reported before any chunk data is read, rather than as a truncated body.
+        var reader = ReaderOver(
+            "POST /a HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n" +
+            $"{Http1ConnectionReader.MaxBufferedBodyBytes + 1:x}\r\n");
+
+        _ = await reader.ReadHeadAsync(CancellationToken.None);
+
+        _ = await Assert.ThrowsAsync<RequestBodyTooLargeException>(
+            async () => await reader.ReadChunkedBodyAsync(CancellationToken.None));
+    }
+
+    private static void WriteAscii(Stream stream, string text) => stream.Write(Encoding.ASCII.GetBytes(text));
 
     private static Http1ConnectionReader ReaderOver(string raw, int maxBytesPerRead = int.MaxValue) =>
         new(new ChunkedStream(Encoding.ASCII.GetBytes(raw), maxBytesPerRead));

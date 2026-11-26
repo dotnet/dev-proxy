@@ -27,6 +27,7 @@ public class PluginSchemaConsistencyTests(ITestOutputHelper output)
         "GraphBetaSupportGuidancePlugin",
         "GraphClientRequestIdGuidancePlugin",
         "GraphConnectorGuidancePlugin",
+        "GraphMissingPermissionsGuidancePlugin",
         "GraphSdkGuidancePlugin",
         "GraphSelectGuidancePlugin",
         "JsonReporter",
