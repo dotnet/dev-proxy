@@ -38,6 +38,18 @@ internal interface IConfirmingSystemProxyManager : ISystemProxyManager
 ///   <item>the process releases anything still registered after the restart loop ends
 ///         (<see cref="Release"/>), for example when a restart fails.</item>
 /// </list>
+/// <para>
+/// Known limitations:
+/// </para>
+/// <list type="bullet">
+///   <item>The bypass only covers DI-created <see cref="HttpClient"/>s. Clients with their
+///         own transport, such as Azure.Identity token requests (for example, from the
+///         API Center plugins), still use the OS proxy and can reach the stopped listener
+///         until the new run binds.</item>
+///   <item>When applying a changed endpoint fails, the OS can keep pointing at the
+///         previous run's stopped endpoint until a later run applies it or the process
+///         exits.</item>
+/// </list>
 /// </summary>
 internal sealed class SystemProxySession(Func<bool> isRestarting)
 {
