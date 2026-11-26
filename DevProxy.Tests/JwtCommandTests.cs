@@ -2,11 +2,16 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using DevProxy.Abstractions.Proxy;
 using DevProxy.Commands;
 using DevProxy.Jwt;
 using DevProxy.Logging;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.CommandLine;
+using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text.Json;
 
@@ -115,5 +120,64 @@ public class JwtCommandTests
         using var json = JsonDocument.Parse(entry.Message);
         var token = new JwtSecurityTokenHandler().ReadJwtToken(json.RootElement.GetProperty("token").GetString());
         Assert.Contains(token.Claims, c => c.Type == JwtRegisteredClaimNames.Sub && c.Value == "John Doe");
+    }
+}
+
+[CollectionDefinition("console-output", DisableParallelization = true)]
+public class ConsoleOutputDefinition;
+
+[Collection("console-output")]
+public class JwtCommandLoggingTests
+{
+    [Fact]
+    public async Task Create_JsonOutputWithDevProxyLogging_WritesResultWithToken()
+    {
+        var output = await RunJwtCreateAsync(OutputFormat.Json);
+
+        using var json = JsonDocument.Parse(Assert.Single(output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)));
+        Assert.Equal("result", json.RootElement.GetProperty("type").GetString());
+        var token = json.RootElement.GetProperty("data").GetProperty("token").GetString();
+        Assert.Contains(new JwtSecurityTokenHandler().ReadJwtToken(token).Claims, c => c.Type == JwtRegisteredClaimNames.Sub && c.Value == "John Doe");
+    }
+
+    [Fact]
+    public async Task Create_TextOutputWithDevProxyLogging_WritesOnlyToken()
+    {
+        var output = await RunJwtCreateAsync(OutputFormat.Text);
+
+        var token = new JwtSecurityTokenHandler().ReadJwtToken(output.Trim());
+        Assert.Contains(token.Claims, c => c.Type == JwtRegisteredClaimNames.Sub && c.Value == "John Doe");
+    }
+
+    private static async Task<string> RunJwtCreateAsync(OutputFormat outputFormat)
+    {
+        var originalOut = Console.Out;
+        var originalError = Console.Error;
+        using var writer = new StringWriter(CultureInfo.InvariantCulture);
+        Console.SetOut(writer);
+        Console.SetError(writer);
+        try
+        {
+            using var configuration = new ConfigurationManager();
+            configuration["output"] = outputFormat.ToString();
+            var services = new ServiceCollection();
+            _ = services.AddLogging(builder => builder.ConfigureDevProxyLogging(configuration, new DevProxyConfigOptions(), isJwtCommand: true, isRootCommand: false));
+            int exitCode;
+            using (var provider = services.BuildServiceProvider())
+            {
+                var command = new JwtCommand(provider.GetRequiredService<ILogger<JwtCommand>>());
+                exitCode = await StopCommandTests.CreateRootCommand(command)
+                    .Parse(["jwt", "create", "-n", "John Doe", "--output", outputFormat.ToString()])
+                    .InvokeAsync();
+            }
+
+            Assert.Equal(0, exitCode);
+            return writer.ToString();
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            Console.SetError(originalError);
+        }
     }
 }

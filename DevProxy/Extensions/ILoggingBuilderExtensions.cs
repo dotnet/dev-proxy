@@ -22,7 +22,15 @@ static class ILoggingBuilderExtensions
     public static ILoggingBuilder ConfigureDevProxyLogging(
         this ILoggingBuilder builder,
         ConfigurationManager configuration,
-        DevProxyConfigOptions options)
+        DevProxyConfigOptions options) =>
+        builder.ConfigureDevProxyLogging(configuration, options, DevProxyCommand.IsJwtCommand, DevProxyCommand.IsRootCommand);
+
+    internal static ILoggingBuilder ConfigureDevProxyLogging(
+        this ILoggingBuilder builder,
+        ConfigurationManager configuration,
+        DevProxyConfigOptions options,
+        bool isJwtCommand,
+        bool isRootCommand)
     {
         var configuredLogLevel = options.LogLevel ??
             configuration.GetValue("logLevel", LogLevel.Information);
@@ -46,7 +54,7 @@ static class ILoggingBuilderExtensions
 
         // For jwt command, suppress all logging to console to avoid interfering with token output.
         // JSON output is emitted through the logger, so it uses the regular subcommand logging.
-        if (DevProxyCommand.IsJwtCommand && configuredOutput != OutputFormat.Json)
+        if (isJwtCommand && configuredOutput != OutputFormat.Json)
         {
             _ = builder
                 .ClearProviders()
@@ -64,7 +72,7 @@ static class ILoggingBuilderExtensions
             : ProxyConsoleFormatter.DefaultCategoryName;
 
         // For root command (proxy itself), use rich logging
-        if (DevProxyCommand.IsRootCommand)
+        if (isRootCommand)
         {
             _ = builder
                 .AddFilter("Microsoft.Hosting.*", LogLevel.Error)
