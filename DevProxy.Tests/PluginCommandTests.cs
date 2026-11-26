@@ -5,8 +5,11 @@
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Commands;
+using DevProxy.Logging;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using System.Text.Json;
 
 using Xunit;
@@ -42,25 +45,43 @@ public class PluginCommandTests
     [Fact]
     public void ListPlugins_MissingAssembly_ReturnsErrorWithoutOutput()
     {
-        using var output = new StringWriter();
-        using var error = new StringWriter();
+        var logger = new RecordingLogger();
 
-        var exitCode = PluginCommand.ListPlugins(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.dll"), OutputFormat.Json, output, error);
+        var exitCode = PluginCommand.ListPlugins(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.dll"), OutputFormat.Json, logger);
 
         Assert.Equal(1, exitCode);
-        Assert.Empty(output.ToString());
-        Assert.Contains("Could not load plugin assembly", error.ToString(), StringComparison.Ordinal);
+        var entry = Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Error, entry.LogLevel);
+        Assert.Contains("Could not load plugin assembly", entry.State, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void WritePlugins_JsonOutput_IsParsableArray()
+    public async Task RunStandaloneAsync_MissingAssembly_ReturnsFailureWithoutHostServices()
     {
+        var exitCode = await PluginCommand.RunStandaloneAsync([
+            "plugin", "list",
+            "--plugin-path", Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.dll"),
+            "--log-level", "None"
+        ]);
+
+        Assert.Equal(1, exitCode);
+    }
+
+    [Fact]
+    public void WritePlugins_JsonOutput_UsesStructuredResultEnvelope()
+    {
+        var logger = new RecordingLogger();
         using var output = new StringWriter();
 
-        PluginCommand.WritePlugins(GetTestPlugins(), "/full/DevProxy.Tests.dll", PluginPath, OutputFormat.Json, output);
+        PluginCommand.WritePlugins(GetTestPlugins(), "/full/DevProxy.Tests.dll", PluginPath, OutputFormat.Json, logger);
+
+        var entry = Assert.Single(logger.Entries);
+        var formatter = new JsonConsoleFormatter(Options.Create(new ProxyConsoleFormatterOptions()));
+        formatter.Write(entry, null, output);
 
         using var json = JsonDocument.Parse(output.ToString());
-        var plugin = json.RootElement.EnumerateArray()
+        Assert.Equal("result", json.RootElement.GetProperty("type").GetString());
+        var plugin = json.RootElement.GetProperty("data").EnumerateArray()
             .Single(p => p.GetProperty("name").GetString() == "PluginCommandTestConfigurablePlugin");
         Assert.Equal(PluginPath, plugin.GetProperty("pluginPath").GetString());
         Assert.True(plugin.GetProperty("isConfigurable").GetBoolean());
@@ -69,11 +90,11 @@ public class PluginCommandTests
     [Fact]
     public void WritePlugins_TextOutput_ListsPluginsAndUsageHint()
     {
-        using var output = new StringWriter();
+        var logger = new RecordingLogger();
 
-        PluginCommand.WritePlugins(GetTestPlugins(), "/full/DevProxy.Tests.dll", PluginPath, OutputFormat.Text, output);
+        PluginCommand.WritePlugins(GetTestPlugins(), "/full/DevProxy.Tests.dll", PluginPath, OutputFormat.Text, logger);
 
-        var text = output.ToString();
+        var text = logger.Text;
         Assert.Contains("  PluginCommandTestConfigurablePlugin (configurable)", text, StringComparison.Ordinal);
         Assert.Contains("  PluginCommandTestSimplePlugin" + Environment.NewLine, text, StringComparison.Ordinal);
         Assert.Contains($"\"pluginPath\": \"{PluginPath}\"", text, StringComparison.Ordinal);
@@ -82,11 +103,22 @@ public class PluginCommandTests
     [Fact]
     public void WritePlugins_TextOutput_EscapesPluginPathInUsageHint()
     {
-        using var output = new StringWriter();
+        var logger = new RecordingLogger();
 
-        PluginCommand.WritePlugins(GetTestPlugins(), "/full/DevProxy.Tests.dll", @"C:\plugins\MyPlugins.dll", OutputFormat.Text, output);
+        PluginCommand.WritePlugins(GetTestPlugins(), "/full/DevProxy.Tests.dll", @"C:\plugins\MyPlugins.dll", OutputFormat.Text, logger);
 
-        Assert.Contains(@"""pluginPath"": ""C:\\plugins\\MyPlugins.dll""", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains(@"""pluginPath"": ""C:\\plugins\\MyPlugins.dll""", logger.Text, StringComparison.Ordinal);
+    }
+
+    private sealed class RecordingLogger : ILogger
+    {
+        public List<LogEntry<string>> Entries { get; } = [];
+        public string Text => string.Join(Environment.NewLine, Entries.Select(entry => entry.State));
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Entries.Add(new LogEntry<string>(logLevel, nameof(PluginCommand), eventId, formatter(state, exception), exception, (message, _) => message));
     }
 }
 

@@ -5,8 +5,10 @@
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
+using DevProxy.Logging;
 using DevProxy.Plugins;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.CommandLine.Parsing;
@@ -26,7 +28,7 @@ sealed class PluginCommand : Command
 {
     internal const string DefaultPluginPath = "~appFolder/plugins/DevProxy.Plugins.dll";
 
-    public PluginCommand() : base("plugin", "Manage Dev Proxy plugins")
+    public PluginCommand(ILogger<PluginCommand> logger) : base("plugin", "Manage Dev Proxy plugins")
     {
         var listCommand = new Command("list", "List plugins available in a plugin assembly");
         var pluginPathOption = new Option<string?>("--plugin-path")
@@ -36,15 +38,15 @@ sealed class PluginCommand : Command
         };
         listCommand.Add(pluginPathOption);
         HelpExamples.Add(listCommand, [
-            "devproxy plugin list                                List built-in plugins",
-            "devproxy plugin list --output json                  List built-in plugins as JSON",
-            "devproxy plugin list --plugin-path ./MyPlugins.dll  List plugins in a custom assembly",
+            ("devproxy plugin list", "List built-in plugins"),
+            ("devproxy plugin list --output json", "List built-in plugins as JSON"),
+            ("devproxy plugin list --plugin-path ./MyPlugins.dll", "List plugins in a custom assembly"),
         ]);
         listCommand.SetAction(parseResult =>
         {
             var pluginPath = parseResult.GetValue(pluginPathOption);
             var outputFormat = parseResult.GetValueOrDefault<OutputFormat?>(DevProxyCommand.OutputOptionName) ?? OutputFormat.Text;
-            return ListPlugins(pluginPath, outputFormat, Console.Out, Console.Error);
+            return ListPlugins(pluginPath, outputFormat, logger);
         });
 
         Add(listCommand);
@@ -57,6 +59,29 @@ sealed class PluginCommand : Command
     /// </summary>
     internal static async Task<int> RunStandaloneAsync(string[] args)
     {
+        var options = new DevProxyConfigOptions();
+        options.ParseOptions(args);
+        using var loggerFactory = LoggerFactory.Create(builder =>
+        {
+            _ = builder
+                .SetMinimumLevel(options.LogLevel ?? LogLevel.Information)
+                .AddConsole(consoleOptions =>
+                {
+                    consoleOptions.FormatterName = options.Output == OutputFormat.Json
+                        ? JsonConsoleFormatter.FormatterName
+                        : ProxyConsoleFormatter.DefaultCategoryName;
+                    consoleOptions.LogToStandardErrorThreshold = LogLevel.Warning;
+                })
+                .AddConsoleFormatter<ProxyConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
+                {
+                    formatterOptions.ShowTimestamps = false;
+                })
+                .AddConsoleFormatter<JsonConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
+                {
+                    formatterOptions.ShowTimestamps = false;
+                });
+        });
+
         var outputOption = new Option<OutputFormat?>(DevProxyCommand.OutputOptionName)
         {
             Description = $"Output format. Allowed values: {string.Join(", ", Enum.GetNames<OutputFormat>())}",
@@ -69,11 +94,18 @@ sealed class PluginCommand : Command
             Arity = ArgumentArity.Zero,
             Recursive = true
         };
+        var logLevelOption = new Option<LogLevel?>(DevProxyCommand.LogLevelOptionName)
+        {
+            Description = $"Level of messages to log. Allowed values: {string.Join(", ", Enum.GetNames<LogLevel>())}",
+            HelpName = "log-level",
+            Recursive = true
+        };
         var rootCommand = new RootCommand("Dev Proxy")
         {
             outputOption,
             noColorOption,
-            new PluginCommand()
+            logLevelOption,
+            new PluginCommand(loggerFactory.CreateLogger<PluginCommand>())
         };
         HelpExamples.Install(rootCommand);
 
@@ -87,7 +119,7 @@ sealed class PluginCommand : Command
         return exitCode != 0 && parseResult.Errors.Count > 0 ? 2 : exitCode;
     }
 
-    internal static int ListPlugins(string? pluginPath, OutputFormat outputFormat, TextWriter output, TextWriter error)
+    internal static int ListPlugins(string? pluginPath, OutputFormat outputFormat, ILogger logger)
     {
         var configuredPath = string.IsNullOrWhiteSpace(pluginPath) ? DefaultPluginPath : pluginPath;
         var expandedPath = ProxyUtils.ReplacePathTokens(configuredPath.Replace('\\', Path.DirectorySeparatorChar));
@@ -106,47 +138,46 @@ sealed class PluginCommand : Command
         }
         catch (Exception ex) when (ex is FileNotFoundException or BadImageFormatException or FileLoadException)
         {
-            error.WriteLine($"Could not load plugin assembly '{fullPath}': {ex.Message}");
+            logger.LogError("Could not load plugin assembly '{AssemblyPath}': {Message}", fullPath, ex.Message);
             return 1;
         }
         catch (ReflectionTypeLoadException ex)
         {
-            error.WriteLine($"Could not load types from plugin assembly '{fullPath}':");
+            logger.LogError("Could not load types from plugin assembly '{AssemblyPath}':", fullPath);
             foreach (var message in ex.LoaderExceptions.Select(e => e?.Message).Where(m => m is not null).Distinct())
             {
-                error.WriteLine($"  {message}");
+                logger.LogError("  {Message}", message);
             }
             return 1;
         }
 
-        WritePlugins(plugins, fullPath, configuredPath, outputFormat, output);
+        WritePlugins(plugins, fullPath, configuredPath, outputFormat, logger);
         return 0;
     }
 
-    internal static void WritePlugins(IReadOnlyList<PluginInfo> plugins, string assemblyPath, string pluginPath, OutputFormat outputFormat, TextWriter output)
+    internal static void WritePlugins(IReadOnlyList<PluginInfo> plugins, string assemblyPath, string pluginPath, OutputFormat outputFormat, ILogger logger)
     {
         if (outputFormat == OutputFormat.Json)
         {
-            output.WriteLine(JsonSerializer.Serialize(plugins, ProxyUtils.JsonSerializerOptions));
+            logger.LogStructuredOutput(JsonSerializer.Serialize(plugins, ProxyUtils.JsonSerializerOptions));
             return;
         }
 
         if (plugins.Count == 0)
         {
-            output.WriteLine($"No plugins found in {assemblyPath}");
+            logger.LogInformation("No plugins found in {AssemblyPath}", assemblyPath);
             return;
         }
 
-        output.WriteLine($"Plugins in {assemblyPath}:");
-        output.WriteLine();
+        logger.LogInformation("Plugins in {AssemblyPath}:", assemblyPath);
+        logger.LogInformation("");
         foreach (var plugin in plugins)
         {
-            output.WriteLine(plugin.IsConfigurable
-                ? $"  {plugin.Name} (configurable)"
-                : $"  {plugin.Name}");
+            logger.LogInformation("  {Name}{ConfigurationHint}", plugin.Name, plugin.IsConfigurable ? " (configurable)" : "");
         }
-        output.WriteLine();
-        output.WriteLine($"To use a plugin, add it to the plugins array in your config with \"name\": \"<plugin name>\" and \"pluginPath\": {JsonSerializer.Serialize(pluginPath, ProxyUtils.JsonSerializerOptions)}.");
+        logger.LogInformation("");
+        logger.LogInformation("To use a plugin, add it to the plugins array in your config with \"name\": \"<plugin name>\" and \"pluginPath\": {PluginPath}.",
+            JsonSerializer.Serialize(pluginPath, ProxyUtils.JsonSerializerOptions));
     }
 
     internal static IReadOnlyList<PluginInfo> GetPlugins(string assemblyPath, string pluginPath)

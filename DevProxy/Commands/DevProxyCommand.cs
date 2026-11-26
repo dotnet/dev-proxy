@@ -149,12 +149,15 @@ sealed class DevProxyCommand : RootCommand
             var i = 1;
             while (i < args.Length)
             {
-                if (string.Equals(args[i], OutputOptionName, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(args[i], OutputOptionName, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(args[i], LogLevelOptionName, StringComparison.OrdinalIgnoreCase))
                 {
                     i += 2;
                 }
                 else if (args[i].StartsWith($"{OutputOptionName}=", StringComparison.OrdinalIgnoreCase) ||
                     args[i].StartsWith($"{OutputOptionName}:", StringComparison.OrdinalIgnoreCase) ||
+                    args[i].StartsWith($"{LogLevelOptionName}=", StringComparison.OrdinalIgnoreCase) ||
+                    args[i].StartsWith($"{LogLevelOptionName}:", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(args[i], NoColorOptionName, StringComparison.OrdinalIgnoreCase))
                 {
                     i++;
@@ -722,7 +725,7 @@ sealed class DevProxyCommand : RootCommand
             ActivatorUtilities.CreateInstance<StatusCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<StopCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<LogsCommand>(_serviceProvider),
-            new PluginCommand()
+            ActivatorUtilities.CreateInstance<PluginCommand>(_serviceProvider)
         };
         var pluginCommands = _plugins.SelectMany(p => p.GetCommands());
         foreach (var group in pluginCommands.GroupBy(c => c.Name))
