@@ -175,6 +175,24 @@ public sealed class ConfigValidateTests : IDisposable
     }
 
     [Fact]
+    public async Task WarnsWhenPluginConfigSectionSchemaUnavailable()
+    {
+        var (exitCode, result) = await ValidateWithExitCodeAsync($$"""
+            {
+              "plugins": [
+                { "name": "LatencyPlugin", "enabled": true, "pluginPath": {{RealPluginPath}}, "configSection": "mySection" }
+              ],
+              "urlsToWatch": ["https://api.example.com/*"],
+              "mySection": { "$schema": "https://example.com/missing.schema.json", "rate": "high" }
+            }
+            """);
+
+        Assert.Equal(0, exitCode);
+        Assert.Empty(GetPaths(result, "errors"));
+        Assert.Contains("mySection.$schema", GetPaths(result, "warnings"));
+    }
+
+    [Fact]
     public async Task SkipsPluginConfigSectionValidationWhenSchemaValidationDisabled()
     {
         var result = await ValidateAsync($$"""
