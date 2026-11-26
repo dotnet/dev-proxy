@@ -126,10 +126,12 @@ Run the planned functional scenarios. Record each command or request, expected
 result, actual result, and pass/fail/blocked status. Check observable behavior,
 not just exit codes or the absence of exceptions.
 
-For failures, capture a minimal reproduction and relevant sanitized output.
-Distinguish a PR regression from an environment problem or pre-existing failure;
-when needed, reproduce against the captured base revision in a separate
-checkout. Never report skipped or blocked tests as passing.
+For each failure, capture a minimal reproduction, the exact expected result,
+the actual result with sanitized evidence, and the behavioral change requested.
+Include an example of the corrected output when useful. Distinguish a PR
+regression from an environment problem or pre-existing failure; when needed,
+reproduce against the captured base revision in a separate checkout. Never
+report skipped or blocked tests as passing.
 
 ### 6. Clean up
 
@@ -158,8 +160,8 @@ Publish the test report without asking for confirmation. Choose the review event
 based only on evidence:
 
 - **Approve:** All necessary functional scenarios and required validation pass
-  on the current head, with no material coverage gaps. Scope the approval to
-  functional testing; it does not replace code review.
+  on the current head. Scope the approval to functional testing; it does not
+  replace code review.
 - **Request changes:** A reproducible functional defect attributable to the PR
   prevents the expected behavior. Include reproduction steps, expected versus
   actual results, and relevant evidence.
@@ -167,15 +169,22 @@ based only on evidence:
   draft, or available evidence cannot justify approval or a change request.
   Environmental failures alone are not grounds for requesting changes.
 
-Bind a submitted review to the tested commit. Add inline comments only where
-they clarify an observed functional failure on a changed line; avoid duplicate
-comments and speculative code-review findings.
+Bind a submitted review to the tested commit. For each confirmed, actionable
+failure, add an inline review comment on the relevant changed code line, not
+just in the summary. State the requested change, expected versus actual result,
+and minimal reproduction or evidence. Reply to an existing thread for the same
+defect instead of creating duplicates, and link to the thread from the summary.
+If no valid diff location exists or GitHub prevents inline commenting, explain
+that limitation in the summary rather than attaching a comment to an unrelated
+line. Keep comments tied to reproduced failures, not speculative code review.
 
 If GitHub prevents the review (for example, self-approval or missing permissions),
 publish a report comment if allowed and explicitly report the rejected action.
 Never claim feedback was submitted unless GitHub confirms it.
 
-Use this report structure for the PR feedback and final summary:
+Use this report structure for the PR feedback and final summary. Keep it focused
+on actionable fixes; record blocked scenarios and their reasons in the results
+table rather than adding lists of untested platforms or integrations.
 
 ```markdown
 ## Functional test results
@@ -188,8 +197,15 @@ Use this report structure for the PR feedback and final summary:
 |--------------------------|----------|--------|--------|
 | <reproducible action> | <assertion> | <sanitized evidence> | PASS / FAIL / BLOCKED |
 
-### Failures and coverage gaps
-<Reproduction steps, blocked dependencies, untested platforms, or "None".>
+### Requested changes
+<For each confirmed failure, include the following; otherwise write "None".>
+
+#### <Short defect title>
+- **Requested change:** <Specific behavioral fix needed.>
+- **Expected:** <Exact correct behavior or output, with an example when useful.>
+- **Actual:** <Observed incorrect behavior or output.>
+- **Reproduction:** <Minimal steps or link to the inline comment with details.>
+- **Inline comment:** <Thread link, or explain why an inline comment was not possible.>
 
 ### Outcome
 <Approval, change request, or comment only, with rationale and cleanup status.>
