@@ -255,7 +255,8 @@ public sealed class OpenApiSpecGeneratorPlugin(
         var resource = GetLastNonTokenSegment(request.RequestUri.Segments);
         var path = new OpenApiPathItem
         {
-            Operations = []
+            Operations = [],
+            Parameters = []
         };
 
         var method = request.Method?.ToUpperInvariant() switch
@@ -276,7 +277,8 @@ public sealed class OpenApiSpecGeneratorPlugin(
             // will be replaced later after the path has been parametrized
             Description = $"{method} {resource}",
             // will be replaced later after the path has been parametrized
-            OperationId = $"{method}.{resource}"
+            OperationId = $"{method}.{resource}",
+            Parameters = []
         };
         var authQueryParameter = detectedAuth is DetectedApiKeyAuth { In: DetectedApiKeyLocation.Query } apiKeyAuth ?
             apiKeyAuth.Name : null;
@@ -313,7 +315,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
                     GetMediaType(request.ContentType),
                     new OpenApiMediaType
                     {
-                        Schema = GetSchemaFromBody(GetMediaType(request.ContentType), request.BodyString)
+                        Schema = GetSchemaFromBody(GetMediaType(request.ContentType), () => request.BodyString)
                     }
                 }
             }
@@ -330,6 +332,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
         }
 
         Logger.LogDebug("  Processing request headers...");
+        var addedHeaders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var header in headers)
         {
             var lowerCaseHeaderName = header.Name.ToLowerInvariant();
@@ -342,6 +345,12 @@ public sealed class OpenApiSpecGeneratorPlugin(
             if (Models.Http.AuthHeaders.Contains(lowerCaseHeaderName))
             {
                 Logger.LogDebug("    Skipping auth header {HeaderName}", header.Name);
+                continue;
+            }
+
+            if (!addedHeaders.Add(header.Name))
+            {
+                Logger.LogDebug("    Header {HeaderName} already added", header.Name);
                 continue;
             }
 
@@ -418,16 +427,23 @@ public sealed class OpenApiSpecGeneratorPlugin(
 
         var openApiResponse = new OpenApiResponse
         {
-            Description = response.StatusDescription
+            Description = response.StatusDescription,
+            Headers = new Dictionary<string, IOpenApiHeader>(StringComparer.OrdinalIgnoreCase),
+            Content = new Dictionary<string, IOpenApiMediaType>()
         };
         var responseCode = ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture);
-        if (response.HasBody)
+        var responseMediaType = GetMediaType(response.ContentType);
+        if (response.HasBody && string.IsNullOrEmpty(responseMediaType))
+        {
+            Logger.LogDebug("    Response has body but no content type");
+        }
+        else if (response.HasBody)
         {
             Logger.LogDebug("    Response has body");
 
-            openApiResponse.Content?.Add(GetMediaType(response.ContentType), new OpenApiMediaType()
+            openApiResponse.Content?.Add(responseMediaType, new OpenApiMediaType()
             {
-                Schema = GetSchemaFromBody(GetMediaType(response.ContentType), response.BodyString)
+                Schema = GetSchemaFromBody(responseMediaType, () => response.BodyString)
             });
         }
         else
@@ -475,7 +491,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
         operation.Responses?.Add(responseCode, openApiResponse);
     }
 
-    private OpenApiSchema? GetSchemaFromBody(string? contentType, string body)
+    private OpenApiSchema? GetSchemaFromBody(string? contentType, Func<string> getBody)
     {
         if (contentType is null)
         {
@@ -495,7 +511,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
                 };
             }
 
-            return GetSchemaFromJsonString(body);
+            return GetSchemaFromJsonString(getBody());
         }
 
         return null;
@@ -814,11 +830,12 @@ public sealed class OpenApiSpecGeneratorPlugin(
 
         foreach (var parameter in parameters)
         {
-            var paramFromOperation = operation.Parameters?.FirstOrDefault(p => p.Name == parameter.Name && p.In == parameter.In);
+            var nameComparison = parameter.In == ParameterLocation.Header ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            var paramFromOperation = operation.Parameters?.FirstOrDefault(p => p.In == parameter.In && string.Equals(p.Name, parameter.Name, nameComparison));
             if (paramFromOperation is null)
             {
                 Logger.LogDebug("      Adding parameter {ParameterName} to operation...", parameter.Name);
-                operation.Parameters?.Add(parameter);
+                (operation.Parameters ??= []).Add(parameter);
                 continue;
             }
 
@@ -835,6 +852,21 @@ public sealed class OpenApiSpecGeneratorPlugin(
             return;
         }
 
+        if (source.Type == JsonSchemaType.Array && target.Type == JsonSchemaType.Array)
+        {
+            // replace the untyped items placeholder generated for an empty array
+            if (target is OpenApiSchema targetArray && targetArray.Items is { Type: null } && source.Items?.Type is not null)
+            {
+                Logger.LogDebug("        Replacing untyped array items...");
+                targetArray.Items = source.Items;
+                return;
+            }
+
+            Logger.LogDebug("        Merging array items...");
+            MergeSchema(source.Items, target.Items);
+            return;
+        }
+
         if (source.Type != JsonSchemaType.Object || target.Type != JsonSchemaType.Object)
         {
             Logger.LogDebug("        Source or target schema is not an object. Skipping...");
@@ -847,25 +879,31 @@ public sealed class OpenApiSpecGeneratorPlugin(
             return;
         }
 
-        if (target.Properties is null || target.Properties.Count == 0)
+        var targetProperties = target.Properties;
+        if (targetProperties is null)
         {
-            Logger.LogDebug("        Target has no properties. Skipping...");
-            return;
+            if (target is not OpenApiSchema targetSchema)
+            {
+                Logger.LogDebug("        Target has no properties. Skipping...");
+                return;
+            }
+
+            targetSchema.Properties = targetProperties = new Dictionary<string, IOpenApiSchema>();
         }
 
         foreach (var property in source.Properties)
         {
-            var propertyFromTarget = target.Properties.FirstOrDefault(p => p.Key == property.Key);
+            var propertyFromTarget = targetProperties.FirstOrDefault(p => p.Key == property.Key);
             if (propertyFromTarget.Value is null)
             {
                 Logger.LogDebug("        Adding property {PropertyKey} to schema...", property.Key);
-                target.Properties.Add(property);
+                targetProperties.Add(property);
                 continue;
             }
 
-            if (property.Value.Type != JsonSchemaType.Object)
+            if (property.Value.Type is not (JsonSchemaType.Object or JsonSchemaType.Array))
             {
-                Logger.LogDebug("        Property already found but is not an object. Skipping...");
+                Logger.LogDebug("        Property already found but is not an object or array. Skipping...");
                 continue;
             }
 
@@ -903,7 +941,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
         }
 
         Logger.LogDebug("    Merging request body into operation...");
-        MergeSchema(bodyFromOperation.Schema, requestBody.Content.FirstOrDefault().Value.Schema);
+        MergeSchema(requestBody.Content.FirstOrDefault().Value.Schema, bodyFromOperation.Schema);
     }
 
     private void AddOrMergeResponse(OpenApiOperation operation, OpenApiResponses? apiResponses)
@@ -932,6 +970,8 @@ public sealed class OpenApiSpecGeneratorPlugin(
             return;
         }
 
+        MergeResponseHeaders(responseFromOperation, apiResponse);
+
         if (apiResponse.Content is null || apiResponse.Content.Count == 0)
         {
             Logger.LogDebug("    No response content to process");
@@ -955,7 +995,28 @@ public sealed class OpenApiSpecGeneratorPlugin(
         }
 
         Logger.LogDebug("    Merging response {ApiResponseStatusCode}/{ApiResponseContentType} into operation...", apiResponseStatusCode, apiResponseContentType);
-        MergeSchema(contentFromOperation.Schema, apiResponse.Content.First().Value.Schema);
+        MergeSchema(apiResponse.Content.First().Value.Schema, contentFromOperation.Schema);
+    }
+
+    private void MergeResponseHeaders(IOpenApiResponse responseFromOperation, IOpenApiResponse apiResponse)
+    {
+        if (apiResponse.Headers is null || apiResponse.Headers.Count == 0 ||
+            responseFromOperation is not OpenApiResponse retainedResponse)
+        {
+            return;
+        }
+
+        retainedResponse.Headers ??= new Dictionary<string, IOpenApiHeader>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, header) in apiResponse.Headers)
+        {
+            if (retainedResponse.Headers.ContainsKey(name))
+            {
+                continue;
+            }
+
+            Logger.LogDebug("    Adding response header {HeaderName}...", name);
+            retainedResponse.Headers.Add(name, header);
+        }
     }
 
     /**
@@ -969,6 +1030,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
     {
         var segments = requestUri.Segments;
         var previousSegment = "item";
+        var parameterNameCounts = new Dictionary<string, int>(StringComparer.Ordinal);
 
         for (var i = 0; i < segments.Length; i++)
         {
@@ -981,6 +1043,11 @@ public sealed class OpenApiSpecGeneratorPlugin(
             if (IsParametrizable(segment))
             {
                 var parameterName = $"{previousSegment}-id";
+                var count = parameterNameCounts[parameterName] = parameterNameCounts.GetValueOrDefault(parameterName) + 1;
+                if (count > 1)
+                {
+                    parameterName = $"{parameterName}-{count}";
+                }
                 segments[i] = $"{{{parameterName}}}{(requestUri.Segments[i].EndsWith('/') ? "/" : "")}";
 
                 pathItem.Parameters?.Add(new OpenApiParameter
@@ -1092,7 +1159,11 @@ public sealed class OpenApiSpecGeneratorPlugin(
                 break;
             case JsonValueKind.Array:
                 schema.Type = JsonSchemaType.Array;
-                schema.Items = GetSchemaFromJsonElement(jsonElement.EnumerateArray().FirstOrDefault());
+                var firstItem = jsonElement.EnumerateArray().FirstOrDefault();
+                // an empty array gives no type information, so use an untyped (any) items schema
+                schema.Items = firstItem.ValueKind == JsonValueKind.Undefined
+                    ? new OpenApiSchema()
+                    : GetSchemaFromJsonElement(firstItem);
                 break;
             default:
                 schema.Type = JsonSchemaType.Object;
