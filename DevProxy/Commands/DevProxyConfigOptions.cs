@@ -183,10 +183,7 @@ sealed class DevProxyConfigOptions : RootCommand
             CustomParser = ParsePort
         };
 
-        var discoverOption = new Option<bool>(DevProxyCommand.DiscoverOptionName, "--discover")
-        {
-            Arity = ArgumentArity.Zero
-        };
+        var discoverOption = new Option<bool?>(DevProxyCommand.DiscoverOptionName);
 
         var noColorOption = new Option<bool>(DevProxyCommand.NoColorOptionName)
         {
