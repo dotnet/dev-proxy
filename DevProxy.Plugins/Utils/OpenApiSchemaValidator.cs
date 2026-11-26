@@ -459,14 +459,22 @@ internal static class OpenApiSchemaValidator
         }
     }
 
+    // References are compared by their complete reference, including the
+    // document, because Microsoft.OpenApi resolves references to schemas in
+    // other documents to same-named local schemas, which would otherwise make
+    // same-named schemas from different documents match
     private static IOpenApiSchema? FindOneOfBranch(IList<IOpenApiSchema> oneOf, IOpenApiSchema candidate)
     {
         var target = ResolveTarget(candidate);
-        var name = GetSchemaName(candidate);
+        var reference = GetFullReference(candidate);
         return oneOf.FirstOrDefault(s =>
-            ReferenceEquals(ResolveTarget(s), target) ||
-            (name is not null && GetSchemaName(s) == name));
+            reference is not null && GetFullReference(s) is { } branchReference
+                ? string.Equals(branchReference, reference, StringComparison.Ordinal)
+                : ReferenceEquals(ResolveTarget(s), target));
     }
+
+    private static string? GetFullReference(IOpenApiSchema schema) =>
+        schema is OpenApiSchemaReference reference ? reference.Reference?.ReferenceV3 : null;
 
     // explicit mappings take precedence over implicit names, so implicit names
     // that are remapped are only allowed if their mapping stays within oneOf

@@ -1180,6 +1180,32 @@ public sealed class OpenApiValidationPluginTests : IDisposable
     }
 
     [Fact]
+    public async Task DoesNotMatchSameNamedSchemasFromDifferentDocuments()
+    {
+        var spec = DiscriminatorSpec.ReplaceLineEndings("\n")
+            .Replace("doggo: '#/components/schemas/Dog'", "doggo: '#/components/schemas/Dog'\n                  kitty: 'other.yaml#/components/schemas/Cat'", StringComparison.Ordinal);
+        var externalBranchSpec = DiscriminatorSpec.ReplaceLineEndings("\n")
+            .Replace("- $ref: '#/components/schemas/Cat'", "- $ref: 'other.yaml#/components/schemas/Cat'", StringComparison.Ordinal)
+            .Replace("doggo: '#/components/schemas/Dog'", "doggo: '#/components/schemas/Dog'\n                  kitty: 'other.yaml#/components/schemas/Cat'\n                  tom: '#/components/schemas/Cat'", StringComparison.Ordinal);
+        var plugin = await CreatePluginWithSpecsAsync(("pets.yaml", spec));
+
+        var external = plugin.Validate(PostPet("""{ "petType": "kitty", "meows": true }""").Session);
+        var unknown = plugin.Validate(PostPet("""{ "petType": "Bird" }""").Session);
+
+        Assert.Equal("$.petType: Discriminator value 'kitty' maps to schema 'Cat', which isn't one of the schemas in 'oneOf'", Assert.Single(Messages(external)));
+        Assert.Equal("$.petType: Discriminator value 'Bird' doesn't map to any schema in 'oneOf'. Allowed values: 'doggo', 'Cat', 'Dog', 'Lizard'", Assert.Single(Messages(unknown)));
+
+        plugin = await CreatePluginWithSpecsAsync(("pets-external.yaml", externalBranchSpec));
+
+        var local = plugin.Validate(PostPet("""{ "petType": "tom", "meows": true }""").Session);
+        unknown = plugin.Validate(PostPet("""{ "petType": "Bird" }""").Session);
+
+        Assert.Equal("$.petType: Discriminator value 'tom' maps to schema 'Cat', which isn't one of the schemas in 'oneOf'", Assert.Single(Messages(local)));
+        Assert.Contains("Allowed values: 'doggo', 'kitty', ", Assert.Single(Messages(unknown)), StringComparison.Ordinal);
+        Assert.DoesNotContain("'tom'", Assert.Single(Messages(unknown)), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task FallsBackToDiscriminatorDefaultMapping()
     {
         var spec = DiscriminatorSpec.ReplaceLineEndings("\n")
