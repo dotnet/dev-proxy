@@ -17,6 +17,8 @@ namespace Microsoft.Extensions.DependencyInjection;
 
 static class PluginServiceExtensions
 {
+    private const string BuiltInPluginsPath = "~appFolder/plugins/DevProxy.Plugins.dll";
+
     public static IServiceCollection AddPlugins(
         this IServiceCollection services,
         IConfiguration configuration,
@@ -54,12 +56,12 @@ static class PluginServiceExtensions
             pluginReferences.Add(new()
             {
                 Name = "UrlDiscoveryPlugin",
-                PluginPath = "~appFolder/plugins/DevProxy.Plugins.dll"
+                PluginPath = BuiltInPluginsPath
             });
             pluginReferences.Add(new()
             {
                 Name = "PlainTextReporter",
-                PluginPath = "~appFolder/plugins/DevProxy.Plugins.dll"
+                PluginPath = BuiltInPluginsPath
             });
 
             globallyWatchedUrls.Clear();
@@ -100,14 +102,23 @@ static class PluginServiceExtensions
             // Load Handler Assembly if enabled
             var pluginLocation = Path.GetFullPath(Path.Combine(configFileDirectory, ProxyUtils.ReplacePathTokens(pluginRef.PluginPath.Replace('\\', Path.DirectorySeparatorChar))));
 
-            if (!pluginContexts.TryGetValue(pluginLocation, out var pluginLoadContext))
-            {
-                pluginLoadContext = new(pluginLocation);
-                pluginContexts.Add(pluginLocation, pluginLoadContext);
-            }
-
             logger.LogDebug("Loading plugin {PluginName} from: {PluginLocation}", pluginRef.Name, pluginLocation);
-            var assembly = pluginLoadContext.LoadFromAssemblyName(new(Path.GetFileNameWithoutExtension(pluginLocation)));
+            Assembly assembly;
+            try
+            {
+                if (!pluginContexts.TryGetValue(pluginLocation, out var pluginLoadContext))
+                {
+                    pluginLoadContext = new(pluginLocation);
+                    pluginContexts.Add(pluginLocation, pluginLoadContext);
+                }
+
+                assembly = pluginLoadContext.LoadFromAssemblyName(new(Path.GetFileNameWithoutExtension(pluginLocation)));
+            }
+            catch (Exception ex) when (IsBuiltInPluginsPath(pluginLocation))
+            {
+                logger.LogError(ex, "Failed to load plugin {PluginName} from {PluginLocation}: {ErrorMessage}. Docs: {DocsUrl}", pluginRef.Name, pluginLocation, ex.Message.TrimEnd().TrimEnd('.'), DocsLinks.Get(pluginRef.Name));
+                throw;
+            }
             var pluginUrlsList = pluginRef.UrlsToWatch?.Select(ConvertToRegex);
             HashSet<UrlToWatch>? pluginUrls = null;
 
@@ -150,6 +161,13 @@ static class PluginServiceExtensions
             sp.GetServices<IPlugin>().OfType<IStdioPlugin>().ToList());
 
         return services;
+    }
+
+    private static bool IsBuiltInPluginsPath(string pluginLocation)
+    {
+        var builtInPluginsLocation = Path.GetFullPath(ProxyUtils.ReplacePathTokens(BuiltInPluginsPath.Replace('/', Path.DirectorySeparatorChar)));
+        var comparison = OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        return string.Equals(pluginLocation, builtInPluginsLocation, comparison);
     }
 
     private static void RegisterPlugin(
