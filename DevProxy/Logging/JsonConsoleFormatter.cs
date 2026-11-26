@@ -73,6 +73,12 @@ sealed class JsonConsoleFormatter : ConsoleFormatter
 
     public override void Write<TState>(in LogEntry<TState> logEntry, IExternalScopeProvider? scopeProvider, TextWriter textWriter)
     {
+        if (logEntry.LogLevel < _options.MinimumLogLevel &&
+            logEntry.EventId != LogEvents.StructuredOutput)
+        {
+            return;
+        }
+
         if (logEntry.State is RequestLog requestLog)
         {
             WriteRequestLog(requestLog, logEntry.Category, scopeProvider, textWriter);
