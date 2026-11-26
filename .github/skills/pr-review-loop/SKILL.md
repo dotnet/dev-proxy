@@ -26,7 +26,7 @@ These stay with a human. Never:
 
 Stop the loop and report to the user when any of these is true:
 
-1. **Clean review:** the latest Copilot review of the current head commit has no new inline comments and its body reports no unaddressed findings, CI is green, and every earlier thread is resolved or has your reply
+1. **Clean review:** the latest Copilot review of the current head commit has no new inline comments and its body reports no unaddressed findings, CI is green, and every earlier thread and review-body finding is resolved or has your reply
 2. **Round limit:** 20 review rounds have been completed
 3. **Repeated CI failure:** the same CI check fails 3 times in a row with the same error
 4. **Stuck:** a fix needs a decision from a human (design choice, behavior change, scope change). Ask; don't guess
@@ -51,10 +51,11 @@ BRANCH=$(git branch --show-current)
 
 ### Step 1: Verify Locally
 
-Build and run the tests. Fix any failures before you continue.
+Restore in locked mode (like CI, so stale lock files fail instead of being updated), then build and run the tests. Fix any failures before you continue.
 
 ```bash
-dotnet build DevProxy.sln
+dotnet restore DevProxy.sln --locked-mode
+dotnet build DevProxy.sln --no-restore
 dotnet test DevProxy.sln
 ```
 
@@ -70,7 +71,15 @@ PR=$(gh pr list --repo "$UPSTREAM" --head "$BRANCH" --base main --state open \
   --jq ".[] | select(.headRepositoryOwner.login==\"$FORK_OWNER\") | .number")
 ```
 
-If `PR` is set, reuse it: push any new commits (`git push origin "$BRANCH"`) and continue with Step 3. Unresolved feedback from earlier rounds comes up again in Step 5.
+If `PR` is set, reuse it. Unresolved inline threads from earlier rounds come up again in Step 5, but findings that Copilot reported only in a review body don't. Before continuing, read the bodies of the earlier Copilot reviews and the PR comments, which hold your earlier replies to such findings:
+
+```bash
+gh pr view "$PR" --repo "$UPSTREAM" --json reviews,comments \
+  --jq '(.reviews[] | select(.author.login=="copilot-pull-request-reviewer") | {submittedAt, body}),
+        (.comments[] | {author: .author.login, body})'
+```
+
+Address every body finding that has neither a fix nor a reply, as described at the end of Step 5. Then push any new commits (`git push origin "$BRANCH"`) and continue with Step 3.
 
 Otherwise, rebase on the latest upstream `main` and push the branch to the fork. Only rebase a branch that hasn't been pushed yet. Once it's published, don't rewrite its history; if it needs upstream changes, merge `upstream/main` instead.
 
