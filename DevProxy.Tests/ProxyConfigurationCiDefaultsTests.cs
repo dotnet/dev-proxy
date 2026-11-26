@@ -5,6 +5,7 @@
 using DevProxy.Commands;
 using DevProxy.Proxy;
 using Microsoft.Extensions.Configuration;
+using System.CommandLine;
 using Xunit;
 
 namespace DevProxy.Tests;
@@ -91,5 +92,52 @@ public class ProxyConfigurationCiDefaultsTests
     public void ShouldLogCiDefaults_BothOverriddenOnCommandLine_ReturnsFalse()
     {
         Assert.False(DevProxyCommand.ShouldLogCiDefaults(Create(isCi: true), true, true));
+    }
+
+    private static ParseResult ParseInstallCert(ProxyConfiguration config, params string[] args)
+    {
+        var asSystemProxyOption = new Option<bool?>(DevProxyCommand.AsSystemProxyOptionName);
+        var command = new RootCommand
+        {
+            asSystemProxyOption,
+            DevProxyCommand.CreateInstallCertOption(asSystemProxyOption, config),
+        };
+        return command.Parse(args);
+    }
+
+    [Fact]
+    public void InstallCertFalse_Ci_WithoutAsSystemProxy_IsAccepted()
+    {
+        var result = ParseInstallCert(Create(isCi: true), "--install-cert", "false");
+
+        Assert.Empty(result.Errors);
+    }
+
+    [Fact]
+    public void InstallCertFalse_AsSystemProxyFalseInConfig_WithoutAsSystemProxy_IsAccepted()
+    {
+        var config = Create(isCi: false, new() { ["asSystemProxy"] = "false" });
+
+        var result = ParseInstallCert(config, "--install-cert", "false");
+
+        Assert.Empty(result.Errors);
+    }
+
+    [Fact]
+    public void InstallCertFalse_AsSystemProxyTrueInConfig_IsRejected()
+    {
+        var config = Create(isCi: true, new() { ["asSystemProxy"] = "true" });
+
+        var result = ParseInstallCert(config, "--install-cert", "false");
+
+        Assert.Contains(result.Errors, e => e.Message.Contains(DevProxyCommand.AsSystemProxyOptionName, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void InstallCertFalse_AsSystemProxyTrueOnCommandLine_IsRejected()
+    {
+        var result = ParseInstallCert(Create(isCi: true), "--install-cert", "false", "--as-system-proxy", "true");
+
+        Assert.NotEmpty(result.Errors);
     }
 }

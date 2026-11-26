@@ -279,6 +279,31 @@ sealed class DevProxyCommand : RootCommand
         return exitCode;
     }
 
+    internal static Option<bool?> CreateInstallCertOption(Option<bool?> asSystemProxyOption, IProxyConfiguration proxyConfiguration)
+    {
+        var installCertOption = new Option<bool?>(InstallCertOptionName)
+        {
+            Description = "Install self-signed certificate"
+        };
+        installCertOption.Validators.Add(input =>
+        {
+            try
+            {
+                var asSystemProxy = input.GetValue(asSystemProxyOption) ?? proxyConfiguration.AsSystemProxy;
+                var installCert = input.GetValue(installCertOption) ?? proxyConfiguration.InstallCert;
+                if (asSystemProxy && !installCert)
+                {
+                    input.AddError($"Requires option '{AsSystemProxyOptionName}' to be 'false'");
+                }
+            }
+            catch (InvalidOperationException ex)
+            {
+                input.AddError(ex.Message);
+            }
+        });
+        return installCertOption;
+    }
+
     internal static void ValidatePort(OptionResult input)
     {
         var value = input.Tokens.Count > 0 ? input.Tokens[0].Value : null;
@@ -530,26 +555,7 @@ sealed class DevProxyCommand : RootCommand
             Description = "Set Dev Proxy as the system proxy"
         };
 
-        var installCertOption = new Option<bool?>(InstallCertOptionName)
-        {
-            Description = "Install self-signed certificate"
-        };
-        installCertOption.Validators.Add(input =>
-        {
-            try
-            {
-                var asSystemProxy = input.GetValue(asSystemProxyOption) ?? _proxyConfiguration.AsSystemProxy;
-                var installCert = input.GetValue(installCertOption) ?? _proxyConfiguration.InstallCert;
-                if (asSystemProxy && !installCert)
-                {
-                    input.AddError($"Requires option '{AsSystemProxyOptionName}' to be 'false'");
-                }
-            }
-            catch (InvalidOperationException ex)
-            {
-                input.AddError(ex.Message);
-            }
-        });
+        var installCertOption = CreateInstallCertOption(asSystemProxyOption, _proxyConfiguration);
 
         var timeoutOption = new Option<long?>(TimeoutOptionName, "-t")
         {
