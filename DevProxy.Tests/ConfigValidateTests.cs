@@ -23,18 +23,13 @@ public sealed class ConfigValidateTests : IDisposable
         }
         """;
 
-    // Relative to the config file. Copied without its deps.json so that,
-    // like in Dev Proxy, shared assemblies resolve from the default context.
-    private const string RealPluginPath = "\"plugins/DevProxy.Plugins.dll\"";
+    // JSON string with the path to a plugin assembly copied without its
+    // deps.json so that, like in Dev Proxy, shared assemblies resolve from the
+    // default context. Kept outside the per-test directory because loading
+    // the plugin locks the file on Windows.
+    private static readonly string RealPluginPath = JsonSerializer.Serialize(CopyPluginAssembly());
 
     private readonly string _tempDir = Directory.CreateTempSubdirectory("devproxy-validate-tests").FullName;
-
-    public ConfigValidateTests()
-    {
-        var pluginsDir = Directory.CreateDirectory(Path.Combine(_tempDir, "plugins")).FullName;
-        var pluginAssembly = typeof(DevProxy.Plugins.Behavior.LatencyPlugin).Assembly.Location;
-        File.Copy(pluginAssembly, Path.Combine(pluginsDir, Path.GetFileName(pluginAssembly)));
-    }
 
     public void Dispose() => Directory.Delete(_tempDir, true);
 
@@ -377,6 +372,15 @@ public sealed class ConfigValidateTests : IDisposable
         var json = Assert.Single(logger.Messages);
         using var doc = JsonDocument.Parse(json);
         return (exitCode, doc.RootElement.Clone());
+    }
+
+    private static string CopyPluginAssembly()
+    {
+        var pluginAssembly = typeof(DevProxy.Plugins.Behavior.LatencyPlugin).Assembly.Location;
+        var pluginsDir = Directory.CreateDirectory(Path.Combine(AppContext.BaseDirectory, "validate-test-plugins")).FullName;
+        var pluginPath = Path.Combine(pluginsDir, Path.GetFileName(pluginAssembly));
+        File.Copy(pluginAssembly, pluginPath, overwrite: true);
+        return pluginPath;
     }
 
     private static List<string> GetPaths(JsonElement result, string property) =>
