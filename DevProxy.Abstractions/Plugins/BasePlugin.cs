@@ -223,9 +223,19 @@ public abstract class BasePlugin<TConfiguration>(
             }
 
             ProxyUtils.ValidateSchemaVersion(schemaUrl, Logger);
-            var result = await ProxyUtils.ValidateJsonAsync(configSection.GetRawText(), schemaUrl, _httpClient, Logger, cancellationToken);
-            SchemaValidationCache.SetResult(cacheKey, fileVersion, result.IsValid);
-            return result;
+            var result = await ProxyUtils.ValidateJsonAgainstSchemaAsync(configSection.GetRawText(), schemaUrl, _httpClient, Logger, cancellationToken);
+            // a pass without a schema isn't cached, so that the section is validated once the schema is available
+            SchemaValidationCache.SetResult(cacheKey, fileVersion, result.Status == SchemaValidationStatus.Valid);
+            if (result.Status == SchemaValidationStatus.SchemaUnavailable)
+            {
+                if (Logger.IsEnabled(LogLevel.Warning))
+                {
+                    Logger.LogWarning("Skipping plugin configuration validation because the schema {SchemaUrl} could not be retrieved: {Error}", schemaUrl, string.Join(", ", result.Errors));
+                }
+                return (true, []);
+            }
+
+            return (result.Status == SchemaValidationStatus.Valid, result.Errors);
         }
         catch (Exception ex)
         {

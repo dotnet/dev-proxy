@@ -279,32 +279,17 @@ public static class ProxyUtils
         return $"{uri.GetLeftPart(UriPartial.Authority)}/{parsedSample.QueryVersion}/{resourceUrl}{queryString}";
     }
 
+    /// <summary>
+    /// Validates <paramref name="json"/> against the schema at <paramref name="schemaUrl"/>.
+    /// Reports a schema that couldn't be retrieved as invalid. Use
+    /// <see cref="ValidateJsonAgainstSchemaAsync"/> to tell these cases apart.
+    /// </summary>
     public static async Task<(bool IsValid, IEnumerable<string> ValidationErrors)> ValidateJsonAsync(string? json, string? schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken)
     {
         try
         {
-            logger.LogDebug("Validating JSON against schema {SchemaUrl}", schemaUrl);
-
-            if (string.IsNullOrEmpty(json))
-            {
-                logger.LogDebug("JSON is empty, skipping validation");
-                return (true, []);
-            }
-            if (string.IsNullOrEmpty(schemaUrl))
-            {
-                logger.LogDebug("Schema URL is empty, skipping validation");
-                return (true, []);
-            }
-            ArgumentNullException.ThrowIfNull(httpClient);
-
-            var schema = await GetSchemaAsync(schemaUrl, httpClient, logger, cancellationToken);
-            logger.LogDebug("Parsing JSON");
-            var token = JToken.Parse(json);
-
-            logger.LogDebug("Validating JSON");
-            var isValid = token.IsValid(schema, out IList<string> errorMessages);
-
-            return (isValid, errorMessages);
+            var result = await ValidateJsonAgainstSchemaAsync(json, schemaUrl, httpClient, logger, cancellationToken);
+            return (result.Status == SchemaValidationStatus.Valid, result.Errors);
         }
         catch (Exception ex)
         {
@@ -314,31 +299,88 @@ public static class ProxyUtils
     }
 
     /// <summary>
+    /// Validates <paramref name="json"/> against the schema at <paramref name="schemaUrl"/>.
+    /// </summary>
+    /// <returns>
+    /// The validation result. If the schema can't be downloaded or parsed, for example when
+    /// there's no network connection, the status is <see cref="SchemaValidationStatus.SchemaUnavailable"/>
+    /// so that callers can skip validation instead of treating the document as invalid.
+    /// </returns>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
+    public static async Task<SchemaValidationResult> ValidateJsonAgainstSchemaAsync(string? json, string? schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken)
+    {
+        logger.LogDebug("Validating JSON against schema {SchemaUrl}", schemaUrl);
+
+        if (string.IsNullOrEmpty(json))
+        {
+            logger.LogDebug("JSON is empty, skipping validation");
+            return new(SchemaValidationStatus.Valid, []);
+        }
+        if (string.IsNullOrEmpty(schemaUrl))
+        {
+            logger.LogDebug("Schema URL is empty, skipping validation");
+            return new(SchemaValidationStatus.Valid, []);
+        }
+
+        var (schema, schemaError) = await TryGetSchemaAsync(schemaUrl, httpClient, logger, cancellationToken);
+        if (schema is null)
+        {
+            return schemaError!;
+        }
+
+        try
+        {
+            logger.LogDebug("Parsing JSON");
+            var token = JToken.Parse(json);
+
+            logger.LogDebug("Validating JSON");
+            var isValid = token.IsValid(schema, out IList<string> errorMessages);
+
+            return new(isValid ? SchemaValidationStatus.Valid : SchemaValidationStatus.Invalid, errorMessages);
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Error validating JSON");
+            return new(SchemaValidationStatus.Invalid, [ex.Message]);
+        }
+    }
+
+    /// <summary>
     /// Validates UTF-8 JSON read from <paramref name="json"/> against the schema at <paramref name="schemaUrl"/>.
     /// The stream is read from its current position and isn't disposed.
     /// </summary>
-    public static async Task<(bool IsValid, IEnumerable<string> ValidationErrors)> ValidateJsonAsync(Stream json, string? schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken)
+    /// <returns>
+    /// The validation result. If the schema can't be downloaded or parsed, for example when
+    /// there's no network connection, the status is <see cref="SchemaValidationStatus.SchemaUnavailable"/>
+    /// so that callers can skip validation instead of treating the document as invalid.
+    /// </returns>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
+    public static async Task<SchemaValidationResult> ValidateJsonAgainstSchemaAsync(Stream json, string? schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(json);
         ArgumentNullException.ThrowIfNull(logger);
 
+        logger.LogDebug("Validating JSON against schema {SchemaUrl}", schemaUrl);
+
+        if (json.CanSeek && json.Length - json.Position == 0)
+        {
+            logger.LogDebug("JSON is empty, skipping validation");
+            return new(SchemaValidationStatus.Valid, []);
+        }
+        if (string.IsNullOrEmpty(schemaUrl))
+        {
+            logger.LogDebug("Schema URL is empty, skipping validation");
+            return new(SchemaValidationStatus.Valid, []);
+        }
+
+        var (schema, schemaError) = await TryGetSchemaAsync(schemaUrl, httpClient, logger, cancellationToken);
+        if (schema is null)
+        {
+            return schemaError!;
+        }
+
         try
         {
-            logger.LogDebug("Validating JSON against schema {SchemaUrl}", schemaUrl);
-
-            if (json.CanSeek && json.Length - json.Position == 0)
-            {
-                logger.LogDebug("JSON is empty, skipping validation");
-                return (true, []);
-            }
-            if (string.IsNullOrEmpty(schemaUrl))
-            {
-                logger.LogDebug("Schema URL is empty, skipping validation");
-                return (true, []);
-            }
-            ArgumentNullException.ThrowIfNull(httpClient);
-
-            var schema = await GetSchemaAsync(schemaUrl, httpClient, logger, cancellationToken);
             logger.LogDebug("Parsing JSON");
             JToken token;
             // the JSON is read from a local or in-memory stream, where sync reads are cheaper than async ones
@@ -357,12 +399,32 @@ public static class ProxyUtils
             logger.LogDebug("Validating JSON");
             var isValid = token.IsValid(schema, out IList<string> errorMessages);
 
-            return (isValid, errorMessages);
+            return new(isValid ? SchemaValidationStatus.Valid : SchemaValidationStatus.Invalid, errorMessages);
         }
         catch (Exception ex)
         {
             logger.LogDebug(ex, "Error validating JSON");
-            return (false, [ex.Message]);
+            return new(SchemaValidationStatus.Invalid, [ex.Message]);
+        }
+    }
+
+    /// <returns>The schema, or <c>null</c> and a <see cref="SchemaValidationStatus.SchemaUnavailable"/>
+    /// result if the schema couldn't be downloaded or parsed.</returns>
+    private static async Task<(JSchema? Schema, SchemaValidationResult? Error)> TryGetSchemaAsync(string schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken)
+    {
+        try
+        {
+            ArgumentNullException.ThrowIfNull(httpClient);
+            return (await GetSchemaAsync(schemaUrl, httpClient, logger, cancellationToken), null);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Error retrieving schema {SchemaUrl}", schemaUrl);
+            return (null, new(SchemaValidationStatus.SchemaUnavailable, [ex.Message]));
         }
     }
 
@@ -386,7 +448,8 @@ public static class ProxyUtils
 
     /// <summary>
     /// Reads the value of the top-level <c>$schema</c> property from UTF-8 JSON without
-    /// parsing the whole document. Reading stops as soon as the property is found.
+    /// parsing the whole document. Reading stops as soon as the property is found. If the
+    /// document doesn't have the property, it's read to the end, which checks that it's valid JSON.
     /// The stream is read from its current position and isn't disposed.
     /// </summary>
     /// <returns>The schema URL, or <c>null</c> if the root isn't an object or doesn't have a <c>$schema</c> property.</returns>
@@ -414,6 +477,7 @@ public static class ProxyUtils
             }
 
             var isSchemaValue = false;
+            bool? isRootObject = null;
             while (true)
             {
                 if (!isFinalBlock && dataLength < buffer.Length)
@@ -436,14 +500,10 @@ public static class ProxyUtils
                         };
                     }
 
-                    if (reader.CurrentDepth == 0)
-                    {
-                        if (reader.TokenType != JsonTokenType.StartObject)
-                        {
-                            return null;
-                        }
-                    }
-                    else if (reader.CurrentDepth == 1 &&
+                    // keep reading a root that isn't an object, so that invalid JSON is reported
+                    isRootObject ??= reader.TokenType == JsonTokenType.StartObject;
+                    if (isRootObject == true &&
+                        reader.CurrentDepth == 1 &&
                         reader.TokenType == JsonTokenType.PropertyName &&
                         reader.ValueTextEquals("$schema"u8))
                     {

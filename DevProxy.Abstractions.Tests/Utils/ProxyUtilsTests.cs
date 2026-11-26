@@ -2,14 +2,80 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System.Net;
 using System.Text.Json;
 using DevProxy.Abstractions.Utils;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace DevProxy.Abstractions.Tests.Utils;
 
 public class ProxyUtilsTests
 {
+    // unique per test, because downloaded schemas are cached per process
+    private readonly string _schemaUrl = $"https://schemas.example.test/{Guid.NewGuid()}.json";
+    private const string Schema = """{ "properties": { "name": { "type": "string" } } }""";
+
+    [Fact]
+    public async Task ValidateJsonAgainstSchemaAsync_SchemaDownloadFails_ReturnsSchemaUnavailable()
+    {
+        using var handler = new StubHttpMessageHandler(_ => throw new HttpRequestException("Connection refused"));
+        using var httpClient = new HttpClient(handler);
+
+        var result = await ProxyUtils.ValidateJsonAgainstSchemaAsync("""{ "name": 1 }""", _schemaUrl, httpClient, NullLogger.Instance, CancellationToken.None);
+
+        Assert.Equal(SchemaValidationStatus.SchemaUnavailable, result.Status);
+        Assert.Equal(["Connection refused"], result.Errors);
+    }
+
+    [Fact]
+    public async Task ValidateJsonAgainstSchemaAsync_Canceled_Throws()
+    {
+        using var handler = new StubHttpMessageHandler(_ => new(HttpStatusCode.OK) { Content = new StringContent(Schema) });
+        using var httpClient = new HttpClient(handler);
+
+        _ = await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            ProxyUtils.ValidateJsonAgainstSchemaAsync("""{ "name": 1 }""", _schemaUrl, httpClient, NullLogger.Instance, new CancellationToken(true)));
+    }
+
+    [Fact]
+    public async Task ValidateJsonAsync_Canceled_ReturnsInvalid()
+    {
+        using var handler = new StubHttpMessageHandler(_ => new(HttpStatusCode.OK) { Content = new StringContent(Schema) });
+        using var httpClient = new HttpClient(handler);
+
+        var (isValid, errors) = await ProxyUtils.ValidateJsonAsync("""{ "name": "a" }""", _schemaUrl, httpClient, NullLogger.Instance, new CancellationToken(true));
+
+        Assert.False(isValid);
+        Assert.NotEmpty(errors);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound, "404: Not Found")]
+    [InlineData(HttpStatusCode.OK, "<html><body>Sign in to continue</body></html>")]
+    public async Task ValidateJsonAgainstSchemaAsync_ResponseIsNotSchema_ReturnsSchemaUnavailable(HttpStatusCode statusCode, string content)
+    {
+        using var handler = new StubHttpMessageHandler(_ => new(statusCode) { Content = new StringContent(content) });
+        using var httpClient = new HttpClient(handler);
+
+        var result = await ProxyUtils.ValidateJsonAgainstSchemaAsync("""{ "name": 1 }""", _schemaUrl, httpClient, NullLogger.Instance, CancellationToken.None);
+
+        Assert.Equal(SchemaValidationStatus.SchemaUnavailable, result.Status);
+    }
+
+    [Theory]
+    [InlineData("""{ "name": "Contoso" }""", SchemaValidationStatus.Valid)]
+    [InlineData("""{ "name": 1 }""", SchemaValidationStatus.Invalid)]
+    public async Task ValidateJsonAgainstSchemaAsync_SchemaRetrieved_ValidatesJson(string json, SchemaValidationStatus expectedStatus)
+    {
+        using var handler = new StubHttpMessageHandler(_ => new(HttpStatusCode.OK) { Content = new StringContent(Schema) });
+        using var httpClient = new HttpClient(handler);
+
+        var result = await ProxyUtils.ValidateJsonAgainstSchemaAsync(json, _schemaUrl, httpClient, NullLogger.Instance, CancellationToken.None);
+
+        Assert.Equal(expectedStatus, result.Status);
+    }
+
     [Theory]
     [InlineData("wss://ws.example.test/socket", "https://ws.example.test/socket")]
     [InlineData("ws://ws.example.test/socket", "http://ws.example.test/socket")]
@@ -142,6 +208,15 @@ public class ProxyUtilsTests
         Assert.Equal("https://example.test/schema.json", ProxyUtils.ReadSchemaReference(stream));
     }
 
+    [Theory]
+    [InlineData("""[{ "id": 1 }] { "extra": true }""")]
+    [InlineData("""{ "mocks": [] } { "extra": true }""")]
+    public void ReadSchemaReference_ThrowsOnInvalidJsonWithoutSchema(string json)
+    {
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(json));
+        Assert.ThrowsAny<JsonException>(() => ProxyUtils.ReadSchemaReference(stream));
+    }
+
     [Fact]
     public void ReadSchemaReference_ThrowsOnInvalidJsonBeforeSchema()
     {
@@ -153,5 +228,11 @@ public class ProxyUtilsTests
     {
         public override int Read(byte[] buffer, int offset, int count) => base.Read(buffer, offset, Math.Min(count, 1));
         public override int Read(Span<byte> buffer) => base.Read(buffer[..Math.Min(buffer.Length, 1)]);
+    }
+
+    private sealed class StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> send) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(send(request));
     }
 }

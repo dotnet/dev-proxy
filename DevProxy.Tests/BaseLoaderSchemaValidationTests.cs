@@ -2,124 +2,137 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Collections.Concurrent;
-using System.Net;
 using DevProxy.Abstractions.Plugins;
 using Microsoft.Extensions.Logging;
+using System.Net;
 using Xunit;
 
 namespace DevProxy.Tests;
 
 public sealed class BaseLoaderSchemaValidationTests : IDisposable
 {
-    private const string Variable = "DEVPROXY_TEST_LOADER_SCHEMA_NAME";
-    private const string Schema = """
-        {
-          "type": "object",
-          "properties": { "name": { "type": "string", "maxLength": 5 } },
-          "required": ["name"]
-        }
-        """;
-    private readonly string _folder = Directory.CreateTempSubdirectory("devproxy-loader-schema").FullName;
-    // unique per test so that the per-process schema and validation caches don't leak between tests
-    private readonly string _schemaUrl = $"https://schemas.example.test/{Guid.NewGuid()}/schema.json";
-    private readonly SchemaHandler _handler = new(Schema);
-    private readonly HttpClient _httpClient;
-    private readonly TestLogger _logger = new();
+    private const string Schema = """{ "properties": { "name": { "type": "string" } } }""";
+    // unique per test, because downloaded schemas are cached per process
+    private readonly string _schemaUrl = $"https://schemas.example.test/mocks-{Guid.NewGuid()}.schema.json";
+    // Doesn't match the schema, which requires name to be a string
+    private string Contents => $$"""{ "$schema": "{{_schemaUrl}}", "name": 1 }""";
+    private readonly string _folder = Directory.CreateTempSubdirectory("devproxy-loader").FullName;
 
-    public BaseLoaderSchemaValidationTests() => _httpClient = new(_handler);
+    public void Dispose() => Directory.Delete(_folder, true);
 
-    public void Dispose()
+    [Fact]
+    public async Task LoadsFileWithWarningWhenSchemaCannotBeRetrieved()
     {
-        Environment.SetEnvironmentVariable(Variable, null);
-        _httpClient.Dispose();
-        _handler.Dispose();
-        Directory.Delete(_folder, true);
+        var logger = new RecordingLogger();
+
+        var loader = await LoadAsync(_ => throw new HttpRequestException("Connection refused"), logger);
+
+        Assert.NotNull(loader.Contents);
+        Assert.Contains(logger.Messages, m => m.LogLevel == LogLevel.Warning && m.Message.Contains("Connection refused", StringComparison.Ordinal));
+        Assert.DoesNotContain(logger.Messages, m => m.LogLevel >= LogLevel.Error);
     }
 
     [Fact]
-    public async Task DoesNotValidateUnchangedFileAgain()
+    public async Task DoesNotLoadFileThatDoesNotMatchSchema()
     {
-        var path = await WriteFileAsync("mocks.json", """{ "$schema": "{schema}", "name": "abc" }""");
+        var logger = new RecordingLogger();
 
-        var first = await LoadAsync(path);
-        var second = await LoadAsync(path);
-
-        Assert.NotNull(first.Contents);
-        Assert.NotNull(second.Contents);
-        Assert.Equal(1, _logger.ValidationCount);
-        Assert.Equal(1, _handler.RequestCount);
-    }
-
-    [Fact]
-    public async Task ValidatesChangedFileAgainWithCachedSchema()
-    {
-        var path = await WriteFileAsync("mocks.json", """{ "$schema": "{schema}", "name": "abc" }""");
-        _ = await LoadAsync(path);
-
-        _ = await WriteFileAsync("mocks.json", """{ "$schema": "{schema}", "name": "toolong" }""");
-        var loader = await LoadAsync(path);
+        var loader = await LoadAsync(_ => new(HttpStatusCode.OK) { Content = new StringContent(Schema) }, logger);
 
         Assert.Null(loader.Contents);
-        Assert.Equal(2, _logger.ValidationCount);
-        Assert.Equal(1, _handler.RequestCount);
+        Assert.Contains(logger.Messages, m => m.LogLevel == LogLevel.Error);
     }
 
     [Fact]
-    public async Task DoesNotCacheFailedValidation()
+    public async Task DoesNotLoadFileWhenCanceledWhileRetrievingSchema()
     {
-        var path = await WriteFileAsync("mocks.json", """{ "$schema": "{schema}", "name": "toolong" }""");
+        var logger = new RecordingLogger();
+        using var cts = new CancellationTokenSource();
 
-        var first = await LoadAsync(path);
-        var second = await LoadAsync(path);
+        var loader = await LoadAsync(_ =>
+        {
+            cts.Cancel();
+            throw new OperationCanceledException(cts.Token);
+        }, logger, cts.Token);
 
-        Assert.Null(first.Contents);
-        Assert.Null(second.Contents);
-        Assert.Equal(2, _logger.ValidationCount);
+        Assert.Null(loader.Contents);
+        Assert.DoesNotContain(logger.Messages, m => m.LogLevel >= LogLevel.Warning);
     }
 
-    [Fact]
-    public async Task ValidatesAgainWhenResolvedPlaceholdersChange()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AppliesNewestDataWhenFileChangesWhileRetrievingSchema(bool schemaAvailable)
     {
-        var path = await WriteFileAsync("mocks.json", $$"""{ "$schema": "{schema}", "name": "${{{Variable}}}" }""");
+        var timeout = TimeSpan.FromSeconds(10);
+        var initialContents = $$"""{ "$schema": "{{_schemaUrl}}", "name": "initial" }""";
+        var updatedContents = $$"""{ "$schema": "{{_schemaUrl}}", "name": "updated" }""";
+        var path = Path.Combine(_folder, "mocks.json");
+        await File.WriteAllTextAsync(path, initialContents, CancellationToken.None);
 
-        Environment.SetEnvironmentVariable(Variable, "abc");
-        var first = await LoadAsync(path);
-        Environment.SetEnvironmentVariable(Variable, "toolong");
-        var second = await LoadAsync(path);
+        var firstRequestStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var releaseFirstRequest = new SemaphoreSlim(0, 1);
+        var requestCount = 0;
+        using var handler = new AsyncHttpMessageHandler(async _ =>
+        {
+            if (Interlocked.Increment(ref requestCount) == 1)
+            {
+                firstRequestStarted.SetResult();
+                await releaseFirstRequest.WaitAsync();
+            }
+            return schemaAvailable
+                ? new(HttpStatusCode.OK) { Content = new StringContent(Schema) }
+                : throw new HttpRequestException("Connection refused");
+        });
+        using var httpClient = new HttpClient(handler);
+        using var loader = new TestLoader(httpClient, new RecordingLogger(), path);
 
-        Assert.NotNull(first.Contents);
-        Assert.Null(second.Contents);
-        Assert.Equal(2, _logger.ValidationCount);
+        var init = loader.InitFileWatcherAsync(CancellationToken.None);
+        await firstRequestStarted.Task.WaitAsync(timeout);
+
+        // While the initial load waits for the schema, the only FilePath access
+        // comes from the reload triggered by the file change, right before it queues up.
+        var reloadStarted = loader.WaitForFilePathAccessAsync();
+        await File.WriteAllTextAsync(path, updatedContents, CancellationToken.None);
+        await reloadStarted.WaitAsync(timeout);
+
+        // The reload must wait for the initial load instead of reading the file.
+        var reloadReadFile = loader.WaitForFilePathAccessAsync();
+        _ = await Task.WhenAny(reloadReadFile, Task.Delay(TimeSpan.FromMilliseconds(500)));
+        Assert.False(reloadReadFile.IsCompleted);
+        Assert.False(init.IsCompleted);
+
+        _ = releaseFirstRequest.Release();
+        await init.WaitAsync(timeout);
+        var loadedOnInit = loader.LoadedContents;
+        Assert.NotEmpty(loadedOnInit);
+        Assert.Equal(initialContents, loadedOnInit[0]);
+
+        await loader.WaitForLoadAsync(updatedContents).WaitAsync(timeout);
+        Assert.Equal([initialContents, updatedContents], loader.LoadedContents);
     }
 
-    [Fact]
-    public async Task DoesNotValidateUnchangedYamlFileAgain()
+    [Theory]
+    [InlineData("""[{ "id": 3 }] { "extra": true }""")]
+    [InlineData("""{ "name": "a" } { "extra": true }""")]
+    public async Task DoesNotLoadInvalidJsonWithoutSchemaReference(string contents)
     {
-        var path = await WriteFileAsync("mocks.yaml", """
-            $schema: "{schema}"
-            name: abc
-            """);
+        var logger = new RecordingLogger();
 
-        var first = await LoadAsync(path);
-        var second = await LoadAsync(path);
+        var loader = await LoadAsync(_ => new(HttpStatusCode.OK) { Content = new StringContent(Schema) }, logger, contents: contents);
 
-        Assert.Contains("\"abc\"", first.Contents, StringComparison.Ordinal);
-        Assert.NotNull(second.Contents);
-        Assert.Equal(1, _logger.ValidationCount);
+        Assert.Null(loader.Contents);
+        Assert.Contains(logger.Messages, m => m.LogLevel == LogLevel.Error);
     }
 
-    private async Task<string> WriteFileAsync(string fileName, string contents)
+    private async Task<TestLoader> LoadAsync(Func<HttpRequestMessage, HttpResponseMessage> sendSchemaRequest, ILogger logger, CancellationToken cancellationToken = default, string? contents = null)
     {
-        var path = Path.Combine(_folder, fileName);
-        await File.WriteAllTextAsync(path, contents.Replace("{schema}", _schemaUrl, StringComparison.Ordinal));
-        return path;
-    }
-
-    private async Task<TestLoader> LoadAsync(string path)
-    {
-        var loader = new TestLoader(_httpClient, _logger, path);
-        await loader.InitFileWatcherAsync(CancellationToken.None);
+        var path = Path.Combine(_folder, "mocks.json");
+        await File.WriteAllTextAsync(path, contents ?? Contents, CancellationToken.None);
+        using var handler = new FakeHttpMessageHandler(sendSchemaRequest);
+        using var httpClient = new HttpClient(handler);
+        var loader = new TestLoader(httpClient, logger, path);
+        await loader.InitFileWatcherAsync(cancellationToken);
         loader.Dispose();
         return loader;
     }
@@ -127,35 +140,72 @@ public sealed class BaseLoaderSchemaValidationTests : IDisposable
     private sealed class TestLoader(HttpClient httpClient, ILogger logger, string filePath) :
         BaseLoader(httpClient, logger, new FakeProxyConfiguration { ValidateSchemas = true })
     {
+        private readonly Lock _lock = new();
+        private readonly List<string> _loadedContents = [];
+        private readonly List<(string Contents, TaskCompletionSource Loaded)> _loadWaiters = [];
+        private TaskCompletionSource? _filePathAccessed;
+
         public string? Contents { get; private set; }
-        protected override string FilePath => filePath;
-        protected override void LoadData(Stream fileContents)
+
+        public string[] LoadedContents
         {
-            using var reader = new StreamReader(fileContents);
-            Contents = reader.ReadToEnd();
+            get
+            {
+                lock (_lock)
+                {
+                    return [.. _loadedContents];
+                }
+            }
+        }
+
+        protected override string FilePath
+        {
+            get
+            {
+                _ = Interlocked.Exchange(ref _filePathAccessed, null)?.TrySetResult();
+                return filePath;
+            }
+        }
+
+        public Task WaitForFilePathAccessAsync()
+        {
+            var accessed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _filePathAccessed = accessed;
+            return accessed.Task;
+        }
+
+        public Task WaitForLoadAsync(string contents)
+        {
+            lock (_lock)
+            {
+                if (_loadedContents.Contains(contents))
+                {
+                    return Task.CompletedTask;
+                }
+                var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                _loadWaiters.Add((contents, loaded));
+                return loaded.Task;
+            }
+        }
+
+        protected override void LoadData(string fileContents)
+        {
+            lock (_lock)
+            {
+                Contents = fileContents;
+                _loadedContents.Add(fileContents);
+                foreach (var (contents, loaded) in _loadWaiters.Where(w => w.Contents == fileContents))
+                {
+                    loaded.SetResult();
+                }
+                _ = _loadWaiters.RemoveAll(w => w.Contents == fileContents);
+            }
         }
     }
 
-    private sealed class SchemaHandler(string schema) : HttpMessageHandler
+    private sealed class AsyncHttpMessageHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> send) : HttpMessageHandler
     {
-        private int _requestCount;
-        public int RequestCount => _requestCount;
-
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            _ = Interlocked.Increment(ref _requestCount);
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(schema) });
-        }
-    }
-
-    private sealed class TestLogger : ILogger
-    {
-        private readonly ConcurrentQueue<string> _messages = new();
-        public int ValidationCount => _messages.Count(m => m.StartsWith("Validating JSON against schema", StringComparison.Ordinal));
-
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-        public bool IsEnabled(LogLevel logLevel) => true;
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
-            _messages.Enqueue(formatter(state, exception));
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            send(request);
     }
 }

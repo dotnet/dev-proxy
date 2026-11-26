@@ -20,6 +20,11 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
     private readonly bool _validateSchemas = proxyConfiguration.ValidateSchemas;
     private readonly Lock _debounceLock = new();
     private readonly int _debounceDelay = 300; // milliseconds
+    // Serializes loads so that an older load can't overwrite data from a newer one.
+    // Each load reads the file after acquiring it, so the last load always has the latest contents.
+#pragma warning disable CA2213 // Not disposed so that pending reloads don't fail; it never allocates a wait handle
+    private readonly SemaphoreSlim _loadSemaphore = new(1, 1);
+#pragma warning restore CA2213
 
     private FileSystemWatcher? _watcher;
     private Timer? _debounceTimer;
@@ -121,19 +126,30 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
             return true;
         }
 
-        var (IsValid, ValidationErrors) = await ProxyUtils.ValidateJsonAsync(fileContents, schemaUrl, _httpClient, Logger, cancellationToken);
+        var result = await ProxyUtils.ValidateJsonAgainstSchemaAsync(fileContents, schemaUrl, _httpClient, Logger, cancellationToken);
         fileContents.Position = 0;
-        SchemaValidationCache.SetResult(cacheKey, fileVersion, IsValid);
+        // a pass without a schema isn't cached, so that the file is validated once the schema is available
+        SchemaValidationCache.SetResult(cacheKey, fileVersion, result.Status == SchemaValidationStatus.Valid);
 
-        if (!IsValid)
+        if (result.Status == SchemaValidationStatus.SchemaUnavailable)
+        {
+            if (Logger.IsEnabled(LogLevel.Warning))
+            {
+                Logger.LogWarning("Skipping schema validation for {File} because the schema {SchemaUrl} could not be retrieved: {Error}", FilePath, schemaUrl, string.Join(", ", result.Errors));
+            }
+            return true;
+        }
+
+        if (result.Status == SchemaValidationStatus.Invalid)
         {
             if (Logger.IsEnabled(LogLevel.Error))
             {
-                Logger.LogError("Schema validation failed for {File} with the following errors: {Errors}", FilePath, string.Join(", ", ValidationErrors));
+                Logger.LogError("Schema validation failed for {File} with the following errors: {Errors}", FilePath, string.Join(", ", result.Errors));
             }
+            return false;
         }
 
-        return IsValid;
+        return true;
     }
 
     private async Task LoadFileContentsAsync(CancellationToken cancellationToken)
@@ -151,6 +167,21 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
 
         try
         {
+            await _loadSemaphore.WaitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            Logger.LogDebug("Loading {File} was canceled", FilePath);
+            return;
+        }
+
+        try
+        {
+            if (_isDisposed)
+            {
+                return;
+            }
+
             // read before the contents so that a change while loading isn't missed
             var fileVersion = SchemaValidationCache.GetFileVersion(FilePath);
 
@@ -176,9 +207,17 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
             using var jsonStream = new MemoryStream(Encoding.UTF8.GetBytes(jsonContents.Value.Json), writable: false);
             await LoadJsonAsync(jsonStream, fileVersion is { } version ? version with { ContentHash = jsonContents.Value.ContentHash } : null, cancellationToken);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            Logger.LogDebug("Loading {File} was canceled", FilePath);
+        }
         catch (Exception ex)
         {
             Logger.LogError(ex, "An error has occurred while reading {File}:", FilePath);
+        }
+        finally
+        {
+            _ = _loadSemaphore.Release();
         }
     }
 
