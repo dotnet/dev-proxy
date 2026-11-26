@@ -10,6 +10,17 @@ namespace DevProxy.Commands;
 
 sealed class DevProxyHelpAction(SynchronousCommandLineAction originalAction) : SynchronousCommandLineAction
 {
+    // Wraps the root command's current help action (e.g. the examples action)
+    // so the docs footer is printed after it.
+    public static void Install(RootCommand rootCommand)
+    {
+        var helpOption = rootCommand.Options.OfType<HelpOption>().FirstOrDefault();
+        if (helpOption?.Action is SynchronousCommandLineAction currentAction)
+        {
+            helpOption.Action = new DevProxyHelpAction(currentAction);
+        }
+    }
+
     public override int Invoke(ParseResult parseResult)
     {
         originalAction.Invoke(parseResult);

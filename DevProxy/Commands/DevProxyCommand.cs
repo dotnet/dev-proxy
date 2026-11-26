@@ -752,18 +752,9 @@ sealed class DevProxyCommand : RootCommand
         ]);
         HelpExamples.Install(this);
 
-        CustomizeHelp();
+        DevProxyHelpAction.Install(this);
 
         SetAction(InvokeAsync);
-    }
-
-    private void CustomizeHelp()
-    {
-        var helpOption = Options.OfType<HelpOption>().FirstOrDefault();
-        if (helpOption?.Action is SynchronousCommandLineAction currentAction)
-        {
-            helpOption.Action = new DevProxyHelpAction(currentAction);
-        }
     }
 
     internal static void ApplyDiscoverOption(IProxyConfiguration proxyConfiguration, bool? isDiscover)
