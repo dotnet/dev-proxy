@@ -30,6 +30,15 @@ sealed class GeneratedByOpenApiExtension : IOpenApiExtension
     }
 }
 
+sealed class EmptyObjectOpenApiExtension : IOpenApiExtension
+{
+    public void Write(IOpenApiWriter writer, OpenApiSpecVersion specVersion)
+    {
+        writer.WriteStartObject();
+        writer.WriteEndObject();
+    }
+}
+
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum SpecVersion
 {
@@ -179,6 +188,11 @@ public sealed class OpenApiSpecGeneratorPlugin(
                 SpecVersion.v3_2 => OpenApiSpecVersion.OpenApi3_2,
                 _ => OpenApiSpecVersion.OpenApi3_0
             };
+
+            if (openApiSpecVersion == OpenApiSpecVersion.OpenApi2_0)
+            {
+                AddEmptyOAuth2ScopesForV2(openApiDoc);
+            }
 
             var docString = Configuration.SpecFormat switch
             {
@@ -689,6 +703,30 @@ public sealed class OpenApiSpecGeneratorPlugin(
         }
 
         return (schemeName, scopes);
+    }
+
+    // Swagger 2.0 requires scopes on OAuth2 schemes, but Microsoft.OpenApi
+    // omits an empty scopes map when serializing to v2
+    private static void AddEmptyOAuth2ScopesForV2(OpenApiDocument openApiDoc)
+    {
+        var schemes = openApiDoc.Components?.SecuritySchemes?.Values
+            .OfType<OpenApiSecurityScheme>()
+            .Where(s => s.Type == SecuritySchemeType.OAuth2 && s.Flows is not null);
+        foreach (var scheme in schemes ?? [])
+        {
+            var flows = new[]
+            {
+                scheme.Flows!.Implicit, scheme.Flows.Password,
+                scheme.Flows.ClientCredentials, scheme.Flows.AuthorizationCode
+            };
+            if (flows.Any(f => f?.Scopes?.Count > 0))
+            {
+                continue;
+            }
+
+            scheme.Extensions ??= new Dictionary<string, IOpenApiExtension>();
+            scheme.Extensions["scopes"] = new EmptyObjectOpenApiExtension();
+        }
     }
 
     // Swagger 2.0 allows only one flow per security scheme

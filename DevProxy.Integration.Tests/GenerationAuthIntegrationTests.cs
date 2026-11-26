@@ -512,6 +512,39 @@ public sealed class GenerationAuthIntegrationTests
     }
 
     [Theory]
+    [InlineData("json")]
+    [InlineData("yaml")]
+    public async Task OpenApiSpecGenerator_V2_EntraV1AppToken_EmitsEmptyScopes(string format)
+    {
+        var token = Jwt(EntraIssuerV1, roles: ["User.Read.All"]);
+        var spec = await GenerateOpenApiAsync(
+            [Exchange("https://api.contoso.com/users", ("Authorization", $"Bearer {token}"))],
+            PluginConfig.FromJson($$"""{ "specVersion": "v2_0", "specFormat": "{{format}}" }"""),
+            $"*.{format}");
+
+        var settings = new OpenApiReaderSettings();
+        settings.AddYamlReader();
+        var result = OpenApiDocument.Parse(spec, format, settings);
+        var scheme = result.Document!.Components!.SecuritySchemes!["EntraOAuth2Auth_clientCredentials"];
+        Assert.Equal(SecuritySchemeType.OAuth2, scheme.Type);
+        Assert.NotNull(scheme.Flows!.ClientCredentials);
+        Assert.False(scheme.Extensions?.ContainsKey("scopes") ?? false);
+
+        // the parsed model can't distinguish a missing scopes map from an
+        // empty one, so check the raw output for the required field
+        if (format == "json")
+        {
+            var definition = JsonNode.Parse(spec)!["securityDefinitions"]!["EntraOAuth2Auth_clientCredentials"]!;
+            Assert.Equal("application", definition["flow"]!.GetValue<string>());
+            Assert.Empty(definition["scopes"]!.AsObject());
+        }
+        else
+        {
+            Assert.Matches(@"EntraOAuth2Auth_clientCredentials:\n(?: {4,}.*\n)*? {4,}scopes: \{ ?\}", spec.ReplaceLineEndings("\n"));
+        }
+    }
+
+    [Theory]
     [InlineData("https://attacker.example/https://login.microsoftonline.com/tenant/v2.0")]
     [InlineData("http://login.microsoftonline.com/tenant/v2.0")]
     [InlineData("https://login.microsoftonline.com.attacker.example/tenant/v2.0")]
