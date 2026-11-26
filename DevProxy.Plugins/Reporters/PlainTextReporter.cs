@@ -4,15 +4,27 @@
 
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace DevProxy.Plugins.Reporters;
 
-public class PlainTextReporter(
-    ILogger<PlainTextReporter> logger,
-    ISet<UrlToWatch> urlsToWatch,
-    IProxyConfiguration proxyConfiguration) : BaseReporter(logger, urlsToWatch, proxyConfiguration)
+public class PlainTextReporter : BaseReporter
 {
+    public PlainTextReporter(
+        ILogger<PlainTextReporter> logger,
+        ISet<UrlToWatch> urlsToWatch) : base(logger, urlsToWatch)
+    {
+    }
+
+    [ActivatorUtilitiesConstructor]
+    public PlainTextReporter(
+        ILogger<PlainTextReporter> logger,
+        ISet<UrlToWatch> urlsToWatch,
+        IProxyConfiguration proxyConfiguration) : base(logger, urlsToWatch, proxyConfiguration)
+    {
+    }
+
     public override string Name => nameof(PlainTextReporter);
     public override string FileExtension => ".txt";
 

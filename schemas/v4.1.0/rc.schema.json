@@ -183,6 +183,10 @@
       "type": "boolean",
       "description": "Whether to record requests and responses."
     },
+    "reportsFolder": {
+      "type": "string",
+      "description": "Folder where reporters write report files. Relative paths resolve against the folder of this configuration file. Default: the current working directory."
+    },
     "showSkipMessages": {
       "type": "boolean",
       "description": "Show messages for skipped requests."

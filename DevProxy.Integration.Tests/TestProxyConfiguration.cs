@@ -13,7 +13,7 @@ namespace DevProxy.Integration.Tests;
 /// members the Kestrel engine reads at boot (Port, IPAddress, AsSystemProxy,
 /// WatchPids/WatchProcessNames/WatchProcessTree) actually matter; the rest carry inert defaults.
 /// </summary>
-internal sealed class TestProxyConfiguration : IProxyConfiguration, IProcessTreeProxyConfiguration
+internal sealed class TestProxyConfiguration : IProxyConfiguration, IProcessTreeProxyConfiguration, IReportsProxyConfiguration
 {
     public string ApiIpAddress { get; set; } = "127.0.0.1";
     public int ApiPort { get; set; }

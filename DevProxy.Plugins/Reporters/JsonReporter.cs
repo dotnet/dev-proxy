@@ -5,16 +5,28 @@
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
 namespace DevProxy.Plugins.Reporters;
 
-public class JsonReporter(
-    ILogger<JsonReporter> logger,
-    ISet<UrlToWatch> urlsToWatch,
-    IProxyConfiguration proxyConfiguration) : BaseReporter(logger, urlsToWatch, proxyConfiguration)
+public class JsonReporter : BaseReporter
 {
+    public JsonReporter(
+        ILogger<JsonReporter> logger,
+        ISet<UrlToWatch> urlsToWatch) : base(logger, urlsToWatch)
+    {
+    }
+
+    [ActivatorUtilitiesConstructor]
+    public JsonReporter(
+        ILogger<JsonReporter> logger,
+        ISet<UrlToWatch> urlsToWatch,
+        IProxyConfiguration proxyConfiguration) : base(logger, urlsToWatch, proxyConfiguration)
+    {
+    }
+
     private const string DefaultFileExtension = ".json";
     private string _fileExtension = DefaultFileExtension;
 

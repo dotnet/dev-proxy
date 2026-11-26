@@ -5,13 +5,15 @@
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Reporters;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace DevProxy.Integration.Tests;
 
 /// <summary>
-/// Verifies that reporters honour <see cref="IProxyConfiguration.ReportsFolder"/>
+/// Verifies that reporters honour <see cref="IReportsProxyConfiguration.ReportsFolder"/>
 /// and fall back to the current working directory when it isn't set.
 /// </summary>
 public sealed class ReporterReportsFolderTests
@@ -53,6 +55,29 @@ public sealed class ReporterReportsFolderTests
             Directory.SetCurrentDirectory(originalCwd);
             root.Delete(true);
             cwd.Delete(true);
+        }
+    }
+
+    [Fact]
+    public async Task PluginActivation_UsesConfigurationAwareConstructor()
+    {
+        var root = Directory.CreateTempSubdirectory("devproxy-reports-");
+        try
+        {
+            using var serviceProvider = new ServiceCollection()
+                .AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance)
+                .AddSingleton(typeof(ILogger<>), typeof(Logger<>))
+                .AddSingleton<IProxyConfiguration>(new TestProxyConfiguration { ReportsFolder = root.FullName })
+                .BuildServiceProvider();
+            var reporter = ActivatorUtilities.CreateInstance<JsonReporter>(serviceProvider, new HashSet<UrlToWatch>());
+
+            await reporter.AfterRecordingStopAsync(Recording(), CancellationToken.None);
+
+            Assert.True(File.Exists(Path.Combine(root.FullName, "TestPlugin_JsonReporter.json")));
+        }
+        finally
+        {
+            root.Delete(true);
         }
     }
 

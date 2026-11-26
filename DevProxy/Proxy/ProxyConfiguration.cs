@@ -9,7 +9,7 @@ using System.Text.Json.Serialization;
 
 namespace DevProxy.Proxy;
 
-sealed class ProxyConfiguration : IProxyConfiguration, IProcessTreeProxyConfiguration
+sealed class ProxyConfiguration : IProxyConfiguration, IProcessTreeProxyConfiguration, IReportsProxyConfiguration
 {
     private readonly IConfigurationRoot _configurationRoot;
 

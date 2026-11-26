@@ -45,11 +45,6 @@ public interface IProxyConfiguration
     bool NoWatch { get; set; }
     int Port { get; set; }
     bool Record { get; set; }
-    /// <summary>
-    /// Absolute path of the folder where reporters write report files.
-    /// When null or empty, reports are written to the current working directory.
-    /// </summary>
-    string? ReportsFolder { get; set; }
     bool ShowTimestamps { get; }
     long? TimeoutSeconds { get; set; }
     bool ValidateSchemas { get; }
@@ -60,4 +55,13 @@ public interface IProxyConfiguration
 public interface IProcessTreeProxyConfiguration
 {
     bool WatchProcessTree { get; set; }
+}
+
+public interface IReportsProxyConfiguration
+{
+    /// <summary>
+    /// Absolute path of the folder where reporters write report files.
+    /// When null or empty, reports are written to the current working directory.
+    /// </summary>
+    string? ReportsFolder { get; set; }
 }

@@ -789,9 +789,10 @@ sealed class DevProxyCommand : RootCommand
             _proxyConfiguration.Record = record.Value;
         }
         var reportDir = parseResult.GetValueOrDefault<string?>(ReportDirOptionName);
-        if (!string.IsNullOrWhiteSpace(reportDir))
+        if (!string.IsNullOrWhiteSpace(reportDir) &&
+            _proxyConfiguration is IReportsProxyConfiguration reportsConfiguration)
         {
-            _proxyConfiguration.ReportsFolder = ResolveReportDirOption(reportDir);
+            reportsConfiguration.ReportsFolder = ResolveReportDirOption(reportDir);
         }
         var watchPids = parseResult.GetValueOrDefault<IEnumerable<int>>(WatchPidsOptionName);
         if (watchPids is not null && watchPids.Any())

@@ -83,7 +83,7 @@ public abstract class BaseReporter : BasePlugin
     /// Folder where reports are written. When null or empty, reports are written
     /// to the current working directory.
     /// </summary>
-    protected string? ReportsFolder => _proxyConfiguration?.ReportsFolder;
+    protected string? ReportsFolder => (_proxyConfiguration as IReportsProxyConfiguration)?.ReportsFolder;
 
     protected string GetReportFilePath(string fileName) =>
         string.IsNullOrEmpty(ReportsFolder) ? fileName : Path.Combine(ReportsFolder, fileName);
