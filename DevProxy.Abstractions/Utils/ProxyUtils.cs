@@ -129,6 +129,7 @@ public static class ProxyUtils
         ArgumentNullException.ThrowIfNull(uri);
 
         return uri.Host.StartsWith("graph.microsoft.", StringComparison.OrdinalIgnoreCase) ||
+            uri.Host.StartsWith("dod-graph.microsoft.", StringComparison.OrdinalIgnoreCase) ||
             uri.Host.StartsWith("microsoftgraph.", StringComparison.OrdinalIgnoreCase);
     }
 
