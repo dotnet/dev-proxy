@@ -658,7 +658,9 @@ public sealed class OpenApiValidationPlugin(
                 OpenApiValidationIssueLocation.Response, issues, strictNullableEnums);
         }
 
-        if (response.Body.Length == 0)
+        // a body that the proxy didn't capture (e.g. a large streamed response) is
+        // still validated for its content type
+        if (response.Body.Length == 0 && response.IsBodyCaptured)
         {
             return;
         }
@@ -709,6 +711,12 @@ public sealed class OpenApiValidationPlugin(
 
         if (!IsJsonMediaType(contentType))
         {
+            return;
+        }
+
+        if (!message.IsBodyCaptured)
+        {
+            notes.Add($"Skipped validating the {locationName} body because the proxy didn't capture it (streamed bodies larger than the inspection limit aren't retained)");
             return;
         }
 

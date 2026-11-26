@@ -1071,6 +1071,31 @@ public sealed class OpenApiValidationPluginTests : IDisposable
     }
 
     [Fact]
+    public async Task ValidatesContentTypeOfUncapturedResponseBodies()
+    {
+        var plugin = await CreatePluginAsync();
+
+        static TestExchange Uncaptured(string contentType)
+        {
+            var exchange = TestExchange.Request("GET", "https://api.contoso.com/v1/users/me");
+            var headers = new HeaderCollection();
+            headers.Add(new HttpHeader("Content-Type", contentType));
+            var response = new MutableHttpResponse(HttpStatusCode.OK, HttpVersion.Version11, headers, ReadOnlyMemory<byte>.Empty);
+            response.MarkBodyNotCaptured();
+            exchange.Session.SetOriginResponse(response);
+            return exchange;
+        }
+
+        var undocumented = Uncaptured("text/event-stream");
+        Assert.StartsWith("Content type 'text/event-stream' isn't documented",
+            Assert.Single(Messages(plugin.Validate(undocumented.Session))), StringComparison.Ordinal);
+
+        var documented = Uncaptured("application/json");
+        Assert.Empty(plugin.Validate(documented.Session)!.Issues);
+        Assert.Contains("didn't capture it", Assert.Single(plugin.GetNotes(documented.Session)), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task AcceptsScalarValuesForSchemasAllowingArraysAndScalars()
     {
         var plugin = await CreatePluginWithSpecsAsync(("mixed.yaml", """
