@@ -23,18 +23,48 @@ public sealed class ConfigValidateTests : IDisposable
         }
         """;
 
+    // Relative to the config file. Copied without its deps.json so that,
+    // like in Dev Proxy, shared assemblies resolve from the default context.
+    private const string RealPluginPath = "\"plugins/DevProxy.Plugins.dll\"";
+
     private readonly string _tempDir = Directory.CreateTempSubdirectory("devproxy-validate-tests").FullName;
+
+    public ConfigValidateTests()
+    {
+        var pluginsDir = Directory.CreateDirectory(Path.Combine(_tempDir, "plugins")).FullName;
+        var pluginAssembly = typeof(DevProxy.Plugins.Behavior.LatencyPlugin).Assembly.Location;
+        File.Copy(pluginAssembly, Path.Combine(pluginsDir, Path.GetFileName(pluginAssembly)));
+    }
 
     public void Dispose() => Directory.Delete(_tempDir, true);
 
     [Fact]
-    public async Task ReportsPluginWithoutUrlsToWatch()
+    public async Task AcceptsValidConfiguration()
     {
-        var result = await ValidateAsync("""
+        var (exitCode, result) = await ValidateWithExitCodeAsync($$"""
             {
               "plugins": [
-                { "name": "WithUrls", "enabled": true, "pluginPath": "plugin.dll", "urlsToWatch": ["https://api.example.com/*"] },
-                { "name": "WithoutUrls", "enabled": true, "pluginPath": "plugin.dll" },
+                { "name": "LatencyPlugin", "enabled": true, "pluginPath": {{RealPluginPath}}, "configSection": "mySection" }
+              ],
+              "urlsToWatch": ["https://api.example.com/*"],
+              "mySection": { "$schema": "{{SectionSchemaUrl}}", "rate": 1 }
+            }
+            """);
+
+        Assert.Equal(0, exitCode);
+        Assert.True(result.GetProperty("valid").GetBoolean());
+        Assert.Empty(GetPaths(result, "errors"));
+        Assert.DoesNotContain(GetPaths(result, "warnings"), p => p.StartsWith("plugins", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ReportsPluginWithoutUrlsToWatch()
+    {
+        var (exitCode, result) = await ValidateWithExitCodeAsync($$"""
+            {
+              "plugins": [
+                { "name": "LatencyPlugin", "enabled": true, "pluginPath": {{RealPluginPath}}, "urlsToWatch": ["https://api.example.com/*"] },
+                { "name": "LatencyPlugin", "enabled": true, "pluginPath": {{RealPluginPath}} },
                 { "name": "Disabled", "enabled": false, "pluginPath": "plugin.dll" }
               ]
             }
@@ -44,6 +74,8 @@ public sealed class ConfigValidateTests : IDisposable
         Assert.DoesNotContain("plugins[0].urlsToWatch", warningPaths);
         Assert.Contains("plugins[1].urlsToWatch", warningPaths);
         Assert.DoesNotContain("plugins[2].urlsToWatch", warningPaths);
+        Assert.Equal(0, exitCode);
+        Assert.True(result.GetProperty("valid").GetBoolean());
     }
 
     [Fact]
@@ -64,16 +96,71 @@ public sealed class ConfigValidateTests : IDisposable
     [Fact]
     public async Task ReportsMissingConfigSection()
     {
-        var result = await ValidateAsync("""
+        var (exitCode, result) = await ValidateWithExitCodeAsync($$"""
             {
               "plugins": [
-                { "name": "Plugin", "enabled": true, "pluginPath": "plugin.dll", "configSection": "missing" }
+                { "name": "LatencyPlugin", "enabled": true, "pluginPath": {{RealPluginPath}}, "configSection": "missing" }
               ],
               "urlsToWatch": ["https://api.example.com/*"]
             }
             """);
 
         Assert.Contains("plugins[0].configSection", GetPaths(result, "warnings"));
+        Assert.Equal(0, exitCode);
+        Assert.True(result.GetProperty("valid").GetBoolean());
+    }
+
+    [Fact]
+    public async Task ResolvesConfigSectionWithColonInPropertyName()
+    {
+        var result = await ValidateAsync($$"""
+            {
+              "plugins": [
+                { "name": "Plugin", "enabled": true, "pluginPath": "plugin.dll", "configSection": "parent:settings" }
+              ],
+              "urlsToWatch": ["https://api.example.com/*"],
+              "parent:settings": { "$schema": "{{SectionSchemaUrl}}", "rate": "high" }
+            }
+            """);
+
+        Assert.DoesNotContain("plugins[0].configSection", GetPaths(result, "warnings"));
+        Assert.Contains("parent:settings", GetPaths(result, "errors"));
+    }
+
+    [Fact]
+    public async Task ResolvesEnvironmentPlaceholdersInPluginSettings()
+    {
+        var result = await ValidateAsync($$"""
+            {
+              "env": { "SECTION": "mySection", "SCHEMA_URL": "{{SectionSchemaUrl}}" },
+              "plugins": [
+                { "name": "Plugin", "enabled": true, "pluginPath": "plugin.dll", "configSection": "${SECTION}" }
+              ],
+              "urlsToWatch": ["https://api.example.com/*"],
+              "mySection": { "$schema": "${SCHEMA_URL}", "rate": "high" }
+            }
+            """);
+
+        Assert.DoesNotContain("plugins[0].configSection", GetPaths(result, "warnings"));
+        Assert.Contains("mySection", GetPaths(result, "errors"));
+    }
+
+    [Fact]
+    public async Task ResolvesEnvironmentPlaceholderInValidateSchemas()
+    {
+        var result = await ValidateAsync($$"""
+            {
+              "env": { "SCHEMA_CHECKS": "false" },
+              "validateSchemas": "${SCHEMA_CHECKS}",
+              "plugins": [
+                { "name": "Plugin", "enabled": true, "pluginPath": "plugin.dll", "configSection": "mySection" }
+              ],
+              "urlsToWatch": ["https://api.example.com/*"],
+              "mySection": { "$schema": "{{SectionSchemaUrl}}", "rate": "high" }
+            }
+            """);
+
+        Assert.DoesNotContain("mySection", GetPaths(result, "errors"));
     }
 
     [Fact]
