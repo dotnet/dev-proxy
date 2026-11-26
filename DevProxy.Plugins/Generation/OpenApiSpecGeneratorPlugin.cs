@@ -288,7 +288,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
                     GetMediaType(request.ContentType),
                     new OpenApiMediaType
                     {
-                        Schema = GetSchemaFromBody(GetMediaType(request.ContentType), request.BodyString)
+                        Schema = GetSchemaFromBody(GetMediaType(request.ContentType), () => request.BodyString)
                     }
                 }
             }
@@ -410,7 +410,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
 
             openApiResponse.Content?.Add(responseMediaType, new OpenApiMediaType()
             {
-                Schema = GetSchemaFromBody(responseMediaType, response.BodyString)
+                Schema = GetSchemaFromBody(responseMediaType, () => response.BodyString)
             });
         }
         else
@@ -458,7 +458,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
         operation.Responses?.Add(responseCode, openApiResponse);
     }
 
-    private OpenApiSchema? GetSchemaFromBody(string? contentType, string body)
+    private OpenApiSchema? GetSchemaFromBody(string? contentType, Func<string> getBody)
     {
         if (contentType is null)
         {
@@ -478,7 +478,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
                 };
             }
 
-            return GetSchemaFromJsonString(body);
+            return GetSchemaFromJsonString(getBody());
         }
 
         return null;
