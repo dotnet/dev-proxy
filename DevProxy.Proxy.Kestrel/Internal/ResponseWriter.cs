@@ -22,6 +22,8 @@ namespace DevProxy.Proxy.Kestrel.Internal;
 /// </summary>
 internal static class ResponseWriter
 {
+    internal const int WriteSliceBytes = 64 * 1024;
+
     private static readonly byte[] s_continue = Encoding.ASCII.GetBytes("HTTP/1.1 100 Continue\r\n\r\n");
 
     /// <summary>
@@ -84,7 +86,13 @@ internal static class ResponseWriter
         await clientStream.WriteAsync(Encoding.ASCII.GetBytes(head.ToString()), ct).ConfigureAwait(false);
         if (!isHead && !body.IsEmpty)
         {
-            await clientStream.WriteAsync(body, ct).ConfigureAwait(false);
+            // Write in slices so the transport applies backpressure per slice instead of
+            // copying the whole (up to 256 MiB) body into its send buffers at once.
+            for (var offset = 0; offset < body.Length; offset += WriteSliceBytes)
+            {
+                var slice = body.Slice(offset, Math.Min(WriteSliceBytes, body.Length - offset));
+                await clientStream.WriteAsync(slice, ct).ConfigureAwait(false);
+            }
         }
         await clientStream.FlushAsync(ct).ConfigureAwait(false);
     }
