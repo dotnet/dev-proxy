@@ -8,7 +8,7 @@ using Xunit;
 namespace DevProxy.Tests;
 
 [CollectionDefinition("console-output", DisableParallelization = true)]
-public sealed class ConsoleOutputCollection;
+public sealed class ConsoleOutputDefinition;
 
 [Collection("console-output")]
 public sealed class PluginCommandHelpTests
