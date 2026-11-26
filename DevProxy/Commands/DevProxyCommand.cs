@@ -207,6 +207,13 @@ sealed class DevProxyCommand : RootCommand
         }
     }
 
+    // Names of the commands registered in ConfigureCommand. Keep in sync.
+    internal static readonly string[] BuiltInCommandNames =
+    [
+        "api", "cert", "config", "jwt", "logs", "msgraphdb", "outdated",
+        "plugin", "status", "stdio", "stop", "system-proxy"
+    ];
+
     /// <summary>
     /// Returns whether the arguments (without the executable) start the proxy, rather than
     /// invoking a subcommand, showing help or the version, or failing to parse. Parses the
@@ -256,10 +263,19 @@ sealed class DevProxyCommand : RootCommand
         {
             rootCommand.Options.Add(option);
         }
+        // Registering the subcommands stops multi-value options and plugin options from
+        // consuming their names, e.g. 'devproxy --urls-to-watch https://example.com/* status'.
+        foreach (var commandName in BuiltInCommandNames)
+        {
+            rootCommand.Subcommands.Add(new Command(commandName) { TreatUnmatchedTokensAsErrors = false });
+        }
+        // Without an action, a root command with subcommands requires one of them.
+        rootCommand.SetAction(_ => { });
 
         var parseResult = rootCommand.Parse(args);
-        // Help, version and parse errors (such as a missing response file) have an action.
-        if (parseResult.Action is not null)
+        // Subcommands, help, version and parse errors (such as a missing response file)
+        // resolve to a different action.
+        if (parseResult.Action != rootCommand.Action)
         {
             return false;
         }
@@ -822,6 +838,7 @@ sealed class DevProxyCommand : RootCommand
             .Select(g => g.First()));
         this.AddOptions(options.OrderByName());
 
+        // Keep BuiltInCommandNames in sync with these commands.
         var commands = new List<Command>
         {
             ActivatorUtilities.CreateInstance<ApiCommand>(_serviceProvider),

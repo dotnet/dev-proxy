@@ -167,6 +167,7 @@ internal sealed class SystemProxyManager : ISystemProxyManager
         {
             SystemProxySnapshotStore.Delete(_snapshotPath);
         }
+        RetireSystemProxyRegistrations();
         return restoredPrevious
             ? SystemProxyRestoreResult.RestoredPrevious
             : SystemProxyRestoreResult.Disabled;
@@ -174,6 +175,7 @@ internal sealed class SystemProxyManager : ISystemProxyManager
 
     internal void SaveSnapshot(Action<SystemProxySnapshot> capture)
     {
+        ProxyInstanceState? previousOwner = null;
         try
         {
             // Keep an existing snapshot: it holds the settings from before Dev Proxy first
@@ -184,6 +186,10 @@ internal sealed class SystemProxyManager : ISystemProxyManager
                 snapshot = new() { CreatedAt = DateTimeOffset.UtcNow };
                 capture(snapshot);
             }
+            else if (snapshot.Pid != Environment.ProcessId)
+            {
+                previousOwner = new() { Pid = snapshot.Pid, ProcessStartTime = snapshot.ProcessStartTime };
+            }
             snapshot.Pid = Environment.ProcessId;
             snapshot.ProcessStartTime = StateManager.GetCurrentProcessStartTime();
             SystemProxySnapshotStore.Save(_snapshotPath, snapshot);
@@ -192,8 +198,61 @@ internal sealed class SystemProxyManager : ISystemProxyManager
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             _logger.LogWarning(ex, "Couldn't save the current system proxy settings. They can't be restored when Dev Proxy stops.");
+            return;
+        }
+
+        if (previousOwner is not null)
+        {
+            // The previous owner no longer owns the system proxy. Record that, so stopping
+            // it or recovering after it crashes doesn't undo the settings this instance
+            // restores when it stops.
+            try
+            {
+                RunSynchronously(StateManager.ClearSystemProxyFlagAsync(previousOwner));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _logger.LogWarning(ex, "Couldn't record that Dev Proxy (PID: {Pid}) no longer owns the system proxy.", previousOwner.Pid);
+            }
         }
     }
+
+    /// <summary>
+    /// Records that no instance owns the system proxy anymore after its settings were
+    /// restored: live instances that registered as the system proxy are marked as no
+    /// longer owning it, and records of dead ones are removed. Otherwise, stopping or
+    /// recovering after any of them would change the restored settings again.
+    /// </summary>
+    private void RetireSystemProxyRegistrations()
+    {
+        try
+        {
+            RunSynchronously(RetireSystemProxyRegistrationsAsync());
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(ex, "Couldn't update the records of Dev Proxy instances registered as the system proxy.");
+        }
+    }
+
+    private static async Task RetireSystemProxyRegistrationsAsync()
+    {
+        foreach (var state in (await StateManager.LoadAllStatesAsync()).Where(s => s.AsSystemProxy))
+        {
+            await StateManager.ClearSystemProxyFlagAsync(state);
+        }
+
+        foreach (var orphan in await StateManager.GetOrphanedSystemProxyStatesAsync())
+        {
+            await StateManager.DeleteStateAsync(orphan);
+        }
+    }
+
+    // Called from the synchronous ISystemProxyManager members; the host has no
+    // synchronization context, so blocking here can't deadlock.
+#pragma warning disable VSTHRD002
+    private static void RunSynchronously(Task task) => task.GetAwaiter().GetResult();
+#pragma warning restore VSTHRD002
 
     [SupportedOSPlatform("windows")]
     private static void CaptureWindows(SystemProxySnapshot snapshot)

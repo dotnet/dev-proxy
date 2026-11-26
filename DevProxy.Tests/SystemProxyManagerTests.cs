@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System.Text.Json;
 using DevProxy.Proxy;
 using DevProxy.State;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -288,6 +289,43 @@ public class SystemProxyResetDetectionTests
     [InlineData]
     public void IsResetInvocation_ReturnsFalse(params string[] args) =>
         Assert.False(DevProxy.Commands.SystemProxyCommand.IsResetInvocation(args));
+}
+
+[Collection("management-environment")]
+public class SystemProxyTakeoverTests
+{
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SaveSnapshot_Takeover_RetiresPreviousOwnerRecord(bool reusedPid)
+    {
+        var folder = Directory.CreateTempSubdirectory("devproxy-takeover-");
+        var pid = Random.Shared.Next(int.MaxValue / 2, int.MaxValue);
+        var statePath = StateManager.GetInstanceStateFilePath(pid);
+        Assert.False(File.Exists(statePath));
+        try
+        {
+            var snapshotPath = Path.Combine(folder.FullName, "snapshot.json");
+            SystemProxySnapshotStore.Save(snapshotPath, new() { Pid = pid, ProcessStartTime = DateTimeOffset.UnixEpoch });
+            // With a reused PID, the record belongs to a different process than the snapshot owner.
+            await StateManager.SaveStateAsync(new()
+            {
+                Pid = pid,
+                ProcessStartTime = reusedPid ? DateTimeOffset.UnixEpoch.AddDays(1) : DateTimeOffset.UnixEpoch,
+                AsSystemProxy = true,
+            });
+
+            new SystemProxyManager(NullLogger<SystemProxyManager>.Instance, snapshotPath).SaveSnapshot(_ => { });
+
+            var state = JsonSerializer.Deserialize<ProxyInstanceState>(await File.ReadAllTextAsync(statePath));
+            Assert.Equal(reusedPid, state!.AsSystemProxy);
+        }
+        finally
+        {
+            File.Delete(statePath);
+            folder.Delete(recursive: true);
+        }
+    }
 }
 
 [Collection("management-environment")]

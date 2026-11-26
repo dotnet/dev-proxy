@@ -422,15 +422,11 @@ static async Task<string?> ReadDaemonLogAsync(int pid)
 
 static bool IsJsonOutputRequested(string[] args)
 {
-    for (var i = 0; i < args.Length; i++)
-    {
-        if (string.Equals(args[i], DevProxyCommand.OutputOptionName, StringComparison.OrdinalIgnoreCase) &&
-            i + 1 < args.Length)
-        {
-            return string.Equals(args[i + 1], "json", StringComparison.OrdinalIgnoreCase);
-        }
-    }
-    return false;
+    // Use the configuration-options parser so attached values (--output=json) and
+    // response files are recognized like they are by the full command.
+    var options = new DevProxyConfigOptions();
+    options.ParseOptions(args);
+    return options.Output == DevProxy.Abstractions.Proxy.OutputFormat.Json;
 }
 
 static string EscapeArgument(string arg)

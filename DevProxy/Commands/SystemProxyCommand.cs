@@ -143,27 +143,14 @@ sealed class SystemProxyCommand : Command
             return 1;
         }
 
+        // Restore also records that live detached instances no longer own the system proxy
+        // and removes records of dead ones, so stopping them or recovering after they crash
+        // doesn't change the restored settings again.
         var result = new SystemProxyManager(systemProxyLogger).Restore();
         if (result is SystemProxyRestoreResult.Failed)
         {
             logger.LogError("Couldn't restore the system proxy settings. To reset them manually, see https://go.devproxy.net?go=proxy-reset.");
             return 1;
-        }
-
-        // A forced reset took the system proxy away from live detached instances. Record
-        // that, so stopping them or recovering after they crash doesn't change the
-        // restored settings again.
-        foreach (var state in (await StateManager.LoadAllStatesAsync(cancellationToken)).Where(s => s.AsSystemProxy))
-        {
-            state.AsSystemProxy = false;
-            await StateManager.SaveStateAsync(state, cancellationToken);
-        }
-
-        // The settings are restored, so records of dead instances that registered as the
-        // system proxy are stale. Remove them so they don't trigger another restore later.
-        foreach (var orphan in await StateManager.GetOrphanedSystemProxyStatesAsync(cancellationToken))
-        {
-            await StateManager.DeleteStateAsync(orphan, cancellationToken);
         }
 
         LogResult(result is SystemProxyRestoreResult.RestoredPrevious

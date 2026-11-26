@@ -327,6 +327,28 @@ internal static class StateManager
     }
 
     /// <summary>
+    /// Records that the given instance no longer owns the system proxy, so stopping it or
+    /// recovering after it crashes doesn't change the OS proxy settings. The on-disk record
+    /// is re-read and only updated if it still describes the same instance, so a newer
+    /// instance that reused the PID keeps its own record.
+    /// </summary>
+    public static async Task ClearSystemProxyFlagAsync(ProxyInstanceState expected, CancellationToken cancellationToken = default)
+    {
+        foreach (var filePath in new[] { GetInstanceStateFilePath(expected.Pid), GetStateFilePath() })
+        {
+            var current = await ReadStateFromFileAsync(filePath, cancellationToken);
+            if (current is { AsSystemProxy: true } &&
+                current.Pid == expected.Pid &&
+                current.ProcessStartTime == expected.ProcessStartTime)
+            {
+                current.AsSystemProxy = false;
+                var json = JsonSerializer.Serialize(current, _jsonOptions);
+                await PrivateFiles.WriteAllTextAsync(filePath, json, cancellationToken);
+            }
+        }
+    }
+
+    /// <summary>
     /// Deletes the state file for the current process.
     /// </summary>
     public static Task DeleteStateAsync(CancellationToken cancellationToken = default)
