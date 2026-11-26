@@ -14,7 +14,7 @@ namespace DevProxy.Abstractions.Proxy;
 /// This is the engine-host boundary for certificate trust: a proxy engine (e.g. the
 /// Kestrel engine) owns minting/persisting its root but cannot reference the host's
 /// platform trust helpers, so it calls this abstraction. The host supplies the
-/// implementation (mac keychain, Windows root store, first-run prompt). Implementations
+/// implementation (mac keychain, Windows root store, Linux system store, first-run prompt). Implementations
 /// are expected to be idempotent and to honor the user's trust/first-run configuration.
 /// </para>
 /// </summary>
