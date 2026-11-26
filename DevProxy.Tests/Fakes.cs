@@ -88,8 +88,28 @@ internal sealed class FakeProxyConfiguration : IProxyConfiguration, IProcessTree
     public string? ReportsFolder { get; set; }
     public bool ShowTimestamps => false;
     public long? TimeoutSeconds { get; set; }
-    public bool ValidateSchemas => false;
+    public bool ValidateSchemas { get; set; }
     public IEnumerable<int> WatchPids { get; set; } = [];
     public IEnumerable<string> WatchProcessNames { get; set; } = [];
     public bool WatchProcessTree { get; set; }
+}
+
+/// <summary>Answers HTTP requests with <paramref name="send"/>, which can also throw to simulate network failures.</summary>
+internal sealed class FakeHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> send) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+        Task.FromResult(send(request));
+}
+
+/// <summary>Records log messages so tests can assert on them.</summary>
+internal sealed class RecordingLogger : ILogger
+{
+    public List<(LogLevel LogLevel, string Message)> Messages { get; } = [];
+
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+    public bool IsEnabled(LogLevel logLevel) => true;
+
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+        Messages.Add((logLevel, formatter(state, exception)));
 }
