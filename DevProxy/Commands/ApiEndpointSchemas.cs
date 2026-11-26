@@ -79,14 +79,15 @@ static class ApiEndpointSchemas
         ("GET", "/proxy/rootCertificate") => new()
         {
             Parameters = new JsonArray(
-                QueryParameter("format", "Certificate format. Only crt (PEM-encoded) is supported.", required: true, new JsonObject
+                QueryParameter("format", "Certificate format. crt and pem are aliases (PEM-encoded). Defaults to crt.", required: false, new JsonObject
                 {
                     ["type"] = "string",
-                    ["enum"] = new JsonArray("crt")
+                    ["enum"] = new JsonArray("crt", "pem"),
+                    ["default"] = "crt"
                 })),
             Responses = Responses(
                 ("200", Response("PEM-encoded root certificate (devProxy.pem)", "application/x-x509-ca-cert", new JsonObject { ["type"] = "string" })),
-                ("400", Response("format is missing or not supported", ProblemContentType, ValidationProblemSchema())))
+                ("400", Response("format is not supported", ProblemContentType, ValidationProblemSchema())))
         },
         ("GET", "/proxy/logs") => new()
         {
