@@ -837,7 +837,7 @@ sealed class ConfigCommand : Command
         };
 
         var json = JsonSerializer.Serialize(result, ProxyUtils.JsonSerializerOptions);
-        logger.LogInformation("{Result}", json);
+        logger.LogStructuredOutput(json);
     }
 
     private static void WriteTextResults(
