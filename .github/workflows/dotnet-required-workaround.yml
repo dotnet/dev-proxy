@@ -1,7 +1,6 @@
-name: .NET # name must match the original workflow
+name: Build and test # name must match the original workflow
 
 on:
-  workflow_dispatch:
   push:
     branches: [ main ]
     paths: ['samples/**', '**.md', '.vscode/**', '**.svg'] # must be the exact opposite of the original workflow
