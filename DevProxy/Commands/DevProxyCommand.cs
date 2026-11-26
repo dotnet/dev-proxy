@@ -60,6 +60,7 @@ sealed class DevProxyCommand : RootCommand
     private static bool _isJwtCommandResolved;
     private static bool _isRootCommandResolved;
     private static bool _isConfigValidateCommandResolved;
+    private static bool _isPluginCommandResolved;
     private static bool _isDetachedModeResolved;
     private static bool _isInternalDaemonResolved;
     private static bool _stdioLogFilePathResolved;
@@ -129,6 +130,45 @@ sealed class DevProxyCommand : RootCommand
                 string.Equals(args[2], "validate", StringComparison.OrdinalIgnoreCase) &&
                 !args.Any(arg => helpOptions.Contains(arg));
             _isConfigValidateCommandResolved = true;
+            return field;
+        }
+    }
+
+    public static bool IsPluginCommand
+    {
+        get
+        {
+            if (_isPluginCommandResolved)
+            {
+                return field;
+            }
+
+            var args = Environment.GetCommandLineArgs();
+            // skip global options supported by the standalone plugin command
+            // so that e.g. `devproxy --output json plugin list` is detected too
+            var i = 1;
+            while (i < args.Length)
+            {
+                if (string.Equals(args[i], OutputOptionName, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(args[i], LogLevelOptionName, StringComparison.OrdinalIgnoreCase))
+                {
+                    i += 2;
+                }
+                else if (args[i].StartsWith($"{OutputOptionName}=", StringComparison.OrdinalIgnoreCase) ||
+                    args[i].StartsWith($"{OutputOptionName}:", StringComparison.OrdinalIgnoreCase) ||
+                    args[i].StartsWith($"{LogLevelOptionName}=", StringComparison.OrdinalIgnoreCase) ||
+                    args[i].StartsWith($"{LogLevelOptionName}:", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(args[i], NoColorOptionName, StringComparison.OrdinalIgnoreCase))
+                {
+                    i++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            field = i < args.Length && string.Equals(args[i], "plugin", StringComparison.OrdinalIgnoreCase);
+            _isPluginCommandResolved = true;
             return field;
         }
     }
@@ -283,7 +323,8 @@ sealed class DevProxyCommand : RootCommand
     {
         var installCertOption = new Option<bool?>(InstallCertOptionName)
         {
-            Description = "Install self-signed certificate"
+            Description = "Install and trust the root certificate (default: true, false when CI is set). On Linux, trust it manually",
+            HelpName = "true|false"
         };
         installCertOption.Validators.Add(input =>
         {
@@ -552,7 +593,8 @@ sealed class DevProxyCommand : RootCommand
 
         var asSystemProxyOption = new Option<bool?>(AsSystemProxyOptionName)
         {
-            Description = "Set Dev Proxy as the system proxy"
+            Description = "Register Dev Proxy as the system proxy (default: true, false when CI is set). See https://go.devproxy.net?go=system-proxy",
+            HelpName = "true|false"
         };
 
         var installCertOption = CreateInstallCertOption(asSystemProxyOption, _proxyConfiguration);
@@ -690,7 +732,8 @@ sealed class DevProxyCommand : RootCommand
             ActivatorUtilities.CreateInstance<StdioCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<StatusCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<StopCommand>(_serviceProvider),
-            ActivatorUtilities.CreateInstance<LogsCommand>(_serviceProvider)
+            ActivatorUtilities.CreateInstance<LogsCommand>(_serviceProvider),
+            ActivatorUtilities.CreateInstance<PluginCommand>(_serviceProvider)
         };
         var pluginCommands = _plugins.SelectMany(p => p.GetCommands());
         foreach (var group in pluginCommands.GroupBy(c => c.Name))
