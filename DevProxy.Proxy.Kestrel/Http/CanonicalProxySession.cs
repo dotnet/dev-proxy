@@ -61,12 +61,10 @@ public sealed class CanonicalProxySession : IProxySession
     /// <inheritdoc />
     public bool HasResponse => _response is not null;
 
-    /// <summary>
-    /// True when the current <see cref="Response"/> was produced by a plugin (via
-    /// <see cref="Respond(string, HttpStatusCode, IEnumerable{IHttpHeader})"/>)
-    /// rather than received from the origin. The engine uses this to short-circuit
-    /// upstream forwarding.
-    /// </summary>
+    /// <inheritdoc />
+    /// <remarks>
+    /// The engine uses this to short-circuit upstream forwarding.
+    /// </remarks>
     public bool RespondedByPlugin { get; private set; }
 
     /// <summary>The concrete response, for engine write-back. Null until set.</summary>
