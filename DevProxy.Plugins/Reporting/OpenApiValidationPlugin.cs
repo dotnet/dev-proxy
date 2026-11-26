@@ -151,18 +151,25 @@ public sealed class OpenApiValidationPlugin(
 
         ArgumentNullException.ThrowIfNull(e);
 
-        var sessions = e.RequestLogs
+        IProxySession[] GetSessions(MessageType messageType) => [.. e.RequestLogs
             .Where(l =>
-                l.MessageType == MessageType.InterceptedResponse &&
+                l.MessageType == messageType &&
                 l.Context?.Session is not null &&
                 l.Context.Session.HasResponse &&
                 ProxyUtils.MatchesUrlToWatch(UrlsToWatch, l.Context.Session.Request.RequestUri.AbsoluteUri) &&
                 !IsCorsPreflight(l.Context.Session.Request))
             .Select(l => l.Context!.Session)
-            .Distinct();
+            .Distinct()];
 
-        if (!sessions.Any())
+        // only validate completed sessions, because the body of a streamed
+        // response might still be arriving when the recording stops
+        var sessions = GetSessions(MessageType.FinishedProcessingRequest);
+        var pending = GetSessions(MessageType.InterceptedResponse).Except(sessions).ToArray();
+
+        if (sessions.Length == 0 && pending.Length == 0)
         {
+            // don't leave the report from a previous recording behind
+            _ = ((Dictionary<string, object>)e.GlobalData[ProxyUtils.ReportsKey]).Remove(Name);
             Logger.LogRequest("No requests to process", MessageType.Skipped);
             return Task.CompletedTask;
         }
@@ -170,7 +177,9 @@ public sealed class OpenApiValidationPlugin(
         var validated = 0;
         var results = new List<OpenApiValidationResult>();
         var unmatched = new List<string>();
-        var skipped = new List<string>();
+        var skipped = pending
+            .Select(s => $"{s.Request.Method} {s.Request.Url}: Skipped validating because the response hadn't completed when the recording stopped")
+            .ToList();
 
         foreach (var session in sessions)
         {
@@ -309,11 +318,6 @@ public sealed class OpenApiValidationPlugin(
                 }
 
                 var relativePath = requestUrl[serverMatch.Length..];
-                if (relativePath.Length > 0 && relativePath[0] != '/')
-                {
-                    // server URL matched only part of a path segment
-                    continue;
-                }
                 if (relativePath.Length == 0)
                 {
                     relativePath = "/";
@@ -367,6 +371,20 @@ public sealed class OpenApiValidationPlugin(
         var parameters = GetEffectiveParameters(match.PathItem!, match.Operation!);
         var query = ParseQueryString(request.RequestUri.Query);
 
+        var queryParameters = parameters
+            .Where(p => p.In == ParameterLocation.Query && p.Name is not null)
+            .ToArray();
+        var knownQueryKeys = queryParameters
+            .Select(p => new ObjectQueryKey(p.Name!, false))
+            .Concat(queryParameters.SelectMany(GetObjectQueryKeys))
+            .Concat(GetQueryApiKeyNames(match).Select(n => new ObjectQueryKey(n, false)))
+            .ToArray();
+        // exploded form dictionaries (e.g. owner=Alex) are sent as arbitrary keys,
+        // so they consist of the query keys that aren't otherwise documented
+        var dynamicQueryKeys = query.Keys
+            .Where(name => !knownQueryKeys.Any(k => k.IsMatch(name)))
+            .ToArray();
+
         foreach (var parameter in parameters)
         {
             if (parameter.Name is null || parameter.In is null)
@@ -391,7 +409,8 @@ public sealed class OpenApiValidationPlugin(
                         values = queryValues;
                         decode = Unescape;
                     }
-                    else if (GetObjectQueryKeys(parameter).Any(k => query.Keys.Any(k.IsMatch)))
+                    else if (GetObjectQueryKeys(parameter).Any(k => query.Keys.Any(k.IsMatch)) ||
+                        (dynamicQueryKeys.Length > 0 && IsExplodedFormDictionary(parameter)))
                     {
                         // values of deepObject (e.g. filter[name]=value) and exploded
                         // form object (e.g. name=value) parameters aren't validated
@@ -436,26 +455,13 @@ public sealed class OpenApiValidationPlugin(
 
         // unknown query parameters
         var hasQueryStringParameter = parameters.Any(p => p.In == ParameterLocation.QueryString);
-        if (hasQueryStringParameter)
+        if (hasQueryStringParameter || queryParameters.Any(IsExplodedFormDictionary))
         {
             return;
         }
 
-        var queryParameters = parameters
-            .Where(p => p.In == ParameterLocation.Query && p.Name is not null)
-            .ToArray();
-        var knownQueryKeys = queryParameters
-            .Select(p => new ObjectQueryKey(p.Name!, false))
-            .Concat(queryParameters.SelectMany(GetObjectQueryKeys))
-            .Concat(GetQueryApiKeyNames(match).Select(n => new ObjectQueryKey(n, false)))
-            .ToArray();
-        foreach (var name in query.Keys)
+        foreach (var name in dynamicQueryKeys)
         {
-            if (knownQueryKeys.Any(k => k.IsMatch(name)))
-            {
-                continue;
-            }
-
             issues.Add(new()
             {
                 Location = OpenApiValidationIssueLocation.Request,
@@ -500,15 +506,24 @@ public sealed class OpenApiValidationPlugin(
             return [new($"{parameter.Name}[", true)];
         }
 
-        var type = OpenApiSchemaValidator.GetEffectiveType(parameter.Schema);
-        if ((parameter.Style ?? ParameterStyle.Form) == ParameterStyle.Form && parameter.Explode &&
-            type is not null && type.Value.HasFlag(JsonSchemaType.Object))
+        if (IsExplodedFormObject(parameter))
         {
             return OpenApiSchemaValidator.GetPropertyNames(parameter.Schema).Select(p => new ObjectQueryKey(p, false));
         }
 
         return [];
     }
+
+    private static bool IsExplodedFormObject(IOpenApiParameter parameter)
+    {
+        var type = OpenApiSchemaValidator.GetEffectiveType(parameter.Schema);
+        return parameter.In == ParameterLocation.Query &&
+            (parameter.Style ?? ParameterStyle.Form) == ParameterStyle.Form && parameter.Explode &&
+            type is not null && type.Value.HasFlag(JsonSchemaType.Object);
+    }
+
+    private static bool IsExplodedFormDictionary(IOpenApiParameter parameter) =>
+        IsExplodedFormObject(parameter) && OpenApiSchemaValidator.AllowsDynamicProperties(parameter.Schema);
 
     /// <param name="decode">Function to decode <paramref name="values"/>, or null if they aren't encoded.</param>
     private static void ValidateParameterValue(string name, string kind, List<string> values, IOpenApiSchema? schema,
@@ -903,8 +918,9 @@ public sealed class OpenApiValidationPlugin(
         var scopes = new Dictionary<string, (Regex Regex, Dictionary<string, CompiledPath> Paths)>(StringComparer.Ordinal);
         var skippedServers = new HashSet<string>(StringComparer.Ordinal);
 
-        (Regex Regex, Dictionary<string, CompiledPath> Paths)? GetScope(string? url)
+        (Regex Regex, Dictionary<string, CompiledPath> Paths)? GetScope(OpenApiServer server)
         {
+            var url = server.Url;
             if (string.IsNullOrWhiteSpace(url) || !url.Contains("://", StringComparison.Ordinal))
             {
                 if (skippedServers.Add(url ?? string.Empty))
@@ -914,10 +930,12 @@ public sealed class OpenApiValidationPlugin(
                 return null;
             }
 
-            var key = url.TrimEnd('/');
+            // servers with the same URL can declare different variable values
+            var regex = CompileServerUrl(url.TrimEnd('/'), server.Variables);
+            var key = regex.ToString();
             if (!scopes.TryGetValue(key, out var scope))
             {
-                scope = (CompileServerUrl(key), new(StringComparer.Ordinal));
+                scope = (regex, new(StringComparer.Ordinal));
                 scopes[key] = scope;
             }
             return scope;
@@ -931,7 +949,7 @@ public sealed class OpenApiValidationPlugin(
             // there, so that requests with undocumented methods are reported
             foreach (var server in pathServers)
             {
-                if (GetScope(server.Url) is { } scope)
+                if (GetScope(server) is { } scope)
                 {
                     GetOrAddPath(scope.Paths, template, pathItem);
                 }
@@ -942,7 +960,7 @@ public sealed class OpenApiValidationPlugin(
                 var operationServers = operation.Servers is { Count: > 0 } ? operation.Servers : pathServers;
                 foreach (var server in operationServers)
                 {
-                    if (GetScope(server.Url) is { } scope)
+                    if (GetScope(server) is { } scope)
                     {
                         GetOrAddPath(scope.Paths, template, pathItem).Operations[method] = operation;
                     }
@@ -954,7 +972,7 @@ public sealed class OpenApiValidationPlugin(
         // to undocumented paths are reported
         foreach (var server in document.Servers ?? [])
         {
-            _ = GetScope(server.Url);
+            _ = GetScope(server);
         }
 
         return [.. scopes.Values.Select(s => new ServerScope(
@@ -972,7 +990,7 @@ public sealed class OpenApiValidationPlugin(
         return path;
     }
 
-    private static Regex CompileServerUrl(string url)
+    private static Regex CompileServerUrl(string url, IDictionary<string, OpenApiServerVariable>? variables)
     {
         // scheme and host are case-insensitive, but the base path is case-sensitive
         var authorityStart = url.IndexOf("://", StringComparison.Ordinal) + 3;
@@ -983,10 +1001,25 @@ public sealed class OpenApiValidationPlugin(
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         var basePath = pathStart < 0 ? string.Empty : url[pathStart..];
 
-        static string ToPattern(string value) =>
-            Regex.Replace(Regex.Escape(value), @"\\\{[^}]+\}", "[^/]*");
+        // variables match their documented values, which can span multiple path
+        // segments (e.g. api/v1), or any other value within a single segment
+        string ToVariablePattern(string name)
+        {
+            var variable = variables?.TryGetValue(name, out var v) == true ? v : null;
+            var documentedValues = (variable?.Enum ?? [])
+                .Append(variable?.Default)
+                .Where(value => !string.IsNullOrEmpty(value))
+                .Distinct(StringComparer.Ordinal)
+                .OrderByDescending(value => value!.Length)
+                .Select(value => Regex.Escape(value!));
+            return $"(?:{string.Join("|", documentedValues.Append("[^/]*"))})";
+        }
 
-        return new Regex($"^(?i:{ToPattern(origin)}){ToPattern(basePath)}", RegexOptions.CultureInvariant);
+        string ToPattern(string value) =>
+            Regex.Replace(Regex.Escape(value), @"\\\{([^}]+)\}", m => ToVariablePattern(Regex.Unescape(m.Groups[1].Value)));
+
+        // the server URL must end at a path segment boundary
+        return new Regex($"^(?i:{ToPattern(origin)}){ToPattern(basePath)}(?=/|$)", RegexOptions.CultureInvariant);
     }
 
     private static CompiledPath CompilePath(string template, IOpenApiPathItem pathItem)

@@ -342,9 +342,9 @@ public sealed class OpenApiValidationPluginTests : IDisposable
     {
         var plugin = await CreatePluginAsync($$"""{ "specsFolder": ".", "reportUnmatchedRequests": {{(reportUnmatchedRequests ? "true" : "false")}} }""");
         var args = Recording([
-            Get("https://api.contoso.com/v1/users/1", HttpStatusCode.OK, """{ "id": 1, "name": "Alex" }""").AsRequestLog(MessageType.InterceptedResponse),
-            Get("https://api.contoso.com/v1/users/1", HttpStatusCode.OK, """{ "id": 1 }""").AsRequestLog(MessageType.InterceptedResponse),
-            Get("https://api.contoso.com/other", HttpStatusCode.OK, "{}").AsRequestLog(MessageType.InterceptedResponse),
+            Get("https://api.contoso.com/v1/users/1", HttpStatusCode.OK, """{ "id": 1, "name": "Alex" }""").AsRequestLog(MessageType.FinishedProcessingRequest),
+            Get("https://api.contoso.com/v1/users/1", HttpStatusCode.OK, """{ "id": 1 }""").AsRequestLog(MessageType.FinishedProcessingRequest),
+            Get("https://api.contoso.com/other", HttpStatusCode.OK, "{}").AsRequestLog(MessageType.FinishedProcessingRequest),
         ]);
 
         await plugin.AfterRecordingStopAsync(args, CancellationToken.None);
@@ -371,8 +371,8 @@ public sealed class OpenApiValidationPluginTests : IDisposable
     {
         var plugin = await CreatePluginAsync();
         var args = Recording([
-            Get("https://api.contoso.com/v1/users/1", HttpStatusCode.OK, """{ "id": 1, "name": "Alex" }""").AsRequestLog(MessageType.InterceptedResponse),
-            Get("https://api.contoso.com/v1/users/2", HttpStatusCode.OK, $$"""{ "id": 2, "name": "{{new string('a', 5 * 1024 * 1024)}}" }""").AsRequestLog(MessageType.InterceptedResponse),
+            Get("https://api.contoso.com/v1/users/1", HttpStatusCode.OK, """{ "id": 1, "name": "Alex" }""").AsRequestLog(MessageType.FinishedProcessingRequest),
+            Get("https://api.contoso.com/v1/users/2", HttpStatusCode.OK, $$"""{ "id": 2, "name": "{{new string('a', 5 * 1024 * 1024)}}" }""").AsRequestLog(MessageType.FinishedProcessingRequest),
         ]);
 
         await plugin.AfterRecordingStopAsync(args, CancellationToken.None);
@@ -1273,6 +1273,115 @@ public sealed class OpenApiValidationPluginTests : IDisposable
             Assert.Single(Messages(plugin.Validate(Call("GET", "https://api.fabrikam.com/operation?api_key=secret").Session))));
         Assert.Equal("api_key: Query parameter 'api_key' isn't documented",
             Assert.Single(Messages(plugin.Validate(Call("GET", "https://api.fabrikam.com/public?api_key=secret").Session))));
+    }
+
+    [Fact]
+    public async Task SkipsResponsesThatHaventCompletedWhenRecordingStops()
+    {
+        var plugin = await CreatePluginAsync();
+        var pending = Get("https://api.contoso.com/v1/users/1", HttpStatusCode.OK, """{ "id": 1, "name": "Alex" }""");
+        var args = Recording([pending.AsRequestLog(MessageType.InterceptedResponse)]);
+
+        await plugin.AfterRecordingStopAsync(args, CancellationToken.None);
+
+        var report = Assert.IsType<OpenApiValidationPluginReport>(
+            ((Dictionary<string, object>)args.GlobalData[ProxyUtils.ReportsKey])[plugin.Name]);
+        Assert.Equal(0, report.ValidatedRequests);
+        Assert.Contains("hadn't completed", Assert.Single(report.SkippedValidations!), StringComparison.Ordinal);
+        Assert.DoesNotContain("All validated requests", report.ToMarkdown()!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RemovesPreviousReportWhenRecordingHasNoRequests()
+    {
+        var plugin = await CreatePluginAsync();
+        var args = Recording([]);
+        var reports = (Dictionary<string, object>)args.GlobalData[ProxyUtils.ReportsKey];
+        reports[plugin.Name] = new OpenApiValidationPluginReport { Results = [], ValidatedRequests = 1 };
+
+        await plugin.AfterRecordingStopAsync(args, CancellationToken.None);
+
+        Assert.False(reports.ContainsKey(plugin.Name));
+    }
+
+    [Fact]
+    public async Task HandlesExplodedFormDictionaryQueryParameters()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("dictionary.yaml", """
+            openapi: 3.0.3
+            info: { title: Dictionary, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            paths:
+              /typed:
+                get:
+                  parameters:
+                    - { name: filter, in: query, required: true, style: form, explode: true, schema: { type: object, additionalProperties: { type: string } } }
+                    - { name: top, in: query, schema: { type: integer } }
+                  responses: { '204': { description: ok } }
+              /freeform:
+                get:
+                  parameters:
+                    - { name: filter, in: query, required: true, schema: { type: object } }
+                  responses: { '204': { description: ok } }
+            """));
+
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/typed?owner=Alex&top=5").Session)!.Issues);
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/freeform?owner=Alex").Session)!.Issues);
+        Assert.Equal("filter: Missing required query parameter 'filter'",
+            Assert.Single(Messages(plugin.Validate(Call("GET", "https://api.fabrikam.com/typed?top=5").Session))));
+    }
+
+    [Fact]
+    public async Task MatchesServerVariablesSpanningMultiplePathSegments()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("basepath.yaml", """
+            openapi: 3.0.3
+            info: { title: Base path, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com/{basePath}
+                variables:
+                  basePath:
+                    default: api/v1
+                    enum: [ api/v1, api/beta ]
+            paths:
+              /items:
+                get:
+                  responses: { '204': { description: ok } }
+            """));
+
+        var v1 = plugin.Validate(Call("GET", "https://api.fabrikam.com/api/v1/items").Session);
+        var beta = plugin.Validate(Call("GET", "https://api.fabrikam.com/api/beta/items").Session);
+
+        Assert.Equal("GET /items", v1?.Operation);
+        Assert.Empty(v1!.Issues);
+        Assert.Equal("GET /items", beta?.Operation);
+        Assert.Empty(beta!.Issues);
+    }
+
+    [Fact]
+    public async Task CoercesParametersUsingEnumValueTypesAndWideIntegers()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("enums.yaml", """
+            openapi: 3.0.3
+            info: { title: Enums, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            paths:
+              /items:
+                get:
+                  parameters:
+                    - { name: n, in: query, schema: { enum: [1, 2] } }
+                    - { name: flag, in: query, schema: { enum: [true, false] } }
+                    - { name: big, in: query, schema: { type: integer } }
+                  responses: { '204': { description: ok } }
+            """));
+
+        var valid = plugin.Validate(Call("GET", "https://api.fabrikam.com/items?n=1&flag=true&big=18446744073709551615").Session);
+        var invalid = plugin.Validate(Call("GET", "https://api.fabrikam.com/items?n=3").Session);
+
+        Assert.Empty(valid!.Issues);
+        Assert.Contains("isn't one of the allowed values", Assert.Single(Messages(invalid)), StringComparison.Ordinal);
     }
 
     private sealed class WarningLogger : ILogger<OpenApiValidationPlugin>

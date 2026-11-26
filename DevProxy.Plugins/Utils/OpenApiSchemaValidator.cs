@@ -4,6 +4,7 @@
 
 using Microsoft.OpenApi;
 using System.Globalization;
+using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -203,6 +204,39 @@ internal static class OpenApiSchemaValidator
             .SelectMany(s => s.Properties?.Keys ?? Enumerable.Empty<string>())
             .Distinct(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Gets whether the schema describes a dictionary, i.e. an object whose property
+    /// names aren't known in advance: it (or one of its allOf/anyOf/oneOf subschemas)
+    /// declares an additionalProperties schema, or it's a free-form object that doesn't
+    /// declare any properties and doesn't disallow additional properties.
+    /// </summary>
+    public static bool AllowsDynamicProperties(IOpenApiSchema? schema)
+    {
+        var schemas = EnumerateComposition(schema, _ => true).ToArray();
+        return schemas.Any(s => s.AdditionalProperties is not null) ||
+            (schemas.Length > 0 &&
+                !schemas.Any(s => s.Properties is { Count: > 0 }) &&
+                schemas.All(s => s.AdditionalPropertiesAllowed));
+    }
+
+    // Gets the primitive types of the values allowed by the enums of the schema and
+    // its allOf/anyOf/oneOf subschemas, for schemas that constrain values only by enum
+    private static JsonSchemaType? GetEnumType(IOpenApiSchema? schema)
+    {
+        JsonSchemaType? type = null;
+        foreach (var value in EnumerateComposition(schema, s => s.Type is null).SelectMany(s => s.Enum ?? []))
+        {
+            type = (type ?? 0) | (value?.GetValueKind() switch
+            {
+                JsonValueKind.Number => JsonSchemaType.Integer | JsonSchemaType.Number,
+                JsonValueKind.True or JsonValueKind.False => JsonSchemaType.Boolean,
+                JsonValueKind.Null or null => JsonSchemaType.Null,
+                _ => JsonSchemaType.String
+            });
+        }
+        return type;
+    }
+
     // Enumerates the schema and its allOf/anyOf/oneOf subschemas depth-first
     private static IEnumerable<IOpenApiSchema> EnumerateComposition(IOpenApiSchema? schema, Func<IOpenApiSchema, bool> descend) =>
         schema is null
@@ -272,16 +306,24 @@ internal static class OpenApiSchemaValidator
 
     private static JsonValue? CoercePrimitive(string value, IOpenApiSchema? schema)
     {
-        var type = GetEffectiveType(schema);
+        // schemas without a type, e.g. { enum: [1, 2] }, are interpreted using the types of their enum values
+        var type = GetEffectiveType(schema) ?? GetEnumType(schema);
         if (type is null)
         {
             return JsonValue.Create(value);
         }
 
-        if (type.Value.HasFlag(JsonSchemaType.Integer) &&
-            long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var l))
+        if (type.Value.HasFlag(JsonSchemaType.Integer))
         {
-            return JsonValue.Create(l);
+            if (long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var l))
+            {
+                return JsonValue.Create(l);
+            }
+            // integers without a range can exceed 64 bits, so keep them lossless
+            if (BigInteger.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var big))
+            {
+                return JsonNode.Parse(big.ToString(CultureInfo.InvariantCulture))!.AsValue();
+            }
         }
         if (type.Value.HasFlag(JsonSchemaType.Number) &&
             double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) &&
@@ -449,9 +491,11 @@ internal static class OpenApiSchemaValidator
         return matches;
     }
 
+    // integers can exceed the range of long and decimal, e.g. when the schema doesn't limit them
     private static bool IsInteger(JsonElement value) =>
         value.TryGetInt64(out _) ||
-        (value.TryGetDecimal(out var d) && decimal.Truncate(d) == d);
+        (value.TryGetDecimal(out var d) && decimal.Truncate(d) == d) ||
+        BigInteger.TryParse(value.GetRawText(), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out _);
 
     private static void ValidateEnum(JsonElement value, IOpenApiSchema schema, string path, List<SchemaValidationError> errors, bool strictNullableEnums)
     {
