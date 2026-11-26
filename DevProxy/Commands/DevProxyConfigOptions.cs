@@ -159,10 +159,7 @@ sealed class DevProxyConfigOptions : RootCommand
         var asSystemProxyOption = new Option<bool?>(DevProxyCommand.AsSystemProxyOptionName);
         var portOption = new Option<int?>(DevProxyCommand.PortOptionName, "-p");
 
-        var discoverOption = new Option<bool>(DevProxyCommand.DiscoverOptionName, "--discover")
-        {
-            Arity = ArgumentArity.Zero
-        };
+        var discoverOption = new Option<bool?>(DevProxyCommand.DiscoverOptionName);
 
         var noColorOption = new Option<bool>(DevProxyCommand.NoColorOptionName)
         {
