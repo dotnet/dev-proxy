@@ -52,10 +52,12 @@ Existing approvals are context, not evidence that functionality works.
 
 ### 2. Prepare the checkout
 
-Record the current branch or detached commit and worktree status. Check out the
-PR locally and verify that `git rev-parse HEAD` matches the captured head SHA.
-Use an isolated Git worktree if switching would disturb local changes or work
-already in progress. Never discard changes, reset, or stash automatically.
+Record the current branch or detached commit and worktree status. If there are
+any pre-existing tracked or untracked changes, or the checkout is in use by
+another task, use a clean isolated Git worktree. Otherwise, check out the PR
+locally. Verify that `git rev-parse HEAD` matches the captured head SHA and that
+the checkout is clean before creating test fixtures or building. Never discard
+changes, reset, or stash automatically.
 
 Read the checked-out repository's instructions before building or testing. Use
 the PR's source build, not a globally installed Dev Proxy binary. Keep temporary
