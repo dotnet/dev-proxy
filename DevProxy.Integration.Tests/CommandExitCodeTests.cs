@@ -39,7 +39,7 @@ public sealed class CommandExitCodeTests
 
         Assert.True(exitCode == 0, output);
         var results = stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(line => JsonDocument.Parse(line).RootElement)
+            .Select(line => JsonElement.Parse(line))
             .Where(entry => entry.GetProperty("type").GetString() == "result")
             .ToArray();
         var result = Assert.Single(results);

@@ -371,7 +371,9 @@ public sealed class ProcessSmokeTests
                 await process.WaitForExitAsync(exitTimeout.Token);
 
                 // The parent has exited; if the daemon inherited our pipes, EOF never comes.
-                completed = await Task.WhenAny(eof, Task.Delay(TimeSpan.FromSeconds(15)));
+                using var eofTimeout = new CancellationTokenSource();
+                completed = await Task.WhenAny(eof, Task.Delay(TimeSpan.FromSeconds(15), eofTimeout.Token));
+                await eofTimeout.CancelAsync();
             }
             finally
             {
