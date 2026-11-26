@@ -361,9 +361,14 @@ internal sealed class ProxyConnectionHandler(
         {
             phase = await pipeline.RunRequestAsync(session, ct).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (OperationCanceledException)
         {
-            pipeline.Forget(session.SessionId);
+            pipeline.Forget(session);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            pipeline.Forget(session);
             logger.LogError(ex, "Error running request pipeline");
             await WriteErrorAsync(clientStream, HttpStatusCode.BadGateway, "Plugin pipeline error", ct).ConfigureAwait(false);
             return false;
@@ -467,7 +472,7 @@ internal sealed class ProxyConnectionHandler(
                 }
                 else
                 {
-                    pipeline.Forget(session.SessionId);
+                    pipeline.Forget(session);
                 }
             }
             return false;
@@ -480,7 +485,7 @@ internal sealed class ProxyConnectionHandler(
         }
         catch (Exception ex)
         {
-            pipeline.Forget(session.SessionId);
+            pipeline.Forget(session);
 
             // An HttpClient timeout throws TaskCanceledException (an OperationCanceledException),
             // the same type a client disconnect produces — UpstreamFailure tells them apart by
