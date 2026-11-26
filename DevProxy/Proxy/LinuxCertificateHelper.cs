@@ -448,7 +448,7 @@ internal static class LinuxCertificateHelper
                 LogNssTrustFailure(logger, nssDir, ex.Message, NssLookup.Absent);
                 return false;
             }
-            error = Execute(new(certutil, ["-N", "-d", db, "--empty-password"]), redirectOutput: true).Error;
+            error = Execute(new(certutil, ["-N", "-d", db, "--empty-password"]), logger, captureError: true).Error;
             if (error.Length > 0)
             {
                 LogNssTrustFailure(logger, nssDir, error, NssLookup.Absent);
@@ -456,9 +456,14 @@ internal static class LinuxCertificateHelper
             }
         }
 
+        // Without a password file, certutil prompts for the database password on stderr, so don't capture it.
+        var captureError = passwordFile is not null;
         // Replace any previous Dev Proxy root (it's regenerated per machine) so re-runs are idempotent.
-        _ = Run(GetCertutilCommand(certutil, passwordFile, "-D", "-d", db, "-n", NssNickname), logger, redirectOutput: true, logFailure: false);
-        error = Execute(GetCertutilCommand(certutil, passwordFile, "-A", "-d", db, "-n", NssNickname, "-t", "C,,", "-i", pemFilePath), redirectOutput: true).Error;
+        if (LookUpNssEntry(certutil, db, logger) != NssLookup.Absent)
+        {
+            _ = Run(GetCertutilCommand(certutil, passwordFile, "-D", "-d", db, "-n", NssNickname), logger, captureError, logFailure: false);
+        }
+        error = Execute(GetCertutilCommand(certutil, passwordFile, "-A", "-d", db, "-n", NssNickname, "-t", "C,,", "-i", pemFilePath), logger, captureError).Error;
         if (error.Length == 0)
         {
             logger.LogInformation("Certificate added to the NSS database ({Path}).", nssDir);
@@ -466,9 +471,9 @@ internal static class LinuxCertificateHelper
         }
 
         // A failed add can leave an entry without trust flags behind; try to remove it.
-        var leftover = LookUpNssEntry(certutil, passwordFile, db);
+        var leftover = LookUpNssEntry(certutil, db, logger);
         if (leftover == NssLookup.Present &&
-            Run(GetCertutilCommand(certutil, passwordFile, "-D", "-d", db, "-n", NssNickname), logger, redirectOutput: true, logFailure: false))
+            Run(GetCertutilCommand(certutil, passwordFile, "-D", "-d", db, "-n", NssNickname), logger, captureError, logFailure: false))
         {
             leftover = NssLookup.Absent;
         }
@@ -482,16 +487,22 @@ internal static class LinuxCertificateHelper
     /// on /dev/tty, which it does even when stdin is redirected. Databases without a password work
     /// as usual. Null when interactive, so certutil can prompt.
     /// </summary>
-    internal static string? GetNssPasswordFile(bool isInteractive) => isInteractive ? null : "/dev/null";
+    internal static string? GetNssPasswordFile(bool isInteractive) => isInteractive ? null : EmptyPasswordFile;
+
+    private const string EmptyPasswordFile = "/dev/null";
 
     private static string? GetNssPasswordFile() => GetNssPasswordFile(GetContext().IsInteractive);
 
     internal static LinuxCommand GetCertutilCommand(string certutil, string? passwordFile, params string[] arguments) =>
         new(certutil, passwordFile is null ? arguments : [.. arguments, "-f", passwordFile]);
 
-    private static NssLookup LookUpNssEntry(string certutil, string? passwordFile, string db)
+    /// <summary>
+    /// Listing a certificate doesn't need the database password, so the lookup never prompts and
+    /// its stderr can always be captured to classify the result.
+    /// </summary>
+    private static NssLookup LookUpNssEntry(string certutil, string db, ILogger logger)
     {
-        var (succeeded, error) = Execute(GetCertutilCommand(certutil, passwordFile, "-L", "-d", db, "-n", NssNickname), redirectOutput: true);
+        var (succeeded, error) = Execute(GetCertutilCommand(certutil, EmptyPasswordFile, "-L", "-d", db, "-n", NssNickname), logger, captureError: true);
         return ClassifyNssLookup(succeeded, error);
     }
 
@@ -552,7 +563,7 @@ internal static class LinuxCertificateHelper
         {
             var db = $"sql:{nssDir}";
             // Only attempt (and report failures of) removal when the certificate is there.
-            var lookup = LookUpNssEntry(certutil, passwordFile, db);
+            var lookup = LookUpNssEntry(certutil, db, logger);
             if (lookup == NssLookup.Absent)
             {
                 continue;
@@ -565,7 +576,8 @@ internal static class LinuxCertificateHelper
                     nssDir, NssNickname);
                 continue;
             }
-            if (Run(GetCertutilCommand(certutil, passwordFile, "-D", "-d", db, "-n", NssNickname), logger, redirectOutput: true))
+            // Without a password file, certutil prompts for the database password on stderr, so don't capture it.
+            if (Run(GetCertutilCommand(certutil, passwordFile, "-D", "-d", db, "-n", NssNickname), logger, captureError: passwordFile is not null))
             {
                 logger.LogInformation("Certificate removed from the NSS database ({Path}).", nssDir);
             }
@@ -637,7 +649,7 @@ internal static class LinuxCertificateHelper
 
         // Without a terminal (sudo -n), capture stderr to tell a missing password from other failures.
         var captureError = !isRoot && !isInteractive;
-        var (succeeded, error) = Execute(elevated, redirectOutput: captureError);
+        var (succeeded, error) = Execute(elevated, logger, captureError);
         if (succeeded)
         {
             return CommandOutcome.Succeeded;
@@ -675,9 +687,9 @@ internal static class LinuxCertificateHelper
         return null;
     }
 
-    private static bool Run(LinuxCommand command, ILogger logger, bool redirectOutput, bool logFailure = true)
+    private static bool Run(LinuxCommand command, ILogger logger, bool captureError, bool logFailure = true)
     {
-        var (succeeded, error) = Execute(command, redirectOutput);
+        var (succeeded, error) = Execute(command, logger, captureError);
         if (!succeeded && logFailure)
         {
             logger.LogError("Command '{Command}' failed{Error}", command, error.Length > 0 ? $": {error}" : ".");
@@ -686,24 +698,27 @@ internal static class LinuxCertificateHelper
     }
 
     /// <summary>
-    /// Runs the command. On failure, Error has the captured stderr (when redirected), the exit
-    /// code, or why it couldn't start; it's empty on success.
+    /// Runs the command. Stdout is always captured and logged at debug level, so tools like
+    /// update-ca-certificates don't mix their progress into Dev Proxy's (possibly JSON) output.
+    /// Stderr is captured only when <paramref name="captureError"/> is set; otherwise it goes to
+    /// the terminal, so password prompts stay visible. On failure, Error has the captured stderr,
+    /// the exit code, or why it couldn't start; it's empty on success.
     /// </summary>
-    private static (bool Succeeded, string Error) Execute(LinuxCommand command, bool redirectOutput)
+    private static (bool Succeeded, string Error) Execute(LinuxCommand command, ILogger logger, bool captureError)
     {
         var startInfo = new ProcessStartInfo
         {
             FileName = command.FileName,
             UseShellExecute = false,
             CreateNoWindow = true,
-            RedirectStandardOutput = redirectOutput,
-            RedirectStandardError = redirectOutput,
+            RedirectStandardOutput = true,
+            RedirectStandardError = captureError,
         };
         foreach (var argument in command.Arguments)
         {
             startInfo.ArgumentList.Add(argument);
         }
-        if (redirectOutput)
+        if (captureError)
         {
             // Untranslated messages, so failures like sudo's "a password is required" can be detected.
             startInfo.Environment["LC_ALL"] = "C";
@@ -712,18 +727,26 @@ internal static class LinuxCertificateHelper
         try
         {
             using var process = new Process { StartInfo = startInfo };
+            var stdout = new System.Text.StringBuilder();
             var stderr = new System.Text.StringBuilder();
-            if (redirectOutput)
+            process.OutputDataReceived += (_, e) => stdout.AppendLine(e.Data);
+            if (captureError)
             {
                 process.ErrorDataReceived += (_, e) => stderr.AppendLine(e.Data);
             }
             _ = process.Start();
-            if (redirectOutput)
+            process.BeginOutputReadLine();
+            if (captureError)
             {
-                process.BeginOutputReadLine();
                 process.BeginErrorReadLine();
             }
             process.WaitForExit();
+
+            var output = stdout.ToString().Trim();
+            if (output.Length > 0)
+            {
+                logger.LogDebug("Output of '{Command}': {Output}", command, output);
+            }
 
             if (process.ExitCode == 0)
             {

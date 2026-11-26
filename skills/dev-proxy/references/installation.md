@@ -123,7 +123,7 @@ sudo update-ca-certificates
 
 ## Verify Installation
 
-After first-run setup, verify Dev Proxy intercepts requests:
+After first-run setup, start Dev Proxy (`devproxy`) and, in another terminal, verify it intercepts requests:
 
 ```bash
 curl -ikx http://localhost:8000 https://jsonplaceholder.typicode.com/posts
