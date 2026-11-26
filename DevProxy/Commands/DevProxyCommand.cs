@@ -527,12 +527,14 @@ sealed class DevProxyCommand : RootCommand
 
         var asSystemProxyOption = new Option<bool?>(AsSystemProxyOptionName)
         {
-            Description = "Set Dev Proxy as the system proxy"
+            Description = "Register Dev Proxy as the system proxy (default: true). See https://go.devproxy.net?go=system-proxy",
+            HelpName = "true|false"
         };
 
         var installCertOption = new Option<bool?>(InstallCertOptionName)
         {
-            Description = "Install self-signed certificate"
+            Description = "Install and trust the root certificate (default: true). On Linux, trust it manually",
+            HelpName = "true|false"
         };
         installCertOption.Validators.Add(input =>
         {
