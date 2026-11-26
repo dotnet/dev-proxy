@@ -31,10 +31,10 @@ internal sealed class UpstreamForwarder(HttpClient httpClient)
     {
         using var outgoing = new HttpRequestMessage(new HttpMethod(request.Method), request.RequestUri);
 
-        ByteArrayContent? content = null;
+        HttpContent? content = null;
         if (request.HasBody)
         {
-            content = new ByteArrayContent(request.Body.ToArray());
+            content = new ReadOnlyMemoryContent(request.Body);
             outgoing.Content = content;
         }
 
@@ -103,7 +103,11 @@ internal sealed class UpstreamForwarder(HttpClient httpClient)
 
             // AutomaticDecompression on the shared handler means the bytes here are
             // already decompressed; the Content-Encoding header is removed for us.
-            var body = await ReadBodyAsync(originResponse.Content, ct).ConfigureAwait(false);
+            // HEAD, 204 and 304 responses never carry a body, so their Content-Length
+            // must not size the read buffer.
+            var canHaveBody = !isHead
+                && originResponse.StatusCode is not HttpStatusCode.NoContent and not HttpStatusCode.NotModified;
+            var body = await ReadBodyAsync(originResponse.Content, canHaveBody, ct).ConfigureAwait(false);
             var response = new MutableHttpResponse(
                 originResponse.StatusCode,
                 originResponse.Version,
@@ -123,7 +127,7 @@ internal sealed class UpstreamForwarder(HttpClient httpClient)
         headers.GetFirst("Content-Type")?.Value
             .Contains("text/event-stream", StringComparison.OrdinalIgnoreCase) == true;
 
-    private static async Task<byte[]> ReadBodyAsync(HttpContent content, CancellationToken ct)
+    private static async Task<byte[]> ReadBodyAsync(HttpContent content, bool canHaveBody, CancellationToken ct)
     {
         if (content.Headers.ContentLength > Http1ConnectionReader.MaxBufferedBodyBytes)
         {
@@ -131,11 +135,12 @@ internal sealed class UpstreamForwarder(HttpClient httpClient)
         }
 
         await using var source = await content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-        using var destination = new MemoryStream();
-        var buffer = new byte[81920];
+        // With a known length the body lands in one exact-size array, no copy.
+        var expectedLength = canHaveBody && content.Headers.ContentLength is long length and > 0 ? (int)length : 0;
+        using var destination = new BodyAccumulator(expectedLength);
         while (true)
         {
-            var read = await source.ReadAsync(buffer, ct).ConfigureAwait(false);
+            var read = await source.ReadAsync(destination.GetMemory(), ct).ConfigureAwait(false);
             if (read == 0)
             {
                 return destination.ToArray();
@@ -144,7 +149,7 @@ internal sealed class UpstreamForwarder(HttpClient httpClient)
             {
                 throw new InvalidOperationException("Origin response body too large.");
             }
-            await destination.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
+            destination.Advance(read);
         }
     }
 
