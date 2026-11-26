@@ -55,17 +55,17 @@
       },
       "Microsoft.OpenApi": {
         "type": "Direct",
-        "requested": "[3.11.0, )",
-        "resolved": "3.11.0",
-        "contentHash": "kvQz+mL/fnDw2VaE8zMyQhbMv7FmOYUydIhCVNKxQdrLu9XiMT/07DHwJ5YkRO2uzcxTFvMAKFKKywxoyLKHcA=="
+        "requested": "[3.11.1, )",
+        "resolved": "3.11.1",
+        "contentHash": "WZL9g2+9NPICW4Es6zjIBj4mmKxAnI8RCru3gAZUliCMZPnuaxRynXq4cXoU+IYvI7kXY4ydSrrJ1R9EEHr+Lw=="
       },
       "Microsoft.OpenApi.YamlReader": {
         "type": "Direct",
-        "requested": "[3.11.0, )",
-        "resolved": "3.11.0",
-        "contentHash": "AM3Me+AzT9g123P9mc8Po5auLbYE9MeBW42TkR0T/NWelJuy2CqAR7eGpkdeP4lL7FCDZFW2dEdeQTBY+QxmWQ==",
+        "requested": "[3.11.1, )",
+        "resolved": "3.11.1",
+        "contentHash": "mYEWPSCxHsy0IiZcvQe6ml88lt/ueaKet/D6WYOge2vzOemW1UeDJNYoZSvJV0jDmCCK4PPFAjHoAkLiFhTAhg==",
         "dependencies": {
-          "Microsoft.OpenApi": "3.11.0",
+          "Microsoft.OpenApi": "3.11.1",
           "SharpYaml": "2.1.5"
         }
       },
@@ -427,11 +427,11 @@
           "Microsoft.Extensions.Configuration.Binder": "[11.0.0, )",
           "Microsoft.Extensions.Configuration.Json": "[11.0.0, )",
           "Microsoft.Extensions.FileSystemGlobbing": "[11.0.0, )",
-          "Microsoft.OpenApi": "[3.11.0, )",
-          "Microsoft.OpenApi.YamlReader": "[3.11.0, )",
+          "Microsoft.OpenApi": "[3.11.1, )",
+          "Microsoft.OpenApi.YamlReader": "[3.11.1, )",
           "Newtonsoft.Json.Schema": "[4.0.2, )",
           "Scriban": "[7.6.1, )",
-          "System.CommandLine": "[2.0.14, )",
+          "System.CommandLine": "[3.0.0, )",
           "YamlDotNet": "[18.1.0, )"
         }
       }
