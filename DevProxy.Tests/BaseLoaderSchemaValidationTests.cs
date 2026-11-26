@@ -53,7 +53,7 @@ public sealed class BaseLoaderSchemaValidationTests : IDisposable
         {
             cts.Cancel();
             throw new OperationCanceledException(cts.Token);
-        }, logger, cts.Token);
+        }, logger, cancellationToken: cts.Token);
 
         Assert.Null(loader.Contents);
         Assert.DoesNotContain(logger.Messages, m => m.LogLevel >= LogLevel.Warning);
@@ -125,7 +125,7 @@ public sealed class BaseLoaderSchemaValidationTests : IDisposable
         Assert.Contains(logger.Messages, m => m.LogLevel == LogLevel.Error);
     }
 
-    private async Task<TestLoader> LoadAsync(Func<HttpRequestMessage, HttpResponseMessage> sendSchemaRequest, ILogger logger, CancellationToken cancellationToken = default, string? contents = null)
+    private async Task<TestLoader> LoadAsync(Func<HttpRequestMessage, HttpResponseMessage> sendSchemaRequest, ILogger logger, string? contents = null, CancellationToken cancellationToken = default)
     {
         var path = Path.Combine(_folder, "mocks.json");
         await File.WriteAllTextAsync(path, contents ?? Contents, CancellationToken.None);
