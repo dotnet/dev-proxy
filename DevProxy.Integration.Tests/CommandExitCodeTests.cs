@@ -47,6 +47,24 @@ public sealed class CommandExitCodeTests
         Assert.False(File.Exists(rootCertPath), output);
     }
 
+    [Theory]
+    [InlineData("warning")]
+    [InlineData("none")]
+    public async Task ConfigNew_JsonOutputAboveInformation_EmitsResultRecord(string logLevel)
+    {
+        using var workDir = new TempDir();
+
+        var (exitCode, output, stdout) = await RunHostWithStdoutAsync(workDir.Path, "config", "new", "myconfig.json", "--output", "json", "--log-level", logLevel);
+
+        Assert.True(exitCode == 0, output);
+        var results = stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(line => JsonDocument.Parse(line).RootElement)
+            .Where(entry => entry.GetProperty("type").GetString() == "result")
+            .ToArray();
+        var result = Assert.Single(results);
+        Assert.EndsWith("myconfig.json", result.GetProperty("data").GetProperty("path").GetString(), StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task ConfigNew_Fails_ReturnsNonZero()
     {
@@ -153,6 +171,15 @@ public sealed class CommandExitCodeTests
 
     private static async Task<(int ExitCode, string Output)> RunHostAsync(string workDir, Dictionary<string, string> env, params string[] args)
     {
+        var (exitCode, output, _) = await RunHostWithStdoutAsync(workDir, env, args);
+        return (exitCode, output);
+    }
+
+    private static Task<(int ExitCode, string Output, string Stdout)> RunHostWithStdoutAsync(string workDir, params string[] args) =>
+        RunHostWithStdoutAsync(workDir, new Dictionary<string, string>(), args);
+
+    private static async Task<(int ExitCode, string Output, string Stdout)> RunHostWithStdoutAsync(string workDir, Dictionary<string, string> env, params string[] args)
+    {
         var hostDll = LocateHostDll();
         Assert.True(File.Exists(hostDll), $"DevProxy host not built at {hostDll}. Run `dotnet build DevProxy` first.");
 
@@ -192,8 +219,9 @@ public sealed class CommandExitCodeTests
             throw new TimeoutException($"DevProxy host did not exit within {s_timeout.TotalSeconds}s.");
         }
 
-        var output = $"STDOUT:\n{await stdout}\nSTDERR:\n{await stderr}";
-        return (process.ExitCode, output);
+        var stdoutText = await stdout;
+        var output = $"STDOUT:\n{stdoutText}\nSTDERR:\n{await stderr}";
+        return (process.ExitCode, output, stdoutText);
     }
 
     private static string LocateHostDll()

@@ -84,6 +84,25 @@ public class UpstreamForwarderTests
     }
 
     [Fact]
+    public async Task ForwardAsync_Head_LargeContentLength_DoesNotAllocateBody()
+    {
+        // HEAD reports the GET representation's size; it must not size the read buffer.
+        const long advertised = 200L * 1024 * 1024;
+        var content = new ByteArrayContent([]);
+        content.Headers.ContentLength = advertised;
+        var message = new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
+        var forwarder = ForwarderReturning(message);
+
+        var before = GC.GetTotalAllocatedBytes(precise: true);
+        await using var origin = await forwarder.ForwardAsync(Request("HEAD"), CancellationToken.None);
+        var allocated = GC.GetTotalAllocatedBytes(precise: true) - before;
+
+        Assert.True(origin.Response.Body.IsEmpty);
+        Assert.Equal(advertised.ToString(System.Globalization.CultureInfo.InvariantCulture), origin.Response.Headers.GetFirst("Content-Length")?.Value);
+        Assert.True(allocated < advertised / 2, $"Allocated {allocated} bytes for a HEAD response.");
+    }
+
+    [Fact]
     public async Task ForwardAsync_Head_EventStream_IsNotStreaming()
     {
         // A HEAD to an SSE endpoint has no body to stream — it must take the buffered
