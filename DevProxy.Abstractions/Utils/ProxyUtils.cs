@@ -274,41 +274,84 @@ public static class ProxyUtils
         return $"{uri.GetLeftPart(UriPartial.Authority)}/{parsedSample.QueryVersion}/{resourceUrl}{queryString}";
     }
 
+    /// <summary>
+    /// Validates <paramref name="json"/> against the schema at <paramref name="schemaUrl"/>.
+    /// Reports a schema that couldn't be retrieved as invalid. Use
+    /// <see cref="ValidateJsonAgainstSchemaAsync"/> to tell these cases apart.
+    /// </summary>
     public static async Task<(bool IsValid, IEnumerable<string> ValidationErrors)> ValidateJsonAsync(string? json, string? schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken)
     {
         try
         {
-            logger.LogDebug("Validating JSON against schema {SchemaUrl}", schemaUrl);
+            var result = await ValidateJsonAgainstSchemaAsync(json, schemaUrl, httpClient, logger, cancellationToken);
+            return (result.Status == SchemaValidationStatus.Valid, result.Errors);
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Error validating JSON");
+            return (false, [ex.Message]);
+        }
+    }
 
-            if (string.IsNullOrEmpty(json))
-            {
-                logger.LogDebug("JSON is empty, skipping validation");
-                return (true, []);
-            }
-            if (string.IsNullOrEmpty(schemaUrl))
-            {
-                logger.LogDebug("Schema URL is empty, skipping validation");
-                return (true, []);
-            }
+    /// <summary>
+    /// Validates <paramref name="json"/> against the schema at <paramref name="schemaUrl"/>.
+    /// </summary>
+    /// <returns>
+    /// The validation result. If the schema can't be downloaded or parsed, for example when
+    /// there's no network connection, the status is <see cref="SchemaValidationStatus.SchemaUnavailable"/>
+    /// so that callers can skip validation instead of treating the document as invalid.
+    /// </returns>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
+    public static async Task<SchemaValidationResult> ValidateJsonAgainstSchemaAsync(string? json, string? schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken)
+    {
+        logger.LogDebug("Validating JSON against schema {SchemaUrl}", schemaUrl);
+
+        if (string.IsNullOrEmpty(json))
+        {
+            logger.LogDebug("JSON is empty, skipping validation");
+            return new(SchemaValidationStatus.Valid, []);
+        }
+        if (string.IsNullOrEmpty(schemaUrl))
+        {
+            logger.LogDebug("Schema URL is empty, skipping validation");
+            return new(SchemaValidationStatus.Valid, []);
+        }
+
+        JSchema schema;
+        try
+        {
             ArgumentNullException.ThrowIfNull(httpClient);
 
             logger.LogDebug("Downloading schema from {SchemaUrl}", schemaUrl);
             var schemaContents = await httpClient.GetStringAsync(schemaUrl, cancellationToken);
 
             logger.LogDebug("Parsing schema");
-            var schema = JSchema.Parse(schemaContents);
+            schema = JSchema.Parse(schemaContents);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Error retrieving schema {SchemaUrl}", schemaUrl);
+            return new(SchemaValidationStatus.SchemaUnavailable, [ex.Message]);
+        }
+
+        try
+        {
             logger.LogDebug("Parsing JSON");
             var token = JToken.Parse(json);
 
             logger.LogDebug("Validating JSON");
             var isValid = token.IsValid(schema, out IList<string> errorMessages);
 
-            return (isValid, errorMessages);
+            return new(isValid ? SchemaValidationStatus.Valid : SchemaValidationStatus.Invalid, errorMessages);
         }
         catch (Exception ex)
         {
             logger.LogDebug(ex, "Error validating JSON");
-            return (false, [ex.Message]);
+            return new(SchemaValidationStatus.Invalid, [ex.Message]);
         }
     }
 
