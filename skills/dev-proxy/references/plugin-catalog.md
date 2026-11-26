@@ -2,6 +2,8 @@
 
 Complete reference of all Dev Proxy plugins organized by category with configuration properties.
 
+To list the plugins available in the installed Dev Proxy version, run `devproxy plugin list` (add `--output json` for machine-readable output, or `--plugin-path <path>` to inspect a custom plugin assembly). JSON output uses a JSON Lines result envelope whose `data` array contains each plugin's `name`, `pluginPath`, and `isConfigurable`. This command doesn't require a config file.
+
 ## Intercepting Plugins
 
 ### MockResponsePlugin
@@ -264,6 +266,7 @@ Same Azure config properties as above.
 |--------|-------------|
 | `GraphBetaSupportGuidancePlugin` | Warns when beta endpoints are used |
 | `GraphClientRequestIdGuidancePlugin` | Recommends client-request-id header |
+| `GraphMissingPermissionsGuidancePlugin` | Explains which permissions are missing when Graph returns 403 Forbidden |
 | `GraphConnectorGuidancePlugin` | Graph connector guidance |
 | `GraphSdkGuidancePlugin` | Recommends official SDKs |
 | `GraphSelectGuidancePlugin` | Warns when $select is missing |
