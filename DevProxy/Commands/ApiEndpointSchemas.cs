@@ -54,7 +54,7 @@ static class ApiEndpointSchemas
         ("POST", "/proxy/mockRequest") => new()
         {
             Responses = Responses(
-                ("202", Response("Mock request issued")))
+                ("204", Response("Mock request issued")))
         },
         ("POST", "/proxy/stopProxy") => new()
         {

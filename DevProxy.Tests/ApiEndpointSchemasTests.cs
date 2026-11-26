@@ -113,7 +113,7 @@ public class ApiEndpointSchemasTests
 
     [Theory]
     [InlineData("POST", "/proxy/stopProxy", "202")]
-    [InlineData("POST", "/proxy/mockRequest", "202")]
+    [InlineData("POST", "/proxy/mockRequest", "204")]
     [InlineData("GET", "/proxy/rootCertificate", "400")]
     [InlineData("GET", "/proxy/logs", "400")]
     public void Get_DocumentsNonDefaultStatusCodes(string method, string path, string statusCode)
