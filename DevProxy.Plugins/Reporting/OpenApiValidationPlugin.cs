@@ -270,12 +270,11 @@ public sealed class OpenApiValidationPlugin(
             };
         }
 
-        var strict = match.Spec.StrictNullableEnums;
         ValidateParameters(request, match, issues);
-        ValidateRequestBody(request, match.Operation, issues, notes, strict);
+        ValidateRequestBody(request, match.Operation, issues, notes, match.Spec);
         if (response is not null)
         {
-            ValidateResponse(response, match.Operation, issues, notes, strict);
+            ValidateResponse(response, match.Operation, issues, notes, match.Spec);
         }
 
         return new()
@@ -426,7 +425,7 @@ public sealed class OpenApiValidationPlugin(
 
             ValidateParameterValue(parameter.Name, $"{locationName} parameter", values, parameter.Schema,
                 parameter.Style ?? GetDefaultStyle(parameter.In.Value), parameter.Explode,
-                OpenApiValidationIssueLocation.Request, issues, match.Spec.StrictNullableEnums);
+                OpenApiValidationIssueLocation.Request, issues, match.Spec);
         }
 
         // unknown query parameters
@@ -498,7 +497,7 @@ public sealed class OpenApiValidationPlugin(
 
     private static void ValidateParameterValue(string name, string kind, List<string> values, IOpenApiSchema? schema,
         ParameterStyle style, bool explode, OpenApiValidationIssueLocation location, List<OpenApiValidationIssue> issues,
-        bool strictNullableEnums)
+        LoadedSpec spec)
     {
         if (schema is null || OpenApiSchemaValidator.GetEffectiveType(schema) == JsonSchemaType.Object)
         {
@@ -509,13 +508,13 @@ public sealed class OpenApiValidationPlugin(
         var direction = location == OpenApiValidationIssueLocation.Request
             ? SchemaValidationDirection.Request
             : SchemaValidationDirection.Response;
-        var errors = OpenApiSchemaValidator.Validate(value, schema, direction, name, strictNullableEnums);
+        var errors = OpenApiSchemaValidator.Validate(value, schema, direction, name, spec.StrictNullableEnums, spec.DocumentUri);
         if (errors.Count > 0)
         {
             // the value might be valid as a string when the schema allows
             // multiple types, e.g. anyOf: [{ type: integer, enum: [1] }, { type: string }]
             var raw = OpenApiSchemaValidator.CoerceParameterValue(values, schema, name, style, explode, coerce: false);
-            if (OpenApiSchemaValidator.Validate(raw, schema, direction, name, strictNullableEnums).Count == 0)
+            if (OpenApiSchemaValidator.Validate(raw, schema, direction, name, spec.StrictNullableEnums, spec.DocumentUri).Count == 0)
             {
                 return;
             }
@@ -532,7 +531,7 @@ public sealed class OpenApiValidationPlugin(
         }
     }
 
-    private static void ValidateRequestBody(IHttpRequest request, OpenApiOperation operation, List<OpenApiValidationIssue> issues, List<string> notes, bool strictNullableEnums)
+    private static void ValidateRequestBody(IHttpRequest request, OpenApiOperation operation, List<OpenApiValidationIssue> issues, List<string> notes, LoadedSpec spec)
     {
         var requestBody = operation.RequestBody;
         var hasBody = request.Body.Length > 0;
@@ -560,10 +559,10 @@ public sealed class OpenApiValidationPlugin(
             return;
         }
 
-        ValidateBody(request, requestBody.Content, OpenApiValidationIssueLocation.Request, issues, notes, strictNullableEnums);
+        ValidateBody(request, requestBody.Content, OpenApiValidationIssueLocation.Request, issues, notes, spec);
     }
 
-    private static void ValidateResponse(IHttpResponse response, OpenApiOperation operation, List<OpenApiValidationIssue> issues, List<string> notes, bool strictNullableEnums)
+    private static void ValidateResponse(IHttpResponse response, OpenApiOperation operation, List<OpenApiValidationIssue> issues, List<string> notes, LoadedSpec spec)
     {
         var statusCode = ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture);
         var responses = operation.Responses;
@@ -610,7 +609,7 @@ public sealed class OpenApiValidationPlugin(
 
             ValidateParameterValue(headerName, "response header", values, header.Schema,
                 header.Style ?? ParameterStyle.Simple, header.Explode,
-                OpenApiValidationIssueLocation.Response, issues, strictNullableEnums);
+                OpenApiValidationIssueLocation.Response, issues, spec);
         }
 
         if (response.Body.Length == 0)
@@ -628,11 +627,11 @@ public sealed class OpenApiValidationPlugin(
             return;
         }
 
-        ValidateBody(response, specResponse.Content, OpenApiValidationIssueLocation.Response, issues, notes, strictNullableEnums);
+        ValidateBody(response, specResponse.Content, OpenApiValidationIssueLocation.Response, issues, notes, spec);
     }
 
     private static void ValidateBody(IHttpMessage message, IDictionary<string, IOpenApiMediaType>? content,
-        OpenApiValidationIssueLocation location, List<OpenApiValidationIssue> issues, List<string> notes, bool strictNullableEnums)
+        OpenApiValidationIssueLocation location, List<OpenApiValidationIssue> issues, List<string> notes, LoadedSpec spec)
     {
         if (content is not { Count: > 0 })
         {
@@ -696,7 +695,7 @@ public sealed class OpenApiValidationPlugin(
             var direction = location == OpenApiValidationIssueLocation.Request
                 ? SchemaValidationDirection.Request
                 : SchemaValidationDirection.Response;
-            foreach (var error in OpenApiSchemaValidator.Validate(json.RootElement, mediaType.Schema, direction, strictNullableEnums: strictNullableEnums))
+            foreach (var error in OpenApiSchemaValidator.Validate(json.RootElement, mediaType.Schema, direction, strictNullableEnums: spec.StrictNullableEnums, documentUri: spec.DocumentUri))
             {
                 issues.Add(new()
                 {
@@ -972,7 +971,11 @@ public sealed class OpenApiValidationPlugin(
     private sealed record ServerScope(Regex Regex, List<CompiledPath> Paths);
 
     // OAS 3.1 requires null to be listed in enums, unlike OAS 3.0 nullable enums
-    private sealed record LoadedSpec(string FilePath, List<ServerScope> Servers, bool StrictNullableEnums);
+    private sealed record LoadedSpec(string FilePath, List<ServerScope> Servers, bool StrictNullableEnums)
+    {
+        // used to resolve self-relative references, like 'pets.yaml#/components/schemas/Cat'
+        public Uri DocumentUri { get; } = new(Path.GetFullPath(FilePath));
+    }
 
     private sealed record OperationMatch(
         LoadedSpec Spec,
