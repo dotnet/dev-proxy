@@ -166,6 +166,80 @@ public sealed class ReportingPluginsIntegrationTests
         Assert.DoesNotContain("Unknown", report.ToPlainText(), StringComparison.Ordinal);
     }
 
+    private static RequestLog[] InformationAndProcessedRequestLogs()
+    {
+        var users = TestExchange.Request("GET", "https://api.contoso.com/users");
+        var orders = TestExchange.Request("POST", "https://api.contoso.com/orders");
+        var usersContext = new LoggingContext(users.Session);
+        var ordersContext = new LoggingContext(orders.Session);
+        return
+        [
+            users.AsRequestLog(),
+            new("Cache hit", MessageType.Normal, usersContext),
+            new("Rewritten", MessageType.Processed, usersContext),
+            orders.AsRequestLog(),
+            new("Cache hit", MessageType.Normal, ordersContext),
+            new("Rewritten", MessageType.Processed, ordersContext),
+            new("Rewritten", MessageType.Processed, ordersContext),
+        ];
+    }
+
+    [Fact]
+    public async Task ExecutionSummary_ByUrl_IncludesInformationAndProcessedMessages()
+    {
+        var plugin = CreateExecutionSummaryPlugin("url");
+        var args = Recording(InformationAndProcessedRequestLogs());
+
+        await plugin.AfterRecordingStopAsync(args, CancellationToken.None);
+
+        var report = GetReport<ExecutionSummaryPluginReportByUrl>(args, plugin.Name);
+        Assert.Equal(
+            ["GET https://api.contoso.com/users", "POST https://api.contoso.com/orders"],
+            report.Data.Keys.Order());
+        Assert.Equal(new Dictionary<string, int> { ["Cache hit"] = 1 }, report.Data["GET https://api.contoso.com/users"]["Information"]);
+        Assert.Equal(new Dictionary<string, int> { ["Rewritten"] = 1 }, report.Data["GET https://api.contoso.com/users"]["Requests processed"]);
+        Assert.Equal(new Dictionary<string, int> { ["Cache hit"] = 1 }, report.Data["POST https://api.contoso.com/orders"]["Information"]);
+        Assert.Equal(new Dictionary<string, int> { ["Rewritten"] = 2 }, report.Data["POST https://api.contoso.com/orders"]["Requests processed"]);
+
+        var markdown = report.ToMarkdown();
+        Assert.Contains("Information", markdown, StringComparison.Ordinal);
+        Assert.Contains("Requests processed", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("Unknown", markdown, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ExecutionSummary_ByMessageType_IncludesInformationAndProcessedMessages()
+    {
+        var plugin = CreateExecutionSummaryPlugin("messageType");
+        var args = Recording(InformationAndProcessedRequestLogs());
+
+        await plugin.AfterRecordingStopAsync(args, CancellationToken.None);
+
+        var report = GetReport<ExecutionSummaryPluginReportByMessageType>(args, plugin.Name);
+        Assert.Equal(
+            ["Information", "Requests intercepted", "Requests processed"],
+            report.Data.Keys.Order());
+        Assert.Equal(
+            new Dictionary<string, int>
+            {
+                ["GET https://api.contoso.com/users"] = 1,
+                ["POST https://api.contoso.com/orders"] = 1,
+            },
+            report.Data["Information"]["Cache hit"]);
+        Assert.Equal(
+            new Dictionary<string, int>
+            {
+                ["GET https://api.contoso.com/users"] = 1,
+                ["POST https://api.contoso.com/orders"] = 2,
+            },
+            report.Data["Requests processed"]["Rewritten"]);
+
+        var plainText = report.ToPlainText();
+        Assert.Contains("INFORMATION", plainText, StringComparison.Ordinal);
+        Assert.Contains("REQUESTS PROCESSED", plainText, StringComparison.Ordinal);
+        Assert.DoesNotContain("Unknown", plainText, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task MinimalPermissions_ReportsPermissionsFromApiSpec()
     {
