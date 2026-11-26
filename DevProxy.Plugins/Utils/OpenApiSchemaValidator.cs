@@ -74,7 +74,9 @@ internal static class OpenApiSchemaValidator
     /// Serialized values are ambiguous, so the parameter is valid if any of the
     /// interpretations is valid. The first interpretation is the most likely one:
     /// values coerced to the primitive type declared by the schema when possible.
-    /// Other interpretations keep values as strings, treat values as scalars when the
+    /// When the schema declares multiple items schemas (e.g. in anyOf
+    /// branches), items are coerced using each of them. Other interpretations keep
+    /// values as strings, treat values as scalars when the
     /// schema allows both arrays and scalars, and when <paramref name="decode"/> is set,
     /// decode array items after splitting, so that encoded delimiters are kept in items.
     /// </summary>
@@ -94,7 +96,8 @@ internal static class OpenApiSchemaValidator
 
         if (isArray)
         {
-            var itemsSchema = GetItems(schema);
+            // e.g. anyOf: [{ type: array, items: { type: integer } }, { type: array, items: { type: boolean } }]
+            var itemsSchemas = GetItemsSchemas(schema);
             var splits = new List<Func<IEnumerable<string>>> { () => SplitArrayValues(decodedValues, name, style, explode) };
             if (decode is not null)
             {
@@ -103,15 +106,11 @@ internal static class OpenApiSchemaValidator
 
             foreach (var split in splits)
             {
-                foreach (var coerce in new[] { true, false })
+                foreach (var itemsSchema in itemsSchemas)
                 {
-                    var array = new JsonArray();
-                    foreach (var item in split())
-                    {
-                        array.Add(coerce ? CoercePrimitive(item, itemsSchema) : JsonValue.Create(item));
-                    }
-                    yield return array;
+                    yield return new JsonArray([.. split().Select(item => CoercePrimitive(item, itemsSchema))]);
                 }
+                yield return new JsonArray([.. split().Select(item => (JsonNode?)JsonValue.Create(item))]);
             }
         }
 
@@ -185,8 +184,16 @@ internal static class OpenApiSchemaValidator
         return type;
     }
 
-    private static IOpenApiSchema? GetItems(IOpenApiSchema? schema) =>
-        EnumerateComposition(schema, s => s.Items is null).FirstOrDefault(s => s.Items is not null)?.Items;
+    // Gets the distinct items schemas declared by the schema and its allOf/anyOf/oneOf subschemas
+    private static List<IOpenApiSchema?> GetItemsSchemas(IOpenApiSchema? schema)
+    {
+        List<IOpenApiSchema?> itemsSchemas = [.. EnumerateComposition(schema, s => s.Items is null)
+            .Where(s => s.Items is not null)
+            .Select(s => s.Items)
+            .Distinct(ReferenceEqualityComparer.Instance)
+            .Cast<IOpenApiSchema?>()];
+        return itemsSchemas.Count > 0 ? itemsSchemas : [null];
+    }
 
     /// <summary>
     /// Gets the names of the properties declared by the schema and its allOf/anyOf/oneOf subschemas.

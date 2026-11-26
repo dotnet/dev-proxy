@@ -1197,6 +1197,84 @@ public sealed class OpenApiValidationPluginTests : IDisposable
         Assert.Contains("isn't one of the allowed values", Assert.Single(Messages(invalid)), StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task ParsesUtf8BodiesWithByteOrderMark()
+    {
+        var plugin = await CreatePluginAsync();
+        var exchange = TestExchange.Request("GET", "https://api.contoso.com/v1/users/me");
+        var headers = new HeaderCollection();
+        headers.Add(new HttpHeader("Content-Type", "application/json"));
+        exchange.Session.SetOriginResponse(new MutableHttpResponse(
+            HttpStatusCode.OK,
+            HttpVersion.Version11,
+            headers,
+            (byte[])[.. Encoding.UTF8.Preamble, .. Encoding.UTF8.GetBytes("""{ "id": "1", "name": "Alex" }""")]));
+
+        Assert.Equal("$.id: Expected integer but got string", Assert.Single(Messages(plugin.Validate(exchange.Session))));
+    }
+
+    [Theory]
+    [InlineData("anyOf", "integer", "boolean")]
+    [InlineData("anyOf", "boolean", "integer")]
+    [InlineData("oneOf", "integer", "boolean")]
+    [InlineData("oneOf", "boolean", "integer")]
+    public async Task CoercesArrayItemsUsingEachComposedItemsSchema(string composition, string firstType, string secondType)
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("items.yaml", $$"""
+            openapi: 3.0.3
+            info: { title: Items, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            paths:
+              /items:
+                get:
+                  parameters:
+                    - { name: q, in: query, schema: { {{composition}}: [ { type: array, items: { type: {{firstType}} } }, { type: array, items: { type: {{secondType}} } } ] } }
+                  responses: { '204': { description: ok } }
+            """));
+
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?q=true&q=false").Session)!.Issues);
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?q=1&q=2").Session)!.Issues);
+        Assert.NotEmpty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?q=1&q=true").Session)!.Issues);
+    }
+
+    [Fact]
+    public async Task AcceptsQueryApiKeysDocumentedBySecuritySchemes()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("security.yaml", """
+            openapi: 3.0.3
+            info: { title: Security, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            security:
+              - docKey: []
+            paths:
+              /document:
+                get:
+                  responses: { '204': { description: ok } }
+              /operation:
+                get:
+                  security:
+                    - opKey: []
+                  responses: { '204': { description: ok } }
+              /public:
+                get:
+                  security: []
+                  responses: { '204': { description: ok } }
+            components:
+              securitySchemes:
+                docKey: { type: apiKey, in: query, name: api_key }
+                opKey: { type: apiKey, in: query, name: key }
+            """));
+
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/document?api_key=secret").Session)!.Issues);
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/operation?key=secret").Session)!.Issues);
+        Assert.Equal("api_key: Query parameter 'api_key' isn't documented",
+            Assert.Single(Messages(plugin.Validate(Call("GET", "https://api.fabrikam.com/operation?api_key=secret").Session))));
+        Assert.Equal("api_key: Query parameter 'api_key' isn't documented",
+            Assert.Single(Messages(plugin.Validate(Call("GET", "https://api.fabrikam.com/public?api_key=secret").Session))));
+    }
+
     private sealed class WarningLogger : ILogger<OpenApiValidationPlugin>
     {
         public List<string> Warnings { get; } = [];

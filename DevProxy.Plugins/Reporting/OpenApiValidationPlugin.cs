@@ -13,6 +13,7 @@ using Microsoft.OpenApi;
 using Microsoft.OpenApi.Reader;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -446,6 +447,7 @@ public sealed class OpenApiValidationPlugin(
         var knownQueryKeys = queryParameters
             .Select(p => new ObjectQueryKey(p.Name!, false))
             .Concat(queryParameters.SelectMany(GetObjectQueryKeys))
+            .Concat(GetQueryApiKeyNames(match).Select(n => new ObjectQueryKey(n, false)))
             .ToArray();
         foreach (var name in query.Keys)
         {
@@ -462,6 +464,14 @@ public sealed class OpenApiValidationPlugin(
             });
         }
     }
+
+    // API keys sent in the query string are documented by apiKey security schemes
+    // applied to the operation (or by default, to the document) rather than by parameters
+    private static IEnumerable<string> GetQueryApiKeyNames(OperationMatch match) =>
+        (match.Operation!.Security ?? match.Spec.Security ?? [])
+            .SelectMany(requirement => requirement.Keys)
+            .Where(scheme => scheme.Type == SecuritySchemeType.ApiKey && scheme.In == ParameterLocation.Query && scheme.Name is not null)
+            .Select(scheme => scheme.Name!);
 
     private static ParameterStyle GetDefaultStyle(ParameterLocation location) => location switch
     {
@@ -687,10 +697,12 @@ public sealed class OpenApiValidationPlugin(
         try
         {
             // BodyString decodes the body using the declared charset; UTF-8 bodies
-            // are parsed as bytes, which also handles a byte order mark
+            // are parsed as bytes, without the byte order mark which the parser rejects
             json = HasNonUtf8Charset(message.ContentType)
                 ? JsonDocument.Parse(message.BodyString.TrimStart('\uFEFF'))
-                : JsonDocument.Parse(message.Body);
+                : JsonDocument.Parse(message.Body.Span.StartsWith(Encoding.UTF8.Preamble)
+                    ? message.Body[Encoding.UTF8.Preamble.Length..]
+                    : message.Body);
         }
         catch (JsonException ex)
         {
@@ -877,7 +889,7 @@ public sealed class OpenApiValidationPlugin(
                 continue;
             }
 
-            specs.Add(new LoadedSpec(file, servers, strictNullableEnums));
+            specs.Add(new LoadedSpec(file, servers, strictNullableEnums, document.Security));
             Logger.LogInformation("Loaded OpenAPI spec '{File}'", file);
         }
 
@@ -999,7 +1011,7 @@ public sealed class OpenApiValidationPlugin(
     private sealed record ServerScope(Regex Regex, List<CompiledPath> Paths);
 
     // OAS 3.1 requires null to be listed in enums, unlike OAS 3.0 nullable enums
-    private sealed record LoadedSpec(string FilePath, List<ServerScope> Servers, bool StrictNullableEnums);
+    private sealed record LoadedSpec(string FilePath, List<ServerScope> Servers, bool StrictNullableEnums, IList<OpenApiSecurityRequirement>? Security);
 
     private sealed record OperationMatch(
         LoadedSpec Spec,
