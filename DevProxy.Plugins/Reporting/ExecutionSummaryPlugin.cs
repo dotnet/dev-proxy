@@ -37,8 +37,6 @@ public sealed class ExecutionSummaryPlugin(
         pluginConfigurationSection)
 {
     private const string _groupByOptionName = "--summary-group-by";
-    private const string _requestsInterceptedMessage = "Requests intercepted";
-    private const string _requestsPassedThroughMessage = "Requests passed through";
 
     public override string Name => nameof(ExecutionSummaryPlugin);
 
@@ -115,31 +113,29 @@ public sealed class ExecutionSummaryPlugin(
 
         foreach (var log in requestLogs)
         {
-            var message = GetRequestMessage(log);
-            if (log.MessageType == MessageType.InterceptedResponse)
+            var readableMessageType = ExecutionSummaryPluginReportBase.GetReadableMessageTypeForSummary(log.MessageType);
+            if (readableMessageType is null)
             {
-                // ignore intercepted response messages
                 continue;
+            }
+
+            var methodAndUrl = GetMethodAndUrl(log);
+            if (!data.TryGetValue(methodAndUrl, out var requestData))
+            {
+                requestData = [];
+                data.Add(methodAndUrl, requestData);
             }
 
             if (log.MessageType == MessageType.InterceptedRequest)
             {
-                var request = GetMethodAndUrl(log);
-                if (!data.ContainsKey(request))
-                {
-                    data.Add(request, []);
-                }
-
                 continue;
             }
 
-            // last line of the message is the method and URL of the request
-            var methodAndUrl = GetMethodAndUrl(log);
-            var readableMessageType = GetReadableMessageTypeForSummary(log.MessageType);
-            if (!data[methodAndUrl].TryGetValue(readableMessageType, out var value))
+            var message = GetRequestMessage(log);
+            if (!requestData.TryGetValue(readableMessageType, out var value))
             {
                 value = [];
-                data[methodAndUrl].Add(readableMessageType, value);
+                requestData.Add(readableMessageType, value);
             }
 
             if (value.TryGetValue(message, out var val))
@@ -163,13 +159,12 @@ public sealed class ExecutionSummaryPlugin(
 
         foreach (var log in requestLogs)
         {
-            if (log.MessageType == MessageType.InterceptedResponse)
+            var readableMessageType = ExecutionSummaryPluginReportBase.GetReadableMessageTypeForSummary(log.MessageType);
+            if (readableMessageType is null)
             {
-                // ignore intercepted response messages
                 continue;
             }
 
-            var readableMessageType = GetReadableMessageTypeForSummary(log.MessageType);
             if (!data.TryGetValue(readableMessageType, out var value))
             {
                 value = [];
@@ -234,18 +229,4 @@ public sealed class ExecutionSummaryPlugin(
             ? $"{requestLog.Context.Session.Request.Method} {requestLog.Context.Session.Request.RequestUri}"
             : "Undefined";
     }
-
-#pragma warning disable IDE0072
-    private static string GetReadableMessageTypeForSummary(MessageType messageType) => messageType switch
-#pragma warning restore IDE0072
-    {
-        MessageType.Chaos => "Requests with chaos",
-        MessageType.Failed => "Failures",
-        MessageType.InterceptedRequest => _requestsInterceptedMessage,
-        MessageType.Mocked => "Requests mocked",
-        MessageType.PassedThrough => _requestsPassedThroughMessage,
-        MessageType.Tip => "Tips",
-        MessageType.Warning => "Warnings",
-        _ => "Unknown"
-    };
 }
