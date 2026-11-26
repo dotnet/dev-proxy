@@ -103,6 +103,14 @@ public sealed class OpenApiMockResponsePluginTests
     [InlineData("{ type: string, minLength: 2147483647 }")]
     [InlineData("{ type: array, minItems: 1000, items: { type: array, minItems: 1000, items: { type: integer } } }")]
     [InlineData("{ type: array, minItems: 1000, items: { type: object, properties: { a: { type: array, minItems: 1000, items: { type: integer } } } } }")]
+    // one node over the limit: the array plus 100000 items
+    [InlineData("{ type: array, minItems: 100000, items: { type: integer } }")]
+    // one over the limit: the string node plus 100000 characters
+    [InlineData("{ type: string, minLength: 100000 }")]
+    // over the limit: the array plus 11112 strings of 1 node and 8 characters
+    [InlineData("{ type: array, minItems: 11112, items: { type: string, minLength: 8 } }")]
+    // over the limit: the array plus 14286 "string" values of 1 node and 6 characters
+    [InlineData("{ type: array, minItems: 14286, items: { type: string } }")]
     public void TryGenerateSample_DeclinesSamplesExceedingMaxSize(string schema)
     {
         Assert.False(OpenApiSchemaSampleGenerator.TryGenerateSample(ParseSchema(schema), out var sample));
@@ -112,9 +120,20 @@ public sealed class OpenApiMockResponsePluginTests
     [Theory]
     [InlineData("{ allOf: [ { type: array, minItems: 60000, items: { type: integer } } ] }", 60000)]
     [InlineData("{ type: array, minItems: 60000, uniqueItems: true, items: { type: integer } }", 60000)]
+    // exactly at the limit: the array plus 99999 items
+    [InlineData("{ type: array, minItems: 99999, items: { type: integer } }", 99999)]
+    // exactly at the limit: the array plus 11111 strings of 1 node and 8 characters
+    [InlineData("{ type: array, minItems: 11111, items: { type: string, minLength: 8 } }", 11111)]
     public void TryGenerateSample_GeneratesLargeSamplesWithinMaxSize(string schema, int expectedCount)
     {
         Assert.Equal(expectedCount, Assert.IsType<JsonArray>(Generate(ParseSchema(schema))).Count);
+    }
+
+    [Fact]
+    public void TryGenerateSample_GeneratesStringAtMaxSize()
+    {
+        // the string node plus 99999 characters
+        Assert.Equal(99999, Generate(ParseSchema("{ type: string, minLength: 99999 }"))!.GetValue<string>().Length);
     }
 
     [Theory]

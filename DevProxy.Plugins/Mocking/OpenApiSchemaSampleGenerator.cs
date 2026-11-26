@@ -590,19 +590,21 @@ internal static class OpenApiSchemaSampleGenerator
             _ => "string"
         };
 
-        if (schema.MinLength is int minLength && value.Length < minLength)
+        var length = value.Length;
+        if (schema.MinLength is int minLength && length < minLength)
         {
-            var targetLength = schema.MaxLength is int max ? Math.Min(minLength, max) : minLength;
-            if (!context.TryConsume(targetLength))
-            {
-                return null;
-            }
-            value = value.PadRight(targetLength, 'x');
+            length = minLength;
         }
-        if (schema.MaxLength is int maxLength && value.Length > maxLength)
+        if (schema.MaxLength is int maxLength && length > maxLength)
         {
-            value = value[..maxLength];
+            length = Math.Max(maxLength, 0);
         }
+        // reserve the characters before allocating the string
+        if (!context.TryConsume(length))
+        {
+            return null;
+        }
+        value = length > value.Length ? value.PadRight(length, 'x') : value[..length];
 
         return value;
     }
