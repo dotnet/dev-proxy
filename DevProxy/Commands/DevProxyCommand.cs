@@ -124,15 +124,21 @@ sealed class DevProxyCommand : RootCommand
                 return field;
             }
 
-            // Options may precede or follow the subcommands, e.g.
-            // devproxy --log-level debug cert --output json export
-            var args = Environment.GetCommandLineArgs();
-            var certIndex = Array.FindIndex(args, 1, arg => string.Equals(arg, "cert", StringComparison.OrdinalIgnoreCase));
-            field = certIndex > 0 &&
-                args.Skip(certIndex + 1).Any(arg => string.Equals(arg, "export", StringComparison.OrdinalIgnoreCase));
+            field = IsCertExportInvocation(Environment.GetCommandLineArgs()[1..]);
             _isCertExportCommandResolved = true;
             return field;
         }
+    }
+
+    internal static bool IsCertExportInvocation(string[] args)
+    {
+        // Expand response files (e.g. devproxy @export.rsp) the same way the parser does.
+        // Options may precede or follow the subcommands, e.g.
+        // devproxy --log-level debug cert --output json export
+        var tokens = new RootCommand().Parse(args).Tokens.Select(t => t.Value).ToArray();
+        var certIndex = Array.FindIndex(tokens, arg => string.Equals(arg, "cert", StringComparison.OrdinalIgnoreCase));
+        return certIndex >= 0 &&
+            tokens.Skip(certIndex + 1).Any(arg => string.Equals(arg, "export", StringComparison.OrdinalIgnoreCase));
     }
 
     public static bool IsConfigValidateCommand

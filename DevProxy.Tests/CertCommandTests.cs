@@ -120,6 +120,160 @@ public sealed class CertCommandTests : IDisposable
     }
 
     [Fact]
+    public void IsSameFile_IndependentCopy_ReturnsFalse()
+    {
+        var root = Path.Combine(_caDirectory, "rootCert.pfx");
+        var copy = Path.Combine(_caDirectory, "copy.pfx");
+        _ = Directory.CreateDirectory(_caDirectory);
+        File.WriteAllBytes(root, [1, 2, 3]);
+        File.Copy(root, copy);
+
+        Assert.False(CertCommand.IsSameFile(copy, root));
+    }
+
+    [Fact]
+    public void IsSameFile_DetectsHardLink()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var root = Path.Combine(_caDirectory, "rootCert.pfx");
+        var link = Path.Combine(_caDirectory, "link.pfx");
+        _ = Directory.CreateDirectory(_caDirectory);
+        File.WriteAllBytes(root, [1, 2, 3]);
+        using (var ln = System.Diagnostics.Process.Start("ln", [root, link]))
+        {
+            ln.WaitForExit();
+            Assert.Equal(0, ln.ExitCode);
+        }
+
+        Assert.True(CertCommand.IsSameFile(link, root));
+    }
+
+    [Theory]
+    [InlineData(null, "ca.pem", "pem")]
+    [InlineData("json", "ca.der", "der")]
+    public void Export_WritesCertificateAndPrintsResult(string? output, string fileName, string expectedFormat)
+    {
+        var ca = GetCertificateAuthority();
+        var file = Path.Combine(_caDirectory, "out", fileName);
+        var args = new List<string> { "cert", "export", "--file", file };
+        if (output is not null)
+        {
+            args.AddRange(["--output", output]);
+        }
+        var (exitCode, stdout) = InvokeExport(ca, [.. args]);
+
+        Assert.Equal(0, exitCode);
+        using var exported = X509CertificateLoader.LoadCertificateFromFile(file);
+        Assert.Equal(ca.RootCertificate.Thumbprint, exported.Thumbprint);
+        Assert.False(exported.HasPrivateKey);
+
+        if (output is null)
+        {
+            Assert.Equal(Path.GetFullPath(file), stdout.Trim());
+        }
+        else
+        {
+            using var json = System.Text.Json.JsonDocument.Parse(stdout);
+            Assert.Equal(Path.GetFullPath(file), json.RootElement.GetProperty("path").GetString());
+            Assert.Equal(expectedFormat, json.RootElement.GetProperty("format").GetString());
+        }
+    }
+
+    [Fact]
+    public void Export_OverwritesExistingFile()
+    {
+        var ca = GetCertificateAuthority();
+        var file = Path.Combine(_caDirectory, "ca.pem");
+        File.WriteAllText(file, "stale");
+
+        var (exitCode, _) = InvokeExport(ca, ["cert", "export", "--file", file]);
+
+        Assert.Equal(0, exitCode);
+        Assert.StartsWith("-----BEGIN CERTIFICATE-----", File.ReadAllText(file), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Export_ToStoredRoot_FailsAndLeavesRootUnchanged()
+    {
+        var ca = GetCertificateAuthority();
+        var rootBytes = File.ReadAllBytes(ca.RootCertificatePath);
+
+        var (exitCode, stdout) = InvokeExport(ca, ["cert", "export", "--file", ca.RootCertificatePath]);
+
+        Assert.Equal(1, exitCode);
+        Assert.Empty(stdout);
+        Assert.Equal(rootBytes, File.ReadAllBytes(ca.RootCertificatePath));
+    }
+
+    [Fact]
+    public void Export_ToCopyOfStoredRoot_Succeeds()
+    {
+        var ca = GetCertificateAuthority();
+        var copy = Path.Combine(_caDirectory, "copy.pfx");
+        File.Copy(ca.RootCertificatePath, copy);
+        var rootBytes = File.ReadAllBytes(ca.RootCertificatePath);
+
+        var (exitCode, _) = InvokeExport(ca, ["cert", "export", "--format", "der", "--file", copy]);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(ca.RootCertificate.RawData, File.ReadAllBytes(copy));
+        Assert.Equal(rootBytes, File.ReadAllBytes(ca.RootCertificatePath));
+    }
+
+    [Fact]
+    public void Export_RootNotPersisted_Fails()
+    {
+        // A file where the root's parent directory should be makes the save fail.
+        var blocker = Path.Combine(_caDirectory, "blocker");
+        _ = Directory.CreateDirectory(_caDirectory);
+        File.WriteAllText(blocker, string.Empty);
+        using var ca = new CertificateAuthority(Path.Combine(blocker, "rootCert.pfx"), Path.Combine(_caDirectory, "certificates"));
+        var file = Path.Combine(_caDirectory, "ca.pem");
+
+        var (exitCode, stdout) = InvokeExport(ca, ["cert", "export", "--file", file]);
+
+        Assert.Equal(1, exitCode);
+        Assert.Empty(stdout);
+        Assert.False(File.Exists(file));
+    }
+
+    [Theory]
+    [InlineData(new[] { "cert", "export" }, true)]
+    [InlineData(new[] { "--log-level", "debug", "cert", "--output", "json", "export" }, true)]
+    [InlineData(new[] { "cert", "ensure" }, false)]
+    [InlineData(new[] { "export" }, false)]
+    public void IsCertExportInvocation_DetectsCommand(string[] args, bool expected)
+    {
+        Assert.Equal(expected, DevProxyCommand.IsCertExportInvocation(args));
+    }
+
+    [Fact]
+    public void IsCertExportInvocation_ExpandsResponseFile()
+    {
+        _ = Directory.CreateDirectory(_caDirectory);
+        var responseFile = Path.Combine(_caDirectory, "export.rsp");
+        File.WriteAllText(responseFile, "cert export");
+
+        Assert.True(DevProxyCommand.IsCertExportInvocation(["@" + responseFile]));
+    }
+
+    private static (int ExitCode, string Stdout) InvokeExport(CertificateAuthority ca, string[] args)
+    {
+        var root = new RootCommand
+        {
+            new Option<OutputFormat?>(DevProxyCommand.OutputOptionName) { Recursive = true },
+            new CertCommand(NullLogger<CertCommand>.Instance, ca.RootCertificate, ca, new TestCertificateTrust(fail: false))
+        };
+        using var stdout = new StringWriter();
+        var exitCode = root.Parse(args).Invoke(new InvocationConfiguration { Output = stdout });
+        return (exitCode, stdout.ToString());
+    }
+
+    [Fact]
     public void GetCertificateBytes_Der_ReturnsRawCertificate()
     {
         var der = CertCommand.GetCertificateBytes(_certificate, CertExportFormat.Der);

@@ -186,6 +186,7 @@ sealed class CertCommand : Command
 
             File.WriteAllBytes(filePath, GetCertificateBytes(_rootCertificate, format));
 
+            var output = parseResult.InvocationConfiguration.Output;
             if (outputFormat == OutputFormat.Json)
             {
                 var json = JsonSerializer.Serialize(new
@@ -193,11 +194,11 @@ sealed class CertCommand : Command
                     path = filePath,
                     format = format.ToString().ToLowerInvariant()
                 }, ProxyUtils.JsonSerializerOptions);
-                Console.WriteLine(json);
+                output.WriteLine(json);
             }
             else
             {
-                Console.WriteLine(filePath);
+                output.WriteLine(filePath);
             }
 
             return 0;
@@ -238,11 +239,29 @@ sealed class CertCommand : Command
             return true;
         }
 
-        // Different paths can point to the same file through symbolic links
-        // (e.g. /tmp and /private/tmp on macOS), so also compare existing contents.
-        return File.Exists(path1) && File.Exists(path2) &&
-            new FileInfo(path1).Length == new FileInfo(path2).Length &&
-            File.ReadAllBytes(path1).AsSpan().SequenceEqual(File.ReadAllBytes(path2));
+        if (!File.Exists(path1) || !File.Exists(path2))
+        {
+            return false;
+        }
+
+        // Different paths can reference the same file through symbolic or hard links
+        // (e.g. /tmp and /private/tmp on macOS). While path1 is open exclusively, opening
+        // the same file through any other path fails with a sharing violation (Windows)
+        // or a lock conflict (Unix), while an independent copy opens normally.
+        using var exclusive = new FileStream(path1, FileMode.Open, FileAccess.Read, FileShare.None);
+        try
+        {
+            using var other = new FileStream(path2, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            return false;
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+        catch (IOException)
+        {
+            return true;
+        }
     }
 
     internal static string GetDefaultExportFileName(CertExportFormat format) =>
