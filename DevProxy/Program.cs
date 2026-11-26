@@ -569,11 +569,11 @@ if (DevProxyCommand.IsPluginCommand)
 }
 
 // Recover from a system-proxy registration left behind by a previous instance
-// that was killed or crashed. Detached daemons skip this because the parent
-// process that spawned them already did it.
-if (DevProxyCommand.IsRootCommand &&
-    !DevProxyCommand.IsInternalDaemon &&
-    !args.Any(a => a is "-h" or "-?" or "--help" or "--version"))
+// that was killed or crashed. Only when starting the proxy, so other commands
+// don't change the OS proxy settings. Detached daemons skip this because the
+// parent process that spawned them already did it.
+if (!DevProxyCommand.IsInternalDaemon &&
+    DevProxyCommand.IsStartInvocation(args))
 {
     await ReconcileOrphanedSystemProxiesAsync(IsJsonOutputRequested(args));
 }

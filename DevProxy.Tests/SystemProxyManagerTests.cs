@@ -289,3 +289,52 @@ public class SystemProxyResetDetectionTests
     public void IsResetInvocation_ReturnsFalse(params string[] args) =>
         Assert.False(DevProxy.Commands.SystemProxyCommand.IsResetInvocation(args));
 }
+
+[Collection("management-environment")]
+public class SystemProxyOwnerLookupTests
+{
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FindLiveSystemProxyOwner_PrefersSnapshotOverOlderDetachedOwner(bool withDeadSnapshotOwner)
+    {
+        var folder = Directory.CreateTempSubdirectory("devproxy-owner-");
+        var statePath = StateManager.GetInstanceStateFilePath(Environment.ProcessId);
+        Assert.False(File.Exists(statePath));
+        try
+        {
+            // A live detached instance that registered as the system proxy before a newer one took over.
+            await StateManager.SaveStateAsync(new()
+            {
+                Pid = Environment.ProcessId,
+                ProcessStartTime = StateManager.GetCurrentProcessStartTime(),
+                AsSystemProxy = true,
+            });
+            var snapshotPath = Path.Combine(folder.FullName, "snapshot.json");
+            if (withDeadSnapshotOwner)
+            {
+                SystemProxySnapshotStore.Save(snapshotPath, new()
+                {
+                    Pid = int.MaxValue,
+                    ProcessStartTime = DateTimeOffset.UnixEpoch,
+                });
+            }
+
+            var owner = await SystemProxyManager.FindLiveSystemProxyOwnerAsync(snapshotPath);
+
+            if (withDeadSnapshotOwner)
+            {
+                Assert.Null(owner);
+            }
+            else
+            {
+                Assert.NotNull(owner);
+            }
+        }
+        finally
+        {
+            File.Delete(statePath);
+            folder.Delete(recursive: true);
+        }
+    }
+}

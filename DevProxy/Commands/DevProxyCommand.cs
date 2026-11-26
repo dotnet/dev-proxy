@@ -208,6 +208,95 @@ sealed class DevProxyCommand : RootCommand
     }
 
     /// <summary>
+    /// Returns whether the arguments (without the executable) start the proxy, rather than
+    /// invoking a subcommand, showing help or the version, or failing to parse. Parses the
+    /// arguments, including response files, wherever options appear and however their
+    /// values are attached. Runs before plugins load, so tokens that aren't a built-in
+    /// option or the value of an unknown (plugin) option are treated as a subcommand.
+    /// </summary>
+    internal static bool IsStartInvocation(string[] args)
+    {
+        // Mirrors the arity of the root options registered in ConfigureCommand. Values are
+        // parsed as strings so that invalid values don't affect where tokens are consumed.
+        static Option<string?> Value(string name, params string[] aliases) => new(name, aliases);
+        static Option<string[]> Values(string name, params string[] aliases) => new(name, aliases)
+        {
+            AllowMultipleArgumentsPerToken = true,
+            Arity = ArgumentArity.ZeroOrMore
+        };
+        static Option<bool?> Flag(string name, params string[] aliases) => new(name, aliases);
+
+        var rootCommand = new RootCommand { TreatUnmatchedTokensAsErrors = false };
+        Option[] options =
+        [
+            Value(ApiPortOptionName),
+            Value(ApiIpAddressOptionName),
+            Flag(AsSystemProxyOptionName),
+            Value(ConfigFileOptionName, "-c"),
+            Flag(DetachedOptionName, "-d"),
+            Flag(DiscoverOptionName),
+            Values(EnvOptionName, "-e"),
+            Flag(InstallCertOptionName),
+            Flag(InternalDaemonOptionName),
+            Value(IpAddressOptionName),
+            Value(LogLevelOptionName),
+            new Option<bool>(NoColorOptionName) { Arity = ArgumentArity.Zero },
+            Flag(NoFirstRunOptionName),
+            Flag(NoWatchOptionName),
+            Value(OutputOptionName),
+            Value(PortOptionName, "-p"),
+            Flag(RecordOptionName),
+            Value(TimeoutOptionName, "-t"),
+            Values(UrlsToWatchOptionName, "-u"),
+            Values(WatchPidsOptionName),
+            Values(WatchProcessNamesOptionName),
+            Flag(WatchProcessTreeOptionName),
+        ];
+        foreach (var option in options)
+        {
+            rootCommand.Options.Add(option);
+        }
+
+        var parseResult = rootCommand.Parse(args);
+        // Help, version and parse errors (such as a missing response file) have an action.
+        if (parseResult.Action is not null)
+        {
+            return false;
+        }
+
+        var knownTokens = new HashSet<Token>(ReferenceEqualityComparer.Instance);
+        foreach (var option in rootCommand.Options)
+        {
+            if (parseResult.GetResult(option) is OptionResult { Implicit: false } optionResult)
+            {
+                if (optionResult.IdentifierToken is not null)
+                {
+                    _ = knownTokens.Add(optionResult.IdentifierToken);
+                }
+                knownTokens.UnionWith(optionResult.Tokens);
+            }
+        }
+
+        var afterUnknownOption = false;
+        foreach (var token in parseResult.Tokens)
+        {
+            if (knownTokens.Contains(token))
+            {
+                afterUnknownOption = false;
+            }
+            else if (token.Value.StartsWith('-'))
+            {
+                afterUnknownOption = true;
+            }
+            else if (!afterUnknownOption)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>
     /// Determines if the root command (proxy itself) is being invoked.
     /// Returns true when no subcommand is specified (only options or no args).
     /// A subcommand is detected when the first non-program argument doesn't start with '-'.

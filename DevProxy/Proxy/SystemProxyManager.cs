@@ -458,22 +458,25 @@ internal sealed class SystemProxyManager : ISystemProxyManager
         OrphanRestoreOutcome Outcome);
 
     /// <summary>
-    /// Finds the PID of a live process that owns the system proxy: a running detached
-    /// instance, or the (foreground or detached) instance recorded in the snapshot file.
+    /// Finds the PID of a live process that owns the system proxy. The (foreground or
+    /// detached) instance recorded in the snapshot file is authoritative, because the
+    /// latest instance to take over the system proxy rewrites it. Without a snapshot,
+    /// falls back to a running detached instance registered as the system proxy.
     /// Returns null when no live process owns it.
     /// </summary>
-    internal static async Task<int?> FindLiveSystemProxyOwnerAsync(CancellationToken cancellationToken = default)
+    internal static Task<int?> FindLiveSystemProxyOwnerAsync(CancellationToken cancellationToken = default) =>
+        FindLiveSystemProxyOwnerAsync(SystemProxySnapshotStore.DefaultPath, cancellationToken);
+
+    internal static async Task<int?> FindLiveSystemProxyOwnerAsync(string snapshotPath, CancellationToken cancellationToken = default)
     {
-        var liveInstance = await StateManager.FindSystemProxyInstanceAsync(cancellationToken);
-        if (liveInstance is not null)
+        var snapshot = SystemProxySnapshotStore.Load(snapshotPath);
+        if (snapshot is not null)
         {
-            return liveInstance.Pid;
+            return snapshot.IsOwnerAlive() ? snapshot.Pid : null;
         }
 
-        var snapshot = SystemProxySnapshotStore.Load(SystemProxySnapshotStore.DefaultPath);
-        return snapshot is not null && snapshot.IsOwnerAlive()
-            ? snapshot.Pid
-            : null;
+        var liveInstance = await StateManager.FindSystemProxyInstanceAsync(cancellationToken);
+        return liveInstance?.Pid;
     }
 
     /// <summary>
