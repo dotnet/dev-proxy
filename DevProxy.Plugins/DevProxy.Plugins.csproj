@@ -29,7 +29,7 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Extensions.FileSystemGlobbing" Version="10.0.15">
+    <PackageReference Include="Microsoft.Extensions.FileSystemGlobbing" Version="11.0.0">
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
