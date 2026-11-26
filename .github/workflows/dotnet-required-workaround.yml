@@ -19,20 +19,11 @@ jobs: # job names and matrices must match the original workflow
     steps:
       - run: 'echo "No build required"'
 
-  unit-tests:
-    name: Unit tests (${{ matrix.os }})
+  tests:
+    name: Tests (${{ matrix.os }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
         os: [ ubuntu-latest, windows-latest, macos-latest ]
     steps:
-      - run: 'echo "No unit tests required"'
-
-  integration-tests:
-    name: Integration tests (${{ matrix.os }})
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        os: [ ubuntu-latest, windows-latest, macos-latest ]
-    steps:
-      - run: 'echo "No integration tests required"'
+      - run: 'echo "No tests required"'
