@@ -21,30 +21,34 @@ public abstract class ExecutionSummaryPluginReportBase : IJsonReport
 
     public object ToJson() => Data;
 
+    // Returns null for message types that are excluded from the summary,
+    // like proxy-internal lifecycle messages (timestamps, finished processing)
+    // and diagnostic messages (intercepted responses, skipped plugins)
+    internal static string? GetReadableMessageTypeForSummary(MessageType messageType) => messageType switch
+    {
+        MessageType.Chaos => "Requests with chaos",
+        MessageType.Failed => "Failures",
+        MessageType.InterceptedRequest => RequestsInterceptedMessage,
+        MessageType.Mocked => "Requests mocked",
+        MessageType.Normal => "Information",
+        MessageType.PassedThrough => RequestsPassedThroughMessage,
+        MessageType.Processed => "Requests processed",
+        MessageType.Tip => "Tips",
+        MessageType.Warning => "Warnings",
+        MessageType.InterceptedResponse or
+        MessageType.FinishedProcessingRequest or
+        MessageType.Skipped or
+        MessageType.Timestamp => null,
+        _ => null
+    };
+
     protected static void AddExecutionSummaryReportSummary(IEnumerable<RequestLog> requestLogs, StringBuilder sb)
     {
         ArgumentNullException.ThrowIfNull(sb);
 
-        static string getReadableMessageTypeForSummary(MessageType messageType)
-        {
-#pragma warning disable IDE0072
-            return messageType switch
-#pragma warning restore IDE0072
-            {
-                MessageType.Chaos => "Requests with chaos",
-                MessageType.Failed => "Failures",
-                MessageType.InterceptedRequest => RequestsInterceptedMessage,
-                MessageType.Mocked => "Requests mocked",
-                MessageType.PassedThrough => RequestsPassedThroughMessage,
-                MessageType.Tip => "Tips",
-                MessageType.Warning => "Warnings",
-                _ => "Unknown"
-            };
-        }
-
         var data = requestLogs
-          .Where(log => log.MessageType != MessageType.InterceptedResponse)
-          .Select(log => getReadableMessageTypeForSummary(log.MessageType))
+          .Select(log => GetReadableMessageTypeForSummary(log.MessageType))
+          .OfType<string>()
           .OrderBy(log => log)
           .GroupBy(log => log)
           .ToDictionary(group => group.Key, group => group.Count());
