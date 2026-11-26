@@ -244,6 +244,11 @@ public sealed class CertCommandTests : IDisposable
     [Theory]
     [InlineData(new[] { "cert", "export" }, true)]
     [InlineData(new[] { "--log-level", "debug", "cert", "--output", "json", "export" }, true)]
+    [InlineData(new[] { "cert", "export", "--format", "der", "--file", "ca.der" }, true)]
+    [InlineData(new[] { "--watch-process-names", "cert", "export" }, false)]
+    [InlineData(new[] { "-u", "cert", "export" }, true)]
+    [InlineData(new[] { "--watch-process-names", "node", "cert", "export" }, true)]
+    [InlineData(new[] { "jwt", "create", "--name", "cert", "--scopes", "export" }, false)]
     [InlineData(new[] { "cert", "ensure" }, false)]
     [InlineData(new[] { "export" }, false)]
     public void IsCertExportInvocation_DetectsCommand(string[] args, bool expected)
