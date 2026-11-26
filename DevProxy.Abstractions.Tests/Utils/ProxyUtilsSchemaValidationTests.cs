@@ -47,7 +47,7 @@ public sealed class ProxyUtilsSchemaValidationTests : IDisposable
     }
 
     [Fact]
-    public async Task ValidateJsonAsync_LocalSchemaValid_DoesNotDownloadSchema()
+    public async Task ValidateJsonAgainstSchemaAsync_LocalSchemaValid_DoesNotDownloadSchema()
     {
         WriteLocalSchema(AllowAnythingSchema);
         using var handler = new FakeHandler(_ => throw new InvalidOperationException("Unexpected HTTP call"));
@@ -60,7 +60,7 @@ public sealed class ProxyUtilsSchemaValidationTests : IDisposable
     }
 
     [Fact]
-    public async Task ValidateJsonAsync_LocalSchemaInvalid_UsesRemoteSchemaResult()
+    public async Task ValidateJsonAgainstSchemaAsync_LocalSchemaInvalid_UsesRemoteSchemaResult()
     {
         WriteLocalSchema(RequireNameSchema);
         using var handler = new FakeHandler(_ => Ok(AllowAnythingSchema));
@@ -72,7 +72,7 @@ public sealed class ProxyUtilsSchemaValidationTests : IDisposable
     }
 
     [Fact]
-    public async Task ValidateJsonAsync_LocalSchemaInvalidAndRemoteUnavailable_UsesLocalResult()
+    public async Task ValidateJsonAgainstSchemaAsync_LocalSchemaInvalidAndRemoteUnavailable_UsesLocalResult()
     {
         WriteLocalSchema(RequireNameSchema);
         using var handler = new FakeHandler(_ => throw new HttpRequestException("offline"));
@@ -85,7 +85,7 @@ public sealed class ProxyUtilsSchemaValidationTests : IDisposable
     }
 
     [Fact]
-    public async Task ValidateJsonAsync_LocalSchemaInvalidAndRemoteTimesOut_UsesLocalResult()
+    public async Task ValidateJsonAgainstSchemaAsync_LocalSchemaInvalidAndRemoteTimesOut_UsesLocalResult()
     {
         WriteLocalSchema(RequireNameSchema);
         using var handler = new FakeHandler(async ct =>
@@ -100,7 +100,7 @@ public sealed class ProxyUtilsSchemaValidationTests : IDisposable
     }
 
     [Fact]
-    public async Task ValidateJsonAsync_NoLocalSchema_DownloadsSchema()
+    public async Task ValidateJsonAgainstSchemaAsync_NoLocalSchema_DownloadsSchema()
     {
         const string otherVersionUrl = "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v4.0.0/test.schema.json";
         WriteLocalSchema(AllowAnythingSchema);
@@ -118,7 +118,8 @@ public sealed class ProxyUtilsSchemaValidationTests : IDisposable
     private async Task<(bool IsValid, IEnumerable<string> ValidationErrors)> ValidateAsync(string json, string schemaUrl, FakeHandler handler, TimeSpan? timeout = null)
     {
         using var httpClient = new HttpClient(handler, false);
-        return await ProxyUtils.ValidateJsonAsync(json, schemaUrl, httpClient, NullLogger.Instance, _schemasFolder, CurrentVersion, timeout ?? TimeSpan.FromSeconds(5), CancellationToken.None);
+        var result = await ProxyUtils.ValidateJsonAgainstSchemaAsync(json, schemaUrl, httpClient, NullLogger.Instance, _schemasFolder, CurrentVersion, timeout ?? TimeSpan.FromSeconds(5), CancellationToken.None);
+        return (result.Status == SchemaValidationStatus.Valid, result.Errors);
     }
 
     private static Task<HttpResponseMessage> Ok(string content) =>
