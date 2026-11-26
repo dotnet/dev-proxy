@@ -51,4 +51,13 @@ public class DevProxyCommandTests
 
         Assert.True(config.Record);
     }
+
+    [Theory]
+    [InlineData(true, "stdio", "npx", "@devproxy/mcp")]
+    [InlineData(true, "--log-level", "debug", "stdio", "npx")]
+    [InlineData(false, "jwt", "create", "--name", "stdio", "--output", "json")]
+    [InlineData(false, "config", "get", "stdio")]
+    [InlineData(false)]
+    public void IsStdioSubcommand_DetectsSubcommandNotArgumentValues(bool expected, params string[] args) =>
+        Assert.Equal(expected, DevProxyCommand.IsStdioSubcommand(args));
 }

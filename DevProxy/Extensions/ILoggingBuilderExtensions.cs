@@ -23,12 +23,13 @@ static class ILoggingBuilderExtensions
         this ILoggingBuilder builder,
         ConfigurationManager configuration,
         DevProxyConfigOptions options) =>
-        builder.ConfigureDevProxyLogging(configuration, options, DevProxyCommand.IsJwtCommand, DevProxyCommand.IsRootCommand);
+        builder.ConfigureDevProxyLogging(configuration, options, DevProxyCommand.IsStdioCommand, DevProxyCommand.IsJwtCommand, DevProxyCommand.IsRootCommand);
 
     internal static ILoggingBuilder ConfigureDevProxyLogging(
         this ILoggingBuilder builder,
         ConfigurationManager configuration,
         DevProxyConfigOptions options,
+        bool isStdioCommand,
         bool isJwtCommand,
         bool isRootCommand)
     {
@@ -40,7 +41,7 @@ static class ILoggingBuilderExtensions
             configuration.GetValue("output", OutputFormat.Text);
 
         // For stdio command, log to file instead of console to avoid interfering with proxied streams
-        if (DevProxyCommand.IsStdioCommand)
+        if (isStdioCommand)
         {
             _ = builder
                 .ClearProviders()

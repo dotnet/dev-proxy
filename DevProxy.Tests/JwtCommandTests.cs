@@ -129,28 +129,36 @@ public class ConsoleOutputDefinition;
 [Collection("console-output")]
 public class JwtCommandLoggingTests
 {
-    [Fact]
-    public async Task Create_JsonOutputWithDevProxyLogging_WritesResultWithToken()
+    [Theory]
+    [InlineData("John Doe")]
+    [InlineData("stdio")]
+    public async Task Create_JsonOutputWithDevProxyLogging_WritesResultWithToken(string name)
     {
-        var output = await RunJwtCreateAsync(OutputFormat.Json);
+        var output = await RunJwtCreateAsync(OutputFormat.Json, name);
 
         using var json = JsonDocument.Parse(Assert.Single(output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)));
         Assert.Equal("result", json.RootElement.GetProperty("type").GetString());
         var token = json.RootElement.GetProperty("data").GetProperty("token").GetString();
-        Assert.Contains(new JwtSecurityTokenHandler().ReadJwtToken(token).Claims, c => c.Type == JwtRegisteredClaimNames.Sub && c.Value == "John Doe");
+        Assert.Contains(new JwtSecurityTokenHandler().ReadJwtToken(token).Claims, c => c.Type == JwtRegisteredClaimNames.Sub && c.Value == name);
     }
 
-    [Fact]
-    public async Task Create_TextOutputWithDevProxyLogging_WritesOnlyToken()
+    [Theory]
+    [InlineData("John Doe")]
+    [InlineData("stdio")]
+    public async Task Create_TextOutputWithDevProxyLogging_WritesOnlyToken(string name)
     {
-        var output = await RunJwtCreateAsync(OutputFormat.Text);
+        var output = await RunJwtCreateAsync(OutputFormat.Text, name);
 
         var token = new JwtSecurityTokenHandler().ReadJwtToken(output.Trim());
-        Assert.Contains(token.Claims, c => c.Type == JwtRegisteredClaimNames.Sub && c.Value == "John Doe");
+        Assert.Contains(token.Claims, c => c.Type == JwtRegisteredClaimNames.Sub && c.Value == name);
     }
 
-    private static async Task<string> RunJwtCreateAsync(OutputFormat outputFormat)
+    private static async Task<string> RunJwtCreateAsync(OutputFormat outputFormat, string name)
     {
+        string[] args = ["jwt", "create", "-n", name, "--output", outputFormat.ToString()];
+        var options = new DevProxyConfigOptions();
+        options.ParseOptions(args);
+        Assert.False(options.IsStdioMode);
         var originalOut = Console.Out;
         var originalError = Console.Error;
         using var writer = new StringWriter(CultureInfo.InvariantCulture);
@@ -159,15 +167,15 @@ public class JwtCommandLoggingTests
         try
         {
             using var configuration = new ConfigurationManager();
-            configuration["output"] = outputFormat.ToString();
+            configuration["output"] = "Text";
             var services = new ServiceCollection();
-            _ = services.AddLogging(builder => builder.ConfigureDevProxyLogging(configuration, new DevProxyConfigOptions(), isJwtCommand: true, isRootCommand: false));
+            _ = services.AddLogging(builder => builder.ConfigureDevProxyLogging(configuration, options, DevProxyCommand.IsStdioSubcommand(args), isJwtCommand: true, isRootCommand: false));
             int exitCode;
             using (var provider = services.BuildServiceProvider())
             {
                 var command = new JwtCommand(provider.GetRequiredService<ILogger<JwtCommand>>());
                 exitCode = await StopCommandTests.CreateRootCommand(command)
-                    .Parse(["jwt", "create", "-n", "John Doe", "--output", outputFormat.ToString()])
+                    .Parse(args)
                     .InvokeAsync();
             }
 

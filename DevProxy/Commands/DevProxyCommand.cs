@@ -91,11 +91,33 @@ sealed class DevProxyCommand : RootCommand
                 return field;
             }
 
-            var args = Environment.GetCommandLineArgs();
-            field = args.Contains("stdio");
+            field = IsStdioSubcommand(Environment.GetCommandLineArgs()[1..]);
             _isStdioCommandResolved = true;
             return field;
         }
+    }
+
+    // Detects the stdio subcommand rather than any argument equal to "stdio"
+    // (e.g. `jwt create --name stdio`). Tokens before the subcommand may only be
+    // options or their values. args excludes the program name.
+    internal static bool IsStdioSubcommand(string[] args)
+    {
+        for (var i = 0; i < args.Length; i++)
+        {
+            if (string.Equals(args[i], "stdio", StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            var isOption = args[i].StartsWith('-');
+            var isOptionValue = i > 0 && args[i - 1].StartsWith('-');
+            if (!isOption && !isOptionValue)
+            {
+                return false;
+            }
+        }
+
+        return false;
     }
 
     public static bool IsJwtCommand
