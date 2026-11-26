@@ -71,20 +71,14 @@ internal sealed class StopCommand : Command
 
     private static async Task<int> StopByPidAsync(int pid, bool force, CancellationToken cancellationToken)
     {
-        // Capture a potential orphaned system-proxy record before LoadStateByPidAsync
-        // prunes (deletes) the stale state file for a dead PID.
+        // Recover an orphan before looking up live state so failed recovery keeps
+        // its registration available for a later retry.
         var orphan = (await StateManager.GetOrphanedSystemProxyStatesAsync(cancellationToken))
             .Find(o => o.Pid == pid);
 
-        var state = await StateManager.LoadStateByPidAsync(pid, cancellationToken);
-        if (state is not null)
-        {
-            return await StopInstanceAsync(state, force, cancellationToken);
-        }
-
         if (orphan is not null)
         {
-            var liveOwner = await StateManager.FindSystemProxyInstanceAsync(cancellationToken);
+            var liveOwner = await SystemProxyManager.FindLiveSystemProxyOwnerAsync(cancellationToken);
             if (liveOwner is null)
             {
                 if (new SystemProxyManager(NullLogger<SystemProxyManager>.Instance).Restore() is SystemProxyRestoreResult.Failed)
@@ -97,11 +91,17 @@ internal sealed class StopCommand : Command
             }
             else
             {
-                Console.WriteLine($"Removed stale record for crashed Dev Proxy (PID: {pid}); system proxy is owned by a running instance (PID: {liveOwner.Pid}).");
+                Console.WriteLine($"Removed stale record for crashed Dev Proxy (PID: {pid}); system proxy is owned by a running instance (PID: {liveOwner}).");
             }
 
             await StateManager.DeleteStateAsync(orphan, cancellationToken);
             return 0;
+        }
+
+        var state = await StateManager.LoadStateByPidAsync(pid, cancellationToken);
+        if (state is not null)
+        {
+            return await StopInstanceAsync(state, force, cancellationToken);
         }
 
         Console.WriteLine($"No running Dev Proxy instance with PID {pid}.");

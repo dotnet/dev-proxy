@@ -11,13 +11,22 @@ namespace DevProxy.Proxy;
 
 /// <summary>
 /// The OS proxy settings that were in place before Dev Proxy registered itself as the
-/// system proxy, plus the PID of the instance that did it. Persisted to disk so the
+/// system proxy, plus the process identity of the instance that did it. Persisted to disk so the
 /// settings can be restored even if that instance is killed or crashes.
 /// </summary>
 internal sealed class SystemProxySnapshot
 {
     [JsonPropertyName("pid")]
     public int Pid { get; set; }
+
+    [JsonPropertyName("processStartTime")]
+    public DateTimeOffset? ProcessStartTime { get; set; }
+
+    internal bool IsOwnerAlive() => StateManager.IsInstanceAlive(new ProxyInstanceState
+    {
+        Pid = Pid,
+        ProcessStartTime = ProcessStartTime,
+    });
 
     [JsonPropertyName("createdAt")]
     public DateTimeOffset CreatedAt { get; set; }

@@ -3,6 +3,8 @@
 // See the LICENSE file in the project root for more information.
 
 using DevProxy.Proxy;
+using DevProxy.State;
+using Microsoft.Extensions.Logging.Abstractions;
 
 using Xunit;
 
@@ -10,6 +12,97 @@ namespace DevProxy.Tests;
 
 public class SystemProxyManagerTests
 {
+    [Fact]
+    public void Disable_AfterSuccessfulRestore_DoesNotRestoreAgain()
+    {
+        var folder = Directory.CreateTempSubdirectory("devproxy-cleanup-");
+        try
+        {
+            var path = Path.Combine(folder.FullName, "snapshot.json");
+            var manager = new SystemProxyManager(NullLogger<SystemProxyManager>.Instance, path);
+            manager.SaveSnapshot(snapshot => snapshot.Windows = new() { ProxyEnable = 1, ProxyServer = "corp:8080" });
+            var restoreCalls = 0;
+            void Restore()
+            {
+                restoreCalls++;
+                SystemProxySnapshotStore.Delete(path);
+            }
+
+            manager.Disable(Restore);
+            manager.Disable(Restore);
+
+            Assert.Equal(1, restoreCalls);
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Disable_AfterResetOrTakeover_LeavesSettingsAlone(bool takeover)
+    {
+        var folder = Directory.CreateTempSubdirectory("devproxy-cleanup-");
+        try
+        {
+            var path = Path.Combine(folder.FullName, "snapshot.json");
+            var manager = new SystemProxyManager(NullLogger<SystemProxyManager>.Instance, path);
+            manager.SaveSnapshot(_ => { });
+            if (takeover)
+            {
+                SystemProxySnapshotStore.Save(path, new() { Pid = int.MaxValue });
+            }
+            else
+            {
+                SystemProxySnapshotStore.Delete(path);
+            }
+            var restoreCalls = 0;
+
+            manager.Disable(() => restoreCalls++);
+            manager.Disable(() => restoreCalls++);
+
+            Assert.Equal(0, restoreCalls);
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SaveSnapshot_Takeover_UpdatesIdentityAndPreservesPreviousSettings()
+    {
+        var folder = Directory.CreateTempSubdirectory("devproxy-takeover-");
+        try
+        {
+            var path = Path.Combine(folder.FullName, "snapshot.json");
+            SystemProxySnapshotStore.Save(path, new()
+            {
+                Pid = int.MaxValue,
+                ProcessStartTime = DateTimeOffset.UnixEpoch,
+                Windows = new() { ProxyEnable = 1, ProxyServer = "corp:8080" },
+            });
+            var manager = new SystemProxyManager(NullLogger<SystemProxyManager>.Instance, path);
+            var captured = false;
+
+            manager.SaveSnapshot(_ => captured = true);
+
+            var snapshot = SystemProxySnapshotStore.Load(path);
+            Assert.NotNull(snapshot);
+            Assert.False(captured);
+            Assert.Equal(Environment.ProcessId, snapshot.Pid);
+            Assert.NotNull(snapshot.ProcessStartTime);
+            Assert.True(snapshot.IsOwnerAlive());
+            Assert.Equal("corp:8080", snapshot.Windows?.ProxyServer);
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+    }
+
     [Fact]
     public void CreateToggleScriptStartInfo_PreservesPathAndArgumentsContainingSpaces()
     {
@@ -103,6 +196,7 @@ public class SystemProxySnapshotStoreTests
             var snapshot = new SystemProxySnapshot
             {
                 Pid = 1234,
+                ProcessStartTime = DateTimeOffset.UnixEpoch.AddSeconds(1),
                 CreatedAt = DateTimeOffset.UnixEpoch,
                 Windows = new() { ProxyEnable = 1, ProxyServer = "corp:8080" },
                 MacOS = [new() { Service = "Wi-Fi", Web = new() { Enabled = true, Server = "corp", Port = 8080 } }],
@@ -113,6 +207,7 @@ public class SystemProxySnapshotStoreTests
 
             Assert.NotNull(loaded);
             Assert.Equal(1234, loaded.Pid);
+            Assert.Equal(snapshot.ProcessStartTime, loaded.ProcessStartTime);
             Assert.Equal(1, loaded.Windows?.ProxyEnable);
             Assert.Equal("corp:8080", loaded.Windows?.ProxyServer);
             var service = Assert.Single(loaded.MacOS!);
@@ -125,6 +220,23 @@ public class SystemProxySnapshotStoreTests
         finally
         {
             folder.Delete(recursive: true);
+        }
+    }
+
+    public class SystemProxySnapshotOwnershipTests
+    {
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void IsOwnerAlive_VerifiesStartTime(bool reusedPid)
+        {
+            var snapshot = new SystemProxySnapshot
+            {
+                Pid = Environment.ProcessId,
+                ProcessStartTime = StateManager.GetCurrentProcessStartTime()!.Value.AddMinutes(reusedPid ? -30 : 0),
+            };
+
+            Assert.Equal(!reusedPid, snapshot.IsOwnerAlive());
         }
     }
 

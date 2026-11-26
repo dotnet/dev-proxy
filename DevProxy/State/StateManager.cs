@@ -137,7 +137,8 @@ internal static class StateManager
     }
 
     /// <summary>
-    /// Loads all live detached instance states, cleaning up stale state files.
+    /// Loads all live detached instance states, cleaning up stale state files except
+    /// system-proxy recovery records, which reconciliation removes after recovery.
     /// Also checks the legacy state.json for backward compatibility.
     /// </summary>
     public static async Task<List<ProxyInstanceState>> LoadAllStatesAsync(CancellationToken cancellationToken = default)
@@ -195,8 +196,8 @@ internal static class StateManager
     /// </summary>
     public static async Task<ProxyInstanceState?> FindSystemProxyInstanceAsync(CancellationToken cancellationToken = default)
     {
-        var states = await LoadAllStatesAsync(cancellationToken);
-        return states.Find(s => s.AsSystemProxy);
+        var states = await LoadRunningStatesAsync(cancellationToken);
+        return states.Find(s => s.AsSystemProxy && IsInstanceAlive(s));
     }
 
     /// <summary>
@@ -461,6 +462,13 @@ internal static class StateManager
         // an unrelated process that reused the PID
         if (!IsInstanceAlive(state))
         {
+            // Only successful system-proxy reconciliation may remove its recovery
+            // record. Diagnostics and failed recovery must leave it available to retry.
+            if (state.AsSystemProxy)
+            {
+                return null;
+            }
+
             // Clean up stale state file
             await DeleteStateFileIfMatchesAsync(filePath, state, cancellationToken);
             DeleteTokenIfProcessGone(state.Pid);

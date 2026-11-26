@@ -105,11 +105,12 @@ internal sealed class SystemProxyManager : ISystemProxyManager
         }
     }
 
-    public void Disable()
+    public void Disable() => Disable(() => _ = Restore());
+
+    internal void Disable(Action restore)
     {
         if (_savedSnapshot)
         {
-            _savedSnapshot = false;
             // The snapshot is gone or belongs to another process when 'system-proxy reset'
             // already restored the settings or another instance took over. Restoring now
             // would undo that, so leave the settings alone.
@@ -119,7 +120,7 @@ internal sealed class SystemProxyManager : ISystemProxyManager
             }
         }
 
-        _ = Restore();
+        restore();
     }
 
     /// <summary>
@@ -171,7 +172,7 @@ internal sealed class SystemProxyManager : ISystemProxyManager
             : SystemProxyRestoreResult.Disabled;
     }
 
-    private void SaveSnapshot(Action<SystemProxySnapshot> capture)
+    internal void SaveSnapshot(Action<SystemProxySnapshot> capture)
     {
         try
         {
@@ -184,6 +185,7 @@ internal sealed class SystemProxyManager : ISystemProxyManager
                 capture(snapshot);
             }
             snapshot.Pid = Environment.ProcessId;
+            snapshot.ProcessStartTime = StateManager.GetCurrentProcessStartTime();
             SystemProxySnapshotStore.Save(_snapshotPath, snapshot);
             _savedSnapshot = true;
         }
@@ -469,7 +471,7 @@ internal sealed class SystemProxyManager : ISystemProxyManager
         }
 
         var snapshot = SystemProxySnapshotStore.Load(SystemProxySnapshotStore.DefaultPath);
-        return snapshot is not null && StateManager.IsProcessRunning(snapshot.Pid)
+        return snapshot is not null && snapshot.IsOwnerAlive()
             ? snapshot.Pid
             : null;
     }
@@ -488,7 +490,7 @@ internal sealed class SystemProxyManager : ISystemProxyManager
         // foreground instance) is also an orphan.
         int? snapshotOnlyPid = null;
         var snapshot = SystemProxySnapshotStore.Load(SystemProxySnapshotStore.DefaultPath);
-        if (snapshot is not null && !StateManager.IsProcessRunning(snapshot.Pid) && !orphanedPids.Contains(snapshot.Pid))
+        if (snapshot is not null && !snapshot.IsOwnerAlive() && !orphanedPids.Contains(snapshot.Pid))
         {
             snapshotOnlyPid = snapshot.Pid;
             orphanedPids.Add(snapshot.Pid);
