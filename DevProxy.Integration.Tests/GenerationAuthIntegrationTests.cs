@@ -382,6 +382,21 @@ public sealed class GenerationAuthIntegrationTests
     }
 
     [Fact]
+    public async Task OpenApiSpecGenerator_QueryCredentialsWithBearer_SkipsAllAuthParameters()
+    {
+        var config = PluginConfig.FromJson("""{ "includeParameters": ["api_key", "code"] }""");
+        var doc = await GenerateOpenApiJsonAsync([
+            Exchange("https://api.contoso.com/users?api_key=secret-value&code=other-secret&top=10", ("Authorization", "Bearer opaque-token")),
+        ], config);
+
+        Assert.NotNull(Operation(doc)["security"]![0]!["BearerAuth"]);
+        var parameters = Operation(doc)["parameters"]!.AsArray().Select(p => p!["name"]!.GetValue<string>());
+        Assert.Equal(["top"], parameters);
+        Assert.DoesNotContain("secret-value", doc.ToJsonString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("other-secret", doc.ToJsonString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task OpenApiSpecGenerator_UnderscoreApiKeyQueryParameter_EmitsApiKeyScheme()
     {
         var doc = await GenerateOpenApiJsonAsync([Exchange("https://api.contoso.com/users?api_key=secret-value")]);

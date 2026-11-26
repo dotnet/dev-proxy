@@ -134,7 +134,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
             try
             {
                 var detectedAuth = AuthDetector.Detect(request.Context.Session.Request, Logger);
-                var pathItem = GetOpenApiPathItem(request.Context.Session, detectedAuth);
+                var pathItem = GetOpenApiPathItem(request.Context.Session);
                 var parametrizedPath = ParametrizePath(pathItem, request.Context.Session.Request.RequestUri);
                 if (pathItem.Operations is null)
                 {
@@ -247,7 +247,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
      * Creates an OpenAPI PathItem from an intercepted request and response pair.
      * @param session The intercepted session.
      */
-    private OpenApiPathItem GetOpenApiPathItem(IProxySession session, DetectedAuth? detectedAuth)
+    private OpenApiPathItem GetOpenApiPathItem(IProxySession session)
     {
         var request = session.Request;
         var response = session.Response!;
@@ -280,9 +280,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
             OperationId = $"{method}.{resource}",
             Parameters = []
         };
-        var authQueryParameter = detectedAuth is DetectedApiKeyAuth { In: DetectedApiKeyLocation.Query } apiKeyAuth ?
-            apiKeyAuth.Name : null;
-        SetParametersFromQueryString(operation, HttpUtility.ParseQueryString(request.RequestUri.Query), authQueryParameter);
+        SetParametersFromQueryString(operation, HttpUtility.ParseQueryString(request.RequestUri.Query));
         SetParametersFromRequestHeaders(operation, request.Headers);
         SetRequestBody(operation, request);
         SetResponseFromSession(operation, response);
@@ -365,7 +363,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
         }
     }
 
-    private void SetParametersFromQueryString(OpenApiOperation operation, NameValueCollection queryParams, string? authQueryParameter)
+    private void SetParametersFromQueryString(OpenApiOperation operation, NameValueCollection queryParams)
     {
         if (queryParams.AllKeys is null ||
             queryParams.AllKeys.Length == 0)
@@ -381,7 +379,9 @@ public sealed class OpenApiSpecGeneratorPlugin(
 
         foreach (var (key, value) in dictionary)
         {
-            if (string.Equals(key, authQueryParameter, StringComparison.Ordinal))
+            // skip all credentials, not just the one that the detected
+            // security scheme describes, so that secrets don't leak into the spec
+            if (AuthDetector.IsAuthQueryParameter(key))
             {
                 Logger.LogDebug("    Skipping auth query string parameter {ParameterKey}", key);
                 continue;
