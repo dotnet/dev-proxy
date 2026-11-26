@@ -33,6 +33,8 @@ internal interface IConfirmingSystemProxyManager : ISystemProxyManager
 ///         off first),</item>
 ///   <item>a restarted run that no longer uses the system proxy releases it once it
 ///         has started (<see cref="ReleaseUnclaimed"/>),</item>
+///   <item>until the next run binds, its HTTP requests skip the kept registration
+///         (<see cref="RetainedSystemProxyBypass"/>),</item>
 ///   <item>the process releases anything still registered after the restart loop ends
 ///         (<see cref="Release"/>), for example when a restart fails.</item>
 /// </list>
@@ -43,8 +45,9 @@ internal sealed class SystemProxySession(Func<bool> isRestarting)
     private IConfirmingSystemProxyManager? _currentManager;
     // Endpoint confirmed as applied; null when not registered or when the last attempt failed.
     private string? _appliedEndpoint;
-    // True when the system proxy may point to Dev Proxy, including after a failed attempt.
-    private bool _registered;
+    // Endpoint last passed to the OS; set while the system proxy may point to Dev Proxy,
+    // including after a failed attempt.
+    private string? _registeredEndpoint;
     private bool _claimedInCurrentRun;
 
     public SystemProxySession() : this(() => ConfigFileWatcher.IsRestarting)
@@ -62,6 +65,22 @@ internal sealed class SystemProxySession(Func<bool> isRestarting)
             {
                 return _appliedEndpoint;
             }
+        }
+    }
+
+    /// <summary>
+    /// Returns true when <paramref name="proxy"/> is a system proxy registration kept from
+    /// a previous run that the current run hasn't bound yet, so nothing listens there.
+    /// </summary>
+    public bool IsRetainedUnboundEndpoint(Uri proxy)
+    {
+        ArgumentNullException.ThrowIfNull(proxy);
+
+        lock (_lock)
+        {
+            return _registeredEndpoint is not null &&
+                !_claimedInCurrentRun &&
+                string.Equals(_registeredEndpoint, $"{proxy.Host}:{proxy.Port}", StringComparison.OrdinalIgnoreCase);
         }
     }
 
@@ -99,14 +118,14 @@ internal sealed class SystemProxySession(Func<bool> isRestarting)
     {
         lock (_lock)
         {
-            if (!_registered || _claimedInCurrentRun || _currentManager is null)
+            if (_registeredEndpoint is null || _claimedInCurrentRun || _currentManager is null)
             {
                 return;
             }
 
             _currentManager.Disable();
             _appliedEndpoint = null;
-            _registered = false;
+            _registeredEndpoint = null;
         }
     }
 
@@ -120,14 +139,14 @@ internal sealed class SystemProxySession(Func<bool> isRestarting)
 
         lock (_lock)
         {
-            if (!_registered)
+            if (_registeredEndpoint is null)
             {
                 return;
             }
 
             manager.Disable();
             _appliedEndpoint = null;
-            _registered = false;
+            _registeredEndpoint = null;
         }
     }
 
@@ -142,7 +161,7 @@ internal sealed class SystemProxySession(Func<bool> isRestarting)
                 return;
             }
 
-            _registered = true;
+            _registeredEndpoint = endpoint;
             _appliedEndpoint = manager.TryEnable(ipAddress, port) ? endpoint : null;
         }
     }
@@ -151,14 +170,14 @@ internal sealed class SystemProxySession(Func<bool> isRestarting)
     {
         lock (_lock)
         {
-            if (_registered && isRestarting())
+            if (_registeredEndpoint is not null && isRestarting())
             {
                 return;
             }
 
             manager.Disable();
             _appliedEndpoint = null;
-            _registered = false;
+            _registeredEndpoint = null;
         }
     }
 

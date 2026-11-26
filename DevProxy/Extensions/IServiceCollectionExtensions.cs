@@ -73,6 +73,30 @@ static class IServiceCollectionExtensions
         return services;
     }
 
+    // Startup requests (schema validation, update check) run before the listener binds, so
+    // keep them off a system proxy registration retained from the previous run.
+    internal static IServiceCollection AddRetainedSystemProxyBypass(this IServiceCollection services) =>
+        services.ConfigureHttpClientDefaults(builder =>
+            builder.ConfigurePrimaryHttpMessageHandler((handler, sp) =>
+            {
+                if (sp.GetService<SystemProxySession>() is not { } session)
+                {
+                    return;
+                }
+
+                switch (handler)
+                {
+                    case SocketsHttpHandler { UseProxy: true, Proxy: null } socketsHandler:
+                        socketsHandler.Proxy = new RetainedSystemProxyBypass(HttpClient.DefaultProxy, session);
+                        break;
+                    case HttpClientHandler { UseProxy: true, Proxy: null } httpClientHandler:
+                        httpClientHandler.Proxy = new RetainedSystemProxyBypass(HttpClient.DefaultProxy, session);
+                        break;
+                    default:
+                        break;
+                }
+            }));
+
     static IServiceCollection AddApplicationServices(
         this IServiceCollection services,
         ConfigurationManager configuration,
@@ -93,7 +117,8 @@ static class IServiceCollectionExtensions
             .AddSingleton<UpdateNotification>()
             .AddSingleton<DevProxyCommand>()
             .AddSingleton<MSGraphDb>()
-            .AddHttpClient();
+            .AddHttpClient()
+            .AddRetainedSystemProxyBypass();
 
         _ = services.AddPlugins(configuration, options);
 

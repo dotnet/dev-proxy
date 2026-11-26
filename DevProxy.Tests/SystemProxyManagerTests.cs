@@ -3,6 +3,8 @@
 // See the LICENSE file in the project root for more information.
 
 using DevProxy.Proxy;
+using Microsoft.Extensions.DependencyInjection;
+using System.Net;
 
 using Xunit;
 
@@ -145,6 +147,60 @@ public class SystemProxyManagerTests
         session.Release(cleanup);
 
         Assert.Equal(1, cleanup.DisableCount);
+    }
+
+    [Fact]
+    public void RetainedSystemProxyBypass_BeforeRestartedRunBinds_SkipsOnlyRetainedEndpoint()
+    {
+        var restarting = false;
+        var manager = new CountingSystemProxyManager();
+        var session = new SystemProxySession(() => restarting);
+        var destination = new Uri("https://example.com/schema.json");
+        var devProxy = new WebProxy("http://127.0.0.1:8000");
+        var upstream = new WebProxy("http://corp-proxy:3128");
+
+        session.BeginRun();
+        var run = session.Track(manager);
+        run.Enable("0.0.0.0", 8000);
+        Assert.Equal(devProxy.Address, new RetainedSystemProxyBypass(devProxy, session).GetProxy(destination));
+
+        restarting = true;
+        run.Disable();
+        restarting = false;
+        session.BeginRun();
+
+        var bypass = new RetainedSystemProxyBypass(devProxy, session);
+        Assert.Null(bypass.GetProxy(destination));
+        Assert.True(bypass.IsBypassed(destination));
+        Assert.Equal(upstream.Address, new RetainedSystemProxyBypass(upstream, session).GetProxy(destination));
+
+        session.Track(manager).Enable("127.0.0.1", 8000);
+
+        Assert.Equal(devProxy.Address, bypass.GetProxy(destination));
+        Assert.False(bypass.IsBypassed(destination));
+    }
+
+    [Fact]
+    public void AddRetainedSystemProxyBypass_RoutesDefaultHttpClientThroughBypass()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddSingleton(new SystemProxySession(() => false));
+        _ = services.AddHttpClient().AddRetainedSystemProxyBypass();
+        using var provider = services.BuildServiceProvider();
+
+        var handler = provider.GetRequiredService<IHttpMessageHandlerFactory>().CreateHandler();
+        while (handler is DelegatingHandler delegatingHandler)
+        {
+            handler = delegatingHandler.InnerHandler!;
+        }
+
+        var proxy = handler switch
+        {
+            SocketsHttpHandler socketsHandler => socketsHandler.Proxy,
+            HttpClientHandler httpClientHandler => httpClientHandler.Proxy,
+            _ => null
+        };
+        _ = Assert.IsType<RetainedSystemProxyBypass>(proxy);
     }
 
     private sealed class CountingSystemProxyManager : IConfirmingSystemProxyManager
