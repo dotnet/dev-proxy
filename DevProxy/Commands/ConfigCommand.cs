@@ -931,11 +931,15 @@ sealed class ConfigCommand : Command
             }
             try
             {
-                var (isValid, validationErrors) = await ProxyUtils.ValidateJsonAsync(
+                var result = await ProxyUtils.ValidateJsonAgainstSchemaAsync(
                     configSection.GetRawText(), sectionSchemaUrl, httpClient, logger, cancellationToken);
-                if (!isValid)
+                if (result.Status == SchemaValidationStatus.SchemaUnavailable)
                 {
-                    foreach (var error in validationErrors)
+                    warnings.Add(new($"{configSectionName}.$schema", $"Could not retrieve schema, skipping schema validation: {string.Join(", ", result.Errors)}"));
+                }
+                else if (result.Status == SchemaValidationStatus.Invalid)
+                {
+                    foreach (var error in result.Errors)
                     {
                         errors.Add(new(configSectionName, error));
                     }
