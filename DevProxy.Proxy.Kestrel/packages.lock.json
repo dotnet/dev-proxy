@@ -87,6 +87,15 @@
           "Microsoft.Extensions.Primitives": "11.0.0"
         }
       },
+      "Microsoft.Extensions.Configuration.Binder": {
+        "type": "Transitive",
+        "resolved": "11.0.0",
+        "contentHash": "3eoaKF4Stat1PSN+KFwqmy04sM9DwGuHM1o1lHwuNFM/TqwQ+PCIvaQHS4lcT3kJl5rwvDK4w/rIlR0wc024eQ==",
+        "dependencies": {
+          "Microsoft.Extensions.Configuration": "11.0.0",
+          "Microsoft.Extensions.Configuration.Abstractions": "11.0.0"
+        }
+      },
       "Microsoft.Extensions.Configuration.FileExtensions": {
         "type": "Transitive",
         "resolved": "11.0.0",
@@ -262,6 +271,7 @@
           "Markdig": "[1.6.0, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.15, )",
           "Microsoft.Extensions.Configuration": "[11.0.0, )",
+          "Microsoft.Extensions.Configuration.Binder": "[11.0.0, )",
           "Microsoft.Extensions.Configuration.Json": "[11.0.0, )",
           "Microsoft.Extensions.FileSystemGlobbing": "[11.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[11.0.0, )",
