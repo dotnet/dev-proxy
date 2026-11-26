@@ -58,6 +58,59 @@ public sealed class BaseLoaderSchemaValidationTests : IDisposable
         Assert.DoesNotContain(logger.Messages, m => m.LogLevel >= LogLevel.Warning);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AppliesNewestDataWhenFileChangesWhileRetrievingSchema(bool schemaAvailable)
+    {
+        var timeout = TimeSpan.FromSeconds(10);
+        var initialContents = $$"""{ "$schema": "{{SchemaUrl}}", "name": "initial" }""";
+        var updatedContents = $$"""{ "$schema": "{{SchemaUrl}}", "name": "updated" }""";
+        var path = Path.Combine(_folder, "mocks.json");
+        await File.WriteAllTextAsync(path, initialContents, CancellationToken.None);
+
+        var firstRequestStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var releaseFirstRequest = new SemaphoreSlim(0, 1);
+        var requestCount = 0;
+        using var handler = new AsyncHttpMessageHandler(async _ =>
+        {
+            if (Interlocked.Increment(ref requestCount) == 1)
+            {
+                firstRequestStarted.SetResult();
+                await releaseFirstRequest.WaitAsync();
+            }
+            return schemaAvailable
+                ? new(HttpStatusCode.OK) { Content = new StringContent(Schema) }
+                : throw new HttpRequestException("Connection refused");
+        });
+        using var httpClient = new HttpClient(handler);
+        using var loader = new TestLoader(httpClient, new RecordingLogger(), path);
+
+        var init = loader.InitFileWatcherAsync(CancellationToken.None);
+        await firstRequestStarted.Task.WaitAsync(timeout);
+
+        // While the initial load waits for the schema, the only FilePath access
+        // comes from the reload triggered by the file change, right before it queues up.
+        var reloadStarted = loader.WaitForFilePathAccessAsync();
+        await File.WriteAllTextAsync(path, updatedContents, CancellationToken.None);
+        await reloadStarted.WaitAsync(timeout);
+
+        // The reload must wait for the initial load instead of reading the file.
+        var reloadReadFile = loader.WaitForFilePathAccessAsync();
+        _ = await Task.WhenAny(reloadReadFile, Task.Delay(TimeSpan.FromMilliseconds(500)));
+        Assert.False(reloadReadFile.IsCompleted);
+        Assert.False(init.IsCompleted);
+
+        _ = releaseFirstRequest.Release();
+        await init.WaitAsync(timeout);
+        var loadedOnInit = loader.LoadedContents;
+        Assert.NotEmpty(loadedOnInit);
+        Assert.Equal(initialContents, loadedOnInit[0]);
+
+        await loader.WaitForLoadAsync(updatedContents).WaitAsync(timeout);
+        Assert.Equal([initialContents, updatedContents], loader.LoadedContents);
+    }
+
     private async Task<TestLoader> LoadAsync(Func<HttpRequestMessage, HttpResponseMessage> sendSchemaRequest, ILogger logger, CancellationToken cancellationToken = default)
     {
         var path = Path.Combine(_folder, "mocks.json");
@@ -73,8 +126,72 @@ public sealed class BaseLoaderSchemaValidationTests : IDisposable
     private sealed class TestLoader(HttpClient httpClient, ILogger logger, string filePath) :
         BaseLoader(httpClient, logger, new FakeProxyConfiguration { ValidateSchemas = true })
     {
+        private readonly Lock _lock = new();
+        private readonly List<string> _loadedContents = [];
+        private readonly List<(string Contents, TaskCompletionSource Loaded)> _loadWaiters = [];
+        private TaskCompletionSource? _filePathAccessed;
+
         public string? Contents { get; private set; }
-        protected override string FilePath => filePath;
-        protected override void LoadData(string fileContents) => Contents = fileContents;
+
+        public string[] LoadedContents
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return [.. _loadedContents];
+                }
+            }
+        }
+
+        protected override string FilePath
+        {
+            get
+            {
+                _ = Interlocked.Exchange(ref _filePathAccessed, null)?.TrySetResult();
+                return filePath;
+            }
+        }
+
+        public Task WaitForFilePathAccessAsync()
+        {
+            var accessed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _filePathAccessed = accessed;
+            return accessed.Task;
+        }
+
+        public Task WaitForLoadAsync(string contents)
+        {
+            lock (_lock)
+            {
+                if (_loadedContents.Contains(contents))
+                {
+                    return Task.CompletedTask;
+                }
+                var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                _loadWaiters.Add((contents, loaded));
+                return loaded.Task;
+            }
+        }
+
+        protected override void LoadData(string fileContents)
+        {
+            lock (_lock)
+            {
+                Contents = fileContents;
+                _loadedContents.Add(fileContents);
+                foreach (var (contents, loaded) in _loadWaiters.Where(w => w.Contents == fileContents))
+                {
+                    loaded.SetResult();
+                }
+                _ = _loadWaiters.RemoveAll(w => w.Contents == fileContents);
+            }
+        }
+    }
+
+    private sealed class AsyncHttpMessageHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> send) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            send(request);
     }
 }
