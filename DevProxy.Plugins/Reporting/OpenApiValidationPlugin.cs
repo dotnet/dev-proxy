@@ -301,6 +301,11 @@ public sealed class OpenApiValidationPlugin(
     private OperationMatch? FindOperation(IHttpRequest request)
     {
         var requestUrl = request.RequestUri.GetLeftPart(UriPartial.Path);
+        // request URLs omit default ports, but servers can require them, e.g. through
+        // a variable like https://api.contoso.com:{port} with port: { default: '443' }
+        string[] requestUrls = request.RequestUri.IsDefaultPort && request.RequestUri.Port >= 0
+            ? [requestUrl, InsertPort(request.RequestUri, requestUrl)]
+            : [requestUrl];
         var method = new HttpMethod(request.Method);
         OperationMatch? firstPathMatch = null;
         OperationMatch? firstServerMatch = null;
@@ -311,13 +316,15 @@ public sealed class OpenApiValidationPlugin(
         {
             foreach (var server in spec.Servers)
             {
-                var serverMatch = server.Regex.Match(requestUrl);
-                if (!serverMatch.Success)
+                var (url, serverMatch) = requestUrls
+                    .Select(u => (Url: u, Match: server.Regex.Match(u)))
+                    .FirstOrDefault(m => m.Match.Success);
+                if (serverMatch is null)
                 {
                     continue;
                 }
 
-                var relativePath = requestUrl[serverMatch.Length..];
+                var relativePath = url[serverMatch.Length..];
                 if (relativePath.Length == 0)
                 {
                     relativePath = "/";
@@ -342,6 +349,12 @@ public sealed class OpenApiValidationPlugin(
         }
 
         return firstPathMatch ?? firstServerMatch;
+    }
+
+    private static string InsertPort(Uri uri, string url)
+    {
+        var authority = uri.GetLeftPart(UriPartial.Authority);
+        return string.Create(CultureInfo.InvariantCulture, $"{authority}:{uri.Port}{url[authority.Length..]}");
     }
 
     private static IEnumerable<(CompiledPath Path, Dictionary<string, string> PathValues)> FindPaths(ServerScope server, string relativePath)
@@ -542,7 +555,7 @@ public sealed class OpenApiValidationPlugin(
         // the schema allows multiple types, so the value is valid if any interpretation is.
         // Errors are reported for the most likely interpretation, which comes first
         List<SchemaValidationError>? errors = null;
-        foreach (var candidate in OpenApiSchemaValidator.GetParameterValueCandidates(values, schema, name, style, explode, decode))
+        foreach (var candidate in OpenApiSchemaValidator.GetParameterValueCandidates(values, schema, name, style, explode, decode, direction, strictNullableEnums))
         {
             var candidateErrors = OpenApiSchemaValidator.Validate(candidate, schema, direction, name, strictNullableEnums);
             if (candidateErrors.Count == 0)

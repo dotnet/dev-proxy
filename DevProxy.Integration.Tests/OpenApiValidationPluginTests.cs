@@ -1384,6 +1384,78 @@ public sealed class OpenApiValidationPluginTests : IDisposable
         Assert.Contains("isn't one of the allowed values", Assert.Single(Messages(invalid)), StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task KeepsNumberParametersLosslessWhenComparingToEnums()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("numbers.yaml", """
+            openapi: 3.0.3
+            info: { title: Numbers, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            paths:
+              /items:
+                get:
+                  parameters:
+                    - { name: big, in: query, schema: { type: number, enum: [9007199254740992] } }
+                    - { name: dec, in: query, schema: { type: number, enum: [1] } }
+                  responses: { '204': { description: ok } }
+            """));
+
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?big=9007199254740992&dec=1.0").Session)!.Issues);
+        var big = plugin.Validate(Call("GET", "https://api.fabrikam.com/items?big=9007199254740993").Session);
+        var dec = plugin.Validate(Call("GET", "https://api.fabrikam.com/items?dec=1.00000000000000001").Session);
+        Assert.Contains("isn't one of the allowed values", Assert.Single(Messages(big)), StringComparison.Ordinal);
+        Assert.Contains("isn't one of the allowed values", Assert.Single(Messages(dec)), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task MatchesServersWithDefaultPortsFromVariables()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("variable-ports.yaml", """
+            openapi: 3.0.3
+            info: { title: Ports, version: '1.0' }
+            servers:
+              - url: https://api.contoso.com:{port}/v1
+                variables: { port: { default: '443' } }
+              - url: http://api.fabrikam.com:{port}/v1
+                variables: { port: { default: '80' } }
+            paths:
+              /items:
+                get:
+                  responses: { '204': { description: ok } }
+            """));
+
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.contoso.com/v1/items").Session)!.Issues);
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.contoso.com:443/v1/items").Session)!.Issues);
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.contoso.com:8443/v1/items").Session)!.Issues);
+        Assert.Empty(plugin.Validate(Call("GET", "http://api.fabrikam.com/v1/items").Session)!.Issues);
+        Assert.Empty(plugin.Validate(Call("GET", "http://api.fabrikam.com:8080/v1/items").Session)!.Issues);
+    }
+
+    [Fact]
+    public async Task InterpretsArrayItemsWithCompositionIndividually()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("items.yaml", """
+            openapi: 3.0.3
+            info: { title: Items, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            paths:
+              /items:
+                get:
+                  parameters:
+                    - name: q
+                      in: query
+                      schema:
+                        type: array
+                        items: { anyOf: [ { type: integer, enum: [1] }, { type: string, enum: ['2'] } ] }
+                  responses: { '204': { description: ok } }
+            """));
+
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?q=1&q=2").Session)!.Issues);
+        Assert.NotEmpty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?q=1&q=3").Session)!.Issues);
+    }
+
     private sealed class WarningLogger : ILogger<OpenApiValidationPlugin>
     {
         public List<string> Warnings { get; } = [];

@@ -7,6 +7,7 @@ using System.Globalization;
 using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 
 namespace DevProxy.Plugins.Utils;
 
@@ -26,7 +27,7 @@ internal sealed record SchemaValidationError(string Path, string Message, string
 /// required, properties, additionalProperties, items, enum, allOf, anyOf, oneOf
 /// and $ref. Other keywords (format, min/max, pattern, etc.) are ignored.
 /// </summary>
-internal static class OpenApiSchemaValidator
+internal static partial class OpenApiSchemaValidator
 {
     private const int MaxDepth = 64;
     // bounds total work, e.g. for schemas that reference the same subschema repeatedly
@@ -79,7 +80,8 @@ internal static class OpenApiSchemaValidator
     /// branches), items are coerced using each of them. Other interpretations keep
     /// values as strings, treat values as scalars when the
     /// schema allows both arrays and scalars, and when <paramref name="decode"/> is set,
-    /// decode array items after splitting, so that encoded delimiters are kept in items.
+    /// decode array items after splitting, so that encoded delimiters are kept in items, and
+    /// interpret each array item on its own as the first interpretation allowed by the items schema.
     /// </summary>
     /// <param name="values">Raw values; when <paramref name="decode"/> is set, they're still encoded.</param>
     /// <param name="decode">Function to decode (e.g. URI-unescape) values, or null if they aren't encoded.</param>
@@ -89,7 +91,9 @@ internal static class OpenApiSchemaValidator
         string name,
         ParameterStyle style,
         bool explode,
-        Func<string, string>? decode = null)
+        Func<string, string>? decode = null,
+        SchemaValidationDirection direction = SchemaValidationDirection.Request,
+        bool strictNullableEnums = false)
     {
         var type = GetEffectiveType(schema);
         var isArray = type is not null && type.Value.HasFlag(JsonSchemaType.Array);
@@ -112,6 +116,13 @@ internal static class OpenApiSchemaValidator
                     yield return new JsonArray([.. split().Select(item => CoercePrimitive(item, itemsSchema))]);
                 }
                 yield return new JsonArray([.. split().Select(item => (JsonNode?)JsonValue.Create(item))]);
+
+                // items can have different types, e.g. items: { anyOf: [{ type: integer }, { type: string }] },
+                // so also interpret each item on its own, as the first interpretation allowed by the items schema
+                foreach (var itemsSchema in itemsSchemas.Where(s => s is not null))
+                {
+                    yield return new JsonArray([.. split().Select(item => ResolveItem(item, itemsSchema!, direction, strictNullableEnums))]);
+                }
             }
         }
 
@@ -304,10 +315,45 @@ internal static class OpenApiSchemaValidator
     private static IEnumerable<IOpenApiSchema> GetComposedSchemas(IOpenApiSchema schema) =>
         (schema.AllOf ?? []).Concat(schema.AnyOf ?? []).Concat(schema.OneOf ?? []);
 
-    private static JsonValue? CoercePrimitive(string value, IOpenApiSchema? schema)
+    private static JsonNode? ResolveItem(string item, IOpenApiSchema itemsSchema, SchemaValidationDirection direction, bool strictNullableEnums)
     {
-        // schemas without a type, e.g. { enum: [1, 2] }, are interpreted using the types of their enum values
+        JsonNode? first = null;
+        foreach (var candidate in GetPrimitiveInterpretations(item, itemsSchema))
+        {
+            if (Validate(candidate, itemsSchema, direction, strictNullableEnums: strictNullableEnums).Count == 0)
+            {
+                return candidate;
+            }
+            first ??= candidate;
+        }
+        return first;
+    }
+
+    // Gets the interpretations of a raw value as each of the primitive types allowed by
+    // the schema, starting with the most likely one, and ending with the value as a string
+    private static IEnumerable<JsonNode?> GetPrimitiveInterpretations(string value, IOpenApiSchema schema)
+    {
         var type = GetEffectiveType(schema) ?? GetEnumType(schema);
+        yield return CoercePrimitive(value, type);
+        if (type is not null)
+        {
+            foreach (var primitiveType in (JsonSchemaType[])[JsonSchemaType.Integer, JsonSchemaType.Number, JsonSchemaType.Boolean, JsonSchemaType.Null])
+            {
+                if (type.Value.HasFlag(primitiveType))
+                {
+                    yield return CoercePrimitive(value, primitiveType);
+                }
+            }
+        }
+        yield return JsonValue.Create(value);
+    }
+
+    // schemas without a type, e.g. { enum: [1, 2] }, are interpreted using the types of their enum values
+    private static JsonValue? CoercePrimitive(string value, IOpenApiSchema? schema) =>
+        CoercePrimitive(value, GetEffectiveType(schema) ?? GetEnumType(schema));
+
+    private static JsonValue? CoercePrimitive(string value, JsonSchemaType? type)
+    {
         if (type is null)
         {
             return JsonValue.Create(value);
@@ -329,7 +375,16 @@ internal static class OpenApiSchemaValidator
             double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) &&
             double.IsFinite(d))
         {
-            return JsonValue.Create(d);
+            // keep the number as written, because converting it to double can round it,
+            // e.g. 9007199254740993 to 9007199254740992, which could match a different enum value
+            var trimmed = value.Trim();
+            if (JsonNumberRegex().IsMatch(trimmed))
+            {
+                return JsonNode.Parse(trimmed)!.AsValue();
+            }
+            return decimal.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var m)
+                ? JsonValue.Create(m)
+                : JsonValue.Create(d);
         }
         if (type.Value.HasFlag(JsonSchemaType.Boolean) && bool.TryParse(value, out var b))
         {
@@ -616,4 +671,7 @@ internal static class OpenApiSchemaValidator
         JsonValueKind.Number => IsInteger(value) ? "integer" : "number",
         _ => value.ValueKind.ToString().ToLowerInvariant()
     };
+
+    [GeneratedRegex(@"^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$", RegexOptions.CultureInvariant)]
+    private static partial Regex JsonNumberRegex();
 }
