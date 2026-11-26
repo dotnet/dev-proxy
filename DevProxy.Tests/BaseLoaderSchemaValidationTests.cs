@@ -125,6 +125,28 @@ public sealed class BaseLoaderSchemaValidationTests : IDisposable
         Assert.Contains(logger.Messages, m => m.LogLevel == LogLevel.Error);
     }
 
+    [Fact]
+    public async Task KeepsLoadedDataWhenReloadedFileIsInvalidJson()
+    {
+        var timeout = TimeSpan.FromSeconds(10);
+        const string validContents = """[{ "id": 2, "name": "reloaded" }]""";
+        var path = Path.Combine(_folder, "items.json");
+        await File.WriteAllTextAsync(path, validContents, CancellationToken.None);
+        using var handler = new FakeHttpMessageHandler(_ => new(HttpStatusCode.OK) { Content = new StringContent(Schema) });
+        using var httpClient = new HttpClient(handler);
+        var errorLogged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var logger = new ErrorSignalingLogger(errorLogged);
+        using var loader = new TestLoader(httpClient, logger, path);
+        await loader.InitFileWatcherAsync(CancellationToken.None);
+        Assert.Equal(validContents, loader.Contents);
+
+        await File.WriteAllTextAsync(path, """[{ "id": 3, "name": "invalid" }] { "extra": true }""", CancellationToken.None);
+        await errorLogged.Task.WaitAsync(timeout);
+
+        Assert.Equal(validContents, loader.Contents);
+        Assert.Equal([validContents], loader.LoadedContents);
+    }
+
     private async Task<TestLoader> LoadAsync(Func<HttpRequestMessage, HttpResponseMessage> sendSchemaRequest, ILogger logger, string? contents = null, CancellationToken cancellationToken = default)
     {
         var path = Path.Combine(_folder, "mocks.json");
@@ -199,6 +221,21 @@ public sealed class BaseLoaderSchemaValidationTests : IDisposable
                     loaded.SetResult();
                 }
                 _ = _loadWaiters.RemoveAll(w => w.Contents == fileContents);
+            }
+        }
+    }
+
+    private sealed class ErrorSignalingLogger(TaskCompletionSource errorLogged) : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel >= LogLevel.Error)
+            {
+                _ = errorLogged.TrySetResult();
             }
         }
     }
