@@ -432,6 +432,8 @@ public static class ProxyUtils
     // published online are picked up the next time Dev Proxy starts.
     private static async Task<JSchema> GetSchemaAsync(string schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (_schemaCache.TryGetValue(schemaUrl, out var cachedSchema))
         {
             logger.LogDebug("Using cached schema {SchemaUrl}", schemaUrl);

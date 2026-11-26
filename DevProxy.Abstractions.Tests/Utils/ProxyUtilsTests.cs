@@ -39,6 +39,17 @@ public class ProxyUtilsTests
     }
 
     [Fact]
+    public async Task ValidateJsonAgainstSchemaAsync_CanceledWithCachedSchema_Throws()
+    {
+        using var handler = new StubHttpMessageHandler(_ => new(HttpStatusCode.OK) { Content = new StringContent(Schema) });
+        using var httpClient = new HttpClient(handler);
+        _ = await ProxyUtils.ValidateJsonAgainstSchemaAsync("""{ "name": "a" }""", _schemaUrl, httpClient, NullLogger.Instance, CancellationToken.None);
+
+        _ = await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            ProxyUtils.ValidateJsonAgainstSchemaAsync("""{ "name": "a" }""", _schemaUrl, httpClient, NullLogger.Instance, new CancellationToken(true)));
+    }
+
+    [Fact]
     public async Task ValidateJsonAsync_Canceled_ReturnsInvalid()
     {
         using var handler = new StubHttpMessageHandler(_ => new(HttpStatusCode.OK) { Content = new StringContent(Schema) });
