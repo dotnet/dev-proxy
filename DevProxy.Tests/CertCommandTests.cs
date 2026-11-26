@@ -152,6 +152,25 @@ public sealed class CertCommandTests : IDisposable
         Assert.True(CertCommand.IsSameFile(link, root));
     }
 
+    [Fact]
+    public void IsSameFile_PathDifferingInCase_FollowsFileSystemCaseSensitivity()
+    {
+        var root = Path.Combine(_caDirectory, "rootCert.pfx");
+        var differentCase = Path.Combine(_caDirectory, "ROOTCERT.PFX");
+        _ = Directory.CreateDirectory(_caDirectory);
+        File.WriteAllBytes(root, [1, 2, 3]);
+
+        if (File.Exists(differentCase))
+        {
+            Assert.True(CertCommand.IsSameFile(differentCase, root));
+        }
+        else
+        {
+            File.WriteAllBytes(differentCase, [4, 5, 6]);
+            Assert.False(CertCommand.IsSameFile(differentCase, root));
+        }
+    }
+
     [Theory]
     [InlineData(null, "ca.pem", "pem")]
     [InlineData("json", "ca.der", "der")]

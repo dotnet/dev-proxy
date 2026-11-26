@@ -231,10 +231,9 @@ sealed class CertCommand : Command
 
     internal static bool IsSameFile(string path1, string path2)
     {
-        if (string.Equals(
-            Path.GetFullPath(path1),
-            Path.GetFullPath(path2),
-            OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase))
+        // Paths that differ only in case may or may not be the same file depending on the
+        // volume's case sensitivity, so let the file system decide below.
+        if (string.Equals(Path.GetFullPath(path1), Path.GetFullPath(path2), StringComparison.Ordinal))
         {
             return true;
         }
