@@ -78,9 +78,13 @@ internal sealed class SystemProxySession(Func<bool> isRestarting)
 
         lock (_lock)
         {
+            // Compare as URIs so different spellings of the same address match
+            // (for example, an expanded IPv6 address and its compressed form).
             return _registeredEndpoint is not null &&
                 !_claimedInCurrentRun &&
-                string.Equals(_registeredEndpoint, $"{proxy.Host}:{proxy.Port}", StringComparison.OrdinalIgnoreCase);
+                Uri.TryCreate($"http://{_registeredEndpoint}", UriKind.Absolute, out var registered) &&
+                string.Equals(registered.Host, proxy.Host, StringComparison.OrdinalIgnoreCase) &&
+                registered.Port == proxy.Port;
         }
     }
 

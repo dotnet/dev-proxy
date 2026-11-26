@@ -181,6 +181,25 @@ public class SystemProxyManagerTests
     }
 
     [Fact]
+    public void RetainedSystemProxyBypass_ExpandedIPv6Endpoint_MatchesCompressedProxyAddress()
+    {
+        var restarting = false;
+        var manager = new CountingSystemProxyManager();
+        var session = new SystemProxySession(() => restarting);
+
+        session.BeginRun();
+        var run = session.Track(manager);
+        run.Enable("0:0:0:0:0:0:0:1", 8000);
+        restarting = true;
+        run.Disable();
+        restarting = false;
+        session.BeginRun();
+
+        var bypass = new RetainedSystemProxyBypass(new WebProxy("http://[::1]:8000"), session);
+        Assert.Null(bypass.GetProxy(new Uri("https://example.com/schema.json")));
+    }
+
+    [Fact]
     public void AddRetainedSystemProxyBypass_RoutesDefaultHttpClientThroughBypass()
     {
         var services = new ServiceCollection();
