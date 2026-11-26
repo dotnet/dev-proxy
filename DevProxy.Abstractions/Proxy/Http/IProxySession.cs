@@ -51,9 +51,10 @@ public interface IProxySession
 
     /// <summary>
     /// True when the current <see cref="Response"/> was produced by a plugin (for
-    /// example a mock) rather than received from the origin.
+    /// example a mock) rather than received from the origin. Defaults to
+    /// <c>false</c> for implementations that don't track it.
     /// </summary>
-    bool RespondedByPlugin { get; }
+    bool RespondedByPlugin => false;
 
     /// <summary>
     /// Produces a mocked text response and short-circuits the exchange: no

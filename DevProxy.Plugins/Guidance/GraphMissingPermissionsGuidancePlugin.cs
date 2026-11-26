@@ -9,6 +9,7 @@ using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Models;
 using DevProxy.Plugins.Utils;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using System.Net;
@@ -27,15 +28,19 @@ public sealed class GraphMissingPermissionsGuidancePlugin(
         StringComparer.OrdinalIgnoreCase);
     private const string ConsumersTenantId = "9188040d-6c67-4c5b-b112-36a304b66dad";
     private static readonly TimeSpan PermissionsLookupTimeout = TimeSpan.FromSeconds(3);
+    internal const int PermissionsCacheSizeLimit = 1000;
     private static readonly HashSet<string> SelfOnlyDelegatedPermissions = new(["User.Read", "User.ReadWrite"], StringComparer.OrdinalIgnoreCase);
 
 #pragma warning disable CA2213 // Disposable fields should be disposed - HttpClient is injected via DI
     private readonly HttpClient _httpClient = httpClient;
 #pragma warning restore CA2213
-    private readonly ConcurrentDictionary<string, GraphPermissionInfo[]> _permissionsCache = new(StringComparer.OrdinalIgnoreCase);
+    // bounded so that many distinct URLs don't grow memory for the lifetime of the proxy
+    private readonly MemoryCache _permissionsCache = new(new MemoryCacheOptions { SizeLimit = PermissionsCacheSizeLimit });
     private readonly ConcurrentDictionary<string, Lazy<Task<GraphPermissionInfo[]?>>> _pendingLookups = new(StringComparer.OrdinalIgnoreCase);
 
     public override string Name => nameof(GraphMissingPermissionsGuidancePlugin);
+
+    internal int CachedPermissionsCount => _permissionsCache.Count;
 
     public override async Task AfterResponseAsync(ProxyResponseArgs e, CancellationToken cancellationToken)
     {
@@ -269,8 +274,8 @@ public sealed class GraphMissingPermissionsGuidancePlugin(
         string scopeType,
         CancellationToken cancellationToken)
     {
-        var cacheKey = $"{scopeType}|{method}|{tokenizedUrl}";
-        if (_permissionsCache.TryGetValue(cacheKey, out var cachedPermissions))
+        var cacheKey = $"{scopeType}|{method}|{tokenizedUrl}".ToUpperInvariant();
+        if (_permissionsCache.TryGetValue(cacheKey, out GraphPermissionInfo[]? cachedPermissions))
         {
             Logger.LogDebug("Using cached permissions for {CacheKey}", cacheKey);
             return cachedPermissions;
@@ -316,7 +321,7 @@ public sealed class GraphMissingPermissionsGuidancePlugin(
             if (response.StatusCode == HttpStatusCode.NotFound)
             {
                 Logger.LogDebug("No permissions found for {Method} {Url}", method, tokenizedUrl);
-                _permissionsCache[cacheKey] = [];
+                CachePermissions(cacheKey, []);
                 return [];
             }
             if (!response.IsSuccessStatusCode)
@@ -328,7 +333,7 @@ public sealed class GraphMissingPermissionsGuidancePlugin(
             var permissions = (await response.Content.ReadFromJsonAsync<GraphPermissionInfo[]>(ProxyUtils.JsonSerializerOptions, cts.Token) ?? [])
                 .Where(p => !p.IsHidden && !string.IsNullOrEmpty(p.Value))
                 .ToArray();
-            _permissionsCache[cacheKey] = permissions;
+            CachePermissions(cacheKey, permissions);
             return permissions;
         }
         catch (Exception ex) when (ex is HttpRequestException or JsonException or OperationCanceledException)
@@ -337,6 +342,9 @@ public sealed class GraphMissingPermissionsGuidancePlugin(
             return null;
         }
     }
+
+    private void CachePermissions(string cacheKey, GraphPermissionInfo[] permissions) =>
+        _ = _permissionsCache.Set(cacheKey, permissions, new MemoryCacheEntryOptions { Size = 1 });
 
     private List<GraphBatchRequestPayloadRequest> GetForbiddenRequestsFromBatch(string requestBody, string responseBody)
     {
@@ -406,4 +414,13 @@ public sealed class GraphMissingPermissionsGuidancePlugin(
         string.IsNullOrEmpty(value) ? value : char.ToUpperInvariant(value[0]) + value[1..];
 
     private static string FormatList(IEnumerable<string> values) => string.Join(", ", values);
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _permissionsCache.Dispose();
+        }
+        base.Dispose(disposing);
+    }
 }

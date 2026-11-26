@@ -1,7 +1,8 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System.Globalization;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -164,6 +165,25 @@ public sealed class GraphMissingPermissionsGuidancePluginTests
 
         Assert.Equal(2, factory.LogsOfType(MessageType.Failed).Count);
         _ = Assert.Single(handler.Requests);
+    }
+
+    [Fact]
+    public async Task ManyDistinctForbiddenUrls_CacheStaysBounded()
+    {
+        using var handler = new StubPermissionsHandler(MailPermissionsJson);
+        var (plugin, _) = CreatePlugin(handler);
+
+        for (var i = 0; i < GraphMissingPermissionsGuidancePlugin.PermissionsCacheSizeLimit + 50; i++)
+        {
+            var segment = string.Concat(i.ToString(CultureInfo.InvariantCulture).Select(c => (char)('a' + (c - '0'))));
+            var exchange = TestExchange
+                .Request("GET", $"https://graph.microsoft.com/v1.0/me/{segment}", [("Authorization", BearerToken(scp: "User.Read"))])
+                .WithResponse(HttpStatusCode.Forbidden);
+            await plugin.AfterResponseAsync(exchange.ResponseArgs, CancellationToken.None);
+        }
+
+        Assert.True(handler.Requests.Count > GraphMissingPermissionsGuidancePlugin.PermissionsCacheSizeLimit);
+        Assert.InRange(plugin.CachedPermissionsCount, 1, GraphMissingPermissionsGuidancePlugin.PermissionsCacheSizeLimit);
     }
 
     [Fact]
