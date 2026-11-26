@@ -156,7 +156,7 @@ public sealed class KestrelProxyEngine(
         // `devproxy stop`, and `devproxy status` rely on.
         configuration.Port = boundPort;
         _logger.LogInformation(
-            "Dev Proxy (Kestrel engine) listening on {Address}:{Port}",
+            "Dev Proxy listening on {Address}:{Port}",
             ipAddress.ToString(),
             boundPort.ToString(CultureInfo.InvariantCulture));
 

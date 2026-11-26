@@ -143,6 +143,9 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
         Arguments = string.Join(" ", daemonArgs.Select(EscapeArgument)),
         UseShellExecute = false,
         CreateNoWindow = true,
+        // Redirect all std streams so the daemon doesn't hold on to the caller's
+        // stdin/stdout/stderr after this process exits.
+        RedirectStandardInput = true,
         RedirectStandardOutput = true,
         RedirectStandardError = true,
         WorkingDirectory = Directory.GetCurrentDirectory()
@@ -153,6 +156,11 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
     {
         startInfo.WindowStyle = ProcessWindowStyle.Hidden;
     }
+
+    // Without this, on Windows the daemon inherits the caller's stdout/stderr
+    // handles and callers that read our output to EOF (`| Out-String`,
+    // `$(devproxy --detach)`, subprocess pipes) hang until the daemon exits.
+    StandardHandleInheritance.DisableForCurrentProcess();
 
     try
     {
@@ -170,6 +178,9 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
             }
             return 1;
         }
+
+        // The daemon never reads stdin; close it so it sees EOF immediately.
+        process.StandardInput.Close();
 
         // Wait a moment for the proxy to start and write its state file
         var timeout = TimeSpan.FromSeconds(10);
@@ -545,6 +556,15 @@ if (DevProxyCommand.IsSystemProxyResetCommand)
 {
     var resetExitCode = await SystemProxyCommand.RunResetStandaloneAsync(args);
     Environment.Exit(resetExitCode);
+    return;
+}
+
+// Handle 'plugin' commands early so that plugins can be listed without
+// a valid config file and without loading any configured plugins
+if (DevProxyCommand.IsPluginCommand)
+{
+    var pluginExitCode = await PluginCommand.RunStandaloneAsync(args);
+    Environment.Exit(pluginExitCode);
     return;
 }
 
