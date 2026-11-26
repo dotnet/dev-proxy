@@ -533,7 +533,7 @@ sealed class DevProxyCommand : RootCommand
 
         var installCertOption = new Option<bool?>(InstallCertOptionName)
         {
-            Description = "Install and trust the root certificate (default: true)",
+            Description = "Install and trust the root certificate (default: true). On Linux, trust it manually",
             HelpName = "true|false"
         };
         installCertOption.Validators.Add(input =>
