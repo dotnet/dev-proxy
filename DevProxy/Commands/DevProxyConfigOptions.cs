@@ -57,6 +57,7 @@ sealed class DevProxyConfigOptions : RootCommand
     }
 
     private ParseResult? _parseResult;
+    private readonly Command _stdioCommand;
 
     public DevProxyConfigOptions()
     {
@@ -227,10 +228,18 @@ sealed class DevProxyConfigOptions : RootCommand
             new Argument<string[]>("command") { Arity = ArgumentArity.ZeroOrMore }
         };
         Add(stdioCommand);
+        _stdioCommand = stdioCommand;
     }
 
     public void ParseOptions(string[] args)
     {
+        // Don't let an option value such as `jwt create --name stdio` select
+        // the stdio subcommand and swallow the options that follow it.
+        if (!DevProxyCommand.IsStdioSubcommand(args))
+        {
+            _ = Subcommands.Remove(_stdioCommand);
+        }
+
         _parseResult = Parse(args);
         var configFile = _parseResult.GetValueOrDefault<string?>(DevProxyCommand.ConfigFileOptionName);
         ConfigFile = configFile is not null ? Path.GetFullPath(configFile) : null;

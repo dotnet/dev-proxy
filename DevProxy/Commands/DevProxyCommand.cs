@@ -94,12 +94,52 @@ sealed class DevProxyCommand : RootCommand
                 return field;
             }
 
-            var args = Environment.GetCommandLineArgs();
-            field = args.Contains("stdio");
+            field = IsStdioSubcommand(Environment.GetCommandLineArgs()[1..]);
             _isStdioCommandResolved = true;
             return field;
         }
     }
+
+    // Detects the stdio subcommand rather than any argument equal to "stdio"
+    // (e.g. `jwt create --name stdio`). Tokens before the subcommand may only be
+    // options or their values. args excludes the program name.
+    internal static bool IsStdioSubcommand(string[] args)
+    {
+        var inMultiValueOption = false;
+        for (var i = 0; i < args.Length; i++)
+        {
+            if (string.Equals(args[i], "stdio", StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            if (args[i].StartsWith('-'))
+            {
+                inMultiValueOption = _multiValueRootOptions.Contains(args[i]);
+                continue;
+            }
+
+            var isOptionValue = inMultiValueOption || (i > 0 && args[i - 1].StartsWith('-'));
+            if (!isOptionValue)
+            {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    // Root options that accept multiple values per token, so every value
+    // following them precedes the subcommand.
+    private static readonly HashSet<string> _multiValueRootOptions =
+    [
+        EnvOptionName,
+        "-e",
+        UrlsToWatchOptionName,
+        "-u",
+        WatchPidsOptionName,
+        WatchProcessNamesOptionName
+    ];
 
     public static bool IsJwtCommand
     {
