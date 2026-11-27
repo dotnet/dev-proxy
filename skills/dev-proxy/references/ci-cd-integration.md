@@ -363,7 +363,8 @@ TOKEN=$(./devproxy/devproxy api token)
 curl --noproxy '*' --fail -X POST http://127.0.0.1:8897/proxy -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"recording": true}'
 # Run tests
 npm test
-# Stop recording
+# Stop recording; responds after reports are written, e.g.
+# {"recording":false,"reports":["/abs/path/ExecutionSummaryPlugin_JsonReporter.json"]}
 curl --noproxy '*' --fail -X POST http://127.0.0.1:8897/proxy -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"recording": false}'
 # Stop proxy
 ./devproxy/devproxy stop
@@ -383,13 +384,13 @@ done
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/proxy` | GET | Get proxy status (`recording`, `configFile`) |
-| `/proxy` | POST | Start/stop recording: `{"recording": true/false}` |
+| `/proxy` | POST | Start/stop recording: `{"recording": true/false}`. Stopping responds after plugins and reporters finish and returns the absolute paths of the written report files in `reports` |
 | `/proxy/stopProxy` | POST | Graceful shutdown |
 | `/proxy/jwtToken` | POST | Generate JWT for testing |
 | `/proxy/mockRequest` | POST | Trigger mock request (equivalent of pressing `w`) |
 | `/proxy/rootCertificate` | GET | Download root cert in PEM format (optional `format`: `crt` (default) or `pem`) |
 
-Run `devproxy api show` for endpoint information. All endpoints require `Authorization: Bearer <token>`; browser origins must also be explicitly allowed with `apiAllowedOrigins`.
+Run `devproxy api show` for endpoint information, or `devproxy api show --output json` for query parameters, request body schemas, and response codes per endpoint. All endpoints require `Authorization: Bearer <token>`; browser origins must also be explicitly allowed with `apiAllowedOrigins`.
 
 ## Environment Variables for Azure API Center
 

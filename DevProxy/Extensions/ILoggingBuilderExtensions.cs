@@ -22,7 +22,16 @@ static class ILoggingBuilderExtensions
     public static ILoggingBuilder ConfigureDevProxyLogging(
         this ILoggingBuilder builder,
         ConfigurationManager configuration,
-        DevProxyConfigOptions options)
+        DevProxyConfigOptions options) =>
+        builder.ConfigureDevProxyLogging(configuration, options, DevProxyCommand.IsStdioCommand, DevProxyCommand.IsJwtCommand, DevProxyCommand.IsRootCommand);
+
+    internal static ILoggingBuilder ConfigureDevProxyLogging(
+        this ILoggingBuilder builder,
+        ConfigurationManager configuration,
+        DevProxyConfigOptions options,
+        bool isStdioCommand,
+        bool isJwtCommand,
+        bool isRootCommand)
     {
         var configuredLogLevel = options.LogLevel ??
             configuration.GetValue("logLevel", LogLevel.Information);
@@ -32,7 +41,7 @@ static class ILoggingBuilderExtensions
             configuration.GetValue("output", OutputFormat.Text);
 
         // For stdio command, log to file instead of console to avoid interfering with proxied streams
-        if (DevProxyCommand.IsStdioCommand)
+        if (isStdioCommand)
         {
             _ = builder
                 .ClearProviders()
@@ -44,8 +53,9 @@ static class ILoggingBuilderExtensions
             return builder;
         }
 
-        // For jwt command, suppress all logging to console to avoid interfering with token output
-        if (DevProxyCommand.IsJwtCommand)
+        // For jwt command, suppress all logging to console to avoid interfering with token output.
+        // JSON output is emitted through the logger, so it uses the regular subcommand logging.
+        if (isJwtCommand && configuredOutput != OutputFormat.Json)
         {
             _ = builder
                 .ClearProviders()
@@ -64,7 +74,7 @@ static class ILoggingBuilderExtensions
 
         // For root command (proxy itself), use rich logging. IsRootCommand is also true
         // when options precede a subcommand, so exclude cert export explicitly.
-        if (DevProxyCommand.IsRootCommand && !DevProxyCommand.IsCertExportCommand)
+        if (isRootCommand && !DevProxyCommand.IsCertExportCommand)
         {
             _ = builder
                 .AddFilter("Microsoft.Hosting.*", LogLevel.Error)

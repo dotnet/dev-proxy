@@ -10,7 +10,11 @@ public interface IProxyStateController
 {
     IProxyState ProxyState { get; }
     void StartRecording();
-    Task StopRecordingAsync(CancellationToken cancellationToken);
+    /// <summary>
+    /// Stops recording and waits for plugins to process the recorded requests.
+    /// </summary>
+    /// <returns>Absolute paths of the report files written by reporters.</returns>
+    Task<IReadOnlyList<string>> StopRecordingAsync(CancellationToken cancellationToken);
     Task MockRequestAsync(CancellationToken cancellationToken);
     void StopProxy();
 }
