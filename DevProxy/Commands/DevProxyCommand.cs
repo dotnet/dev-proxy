@@ -883,7 +883,7 @@ sealed class DevProxyCommand : RootCommand
         var deadline = Environment.TickCount64 + 10_000;
         while (_proxyConfiguration.Port <= 0 && Environment.TickCount64 < deadline)
         {
-            await Task.Delay(50);
+            await Task.Delay(10);
         }
 
         var state = new ProxyInstanceState
