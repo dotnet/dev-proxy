@@ -93,7 +93,27 @@ sealed class SystemProxyCommand : Command
         var outputFormat = parseResult.GetValueOrDefault<OutputFormat?>(DevProxyCommand.OutputOptionName) ?? OutputFormat.Text;
         var logLevel = parseResult.GetValueOrDefault<LogLevel?>(DevProxyCommand.LogLevelOptionName) ?? LogLevel.Information;
 
-        using var loggerFactory = LoggerFactory.Create(builder =>
+        using var loggerFactory = CreateConsoleLoggerFactory(outputFormat, logLevel);
+        var logger = loggerFactory.CreateLogger<SystemProxyCommand>();
+        if (parseResult.Errors.Count > 0)
+        {
+            foreach (var error in parseResult.Errors)
+            {
+                logger.LogError("{Message}", error.Message);
+            }
+            return 2;
+        }
+
+        return await ResetCoreAsync(parseResult.GetValue(forceOption), outputFormat, logger,
+            loggerFactory.CreateLogger<SystemProxyManager>(), CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Creates console logging for system-proxy work that runs without the application host,
+    /// formatted like the host's output (text or JSON lines).
+    /// </summary>
+    internal static ILoggerFactory CreateConsoleLoggerFactory(OutputFormat outputFormat, LogLevel logLevel) =>
+        LoggerFactory.Create(builder =>
         {
             _ = builder
                 .SetMinimumLevel(logLevel)
@@ -115,19 +135,6 @@ sealed class SystemProxyCommand : Command
                     formatterOptions.ShowTimestamps = false;
                 });
         });
-        var logger = loggerFactory.CreateLogger<SystemProxyCommand>();
-        if (parseResult.Errors.Count > 0)
-        {
-            foreach (var error in parseResult.Errors)
-            {
-                logger.LogError("{Message}", error.Message);
-            }
-            return 2;
-        }
-
-        return await ResetCoreAsync(parseResult.GetValue(forceOption), outputFormat, logger,
-            loggerFactory.CreateLogger<SystemProxyManager>(), CancellationToken.None);
-    }
 
     private static async Task<int> ResetCoreAsync(bool force, OutputFormat outputFormat,
         ILogger<SystemProxyCommand> logger, ILogger<SystemProxyManager> systemProxyLogger, CancellationToken cancellationToken)

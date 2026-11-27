@@ -559,7 +559,7 @@ internal sealed class SystemProxyManager : ISystemProxyManager
     /// Restores the OS proxy (unless a live instance still owns it) and removes
     /// the stale state records. Safe to call when there are no orphans.
     /// </summary>
-    public static async Task<OrphanReconciliation> ReconcileOrphanedSystemProxiesAsync(ILogger<SystemProxyManager>? logger = null, CancellationToken cancellationToken = default)
+    public static async Task<OrphanReconciliation> ReconcileOrphanedSystemProxiesAsync(ILogger<SystemProxyManager> logger, CancellationToken cancellationToken = default)
     {
         var orphans = await StateManager.GetOrphanedSystemProxyStatesAsync(cancellationToken);
         var orphanedPids = orphans.Select(o => o.Pid).ToList();
@@ -582,7 +582,7 @@ internal sealed class SystemProxyManager : ISystemProxyManager
         var outcome = OrphanRestoreOutcome.OwnedByLiveInstance;
         if (await FindLiveSystemProxyOwnerAsync(cancellationToken) is null)
         {
-            if (new SystemProxyManager(logger ?? NullLogger<SystemProxyManager>.Instance).Restore() is SystemProxyRestoreResult.Failed)
+            if (new SystemProxyManager(logger).Restore() is SystemProxyRestoreResult.Failed)
             {
                 // Keep the state records (and the snapshot) so the next start or stop retries.
                 return new(orphanedPids, OrphanRestoreOutcome.Failed);

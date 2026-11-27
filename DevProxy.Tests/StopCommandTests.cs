@@ -5,6 +5,7 @@
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Commands;
 using DevProxy.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System.CommandLine;
 using System.Globalization;
 using System.Text.Json;
@@ -24,7 +25,7 @@ public class StopCommandTests
     {
         var logger = new RecordingLogger<StopCommand>();
 
-        var exitCode = await CreateRootCommand(new StopCommand(logger))
+        var exitCode = await CreateRootCommand(new StopCommand(logger, NullLogger<DevProxy.Proxy.SystemProxyManager>.Instance))
             .Parse(["stop", "--pid", UnusedPid.ToString(CultureInfo.InvariantCulture), "--output", "json"])
             .InvokeAsync();
 

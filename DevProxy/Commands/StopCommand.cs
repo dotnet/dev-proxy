@@ -17,6 +17,7 @@ namespace DevProxy.Commands;
 internal sealed class StopCommand : Command
 {
     private readonly ILogger<StopCommand> _logger;
+    private readonly ILogger<SystemProxyManager> _systemProxyLogger;
     private readonly Option<bool> _forceOption = new("--force", "-f")
     {
         Description = "Force stop the proxy by killing the process"
@@ -27,7 +28,7 @@ internal sealed class StopCommand : Command
         Description = "Stop a specific Dev Proxy instance by PID"
     };
 
-    public StopCommand(ILogger<StopCommand> logger) : base("stop", """
+    public StopCommand(ILogger<StopCommand> logger, ILogger<SystemProxyManager> systemProxyLogger) : base("stop", """
                 Stop running Dev Proxy instances.
 
                 JSON output: one result event per outcome, with pid, status, message and,
@@ -37,6 +38,7 @@ internal sealed class StopCommand : Command
                 """)
     {
         _logger = logger;
+        _systemProxyLogger = systemProxyLogger;
         Add(_forceOption);
         Add(_pidOption);
         SetAction(RunAsync);
@@ -57,7 +59,7 @@ internal sealed class StopCommand : Command
         // Reconcile any system-proxy registrations left behind by crashed
         // instances first — this must run before LoadAllStatesAsync, which prunes
         // (deletes) the stale state files it depends on.
-        var reconciliation = await SystemProxyManager.ReconcileOrphanedSystemProxiesAsync(cancellationToken: cancellationToken);
+        var reconciliation = await SystemProxyManager.ReconcileOrphanedSystemProxiesAsync(_systemProxyLogger, cancellationToken);
 
         var states = await StateManager.LoadAllStatesAsync(cancellationToken);
         if (states.Count == 0 && reconciliation.OrphanedPids.Count == 0)
@@ -84,7 +86,7 @@ internal sealed class StopCommand : Command
         return exitCode;
     }
 
-    private static async Task<int> StopByPidAsync(int pid, bool force, StopReporter reporter, CancellationToken cancellationToken)
+    private async Task<int> StopByPidAsync(int pid, bool force, StopReporter reporter, CancellationToken cancellationToken)
     {
         // Recover an orphan before looking up live state so failed recovery keeps
         // its registration available for a later retry.
@@ -96,7 +98,7 @@ internal sealed class StopCommand : Command
             var liveOwner = await SystemProxyManager.FindLiveSystemProxyOwnerAsync(cancellationToken);
             if (liveOwner is null)
             {
-                if (new SystemProxyManager(NullLogger<SystemProxyManager>.Instance).Restore() is SystemProxyRestoreResult.Failed)
+                if (new SystemProxyManager(_systemProxyLogger).Restore() is SystemProxyRestoreResult.Failed)
                 {
                     // Keep the state record so a later stop or start retries.
                     reporter.Report(pid, "failed", $"Couldn't restore the system proxy left by crashed Dev Proxy (PID: {pid}).", RestoreFailedHint);
@@ -147,7 +149,7 @@ internal sealed class StopCommand : Command
         return true;
     }
 
-    private static async Task<int> StopInstanceAsync(ProxyInstanceState state, bool force, StopReporter reporter, CancellationToken cancellationToken)
+    private async Task<int> StopInstanceAsync(ProxyInstanceState state, bool force, StopReporter reporter, CancellationToken cancellationToken)
     {
         if (force)
         {
@@ -202,7 +204,7 @@ internal sealed class StopCommand : Command
         }
     }
 
-    private static async Task<int> ForceStopAsync(ProxyInstanceState state, StopReporter reporter, CancellationToken cancellationToken)
+    private async Task<int> ForceStopAsync(ProxyInstanceState state, StopReporter reporter, CancellationToken cancellationToken)
     {
         var identity = GetProcessIdentity(state);
         if (identity == ProcessIdentity.Unverifiable)
@@ -222,7 +224,7 @@ internal sealed class StopCommand : Command
             // alone when another live instance owns it.
             if (isAlive || await StateManager.FindSystemProxyInstanceAsync(cancellationToken) is null)
             {
-                new SystemProxyManager(NullLogger<SystemProxyManager>.Instance).Disable();
+                new SystemProxyManager(_systemProxyLogger).Disable();
             }
         }
 

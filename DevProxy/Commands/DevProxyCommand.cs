@@ -918,7 +918,8 @@ sealed class DevProxyCommand : RootCommand
 
     private async Task ReconcileOrphanedSystemProxiesAsync(CancellationToken cancellationToken)
     {
-        var reconciliation = await SystemProxyManager.ReconcileOrphanedSystemProxiesAsync(cancellationToken: cancellationToken);
+        var reconciliation = await SystemProxyManager.ReconcileOrphanedSystemProxiesAsync(
+            _serviceProvider.GetRequiredService<ILogger<SystemProxyManager>>(), cancellationToken);
         if (reconciliation.Outcome is SystemProxyManager.OrphanRestoreOutcome.Failed)
         {
             _logger.LogError(

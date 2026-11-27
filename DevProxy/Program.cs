@@ -54,7 +54,13 @@ if (DevProxyCommand.IsInternalDaemon)
 
 static async Task ReconcileOrphanedSystemProxiesAsync(bool isJsonOutput)
 {
-    var reconciliation = await SystemProxyManager.ReconcileOrphanedSystemProxiesAsync();
+    // Log through the console like the host would, so warnings raised while restoring
+    // (for example, an authenticated proxy that needs its password re-entered) reach the user.
+    using var loggerFactory = SystemProxyCommand.CreateConsoleLoggerFactory(
+        isJsonOutput ? DevProxy.Abstractions.Proxy.OutputFormat.Json : DevProxy.Abstractions.Proxy.OutputFormat.Text,
+        LogLevel.Information);
+    var reconciliation = await SystemProxyManager.ReconcileOrphanedSystemProxiesAsync(
+        loggerFactory.CreateLogger<SystemProxyManager>());
     if (reconciliation.Outcome is SystemProxyManager.OrphanRestoreOutcome.Failed)
     {
         var error = $"Couldn't restore the system proxy left by a crashed Dev Proxy instance (PID: {string.Join(", ", reconciliation.OrphanedPids)}). Run 'devproxy system-proxy reset' or see https://go.devproxy.net?go=proxy-reset.";
