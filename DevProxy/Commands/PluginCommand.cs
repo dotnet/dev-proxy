@@ -113,6 +113,12 @@ sealed class PluginCommand : Command
         var parseResult = rootCommand.Parse(args);
         if (parseResult.Action is ParseErrorAction parseErrorAction)
         {
+            if (DevProxyCommand.IsJsonOutputRequested(parseResult))
+            {
+                DevProxyCommand.WriteJsonParseErrors(parseResult);
+                return 2;
+            }
+
             parseErrorAction.ShowHelp = false;
         }
 
