@@ -202,16 +202,19 @@ sealed class DevProxyCommand : RootCommand
         // A built-in command name is only taken as an unknown option's value when it directly
         // follows the option (--mocks-file config) and isn't followed by another bare word
         // (--failure-rate 10 jwt create, --mock-flag jwt create).
-        var rootOptionTokens = parseResult.RootCommandResult.Children
+        // The same applies between cert and export, because cert itself may be an unknown
+        // option's value (devproxy --mocks-file cert jwt create --scopes export).
+        var knownOptionTokens = parseResult.RootCommandResult.Children
+            .Concat(certResult.Children)
             .OfType<OptionResult>()
             .SelectMany(o => o.IdentifierToken is null ? o.Tokens : o.Tokens.Prepend(o.IdentifierToken))
             .ToHashSet();
         var afterUnknownOption = false;
         var valuesAfterUnknownOption = 0;
         var previousMayBeCommand = false;
-        foreach (var token in parseResult.Tokens.TakeWhile(t => !ReferenceEquals(t, certResult.IdentifierToken)))
+        foreach (var token in parseResult.Tokens.TakeWhile(t => !ReferenceEquals(t, parseResult.CommandResult.IdentifierToken)))
         {
-            if (rootOptionTokens.Contains(token))
+            if (knownOptionTokens.Contains(token) || ReferenceEquals(token, certResult.IdentifierToken))
             {
                 afterUnknownOption = false;
                 previousMayBeCommand = false;
