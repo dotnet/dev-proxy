@@ -102,6 +102,11 @@ static class MinimalPermissionsUtils
 
     public static (IEnumerable<string> minimalScopes, IEnumerable<string> unmatchedOperations) GetMinimalScopes(IEnumerable<string> requests, Dictionary<string, string[]> operationsAndScopes)
     {
+        // operations without scopes can't be mapped to a minimal scope
+        operationsAndScopes = operationsAndScopes
+            .Where(o => o.Value is { Length: > 0 })
+            .ToDictionary();
+
         var unmatchedOperations = requests
             .Where(o => !operationsAndScopes.Keys.Contains(o, StringComparer.OrdinalIgnoreCase));
 

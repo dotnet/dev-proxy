@@ -9,10 +9,22 @@ using Microsoft.Extensions.Logging;
 
 namespace DevProxy.Plugins.Reporters;
 
-public abstract class BaseReporter(
-    ILogger logger,
-    ISet<UrlToWatch> urlsToWatch) : BasePlugin(logger, urlsToWatch)
+public abstract class BaseReporter : BasePlugin
 {
+    private readonly IProxyConfiguration? _proxyConfiguration;
+
+    protected BaseReporter(ILogger logger, ISet<UrlToWatch> urlsToWatch) : base(logger, urlsToWatch)
+    {
+    }
+
+    protected BaseReporter(
+        ILogger logger,
+        ISet<UrlToWatch> urlsToWatch,
+        IProxyConfiguration proxyConfiguration) : base(logger, urlsToWatch)
+    {
+        _proxyConfiguration = proxyConfiguration;
+    }
+
     public abstract string FileExtension { get; }
 
     public override async Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
@@ -45,21 +57,35 @@ public abstract class BaseReporter(
                 continue;
             }
 
-            var fileName = $"{report.Key}_{Name}{FileExtension}";
+            var fileName = GetReportFilePath($"{report.Key}_{Name}{FileExtension}");
             Logger.LogDebug("File name for report {Report}: {FileName}", report.Key, fileName);
 
             if (File.Exists(fileName))
             {
                 Logger.LogDebug("File {FileName} already exists, appending timestamp", fileName);
-                fileName = $"{report.Key}_{Name}_{DateTime.Now:yyyyMMddHHmmss}{FileExtension}";
+                fileName = GetReportFilePath($"{report.Key}_{Name}_{DateTime.Now:yyyyMMddHHmmss}{FileExtension}");
             }
 
             Logger.LogInformation("Writing report {ReportKey} to {FileName}...", report.Key, fileName);
+            if (!string.IsNullOrEmpty(ReportsFolder))
+            {
+                _ = Directory.CreateDirectory(ReportsFolder);
+            }
             await File.WriteAllTextAsync(fileName, reportContents, cancellationToken);
+            e.ReportFiles.Add(Path.GetFullPath(fileName));
         }
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
     }
 
     protected abstract string? GetReport(KeyValuePair<string, object> report);
+
+    /// <summary>
+    /// Folder where reports are written. When null or empty, reports are written
+    /// to the current working directory.
+    /// </summary>
+    protected string? ReportsFolder => (_proxyConfiguration as IReportsProxyConfiguration)?.ReportsFolder;
+
+    protected string GetReportFilePath(string fileName) =>
+        string.IsNullOrEmpty(ReportsFolder) ? fileName : Path.Combine(ReportsFolder, fileName);
 }
