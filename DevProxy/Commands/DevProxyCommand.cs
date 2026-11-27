@@ -1,6 +1,7 @@
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
+using DevProxy.Logging;
 using DevProxy.Proxy;
 using DevProxy.Proxy.Kestrel;
 using DevProxy.State;
@@ -24,12 +25,15 @@ sealed class DevProxyCommand : RootCommand
     private readonly UpdateNotification _updateNotification;
     private WebApplication? _app;
 
+    internal static readonly TimeSpan NewVersionCheckTimeout = TimeSpan.FromSeconds(5);
+
     internal const string PortOptionName = "--port";
     internal const string ApiPortOptionName = "--api-port";
     internal const string ApiIpAddressOptionName = "--api-ip-address";
     internal const string IpAddressOptionName = "--ip-address";
     internal const string LogLevelOptionName = "--log-level";
     internal const string RecordOptionName = "--record";
+    internal const string ReportDirOptionName = "--report-dir";
     internal const string WatchPidsOptionName = "--watch-pids";
     internal const string WatchProcessNamesOptionName = "--watch-process-names";
     internal const string WatchProcessTreeOptionName = "--watch-process-tree";
@@ -92,12 +96,52 @@ sealed class DevProxyCommand : RootCommand
                 return field;
             }
 
-            var args = Environment.GetCommandLineArgs();
-            field = args.Contains("stdio");
+            field = IsStdioSubcommand(Environment.GetCommandLineArgs()[1..]);
             _isStdioCommandResolved = true;
             return field;
         }
     }
+
+    // Detects the stdio subcommand rather than any argument equal to "stdio"
+    // (e.g. `jwt create --name stdio`). Tokens before the subcommand may only be
+    // options or their values. args excludes the program name.
+    internal static bool IsStdioSubcommand(string[] args)
+    {
+        var inMultiValueOption = false;
+        for (var i = 0; i < args.Length; i++)
+        {
+            if (string.Equals(args[i], "stdio", StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            if (args[i].StartsWith('-'))
+            {
+                inMultiValueOption = _multiValueRootOptions.Contains(args[i]);
+                continue;
+            }
+
+            var isOptionValue = inMultiValueOption || (i > 0 && args[i - 1].StartsWith('-'));
+            if (!isOptionValue)
+            {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    // Root options that accept multiple values per token, so every value
+    // following them precedes the subcommand.
+    private static readonly HashSet<string> _multiValueRootOptions =
+    [
+        EnvOptionName,
+        "-e",
+        UrlsToWatchOptionName,
+        "-u",
+        WatchPidsOptionName,
+        WatchProcessNamesOptionName
+    ];
 
     public static bool IsJwtCommand
     {
@@ -267,6 +311,30 @@ sealed class DevProxyCommand : RootCommand
         Environment.GetEnvironmentVariable("NO_COLOR"),
         Environment.GetEnvironmentVariable("TERM"));
 
+    internal static string ResolveReportDirOption(string value) =>
+        Path.GetFullPath(ProxyUtils.ReplacePathTokens(value));
+
+    internal static void ValidateReportDir(OptionResult input)
+    {
+        if (input.Tokens.Count == 0)
+        {
+            input.AddError("The report directory path is missing. Specify a folder.");
+            return;
+        }
+
+        var value = input.Tokens[0].Value;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            input.AddError("The report directory path can't be empty.");
+            return;
+        }
+
+        if (File.Exists(ResolveReportDirOption(value)))
+        {
+            input.AddError($"The report directory path '{value}' points to a file. Specify a folder.");
+        }
+    }
+
     // Per https://no-color.org, NO_COLOR disables color only when present and not empty.
     internal static bool ShouldDisableColor(string[] args, string? noColorEnv, string? termEnv) =>
         args.Contains(NoColorOptionName) ||
@@ -280,7 +348,7 @@ sealed class DevProxyCommand : RootCommand
         IServiceProvider serviceProvider,
         UpdateNotification updateNotification,
         DevProxyConfigOptions options,
-        ILogger<DevProxyCommand> logger) : base($"Start Dev Proxy\n\nAPI:\n  Dev Proxy exposes an authenticated REST API for runtime management.\n  Use --api-port (default: {proxyConfiguration.ApiPort}) and --api-ip-address (default: 127.0.0.1).\n  The API bind address is independent of --ip-address.\n  Run 'devproxy status' for the API URL and token, or 'devproxy api show' for endpoints.\n  Set the DEV_PROXY_API_TOKEN environment variable (at least 32 characters) to use a fixed API token instead of a generated one.")
+        ILogger<DevProxyCommand> logger) : base($"Start Dev Proxy\n\nAPI:\n  Dev Proxy exposes an authenticated REST API for runtime management.\n  Use --api-port (default: {proxyConfiguration.ApiPort}) and --api-ip-address (default: 127.0.0.1).\n  The API bind address is independent of --ip-address.\n  Run 'devproxy status' for the API URL and token, or 'devproxy api show' for endpoints\n  ('devproxy api show --output json' includes request and response schemas).\n  Set the DEV_PROXY_API_TOKEN environment variable (at least 32 characters) to use a fixed API token instead of a generated one.")
     {
         _serviceProvider = serviceProvider;
         _plugins = plugins;
@@ -303,6 +371,12 @@ sealed class DevProxyCommand : RootCommand
 
         if (parseResult.Action is ParseErrorAction parseErrorAction)
         {
+            if (IsJsonOutputRequested(parseResult))
+            {
+                WriteJsonParseErrors(parseResult);
+                return 2;
+            }
+
             parseErrorAction.ShowHelp = false;
         }
 
@@ -317,6 +391,32 @@ sealed class DevProxyCommand : RootCommand
         }
 
         return exitCode;
+    }
+
+    // Reads the raw token rather than the parsed value, because the parsed
+    // value isn't available when the parse result has errors
+    internal static bool IsJsonOutputRequested(ParseResult parseResult) =>
+        parseResult.GetResult(OutputOptionName) is OptionResult { Tokens: [var token, ..] } &&
+        string.Equals(token.Value, nameof(OutputFormat.Json), StringComparison.OrdinalIgnoreCase);
+
+    internal static void WriteJsonParseErrors(ParseResult parseResult)
+    {
+        // Usage errors must still be visible when normal logging is disabled,
+        // for example by the jwt command or --log-level None.
+        using var loggerFactory = LoggerFactory.Create(builder => builder
+            .SetMinimumLevel(LogLevel.Error)
+            .AddConsole(options =>
+            {
+                options.FormatterName = JsonConsoleFormatter.FormatterName;
+                options.LogToStandardErrorThreshold = LogLevel.Error;
+            })
+            .AddConsoleFormatter<JsonConsoleFormatter, ProxyConsoleFormatterOptions>());
+        var logger = loggerFactory.CreateLogger<DevProxyCommand>();
+
+        foreach (var error in parseResult.Errors)
+        {
+            logger.LogError("{ParseError}", error.Message);
+        }
     }
 
     internal static void ValidatePort(OptionResult input)
@@ -390,7 +490,12 @@ sealed class DevProxyCommand : RootCommand
             plugin.OptionsLoaded(optionsLoadedArgs);
         }
 
-        await CheckForNewVersionAsync();
+        // Check for a new version in the background so that startup doesn't wait
+        // for the network. Linking to the command's token (the host's
+        // ApplicationStopping) cancels the check on shutdown and hot reload.
+        using var newVersionCheckCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        newVersionCheckCts.CancelAfter(NewVersionCheckTimeout);
+        var newVersionCheck = CheckForNewVersionInBackgroundAsync(_updateNotification, _proxyConfiguration.NewVersionNotification, _logger, newVersionCheckCts.Token);
 
         try
         {
@@ -466,6 +571,13 @@ sealed class DevProxyCommand : RootCommand
 #else
             return 1;
 #endif
+        }
+        finally
+        {
+            // Stop the check before the host is disposed so that it doesn't use
+            // the disposed logger or HttpClient. The check never throws.
+            await newVersionCheckCts.CancelAsync();
+            await newVersionCheck;
         }
     }
 
@@ -551,6 +663,14 @@ sealed class DevProxyCommand : RootCommand
         {
             Description = "Use this option to record all request logs"
         };
+
+        var reportDirOption = new Option<string?>(ReportDirOptionName)
+        {
+            Description = "Folder where reporters write report files. Overrides reportsFolder from the config file. Relative paths resolve against the current working directory. Default: the current working directory",
+            HelpName = "path",
+            Arity = ArgumentArity.ExactlyOne
+        };
+        reportDirOption.Validators.Add(ValidateReportDir);
 
         var watchPidsOption = new Option<IEnumerable<int>>(WatchPidsOptionName)
         {
@@ -723,6 +843,7 @@ sealed class DevProxyCommand : RootCommand
             outputOption,
             portOption,
             recordOption,
+            reportDirOption,
             timeoutOption,
             urlsToWatchOption,
             watchPidsOption,
@@ -822,6 +943,12 @@ sealed class DevProxyCommand : RootCommand
         {
             _proxyConfiguration.Record = record.Value;
         }
+        var reportDir = parseResult.GetValueOrDefault<string?>(ReportDirOptionName);
+        if (!string.IsNullOrWhiteSpace(reportDir) &&
+            _proxyConfiguration is IReportsProxyConfiguration reportsConfiguration)
+        {
+            reportsConfiguration.ReportsFolder = ResolveReportDirOption(reportDir);
+        }
         var watchPids = parseResult.GetValueOrDefault<IEnumerable<int>>(WatchPidsOptionName);
         if (watchPids is not null && watchPids.Any())
         {
@@ -883,16 +1010,28 @@ sealed class DevProxyCommand : RootCommand
         }
     }
 
-    private async Task CheckForNewVersionAsync()
+    internal static Task CheckForNewVersionInBackgroundAsync(UpdateNotification updateNotification, ReleaseType releaseType, ILogger logger, CancellationToken cancellationToken) =>
+        Task.Run(() => CheckForNewVersionAsync(updateNotification, releaseType, logger, cancellationToken), CancellationToken.None);
+
+    private static async Task CheckForNewVersionAsync(UpdateNotification updateNotification, ReleaseType releaseType, ILogger logger, CancellationToken cancellationToken)
     {
-        var newReleaseInfo = await _updateNotification.CheckForNewVersionAsync(_proxyConfiguration.NewVersionNotification);
-        if (newReleaseInfo != null)
+        try
         {
-            _logger.LogInformation(
+            var newReleaseInfo = await updateNotification.CheckForNewVersionAsync(releaseType, cancellationToken);
+            if (newReleaseInfo is null || cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            logger.LogInformation(
                 "New Dev Proxy version {Version} is available.{NewLine}See https://aka.ms/devproxy/upgrade for more information.",
                 newReleaseInfo.Version,
                 Environment.NewLine
             );
+        }
+        catch
+        {
+            // The version check is best-effort and must never fail startup or shutdown.
         }
     }
 
@@ -904,7 +1043,7 @@ sealed class DevProxyCommand : RootCommand
         var deadline = Environment.TickCount64 + 10_000;
         while (_proxyConfiguration.Port <= 0 && Environment.TickCount64 < deadline)
         {
-            await Task.Delay(50);
+            await Task.Delay(10);
         }
 
         var state = new ProxyInstanceState

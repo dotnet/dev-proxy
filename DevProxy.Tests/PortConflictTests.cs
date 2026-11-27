@@ -163,4 +163,23 @@ public class PortConflictTests
 
         Assert.Equal(valid, result.Errors.Count == 0);
     }
+
+    [Theory]
+    [InlineData(DevProxyCommand.ApiPortOptionName, "-1", null)]
+    [InlineData(DevProxyCommand.ApiPortOptionName, "65536", null)]
+    [InlineData(DevProxyCommand.ApiPortOptionName, "0", 0)]
+    [InlineData(DevProxyCommand.ApiPortOptionName, "65535", 65535)]
+    [InlineData(DevProxyCommand.PortOptionName, "-1", null)]
+    [InlineData(DevProxyCommand.PortOptionName, "65536", null)]
+    [InlineData(DevProxyCommand.PortOptionName, "0", 0)]
+    public void EarlyPortOptions_IgnoreOutOfRangeValues(string optionName, string value, int? expected)
+    {
+        // The early options configure Kestrel before the command validates its
+        // options, so an out-of-range port must not reach Kestrel
+        var options = new DevProxyConfigOptions();
+        options.ParseOptions([optionName, value]);
+
+        var actual = optionName == DevProxyCommand.ApiPortOptionName ? options.ApiPort : options.Port;
+        Assert.Equal(expected, actual);
+    }
 }
