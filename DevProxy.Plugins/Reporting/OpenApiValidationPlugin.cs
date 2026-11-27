@@ -936,7 +936,7 @@ public sealed class OpenApiValidationPlugin(
     {
         // scheme and host are case-insensitive, but the base path is case-sensitive
         var authorityStart = url.IndexOf("://", StringComparison.Ordinal) + 3;
-        var pathStart = url.IndexOf('/', authorityStart);
+        var pathStart = url.IndexOf('/', authorityStart, StringComparison.Ordinal);
         var origin = pathStart < 0 ? url : url[..pathStart];
         // request URLs omit default ports, e.g. https://api.contoso.com:443 -> https://api.contoso.com
         origin = Regex.Replace(origin, "^(?:(?<o>https://[^/]*):443|(?<o>http://[^/]*):80)$", "${o}",

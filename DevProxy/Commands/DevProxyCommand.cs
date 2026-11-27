@@ -115,13 +115,13 @@ sealed class DevProxyCommand : RootCommand
                 return true;
             }
 
-            if (args[i].StartsWith('-'))
+            if (args[i].StartsWith('-', StringComparison.Ordinal))
             {
                 inMultiValueOption = _multiValueRootOptions.Contains(args[i]);
                 continue;
             }
 
-            var isOptionValue = inMultiValueOption || (i > 0 && args[i - 1].StartsWith('-'));
+            var isOptionValue = inMultiValueOption || (i > 0 && args[i - 1].StartsWith('-', StringComparison.Ordinal));
             if (!isOptionValue)
             {
                 return false;

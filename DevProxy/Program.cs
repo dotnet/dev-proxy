@@ -178,7 +178,11 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
 
         while (stopwatch.Elapsed < timeout)
         {
-            _ = await Task.WhenAny(Task.Delay(pollInterval), processExited);
+            using (var pollDelayCancellation = new CancellationTokenSource())
+            {
+                _ = await Task.WhenAny(Task.Delay(pollInterval, pollDelayCancellation.Token), processExited);
+                await pollDelayCancellation.CancelAsync();
+            }
 
             var state = await StateManager.LoadStateByPidAsync(process.Id);
             if (state is { Port: > 0 } && !string.IsNullOrEmpty(state.ApiUrl) && !state.ApiUrl.EndsWith(":0", StringComparison.Ordinal))
