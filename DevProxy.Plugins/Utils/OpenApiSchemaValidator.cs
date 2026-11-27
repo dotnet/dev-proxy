@@ -323,8 +323,8 @@ internal static partial class OpenApiSchemaValidator
     private const int MaxItemsSchemaConjunctions = 32;
 
     // Gets the sets of items schemas that apply to array items together: the items of
-    // the schema and of its allOf subschemas all apply, while anyOf/oneOf subschemas are
-    // alternatives, each combined with the items schemas that apply regardless of them
+    // the schema and of its allOf subschemas all apply, while the subschemas of each anyOf/oneOf
+    // are alternatives, each combined with the items schemas that apply regardless of them
     private static List<List<IOpenApiSchema>> GetItemsSchemaConjunctions(IOpenApiSchema schema)
     {
         List<List<IOpenApiSchema>> Combine(List<List<IOpenApiSchema>> left, List<List<IOpenApiSchema>> right) =>
@@ -353,10 +353,13 @@ internal static partial class OpenApiSchemaValidator
                 result = Combine(result, Get(allOf));
             }
 
-            var alternatives = (current.AnyOf ?? []).Concat(current.OneOf ?? []).ToArray();
-            if (alternatives.Length > 0)
+            // anyOf and oneOf both apply, so each keyword's alternatives are combined separately
+            foreach (var alternatives in (IList<IOpenApiSchema>?[])[current.AnyOf, current.OneOf])
             {
-                result = Combine(result, [.. alternatives.SelectMany(a => Get(a))]);
+                if (alternatives is { Count: > 0 })
+                {
+                    result = Combine(result, [.. alternatives.SelectMany(Get)]);
+                }
             }
 
             _ = inProgress.Remove(target);
