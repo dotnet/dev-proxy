@@ -36,7 +36,8 @@ internal sealed class RootCertificateTrust(
             isFirstRun = HasRunFlag.CreateIfMissing();
             if (isFirstRun)
             {
-                answer = PromptForTrust();
+                var isNonInteractive = Console.IsInputRedirected || Environment.GetEnvironmentVariable("CI") is not null;
+                answer = PromptForTrust(configuration.Output, Console.Out, Console.Error, Console.In, isNonInteractive);
             }
         }
 
@@ -146,19 +147,27 @@ internal sealed class RootCertificateTrust(
         }
     }
 
-    private static string? PromptForTrust()
+    internal static string? PromptForTrust(
+        OutputFormat outputFormat,
+        TextWriter stdout,
+        TextWriter stderr,
+        TextReader input,
+        bool isNonInteractive)
     {
-        Console.WriteLine();
-        Console.WriteLine("Dev Proxy uses a self-signed certificate to intercept and inspect HTTPS traffic.");
+        // In JSON mode stdout must stay pure JSONL, so route the human prompt to stderr.
+        var output = outputFormat == OutputFormat.Json ? stderr : stdout;
+        output.WriteLine();
+        output.WriteLine("Dev Proxy uses a self-signed certificate to intercept and inspect HTTPS traffic.");
 
-        if (Console.IsInputRedirected || Environment.GetEnvironmentVariable("CI") is not null)
+        if (isNonInteractive)
         {
             // Non-interactive (CI / piped stdin): default to trusting.
             return "y";
         }
 
-        Console.Write("Update the certificate in your Keychain so that it's trusted by your browser? (Y/n): ");
-        return Console.ReadLine()?.Trim();
+        output.Write("Update the certificate in your Keychain so that it's trusted by your browser? (Y/n): ");
+        output.Flush();
+        return input.ReadLine()?.Trim();
     }
 
     private bool InstallIntoWindowsRootStore(X509Certificate2 rootCertificate)
