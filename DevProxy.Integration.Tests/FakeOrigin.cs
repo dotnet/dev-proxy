@@ -29,6 +29,8 @@ namespace DevProxy.Integration.Tests;
 ///   GET  /big/{n}        → 200, n bytes of 'A' (large finite body)
 ///   GET  /json           → 200 application/json, a 2-element array
 ///   GET  /socket-b       → WebSocket sends "rewritten"
+///   *    /abort          → aborts the connection without a response
+///   *    /delay/{ms}     → 200 "delayed" after {ms} milliseconds
 /// </code>
 /// </summary>
 internal sealed class FakeOrigin : IAsyncDisposable
@@ -50,7 +52,11 @@ internal sealed class FakeOrigin : IAsyncDisposable
         _received = received;
     }
 
-    public static async Task<FakeOrigin> StartAsync()
+    /// <param name="recordRequests">
+    /// Whether to record received requests in <see cref="ReceivedRequests"/>. Turn off for
+    /// high-volume tests, where the recording would grow memory with every request.
+    /// </param>
+    public static async Task<FakeOrigin> StartAsync(bool recordRequests = true)
     {
         var port = NetUtil.GetFreePort();
         var builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions());
@@ -67,7 +73,10 @@ internal sealed class FakeOrigin : IAsyncDisposable
         var received = new System.Collections.Concurrent.ConcurrentQueue<ReceivedRequest>();
         app.Use(async (ctx, next) =>
         {
-            received.Enqueue(new ReceivedRequest(ctx.Request.Method, ctx.Request.Path + ctx.Request.QueryString));
+            if (recordRequests)
+            {
+                received.Enqueue(new ReceivedRequest(ctx.Request.Method, ctx.Request.Path + ctx.Request.QueryString));
+            }
             await next().ConfigureAwait(false);
         });
 
@@ -119,6 +128,14 @@ internal sealed class FakeOrigin : IAsyncDisposable
             new { id = 1, name = "alpha" },
             new { id = 2, name = "beta" },
         }));
+
+        app.Map("/abort", (HttpContext ctx) => ctx.Abort());
+
+        app.Map("/delay/{ms:int}", async (int ms, HttpContext ctx) =>
+        {
+            await Task.Delay(ms, ctx.RequestAborted).ConfigureAwait(false);
+            return Results.Text("delayed");
+        });
 
         app.Map("/socket-b", async context =>
         {

@@ -62,6 +62,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="DevProxy.Tests" />
+    <InternalsVisibleTo Include="DevProxy.Integration.Tests" />
   </ItemGroup>
 
   <ItemGroup>
