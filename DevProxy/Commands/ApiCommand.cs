@@ -130,7 +130,7 @@ sealed class ApiCommand : Command
             new ApiEndpointInfo { Method = "POST", Path = "/proxy/mockRequest", Description = "Issue a mock request" },
             new ApiEndpointInfo { Method = "POST", Path = "/proxy/stopProxy", Description = "Stop the proxy" },
             new ApiEndpointInfo { Method = "POST", Path = "/proxy/jwtToken", Description = "Create a JWT token" },
-            new ApiEndpointInfo { Method = "GET", Path = "/proxy/rootCertificate", Description = "Get the root certificate" },
+            new ApiEndpointInfo { Method = "GET", Path = "/proxy/rootCertificate", Description = "Get the root certificate in PEM format (optional ?format=crt|pem, default crt)" },
             new ApiEndpointInfo { Method = "GET", Path = "/proxy/logs", Description = "Get proxy logs (for detached mode access)" }
         };
 
@@ -140,11 +140,18 @@ sealed class ApiCommand : Command
             {
                 baseUrl,
                 authentication = new { scheme = "Bearer", header = "Authorization", tokenFilePattern },
-                endpoints = endpoints.Select(e => new
+                endpoints = endpoints.Select(e =>
                 {
-                    method = e.Method,
-                    path = e.Path,
-                    description = e.Description
+                    var schema = ApiEndpointSchemas.Get(e.Method, e.Path);
+                    return new
+                    {
+                        method = e.Method,
+                        path = e.Path,
+                        description = e.Description,
+                        parameters = schema?.Parameters,
+                        requestBody = schema?.RequestBody,
+                        responses = schema?.Responses
+                    };
                 })
             }, ProxyUtils.JsonSerializerOptions);
             _logger.LogStructuredOutput(json);

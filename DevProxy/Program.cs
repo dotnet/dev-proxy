@@ -97,10 +97,11 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
     StateManager.CleanupOldLogs();
 
     // Build the arguments for the daemon process
-    // Replace --detach/-d with --_internal-daemon
+    // Replace --detach/-d with --_internal-daemon. Prepend it so that a trailing
+    // option missing its value (like a bare --report-dir) doesn't consume it.
     var daemonArgs = args
         .Where(a => a is not "--detach" and not "-d")
-        .Append("--_internal-daemon")
+        .Prepend(DevProxyCommand.InternalDaemonOptionName)
         .ToArray();
 
     var executablePath = Environment.ProcessPath;
@@ -121,9 +122,11 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
     var startInfo = new ProcessStartInfo
     {
         FileName = executablePath,
-        Arguments = string.Join(" ", daemonArgs.Select(EscapeArgument)),
         UseShellExecute = false,
         CreateNoWindow = true,
+        // Redirect all std streams so the daemon doesn't hold on to the caller's
+        // stdin/stdout/stderr after this process exits.
+        RedirectStandardInput = true,
         RedirectStandardOutput = true,
         RedirectStandardError = true,
         WorkingDirectory = Directory.GetCurrentDirectory()
@@ -134,6 +137,17 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
     {
         startInfo.WindowStyle = ProcessWindowStyle.Hidden;
     }
+
+    // ArgumentList quotes each argument, so empty or quoted values reach the daemon intact
+    foreach (var arg in daemonArgs)
+    {
+        startInfo.ArgumentList.Add(arg);
+    }
+
+    // Without this, on Windows the daemon inherits the caller's stdout/stderr
+    // handles and callers that read our output to EOF (`| Out-String`,
+    // `$(devproxy --detach)`, subprocess pipes) hang until the daemon exits.
+    StandardHandleInheritance.DisableForCurrentProcess();
 
     try
     {
@@ -152,13 +166,19 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
             return 1;
         }
 
-        // Wait a moment for the proxy to start and write its state file
+        // The daemon never reads stdin; close it so it sees EOF immediately.
+        process.StandardInput.Close();
+
+        // Wait for the proxy to start and write its state file. Poll briefly,
+        // but wake up immediately if the daemon exits so failures surface fast.
         var timeout = TimeSpan.FromSeconds(10);
+        var pollInterval = TimeSpan.FromMilliseconds(20);
+        var processExited = process.WaitForExitAsync();
         var stopwatch = Stopwatch.StartNew();
 
         while (stopwatch.Elapsed < timeout)
         {
-            await Task.Delay(200);
+            _ = await Task.WhenAny(Task.Delay(pollInterval), processExited);
 
             var state = await StateManager.LoadStateByPidAsync(process.Id);
             if (state is { Port: > 0 } && !string.IsNullOrEmpty(state.ApiUrl) && !state.ApiUrl.EndsWith(":0", StringComparison.Ordinal))
@@ -367,16 +387,6 @@ static async Task<string?> ReadDaemonLogAsync(int pid)
     }
 }
 
-static string EscapeArgument(string arg)
-{
-    // Simple escaping for command line arguments
-    if (arg.Contains(' ', StringComparison.Ordinal) || arg.Contains('"', StringComparison.Ordinal))
-    {
-        return $"\"{arg.Replace("\"", "\\\"", StringComparison.Ordinal)}\"";
-    }
-    return arg;
-}
-
 static async Task<int> RunProxyAsync(string[] args, DevProxyConfigOptions options, HttpProxyEnvironment proxyEnvironment)
 {
     // Keep overrides through host shutdown, but restore inherited values before a hot reload.
@@ -400,6 +410,15 @@ if (DevProxyCommand.IsConfigValidateCommand)
     _ = Announcement.ShowOnceAsync();
     var validateExitCode = await ConfigCommand.RunValidateStandaloneAsync(args);
     Environment.Exit(validateExitCode);
+    return;
+}
+
+// Handle 'plugin' commands early so that plugins can be listed without
+// a valid config file and without loading any configured plugins
+if (DevProxyCommand.IsPluginCommand)
+{
+    var pluginExitCode = await PluginCommand.RunStandaloneAsync(args);
+    Environment.Exit(pluginExitCode);
     return;
 }
 

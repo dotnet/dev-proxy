@@ -22,7 +22,16 @@ static class ILoggingBuilderExtensions
     public static ILoggingBuilder ConfigureDevProxyLogging(
         this ILoggingBuilder builder,
         ConfigurationManager configuration,
-        DevProxyConfigOptions options)
+        DevProxyConfigOptions options) =>
+        builder.ConfigureDevProxyLogging(configuration, options, DevProxyCommand.IsStdioCommand, DevProxyCommand.IsJwtCommand, DevProxyCommand.IsRootCommand);
+
+    internal static ILoggingBuilder ConfigureDevProxyLogging(
+        this ILoggingBuilder builder,
+        ConfigurationManager configuration,
+        DevProxyConfigOptions options,
+        bool isStdioCommand,
+        bool isJwtCommand,
+        bool isRootCommand)
     {
         var configuredLogLevel = options.LogLevel ??
             configuration.GetValue("logLevel", LogLevel.Information);
@@ -32,7 +41,7 @@ static class ILoggingBuilderExtensions
             configuration.GetValue("output", OutputFormat.Text);
 
         // For stdio command, log to file instead of console to avoid interfering with proxied streams
-        if (DevProxyCommand.IsStdioCommand)
+        if (isStdioCommand)
         {
             _ = builder
                 .ClearProviders()
@@ -44,8 +53,9 @@ static class ILoggingBuilderExtensions
             return builder;
         }
 
-        // For jwt command, suppress all logging to console to avoid interfering with token output
-        if (DevProxyCommand.IsJwtCommand)
+        // For jwt command, suppress all logging to console to avoid interfering with token output.
+        // JSON output is emitted through the logger, so it uses the regular subcommand logging.
+        if (isJwtCommand && configuredOutput != OutputFormat.Json)
         {
             _ = builder
                 .ClearProviders()
@@ -63,7 +73,7 @@ static class ILoggingBuilderExtensions
             : ProxyConsoleFormatter.DefaultCategoryName;
 
         // For root command (proxy itself), use rich logging
-        if (DevProxyCommand.IsRootCommand)
+        if (isRootCommand)
         {
             _ = builder
                 .AddFilter("Microsoft.Hosting.*", LogLevel.Error)
@@ -103,6 +113,14 @@ static class ILoggingBuilderExtensions
         // For other subcommands (cert, config, outdated, msgraphdb), use rich logging
         // but with plugin messages filtered out
 
+        // Structured results are logged at Information. When JSON output is
+        // requested with a higher log level, let Information through the
+        // pipeline and have the JSON formatter drop diagnostic messages below
+        // the configured level, so that result records are always emitted.
+        var pipelineLogLevel = configuredOutput == OutputFormat.Json && configuredLogLevel > LogLevel.Information
+            ? LogLevel.Information
+            : configuredLogLevel;
+
         _ = builder
             .AddFilter("Microsoft.Hosting.*", LogLevel.Error)
             .AddFilter("Microsoft.AspNetCore.*", LogLevel.Error)
@@ -127,9 +145,10 @@ static class ILoggingBuilderExtensions
                     formatterOptions.IncludeScopes = true;
                     formatterOptions.ShowSkipMessages = showSkipMessages;
                     formatterOptions.ShowTimestamps = showTimestamps;
+                    formatterOptions.MinimumLogLevel = configuredLogLevel;
                 }
             )
-            .SetMinimumLevel(configuredLogLevel);
+            .SetMinimumLevel(pipelineLogLevel);
 
         return builder;
     }

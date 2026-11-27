@@ -18,6 +18,11 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
     private readonly bool _validateSchemas = proxyConfiguration.ValidateSchemas;
     private readonly Lock _debounceLock = new();
     private readonly int _debounceDelay = 300; // milliseconds
+    // Serializes loads so that an older load can't overwrite data from a newer one.
+    // Each load reads the file after acquiring it, so the last load always has the latest contents.
+#pragma warning disable CA2213 // Not disposed so that pending reloads don't fail; it never allocates a wait handle
+    private readonly SemaphoreSlim _loadSemaphore = new(1, 1);
+#pragma warning restore CA2213
 
     private FileSystemWatcher? _watcher;
     private Timer? _debounceTimer;
@@ -63,6 +68,19 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
 
     protected abstract void LoadData(string fileContents);
 
+    /// <summary>
+    /// Removes <c>null</c> entries from non-nullable collections and dictionaries in the
+    /// loaded data and logs a warning for each removed entry, so that consumers don't
+    /// need to guard against them.
+    /// </summary>
+    protected void RemoveNullEntries(object? data)
+    {
+        foreach (var path in NullEntryRemover.RemoveNullEntries(data))
+        {
+            Logger.LogWarning("Ignoring null entry {Path} in {File}", path, FilePath);
+        }
+    }
+
     protected virtual void Dispose(bool disposing)
     {
         if (_isDisposed)
@@ -95,17 +113,27 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
 
         var schemaUrl = schemaUrlElement.GetString() ?? "";
         ProxyUtils.ValidateSchemaVersion(schemaUrl, Logger);
-        var (IsValid, ValidationErrors) = await ProxyUtils.ValidateJsonAsync(fileContents, schemaUrl, _httpClient, Logger, cancellationToken);
+        var result = await ProxyUtils.ValidateJsonAgainstSchemaAsync(fileContents, schemaUrl, _httpClient, Logger, cancellationToken);
 
-        if (!IsValid)
+        if (result.Status == SchemaValidationStatus.SchemaUnavailable)
+        {
+            if (Logger.IsEnabled(LogLevel.Warning))
+            {
+                Logger.LogWarning("Skipping schema validation for {File} because the schema {SchemaUrl} could not be retrieved: {Error}", FilePath, schemaUrl, string.Join(", ", result.Errors));
+            }
+            return true;
+        }
+
+        if (result.Status == SchemaValidationStatus.Invalid)
         {
             if (Logger.IsEnabled(LogLevel.Error))
             {
-                Logger.LogError("Schema validation failed for {File} with the following errors: {Errors}", FilePath, string.Join(", ", ValidationErrors));
+                Logger.LogError("Schema validation failed for {File} with the following errors: {Errors}", FilePath, string.Join(", ", result.Errors));
             }
+            return false;
         }
 
-        return IsValid;
+        return true;
     }
 
     private async Task LoadFileContentsAsync(CancellationToken cancellationToken)
@@ -123,6 +151,21 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
 
         try
         {
+            await _loadSemaphore.WaitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            Logger.LogDebug("Loading {File} was canceled", FilePath);
+            return;
+        }
+
+        try
+        {
+            if (_isDisposed)
+            {
+                return;
+            }
+
             using var stream = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             using var reader = new StreamReader(stream);
             var fileContents = await reader.ReadToEndAsync(cancellationToken);
@@ -155,9 +198,17 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
                 LoadData(jsonContents);
             }
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            Logger.LogDebug("Loading {File} was canceled", FilePath);
+        }
         catch (Exception ex)
         {
             Logger.LogError(ex, "An error has occurred while reading {File}:", FilePath);
+        }
+        finally
+        {
+            _ = _loadSemaphore.Release();
         }
     }
 

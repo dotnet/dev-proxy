@@ -21,15 +21,15 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.14">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.15">
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.14">
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="11.0.0">
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Extensions.FileSystemGlobbing" Version="10.0.14">
+    <PackageReference Include="Microsoft.Extensions.FileSystemGlobbing" Version="11.0.0">
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
@@ -37,11 +37,11 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.OpenApi" Version="3.11.0">
+    <PackageReference Include="Microsoft.OpenApi" Version="3.11.1">
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.OpenApi.YamlReader" Version="3.11.0">
+    <PackageReference Include="Microsoft.OpenApi.YamlReader" Version="3.11.1">
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
@@ -57,7 +57,7 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="System.CommandLine" Version="2.0.14">
+    <PackageReference Include="System.CommandLine" Version="3.0.0">
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>

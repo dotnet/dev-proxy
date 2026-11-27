@@ -18,6 +18,17 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AnalysisMode>AllEnabledByDefault</AnalysisMode>
     <IsPackable>false</IsPackable>
+    <!-- Dev Proxy is a local dev tool; Workstation GC keeps memory use much lower than Server GC (the Web SDK default) -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- JSON schemas for this version, shipped so that config and data files
+         can be validated without downloading the schemas. Prerelease versions
+         (e.g. 4.1.0-beta.2) use the schemas of the release version. -->
+    <DevProxySchemaVersion>$([System.Text.RegularExpressions.Regex]::Replace('$(Version)', '-.*$', ''))</DevProxySchemaVersion>
+    <DevProxySchemaDir>$(MSBuildThisFileDirectory)..\schemas\v$(DevProxySchemaVersion)\</DevProxySchemaDir>
   </PropertyGroup>
 
   <ItemGroup>
@@ -34,13 +45,13 @@
 
   <ItemGroup>
     <PackageReference Include="Azure.Identity" Version="1.21.0" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.14" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.15" />
     <PackageReference Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="8.23.0" />
     <PackageReference Include="Microsoft.VisualStudio.Threading" Version="18.12.1" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="OpenTelemetry" Version="1.21.0" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.21.0" />
-    <PackageReference Include="System.CommandLine" Version="2.0.14" />
+    <PackageReference Include="System.CommandLine" Version="3.0.0" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.23.0" />
   </ItemGroup>
 
@@ -97,6 +108,13 @@
     <None Update="prompts\*.prompty">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="$(DevProxySchemaDir)*.json" Link="schemas\%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
+
+  <Target Name="EnsureSchemas" BeforeTargets="BeforeBuild">
+    <Error Condition="!Exists('$(DevProxySchemaDir)')" Text="Missing JSON schemas for v$(DevProxySchemaVersion). Expected folder: $(DevProxySchemaDir)" />
+  </Target>
 
 </Project>

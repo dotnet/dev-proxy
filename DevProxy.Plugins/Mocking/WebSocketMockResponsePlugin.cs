@@ -6,13 +6,13 @@ using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
+using DevProxy.Plugins.Utils;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.CommandLine;
 using System.CommandLine.Parsing;
 using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
 using FrameworkWsMessageType = System.Net.WebSockets.WebSocketMessageType;
 
 namespace DevProxy.Plugins.Mocking;
@@ -268,7 +268,7 @@ public sealed class WebSocketMockResponsePlugin(
                 return false;
             }
 
-            return Regex.IsMatch(requestUrl, ProxyUtils.PatternToRegex(mockUrl), RegexOptions.IgnoreCase);
+            return WildcardUrlPattern.IsWebSocketMatch(requestUrl, mock.Url);
         });
     }
 }

@@ -34,7 +34,11 @@ public static class ProxyUtils
     // all alpha must include 2 to allow for oauth2PermissionScopes
     private static readonly Regex allAlphaRegex = new("^[a-z2]+$", RegexOptions.IgnoreCase);
     private static readonly Regex deprecationRegex = new("^[a-z]+_v2$", RegexOptions.IgnoreCase);
-    private static readonly Regex functionCallRegex = new(@"^[a-z]+\(.*\)$", RegexOptions.IgnoreCase);
+    private static readonly Regex functionCallRegex = new(@"^[a-z][a-z0-9_.]*\(.*\)$", RegexOptions.IgnoreCase);
+    private static readonly TimeSpan remoteSchemaFallbackTimeout = TimeSpan.FromSeconds(5);
+    private static readonly Regex devProxySchemaUrlRegex = new(
+        @"^https://raw\.githubusercontent\.com/dotnet/dev-proxy/main/schemas/v(?<version>[^/]+)/(?<file>[A-Za-z0-9_.-]+\.json)$",
+        RegexOptions.IgnoreCase);
 
     private static Assembly? _assembly;
     private static string _productVersion = string.Empty;
@@ -129,6 +133,7 @@ public static class ProxyUtils
         ArgumentNullException.ThrowIfNull(uri);
 
         return uri.Host.StartsWith("graph.microsoft.", StringComparison.OrdinalIgnoreCase) ||
+            uri.Host.StartsWith("dod-graph.microsoft.", StringComparison.OrdinalIgnoreCase) ||
             uri.Host.StartsWith("microsoftgraph.", StringComparison.OrdinalIgnoreCase);
     }
 
@@ -264,51 +269,189 @@ public static class ProxyUtils
             });
             // Split requestUrl into segments that can be sanitized individually
             var urlSegments = resourceUrl.Split('/');
+            var sanitizedSegments = new string[urlSegments.Length];
             for (var i = 0; i < urlSegments.Length; i++)
             {
-                var segment = urlSegments[i];
-                var sanitizedSegment = SanitizePathSegment(i < 1 ? "" : urlSegments[i - 1], segment);
-                resourceUrl = resourceUrl.Replace(segment, sanitizedSegment, StringComparison.OrdinalIgnoreCase);
+                sanitizedSegments[i] = SanitizePathSegment(i < 1 ? "" : urlSegments[i - 1], urlSegments[i]);
             }
+            resourceUrl = string.Join('/', sanitizedSegments);
         }
         return $"{uri.GetLeftPart(UriPartial.Authority)}/{parsedSample.QueryVersion}/{resourceUrl}{queryString}";
     }
 
+    /// <summary>
+    /// Validates <paramref name="json"/> against the schema at <paramref name="schemaUrl"/>.
+    /// Reports a schema that couldn't be retrieved as invalid. Use
+    /// <see cref="ValidateJsonAgainstSchemaAsync(string?, string?, HttpClient, ILogger, CancellationToken)"/>
+    /// to tell these cases apart.
+    /// </summary>
     public static async Task<(bool IsValid, IEnumerable<string> ValidationErrors)> ValidateJsonAsync(string? json, string? schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken)
     {
         try
         {
-            logger.LogDebug("Validating JSON against schema {SchemaUrl}", schemaUrl);
+            var result = await ValidateJsonAgainstSchemaAsync(json, schemaUrl, httpClient, logger, cancellationToken);
+            return (result.Status == SchemaValidationStatus.Valid, result.Errors);
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Error validating JSON");
+            return (false, [ex.Message]);
+        }
+    }
 
-            if (string.IsNullOrEmpty(json))
+    /// <summary>
+    /// Validates <paramref name="json"/> against the schema at <paramref name="schemaUrl"/>.
+    /// Schemas for the current Dev Proxy version are loaded from the schemas shipped with
+    /// Dev Proxy, and only downloaded when the document doesn't match the local schema.
+    /// </summary>
+    /// <returns>
+    /// The validation result. If the schema can't be loaded, downloaded or parsed, for example when
+    /// there's no network connection, the status is <see cref="SchemaValidationStatus.SchemaUnavailable"/>
+    /// so that callers can skip validation instead of treating the document as invalid.
+    /// </returns>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
+    public static Task<SchemaValidationResult> ValidateJsonAgainstSchemaAsync(string? json, string? schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken) =>
+        ValidateJsonAgainstSchemaAsync(json, schemaUrl, httpClient, logger, Path.Combine(AppFolder ?? string.Empty, "schemas"), NormalizeVersion(ProductVersion), remoteSchemaFallbackTimeout, cancellationToken);
+
+    internal static async Task<SchemaValidationResult> ValidateJsonAgainstSchemaAsync(string? json, string? schemaUrl, HttpClient httpClient, ILogger logger, string? localSchemasFolder, string currentVersion, TimeSpan remoteSchemaFallbackTimeout, CancellationToken cancellationToken)
+    {
+        logger.LogDebug("Validating JSON against schema {SchemaUrl}", schemaUrl);
+
+        if (string.IsNullOrEmpty(json))
+        {
+            logger.LogDebug("JSON is empty, skipping validation");
+            return new(SchemaValidationStatus.Valid, []);
+        }
+        if (string.IsNullOrEmpty(schemaUrl))
+        {
+            logger.LogDebug("Schema URL is empty, skipping validation");
+            return new(SchemaValidationStatus.Valid, []);
+        }
+
+        var localSchema = await LoadLocalSchemaAsync(schemaUrl, logger, localSchemasFolder, currentVersion, cancellationToken);
+        if (localSchema is not null)
+        {
+            var localResult = ValidateJson(json, localSchema, logger);
+            if (localResult.Status == SchemaValidationStatus.Valid)
             {
-                logger.LogDebug("JSON is empty, skipping validation");
-                return (true, []);
+                return localResult;
             }
-            if (string.IsNullOrEmpty(schemaUrl))
-            {
-                logger.LogDebug("Schema URL is empty, skipping validation");
-                return (true, []);
-            }
-            ArgumentNullException.ThrowIfNull(httpClient);
 
-            logger.LogDebug("Downloading schema from {SchemaUrl}", schemaUrl);
-            var schemaContents = await httpClient.GetStringAsync(schemaUrl, cancellationToken);
+            // The schema might have been fixed after the release, so check
+            // the latest version online before reporting the document as invalid
+            return await ValidateJsonAgainstRemoteSchemaAsync(json, schemaUrl, httpClient, logger, localResult, remoteSchemaFallbackTimeout, cancellationToken);
+        }
 
-            logger.LogDebug("Parsing schema");
-            var schema = JSchema.Parse(schemaContents);
+        JSchema schema;
+        try
+        {
+            schema = await DownloadSchemaAsync(schemaUrl, httpClient, logger, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Error retrieving schema {SchemaUrl}", schemaUrl);
+            return new(SchemaValidationStatus.SchemaUnavailable, [ex.Message]);
+        }
+
+        return ValidateJson(json, schema, logger);
+    }
+
+    /// <summary>
+    /// Returns the path of the schema shipped with Dev Proxy that corresponds
+    /// to the given schema URL, or null if the URL doesn't point to a Dev Proxy
+    /// schema for the current version or the schema isn't available locally.
+    /// </summary>
+    internal static string? GetLocalSchemaPath(string? schemaUrl, string? currentVersion, string? localSchemasFolder)
+    {
+        if (string.IsNullOrEmpty(schemaUrl) ||
+            string.IsNullOrEmpty(currentVersion) ||
+            string.IsNullOrEmpty(localSchemasFolder))
+        {
+            return null;
+        }
+
+        var match = devProxySchemaUrlRegex.Match(schemaUrl);
+        if (!match.Success ||
+            !string.Equals(match.Groups["version"].Value, currentVersion, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var localSchemaPath = Path.Combine(localSchemasFolder, match.Groups["file"].Value);
+        return File.Exists(localSchemaPath) ? localSchemaPath : null;
+    }
+
+    private static async Task<JSchema?> LoadLocalSchemaAsync(string schemaUrl, ILogger logger, string? localSchemasFolder, string currentVersion, CancellationToken cancellationToken)
+    {
+        var localSchemaPath = GetLocalSchemaPath(schemaUrl, currentVersion, localSchemasFolder);
+        if (localSchemaPath is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            logger.LogDebug("Loading local schema {LocalSchemaPath} for {SchemaUrl}", localSchemaPath, schemaUrl);
+            var schemaContents = await File.ReadAllTextAsync(localSchemaPath, cancellationToken);
+            return JSchema.Parse(schemaContents);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JSchemaReaderException or Newtonsoft.Json.JsonReaderException)
+        {
+            logger.LogDebug(ex, "Couldn't load local schema {LocalSchemaPath}", localSchemaPath);
+            return null;
+        }
+    }
+
+    private static async Task<SchemaValidationResult> ValidateJsonAgainstRemoteSchemaAsync(string json, string schemaUrl, HttpClient httpClient, ILogger logger, SchemaValidationResult localResult, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        JSchema schema;
+        try
+        {
+            logger.LogDebug("JSON doesn't match the local schema. Checking the online schema for updates");
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(timeout);
+            schema = await DownloadSchemaAsync(schemaUrl, httpClient, logger, timeoutCts.Token);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogDebug(ex, "Couldn't retrieve schema {SchemaUrl}. Using the local schema validation result", schemaUrl);
+            return localResult;
+        }
+
+        return ValidateJson(json, schema, logger);
+    }
+
+    private static async Task<JSchema> DownloadSchemaAsync(string schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(httpClient);
+
+        logger.LogDebug("Downloading schema from {SchemaUrl}", schemaUrl);
+        var schemaContents = await httpClient.GetStringAsync(schemaUrl, cancellationToken);
+
+        logger.LogDebug("Parsing schema");
+        return JSchema.Parse(schemaContents);
+    }
+
+    private static SchemaValidationResult ValidateJson(string json, JSchema schema, ILogger logger)
+    {
+        try
+        {
             logger.LogDebug("Parsing JSON");
             var token = JToken.Parse(json);
 
             logger.LogDebug("Validating JSON");
             var isValid = token.IsValid(schema, out IList<string> errorMessages);
 
-            return (isValid, errorMessages);
+            return new(isValid ? SchemaValidationStatus.Valid : SchemaValidationStatus.Invalid, errorMessages);
         }
         catch (Exception ex)
         {
             logger.LogDebug(ex, "Error validating JSON");
-            return (false, [ex.Message]);
+            return new(SchemaValidationStatus.Invalid, [ex.Message]);
         }
     }
 
@@ -680,25 +823,25 @@ public static class ProxyUtils
         }
 
         // Check if segment is in this form: users('<some-id>|<UPN>') and transform to users(<value>)
+        // or getOffice365ActiveUserDetail(period='D7') and transform to getOffice365ActiveUserDetail(period=<value>)
         if (IsFunctionCall(segment))
         {
-            var openingBracketIndex = segment.IndexOf('(', StringComparison.OrdinalIgnoreCase);
-            var textWithinBrackets = segment.Substring(
-                openingBracketIndex + 1,
-                segment.Length - 2
-            );
-            var sanitizedText = string.Join(',', textWithinBrackets
-                .Split(',')
-                .Select(text =>
-                {
-                    if (text.Contains('=', StringComparison.OrdinalIgnoreCase))
+            var openingBracketIndex = segment.IndexOf('(', StringComparison.Ordinal);
+            var textWithinBrackets = segment[(openingBracketIndex + 1)..^1];
+            var sanitizedText = string.IsNullOrWhiteSpace(textWithinBrackets)
+                ? string.Empty
+                : string.Join(',', SplitOutsideQuotes(textWithinBrackets, ',')
+                    .Select(text =>
                     {
-                        var key = text.Split('=')[0];
-                        key = !IsAllAlpha(key) ? "<key>" : key;
-                        return $"{key}=<value>";
-                    }
-                    return "<value>";
-                }));
+                        var keyValue = SplitOutsideQuotes(text, '=');
+                        if (keyValue.Count > 1)
+                        {
+                            var key = keyValue[0].Trim();
+                            key = !IsAllAlpha(key) ? "<key>" : key;
+                            return $"{key}=<value>";
+                        }
+                        return "<value>";
+                    }));
 
             return $"{segment[..openingBracketIndex]}({sanitizedText})";
         }
@@ -730,6 +873,29 @@ public static class ProxyUtils
     private static bool IsDeprecation(string value) => deprecationRegex.IsMatch(value);
 
     private static bool IsFunctionCall(string value) => functionCallRegex.IsMatch(value);
+
+    // Splits on the separator, ignoring separators inside OData single-quoted
+    // string literals (where a quote is escaped by doubling it)
+    private static List<string> SplitOutsideQuotes(string value, char separator)
+    {
+        var parts = new List<string>();
+        var inQuotes = false;
+        var start = 0;
+        for (var i = 0; i < value.Length; i++)
+        {
+            if (value[i] == '\'')
+            {
+                inQuotes = !inQuotes;
+            }
+            else if (value[i] == separator && !inQuotes)
+            {
+                parts.Add(value[start..i]);
+                start = i + 1;
+            }
+        }
+        parts.Add(value[start..]);
+        return parts;
+    }
 
     private static bool IsPlaceHolderSegment(string segment)
     {

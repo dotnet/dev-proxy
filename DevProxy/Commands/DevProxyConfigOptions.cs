@@ -2,6 +2,7 @@ using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using System.CommandLine;
 using System.CommandLine.Parsing;
+using System.Globalization;
 
 namespace DevProxy.Commands;
 
@@ -57,6 +58,7 @@ sealed class DevProxyConfigOptions : RootCommand
     }
 
     private ParseResult? _parseResult;
+    private readonly Command _stdioCommand;
 
     public DevProxyConfigOptions()
     {
@@ -153,15 +155,36 @@ sealed class DevProxyConfigOptions : RootCommand
             }
         };
 
-        var apiPortOption = new Option<int?>(DevProxyCommand.ApiPortOptionName);
+        // Out-of-range ports are ignored here so they don't reach Kestrel
+        // before DevProxyCommand reports them as validation errors
+        static int? ParsePort(ArgumentResult result)
+        {
+            if (result.Tokens.Count == 0)
+            {
+                return null;
+            }
+
+            if (int.TryParse(result.Tokens[0].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var port) &&
+                port <= System.Net.IPEndPoint.MaxPort)
+            {
+                return port;
+            }
+
+            return null;
+        }
+
+        var apiPortOption = new Option<int?>(DevProxyCommand.ApiPortOptionName)
+        {
+            CustomParser = ParsePort
+        };
         var apiIpAddressOption = new Option<string?>(DevProxyCommand.ApiIpAddressOptionName);
         var asSystemProxyOption = new Option<bool?>(DevProxyCommand.AsSystemProxyOptionName);
-        var portOption = new Option<int?>(DevProxyCommand.PortOptionName, "-p");
-
-        var discoverOption = new Option<bool>(DevProxyCommand.DiscoverOptionName, "--discover")
+        var portOption = new Option<int?>(DevProxyCommand.PortOptionName, "-p")
         {
-            Arity = ArgumentArity.Zero
+            CustomParser = ParsePort
         };
+
+        var discoverOption = new Option<bool?>(DevProxyCommand.DiscoverOptionName);
 
         var noColorOption = new Option<bool>(DevProxyCommand.NoColorOptionName)
         {
@@ -230,10 +253,18 @@ sealed class DevProxyConfigOptions : RootCommand
             new Argument<string[]>("command") { Arity = ArgumentArity.ZeroOrMore }
         };
         Add(stdioCommand);
+        _stdioCommand = stdioCommand;
     }
 
     public void ParseOptions(string[] args)
     {
+        // Don't let an option value such as `jwt create --name stdio` select
+        // the stdio subcommand and swallow the options that follow it.
+        if (!DevProxyCommand.IsStdioSubcommand(args))
+        {
+            _ = Subcommands.Remove(_stdioCommand);
+        }
+
         _parseResult = Parse(args);
         var configFile = _parseResult.GetValueOrDefault<string?>(DevProxyCommand.ConfigFileOptionName);
         ConfigFile = configFile is not null ? Path.GetFullPath(configFile) : null;

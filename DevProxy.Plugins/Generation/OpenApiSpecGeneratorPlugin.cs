@@ -30,6 +30,15 @@ sealed class GeneratedByOpenApiExtension : IOpenApiExtension
     }
 }
 
+sealed class EmptyObjectOpenApiExtension : IOpenApiExtension
+{
+    public void Write(IOpenApiWriter writer, OpenApiSpecVersion specVersion)
+    {
+        writer.WriteStartObject();
+        writer.WriteEndObject();
+    }
+}
+
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum SpecVersion
 {
@@ -75,6 +84,14 @@ public sealed class OpenApiSpecGeneratorPlugin(
 
     public override string Name => nameof(OpenApiSpecGeneratorPlugin);
 
+    private const string BearerSchemeName = "BearerAuth";
+
+    private sealed class SecurityState
+    {
+        public HashSet<OpenApiOperation> AnonymousOperations { get; } = new(ReferenceEqualityComparer.Instance);
+        public Dictionary<OpenApiSecurityRequirement, string> RequirementKeys { get; } = new(ReferenceEqualityComparer.Instance);
+    }
+
     public override async Task AfterRecordingStopAsync(RecordingArgs e, CancellationToken cancellationToken)
     {
         Logger.LogTrace("{Method} called", nameof(AfterRecordingStopAsync));
@@ -90,6 +107,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
         Logger.LogInformation("Creating OpenAPI spec from recorded requests...");
 
         var openApiDocs = new List<OpenApiDocument>();
+        var securityState = new SecurityState();
 
         foreach (var request in e.RequestLogs)
         {
@@ -115,6 +133,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
 
             try
             {
+                var detectedAuth = AuthDetector.Detect(request.Context.Session.Request, Logger);
                 var pathItem = GetOpenApiPathItem(request.Context.Session);
                 var parametrizedPath = ParametrizePath(pathItem, request.Context.Session.Request.RequestUri);
                 if (pathItem.Operations is null)
@@ -136,6 +155,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
                     cancellationToken
                 );
                 AddOrMergePathItem(openApiDocs, pathItem, request.Context.Session.Request.RequestUri, parametrizedPath);
+                AddOrMergeSecurity(openApiDocs, pathItem, request.Context.Session, parametrizedPath, detectedAuth, securityState);
             }
             catch (Exception ex)
             {
@@ -168,6 +188,11 @@ public sealed class OpenApiSpecGeneratorPlugin(
                 SpecVersion.v3_2 => OpenApiSpecVersion.OpenApi3_2,
                 _ => OpenApiSpecVersion.OpenApi3_0
             };
+
+            if (openApiSpecVersion == OpenApiSpecVersion.OpenApi2_0)
+            {
+                AddEmptyOAuth2ScopesForV2(openApiDoc);
+            }
 
             var docString = Configuration.SpecFormat switch
             {
@@ -230,7 +255,8 @@ public sealed class OpenApiSpecGeneratorPlugin(
         var resource = GetLastNonTokenSegment(request.RequestUri.Segments);
         var path = new OpenApiPathItem
         {
-            Operations = []
+            Operations = [],
+            Parameters = []
         };
 
         var method = request.Method?.ToUpperInvariant() switch
@@ -251,7 +277,8 @@ public sealed class OpenApiSpecGeneratorPlugin(
             // will be replaced later after the path has been parametrized
             Description = $"{method} {resource}",
             // will be replaced later after the path has been parametrized
-            OperationId = $"{method}.{resource}"
+            OperationId = $"{method}.{resource}",
+            Parameters = []
         };
         SetParametersFromQueryString(operation, HttpUtility.ParseQueryString(request.RequestUri.Query));
         SetParametersFromRequestHeaders(operation, request.Headers);
@@ -286,7 +313,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
                     GetMediaType(request.ContentType),
                     new OpenApiMediaType
                     {
-                        Schema = GetSchemaFromBody(GetMediaType(request.ContentType), request.BodyString)
+                        Schema = GetSchemaFromBody(GetMediaType(request.ContentType), () => request.BodyString)
                     }
                 }
             }
@@ -303,6 +330,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
         }
 
         Logger.LogDebug("  Processing request headers...");
+        var addedHeaders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var header in headers)
         {
             var lowerCaseHeaderName = header.Name.ToLowerInvariant();
@@ -315,6 +343,12 @@ public sealed class OpenApiSpecGeneratorPlugin(
             if (Models.Http.AuthHeaders.Contains(lowerCaseHeaderName))
             {
                 Logger.LogDebug("    Skipping auth header {HeaderName}", header.Name);
+                continue;
+            }
+
+            if (!addedHeaders.Add(header.Name))
+            {
+                Logger.LogDebug("    Header {HeaderName} already added", header.Name);
                 continue;
             }
 
@@ -345,6 +379,14 @@ public sealed class OpenApiSpecGeneratorPlugin(
 
         foreach (var (key, value) in dictionary)
         {
+            // skip all credentials, not just the one that the detected
+            // security scheme describes, so that secrets don't leak into the spec
+            if (AuthDetector.IsAuthQueryParameter(key))
+            {
+                Logger.LogDebug("    Skipping auth query string parameter {ParameterKey}", key);
+                continue;
+            }
+
             var isRequired = Configuration.IncludeParameters.Any(p => string.Equals(p, key, StringComparison.Ordinal));
 
             OpenApiParameter parameter = new()
@@ -385,16 +427,23 @@ public sealed class OpenApiSpecGeneratorPlugin(
 
         var openApiResponse = new OpenApiResponse
         {
-            Description = response.StatusDescription
+            Description = response.StatusDescription,
+            Headers = new Dictionary<string, IOpenApiHeader>(StringComparer.OrdinalIgnoreCase),
+            Content = new Dictionary<string, IOpenApiMediaType>()
         };
         var responseCode = ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture);
-        if (response.HasBody)
+        var responseMediaType = GetMediaType(response.ContentType);
+        if (response.HasBody && string.IsNullOrEmpty(responseMediaType))
+        {
+            Logger.LogDebug("    Response has body but no content type");
+        }
+        else if (response.HasBody)
         {
             Logger.LogDebug("    Response has body");
 
-            openApiResponse.Content?.Add(GetMediaType(response.ContentType), new OpenApiMediaType()
+            openApiResponse.Content?.Add(responseMediaType, new OpenApiMediaType()
             {
-                Schema = GetSchemaFromBody(GetMediaType(response.ContentType), response.BodyString)
+                Schema = GetSchemaFromBody(responseMediaType, () => response.BodyString)
             });
         }
         else
@@ -442,7 +491,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
         operation.Responses?.Add(responseCode, openApiResponse);
     }
 
-    private OpenApiSchema? GetSchemaFromBody(string? contentType, string body)
+    private OpenApiSchema? GetSchemaFromBody(string? contentType, Func<string> getBody)
     {
         if (contentType is null)
         {
@@ -462,7 +511,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
                 };
             }
 
-            return GetSchemaFromJsonString(body);
+            return GetSchemaFromJsonString(getBody());
         }
 
         return null;
@@ -507,16 +556,246 @@ public sealed class OpenApiSpecGeneratorPlugin(
             Logger.LogDebug("  Adding path {ParametrizedPath} to OpenAPI spec...", parametrizedPath);
             value = pathItem;
             openApiDoc.Paths.Add(parametrizedPath, value);
-            // since we've just added the path, we're done
+        }
+        else
+        {
+            Logger.LogDebug("  Merging path {ParametrizedPath} into OpenAPI spec...", parametrizedPath);
+            var newOperation = pathItem.Operations?.First();
+            if (newOperation is not null)
+            {
+                AddOrMergeOperation((OpenApiPathItem)value, newOperation.Value.Key, newOperation.Value.Value);
+            }
+        }
+    }
+
+    private void AddOrMergeSecurity(
+        List<OpenApiDocument> openApiDocs,
+        OpenApiPathItem pathItem,
+        IProxySession session,
+        string parametrizedPath,
+        DetectedAuth? detectedAuth,
+        SecurityState securityState)
+    {
+        var serverUrl = session.Request.RequestUri.GetLeftPart(UriPartial.Authority);
+        var openApiDoc = openApiDocs.FirstOrDefault(d => d.Servers?.Any(s => s.Url == serverUrl) == true);
+        var method = pathItem.Operations?.FirstOrDefault().Key;
+        if (openApiDoc is null ||
+            method is null ||
+            !openApiDoc.Paths.TryGetValue(parametrizedPath, out var docPathItem) ||
+            docPathItem.Operations?.TryGetValue(method, out var operation) != true ||
+            operation is null)
+        {
             return;
         }
 
-        Logger.LogDebug("  Merging path {ParametrizedPath} into OpenAPI spec...", parametrizedPath);
-        var operation = pathItem.Operations?.First();
-        if (operation is not null)
+        if (detectedAuth is null)
         {
-            AddOrMergeOperation((OpenApiPathItem)value, operation.Value.Key, operation.Value.Value);
+            var statusCode = (int)(session.Response?.StatusCode ?? 0);
+            // cookies aren't detected as auth, but might authenticate the request
+            var hasCookie = session.Request.Headers.Any(h => h.Name.Equals("cookie", StringComparison.OrdinalIgnoreCase));
+            if (statusCode is >= 200 and < 300 && !hasCookie)
+            {
+                _ = securityState.AnonymousOperations.Add(operation);
+                AddAnonymousSecurityRequirement(operation);
+            }
+            return;
         }
+
+        var (schemeName, scopes) = AddOrMergeSecurityScheme(openApiDoc, detectedAuth);
+        // requirements for different OAuth2 flows are alternatives, so we keep
+        // them separate and only merge scopes within the same flow
+        var requirementKey = detectedAuth is DetectedOAuth2Auth oauth2 ?
+            $"{schemeName}:{oauth2.FlowType}" : schemeName;
+
+        operation.Security ??= [];
+        var existingRequirement = operation.Security
+            .FirstOrDefault(r => securityState.RequirementKeys.TryGetValue(r, out var key) && key == requirementKey);
+        if (existingRequirement is null)
+        {
+            Logger.LogDebug("    Adding security requirement {RequirementKey} to operation...", requirementKey);
+            var requirement = new OpenApiSecurityRequirement
+            {
+                [new OpenApiSecuritySchemeReference(schemeName, openApiDoc)] = [.. scopes]
+            };
+            securityState.RequirementKeys[requirement] = requirementKey;
+            operation.Security.Add(requirement);
+        }
+        else
+        {
+            Logger.LogDebug("    Merging security requirement {RequirementKey} into operation...", requirementKey);
+            var requirementScopes = existingRequirement.First().Value;
+            foreach (var scope in scopes.Where(s => !requirementScopes.Contains(s)))
+            {
+                requirementScopes.Add(scope);
+            }
+        }
+
+        if (securityState.AnonymousOperations.Contains(operation))
+        {
+            AddAnonymousSecurityRequirement(operation);
+        }
+    }
+
+    // an empty requirement marks authentication as optional for operations
+    // that were also called successfully without authentication
+    private void AddAnonymousSecurityRequirement(OpenApiOperation operation)
+    {
+        if (operation.Security is null ||
+            operation.Security.Count == 0 ||
+            operation.Security.Any(r => r.Count == 0))
+        {
+            return;
+        }
+
+        Logger.LogDebug("    Marking authentication as optional for operation...");
+        operation.Security.Add(new OpenApiSecurityRequirement());
+    }
+
+    private (string SchemeName, IReadOnlyList<string> Scopes) AddOrMergeSecurityScheme(OpenApiDocument openApiDoc, DetectedAuth detectedAuth)
+    {
+        var (schemeName, scheme, scopes) = detectedAuth switch
+        {
+            DetectedApiKeyAuth apiKey => (
+                GetApiKeySchemeName(apiKey),
+                new OpenApiSecurityScheme
+                {
+                    Type = SecuritySchemeType.ApiKey,
+                    Name = apiKey.Name,
+                    In = apiKey.In == DetectedApiKeyLocation.Query ? ParameterLocation.Query : ParameterLocation.Header
+                },
+                []),
+            // Swagger 2.0 has no HTTP bearer scheme, so describe the
+            // Authorization header as an API key with the Bearer prefix
+            DetectedBearerAuth when Configuration.SpecVersion == SpecVersion.v2_0 => (
+                BearerSchemeName,
+                new OpenApiSecurityScheme
+                {
+                    Type = SecuritySchemeType.ApiKey,
+                    Name = "Authorization",
+                    In = ParameterLocation.Header,
+                    Description = "Bearer token. Use the format: Bearer {token}"
+                },
+                []),
+            DetectedBearerAuth => (
+                BearerSchemeName,
+                new OpenApiSecurityScheme
+                {
+                    Type = SecuritySchemeType.Http,
+                    Scheme = "bearer"
+                },
+                []),
+            DetectedOAuth2Auth oauth2 => (
+                GetOAuth2SchemeName(oauth2),
+                new OpenApiSecurityScheme
+                {
+                    Type = SecuritySchemeType.OAuth2,
+                    Flows = new OpenApiOAuthFlows()
+                },
+                oauth2.Scopes),
+            _ => throw new NotSupportedException($"Auth type {detectedAuth.GetType().Name} is not supported")
+        };
+
+        openApiDoc.Components ??= new OpenApiComponents();
+        openApiDoc.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
+        if (openApiDoc.Components.SecuritySchemes.TryGetValue(schemeName, out var existingScheme))
+        {
+            Logger.LogDebug("    Found security scheme {SchemeName}", schemeName);
+            scheme = existingScheme as OpenApiSecurityScheme ?? scheme;
+        }
+        else
+        {
+            Logger.LogDebug("    Adding security scheme {SchemeName}...", schemeName);
+            _ = openApiDoc.AddComponent(schemeName, scheme);
+        }
+
+        if (detectedAuth is DetectedOAuth2Auth oauth2Auth)
+        {
+            MergeOAuth2Flow(scheme, oauth2Auth);
+        }
+        else if (detectedAuth is DetectedBearerAuth { IsJwt: true } &&
+            scheme.Type == SecuritySchemeType.Http)
+        {
+            scheme.BearerFormat = "JWT";
+        }
+
+        return (schemeName, scopes);
+    }
+
+    // Swagger 2.0 requires scopes on OAuth2 schemes, but Microsoft.OpenApi
+    // omits an empty scopes map when serializing to v2
+    private static void AddEmptyOAuth2ScopesForV2(OpenApiDocument openApiDoc)
+    {
+        var schemes = openApiDoc.Components?.SecuritySchemes?.Values
+            .OfType<OpenApiSecurityScheme>()
+            .Where(s => s.Type == SecuritySchemeType.OAuth2 && s.Flows is not null);
+        foreach (var scheme in schemes ?? [])
+        {
+            var flows = new[]
+            {
+                scheme.Flows!.Implicit, scheme.Flows.Password,
+                scheme.Flows.ClientCredentials, scheme.Flows.AuthorizationCode
+            };
+            if (flows.Any(f => f?.Scopes?.Count > 0))
+            {
+                continue;
+            }
+
+            scheme.Extensions ??= new Dictionary<string, IOpenApiExtension>();
+            scheme.Extensions["scopes"] = new EmptyObjectOpenApiExtension();
+        }
+    }
+
+    // Swagger 2.0 allows only one flow per security scheme
+    private string GetOAuth2SchemeName(DetectedOAuth2Auth oauth2) =>
+        Configuration.SpecVersion == SpecVersion.v2_0 && oauth2.FlowType == DetectedOAuth2FlowType.ClientCredentials ?
+            $"{oauth2.Name}_clientCredentials" : oauth2.Name;
+
+    private static void MergeOAuth2Flow(OpenApiSecurityScheme scheme, DetectedOAuth2Auth oauth2)
+    {
+        scheme.Flows ??= new OpenApiOAuthFlows();
+        var flow = oauth2.FlowType == DetectedOAuth2FlowType.ClientCredentials ?
+            scheme.Flows.ClientCredentials ??= new OpenApiOAuthFlow() :
+            scheme.Flows.AuthorizationCode ??= new OpenApiOAuthFlow();
+
+        if (oauth2.FlowType == DetectedOAuth2FlowType.AuthorizationCode)
+        {
+            flow.AuthorizationUrl ??= ToAbsoluteUri(oauth2.AuthorizationUrl);
+        }
+        flow.TokenUrl ??= ToAbsoluteUri(oauth2.TokenUrl);
+        flow.RefreshUrl ??= ToAbsoluteUri(oauth2.RefreshUrl);
+        flow.Scopes ??= new Dictionary<string, string>();
+        foreach (var scope in oauth2.Scopes)
+        {
+            _ = flow.Scopes.TryAdd(scope, scope);
+        }
+
+        MergeAppRolesDescription(scheme, oauth2.AppRoles);
+    }
+
+    private const string AppRolesDescriptionPrefix = "App roles (client credentials): ";
+
+    // app roles can't be requested as scopes, so document them on the scheme
+    private static void MergeAppRolesDescription(OpenApiSecurityScheme scheme, IReadOnlyList<string> appRoles)
+    {
+        if (appRoles.Count == 0)
+        {
+            return;
+        }
+
+        var existingRoles = scheme.Description?.StartsWith(AppRolesDescriptionPrefix, StringComparison.Ordinal) == true ?
+            scheme.Description[AppRolesDescriptionPrefix.Length..].Split(", ", StringSplitOptions.RemoveEmptyEntries) :
+            [];
+        scheme.Description = AppRolesDescriptionPrefix + string.Join(", ", existingRoles.Union(appRoles, StringComparer.Ordinal));
+    }
+
+    private static Uri? ToAbsoluteUri(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri : null;
+
+    private static string GetApiKeySchemeName(DetectedApiKeyAuth apiKey)
+    {
+        var location = apiKey.In == DetectedApiKeyLocation.Query ? "query" : "header";
+        var name = new string([.. apiKey.Name.Select(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '_' ? c : '_')]);
+        return $"ApiKeyAuth_{location}_{name}";
     }
 
     private void AddOrMergeOperation(OpenApiPathItem pathItem, HttpMethod httpMethod, OpenApiOperation apiOperation)
@@ -551,11 +830,12 @@ public sealed class OpenApiSpecGeneratorPlugin(
 
         foreach (var parameter in parameters)
         {
-            var paramFromOperation = operation.Parameters?.FirstOrDefault(p => p.Name == parameter.Name && p.In == parameter.In);
+            var nameComparison = parameter.In == ParameterLocation.Header ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            var paramFromOperation = operation.Parameters?.FirstOrDefault(p => p.In == parameter.In && string.Equals(p.Name, parameter.Name, nameComparison));
             if (paramFromOperation is null)
             {
                 Logger.LogDebug("      Adding parameter {ParameterName} to operation...", parameter.Name);
-                operation.Parameters?.Add(parameter);
+                (operation.Parameters ??= []).Add(parameter);
                 continue;
             }
 
@@ -572,6 +852,21 @@ public sealed class OpenApiSpecGeneratorPlugin(
             return;
         }
 
+        if (source.Type == JsonSchemaType.Array && target.Type == JsonSchemaType.Array)
+        {
+            // replace the untyped items placeholder generated for an empty array
+            if (target is OpenApiSchema targetArray && targetArray.Items is { Type: null } && source.Items?.Type is not null)
+            {
+                Logger.LogDebug("        Replacing untyped array items...");
+                targetArray.Items = source.Items;
+                return;
+            }
+
+            Logger.LogDebug("        Merging array items...");
+            MergeSchema(source.Items, target.Items);
+            return;
+        }
+
         if (source.Type != JsonSchemaType.Object || target.Type != JsonSchemaType.Object)
         {
             Logger.LogDebug("        Source or target schema is not an object. Skipping...");
@@ -584,25 +879,31 @@ public sealed class OpenApiSpecGeneratorPlugin(
             return;
         }
 
-        if (target.Properties is null || target.Properties.Count == 0)
+        var targetProperties = target.Properties;
+        if (targetProperties is null)
         {
-            Logger.LogDebug("        Target has no properties. Skipping...");
-            return;
+            if (target is not OpenApiSchema targetSchema)
+            {
+                Logger.LogDebug("        Target has no properties. Skipping...");
+                return;
+            }
+
+            targetSchema.Properties = targetProperties = new Dictionary<string, IOpenApiSchema>();
         }
 
         foreach (var property in source.Properties)
         {
-            var propertyFromTarget = target.Properties.FirstOrDefault(p => p.Key == property.Key);
+            var propertyFromTarget = targetProperties.FirstOrDefault(p => p.Key == property.Key);
             if (propertyFromTarget.Value is null)
             {
                 Logger.LogDebug("        Adding property {PropertyKey} to schema...", property.Key);
-                target.Properties.Add(property);
+                targetProperties.Add(property);
                 continue;
             }
 
-            if (property.Value.Type != JsonSchemaType.Object)
+            if (property.Value.Type is not (JsonSchemaType.Object or JsonSchemaType.Array))
             {
-                Logger.LogDebug("        Property already found but is not an object. Skipping...");
+                Logger.LogDebug("        Property already found but is not an object or array. Skipping...");
                 continue;
             }
 
@@ -640,7 +941,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
         }
 
         Logger.LogDebug("    Merging request body into operation...");
-        MergeSchema(bodyFromOperation.Schema, requestBody.Content.FirstOrDefault().Value.Schema);
+        MergeSchema(requestBody.Content.FirstOrDefault().Value.Schema, bodyFromOperation.Schema);
     }
 
     private void AddOrMergeResponse(OpenApiOperation operation, OpenApiResponses? apiResponses)
@@ -669,6 +970,8 @@ public sealed class OpenApiSpecGeneratorPlugin(
             return;
         }
 
+        MergeResponseHeaders(responseFromOperation, apiResponse);
+
         if (apiResponse.Content is null || apiResponse.Content.Count == 0)
         {
             Logger.LogDebug("    No response content to process");
@@ -692,7 +995,28 @@ public sealed class OpenApiSpecGeneratorPlugin(
         }
 
         Logger.LogDebug("    Merging response {ApiResponseStatusCode}/{ApiResponseContentType} into operation...", apiResponseStatusCode, apiResponseContentType);
-        MergeSchema(contentFromOperation.Schema, apiResponse.Content.First().Value.Schema);
+        MergeSchema(apiResponse.Content.First().Value.Schema, contentFromOperation.Schema);
+    }
+
+    private void MergeResponseHeaders(IOpenApiResponse responseFromOperation, IOpenApiResponse apiResponse)
+    {
+        if (apiResponse.Headers is null || apiResponse.Headers.Count == 0 ||
+            responseFromOperation is not OpenApiResponse retainedResponse)
+        {
+            return;
+        }
+
+        retainedResponse.Headers ??= new Dictionary<string, IOpenApiHeader>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, header) in apiResponse.Headers)
+        {
+            if (retainedResponse.Headers.ContainsKey(name))
+            {
+                continue;
+            }
+
+            Logger.LogDebug("    Adding response header {HeaderName}...", name);
+            retainedResponse.Headers.Add(name, header);
+        }
     }
 
     /**
@@ -706,6 +1030,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
     {
         var segments = requestUri.Segments;
         var previousSegment = "item";
+        var parameterNameCounts = new Dictionary<string, int>(StringComparer.Ordinal);
 
         for (var i = 0; i < segments.Length; i++)
         {
@@ -718,6 +1043,11 @@ public sealed class OpenApiSpecGeneratorPlugin(
             if (IsParametrizable(segment))
             {
                 var parameterName = $"{previousSegment}-id";
+                var count = parameterNameCounts[parameterName] = parameterNameCounts.GetValueOrDefault(parameterName) + 1;
+                if (count > 1)
+                {
+                    parameterName = $"{parameterName}-{count}";
+                }
                 segments[i] = $"{{{parameterName}}}{(requestUri.Segments[i].EndsWith('/') ? "/" : "")}";
 
                 pathItem.Parameters?.Add(new OpenApiParameter
@@ -829,7 +1159,11 @@ public sealed class OpenApiSpecGeneratorPlugin(
                 break;
             case JsonValueKind.Array:
                 schema.Type = JsonSchemaType.Array;
-                schema.Items = GetSchemaFromJsonElement(jsonElement.EnumerateArray().FirstOrDefault());
+                var firstItem = jsonElement.EnumerateArray().FirstOrDefault();
+                // an empty array gives no type information, so use an untyped (any) items schema
+                schema.Items = firstItem.ValueKind == JsonValueKind.Undefined
+                    ? new OpenApiSchema()
+                    : GetSchemaFromJsonElement(firstItem);
                 break;
             default:
                 schema.Type = JsonSchemaType.Object;
