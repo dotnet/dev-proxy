@@ -64,6 +64,7 @@ sealed class DevProxyCommand : RootCommand
     private static bool _isJwtCommandResolved;
     private static bool _isRootCommandResolved;
     private static bool _isConfigValidateCommandResolved;
+    private static bool _isSystemProxyResetCommandResolved;
     private static bool _isPluginCommandResolved;
     private static bool _isDetachedModeResolved;
     private static bool _isInternalDaemonResolved;
@@ -171,6 +172,23 @@ sealed class DevProxyCommand : RootCommand
             var args = Environment.GetCommandLineArgs();
             field = IsValidateInvocation(args.Skip(1).ToArray());
             _isConfigValidateCommandResolved = true;
+            return field;
+        }
+    }
+
+    public static bool IsSystemProxyResetCommand
+    {
+        get
+        {
+            if (_isSystemProxyResetCommandResolved)
+            {
+                return field;
+            }
+
+            var args = Environment.GetCommandLineArgs();
+            field = SystemProxyCommand.IsResetInvocation(args.Skip(1).ToArray()) &&
+                !args.Any(arg => helpOptions.Contains(arg));
+            _isSystemProxyResetCommandResolved = true;
             return field;
         }
     }
@@ -503,6 +521,15 @@ sealed class DevProxyCommand : RootCommand
         {
             throw new InvalidOperationException("WebApplication instance is not set. Please provide it when invoking the command.");
         }
+
+        // Recover from a system-proxy registration left behind by a previous instance
+        // that crashed. This runs only once the command line resolved to starting the
+        // proxy, so other commands, including plugin commands, don't change the OS proxy
+        // settings. It must run before anything that loads instance state, which prunes
+        // the stale records it depends on. Detached daemons run it too, because only the
+        // daemon knows whether the command line resolved to starting the proxy. The
+        // parent process that spawned them echoes the outcome from the daemon's log.
+        await ReconcileOrphanedSystemProxiesAsync(cancellationToken);
         // Environment overrides from config and --env are applied by now, so this
         // validates and pins the effective token before anything reads it.
         if (!ApiSecurity.TryInitializeToken(out var tokenError))
@@ -896,6 +923,7 @@ sealed class DevProxyCommand : RootCommand
             ActivatorUtilities.CreateInstance<StdioCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<StatusCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<StopCommand>(_serviceProvider),
+            ActivatorUtilities.CreateInstance<SystemProxyCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<LogsCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<ValidateCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<PluginCommand>(_serviceProvider)
@@ -933,6 +961,65 @@ sealed class DevProxyCommand : RootCommand
         if (helpOption?.Action is SynchronousCommandLineAction currentAction)
         {
             helpOption.Action = new DevProxyHelpAction(currentAction);
+        }
+    }
+
+    // Shared by every startup recovery message so a detached parent can find them in the daemon's log.
+    internal const string CrashedInstanceRecoveryMarker = "left by a crashed Dev Proxy instance";
+
+    private async Task ReconcileOrphanedSystemProxiesAsync(CancellationToken cancellationToken)
+    {
+        // Announce the recovery before its first message, so the detached parent can echo
+        // everything it logs (e.g. proxy credentials that couldn't be restored) along with
+        // the summary.
+        var recoveryLogger = new FirstEntryAnnouncingLogger<SystemProxyManager>(
+            _serviceProvider.GetRequiredService<ILogger<SystemProxyManager>>(),
+            () => _logger.LogInformation("Restoring the system proxy " + CrashedInstanceRecoveryMarker + "..."));
+        var reconciliation = await SystemProxyManager.ReconcileOrphanedSystemProxiesAsync(
+            recoveryLogger, cancellationToken);
+        if (reconciliation.Outcome is SystemProxyManager.OrphanRestoreOutcome.Failed)
+        {
+            _logger.LogError(
+                "Couldn't restore the system proxy " + CrashedInstanceRecoveryMarker + " (PID: {Pids}). Run 'devproxy system-proxy reset' or see https://go.devproxy.net?go=proxy-reset.",
+                string.Join(", ", reconciliation.OrphanedPids));
+            return;
+        }
+
+        foreach (var pid in reconciliation.OrphanedPids)
+        {
+            if (reconciliation.Outcome is SystemProxyManager.OrphanRestoreOutcome.Restored)
+            {
+                _logger.LogInformation("Recovered system proxy " + CrashedInstanceRecoveryMarker + " (PID: {Pid}).", pid);
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "Removed stale system-proxy registration " + CrashedInstanceRecoveryMarker + " (PID: {Pid}) while keeping the current system proxy owner unchanged.",
+                    pid);
+            }
+        }
+    }
+
+    private sealed class FirstEntryAnnouncingLogger<T>(ILogger<T> inner, Action announce) : ILogger<T>
+    {
+        private bool _announced;
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => inner.BeginScope(state);
+
+        public bool IsEnabled(LogLevel logLevel) => inner.IsEnabled(logLevel);
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (!inner.IsEnabled(logLevel))
+            {
+                return;
+            }
+            if (!_announced)
+            {
+                _announced = true;
+                announce();
+            }
+            inner.Log(logLevel, eventId, state, exception, formatter);
         }
     }
 

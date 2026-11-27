@@ -13,6 +13,30 @@ namespace DevProxy.Tests;
 [Collection("management-environment")]
 public class StateManagerPidReuseTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StateLookups_PreserveOrphanedSystemProxyUntilRecovery(bool asSystemProxy)
+    {
+        var pid = Random.Shared.Next(int.MaxValue / 2, int.MaxValue);
+        var path = StateManager.GetInstanceStateFilePath(pid);
+        Assert.False(File.Exists(path));
+        try
+        {
+            await StateManager.SaveStateAsync(new() { Pid = pid, AsSystemProxy = asSystemProxy });
+
+            _ = await StateManager.FindSystemProxyInstanceAsync();
+            Assert.True(File.Exists(path));
+
+            Assert.Null(await StateManager.LoadStateByPidAsync(pid));
+            Assert.Equal(asSystemProxy, File.Exists(path));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     [Fact]
     public void ProcessStartTime_RoundTripsThroughJson()
     {

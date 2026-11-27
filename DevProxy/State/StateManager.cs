@@ -137,7 +137,8 @@ internal static class StateManager
     }
 
     /// <summary>
-    /// Loads all live detached instance states, cleaning up stale state files.
+    /// Loads all live detached instance states, cleaning up stale state files except
+    /// system-proxy recovery records, which reconciliation removes after recovery.
     /// Also checks the legacy state.json for backward compatibility.
     /// </summary>
     public static async Task<List<ProxyInstanceState>> LoadAllStatesAsync(CancellationToken cancellationToken = default)
@@ -195,8 +196,8 @@ internal static class StateManager
     /// </summary>
     public static async Task<ProxyInstanceState?> FindSystemProxyInstanceAsync(CancellationToken cancellationToken = default)
     {
-        var states = await LoadAllStatesAsync(cancellationToken);
-        return states.Find(s => s.AsSystemProxy);
+        var states = await LoadRunningStatesAsync(cancellationToken);
+        return states.Find(s => s.AsSystemProxy && IsInstanceAlive(s));
     }
 
     /// <summary>
@@ -240,7 +241,7 @@ internal static class StateManager
     /// registrations that outlived the process and should be reconciled by
     /// restoring the OS proxy.
     /// The state files are left in place so the caller can remove them (via
-    /// <see cref="DeleteStateAsync(int, CancellationToken)"/>) only after the
+    /// <see cref="DeleteStateAsync(ProxyInstanceState, CancellationToken)"/>) only after the
     /// system proxy has been restored.
     /// </summary>
     public static async Task<List<ProxyInstanceState>> GetOrphanedSystemProxyStatesAsync(CancellationToken cancellationToken = default)
@@ -252,7 +253,9 @@ internal static class StateManager
         }
 
         var orphaned = new List<ProxyInstanceState>();
-        var seenPids = new HashSet<int>();
+        // Dedupe by identity, not PID: the per-PID and legacy records can describe different
+        // processes with the same PID, and each must be retired after the proxy is restored.
+        var seen = new HashSet<(int, DateTimeOffset?)>();
 
         var stateFiles = Directory.GetFiles(configFolder, $"{StateFilePrefix}*{StateFileExtension}");
         var legacyPath = GetStateFilePath();
@@ -264,7 +267,7 @@ internal static class StateManager
             if (state is not null &&
                 state.AsSystemProxy &&
                 !IsInstanceAlive(state) &&
-                seenPids.Add(state.Pid))
+                seen.Add((state.Pid, state.ProcessStartTime)))
             {
                 orphaned.Add(state);
             }
@@ -323,6 +326,41 @@ internal static class StateManager
         await DeleteStateFileIfMatchesAsync(GetInstanceStateFilePath(state.Pid), state, cancellationToken);
         await DeleteStateFileIfMatchesAsync(GetStateFilePath(), state, cancellationToken);
         DeleteTokenIfProcessGone(state.Pid);
+    }
+
+    /// <summary>
+    /// Removes the state record of a dead instance whose system-proxy registration was
+    /// reconciled. Like <see cref="DeleteStateAsync(ProxyInstanceState, CancellationToken)"/>,
+    /// only removes records that still describe the same instance, but propagates failures:
+    /// a surviving record would make the next start restore the system proxy again.
+    /// </summary>
+    public static async Task RetireOrphanedStateAsync(ProxyInstanceState state, CancellationToken cancellationToken = default)
+    {
+        await DeleteStateFileIfMatchesAsync(GetInstanceStateFilePath(state.Pid), state, cancellationToken, throwOnFailure: true);
+        await DeleteStateFileIfMatchesAsync(GetStateFilePath(), state, cancellationToken, throwOnFailure: true);
+        DeleteTokenIfProcessGone(state.Pid);
+    }
+
+    /// <summary>
+    /// Records that the given instance no longer owns the system proxy, so stopping it or
+    /// recovering after it crashes doesn't change the OS proxy settings. The on-disk record
+    /// is re-read and only updated if it still describes the same instance, so a newer
+    /// instance that reused the PID keeps its own record.
+    /// </summary>
+    public static async Task ClearSystemProxyFlagAsync(ProxyInstanceState expected, CancellationToken cancellationToken = default)
+    {
+        foreach (var filePath in new[] { GetInstanceStateFilePath(expected.Pid), GetStateFilePath() })
+        {
+            var current = await ReadStateFromFileAsync(filePath, cancellationToken);
+            if (current is { AsSystemProxy: true } &&
+                current.Pid == expected.Pid &&
+                current.ProcessStartTime == expected.ProcessStartTime)
+            {
+                current.AsSystemProxy = false;
+                var json = JsonSerializer.Serialize(current, _jsonOptions);
+                await PrivateFiles.WriteAllTextAsync(filePath, json, cancellationToken);
+            }
+        }
     }
 
     /// <summary>
@@ -422,7 +460,7 @@ internal static class StateManager
     /// <summary>
     /// Checks if a process with the given PID is running.
     /// </summary>
-    private static bool IsProcessRunning(int pid)
+    internal static bool IsProcessRunning(int pid)
     {
         try
         {
@@ -461,6 +499,13 @@ internal static class StateManager
         // an unrelated process that reused the PID
         if (!IsInstanceAlive(state))
         {
+            // Only successful system-proxy reconciliation may remove its recovery
+            // record. Diagnostics and failed recovery must leave it available to retry.
+            if (state.AsSystemProxy)
+            {
+                return null;
+            }
+
             // Clean up stale state file
             await DeleteStateFileIfMatchesAsync(filePath, state, cancellationToken);
             DeleteTokenIfProcessGone(state.Pid);
@@ -505,14 +550,22 @@ internal static class StateManager
     private static async Task DeleteStateFileIfMatchesAsync(
         string filePath,
         ProxyInstanceState expected,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool throwOnFailure = false)
     {
         var current = await ReadStateFromFileAsync(filePath, cancellationToken);
         if (current is not null &&
             current.Pid == expected.Pid &&
             current.ProcessStartTime == expected.ProcessStartTime)
         {
-            DeleteFile(filePath);
+            if (throwOnFailure)
+            {
+                File.Delete(filePath);
+            }
+            else
+            {
+                DeleteFile(filePath);
+            }
         }
     }
 

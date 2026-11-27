@@ -56,25 +56,9 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
 {
     var isJsonOutput = IsJsonOutputRequested(args);
 
-    // Recover from a system-proxy registration left behind by a previous
-    // instance that crashed before restoring the OS proxy. This must run before
-    // any state-loading call below, which prunes (deletes) the stale state files
-    // it depends on without restoring the proxy.
-    var reconciliation = await SystemProxyManager.ReconcileOrphanedSystemProxiesAsync();
-    foreach (var orphan in reconciliation.Orphans)
-    {
-        var message = reconciliation.SystemProxyDisabled
-            ? $"Recovered system proxy left by a crashed Dev Proxy instance (PID: {orphan.Pid})."
-            : $"Removed stale system-proxy registration left by a crashed Dev Proxy instance (PID: {orphan.Pid}) while keeping the current system proxy owner unchanged.";
-        if (isJsonOutput)
-        {
-            await Console.Out.WriteLineAsync(FormatJsonLogEntry("info", message));
-        }
-        else
-        {
-            await Console.Out.WriteLineAsync(message);
-        }
-    }
+    // Recovering a system proxy left by a crashed instance is up to the daemon: only it
+    // knows whether the command line resolves to starting the proxy rather than to a
+    // (plugin) management command. Don't prune state here, because the daemon needs it.
 
     // Check if an instance is already running as system proxy
     var systemProxyInstance = await StateManager.FindSystemProxyInstanceAsync();
@@ -190,6 +174,8 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
                 var proxyUrl = state.ProxyUrl;
                 var token = ApiSecurity.ShouldDisplayTokenFor(state) ?
                     (await File.ReadAllTextAsync(ApiSecurity.GetTokenFilePath(state.Pid))).Trim() : null;
+
+                await DevProxy.Logging.SystemProxyRecoveryEcho.WriteAsync(await ReadDaemonLogAsync(process.Id), isJsonOutput, Console.Out, Console.Error);
 
                 if (isJsonOutput)
                 {
@@ -416,15 +402,11 @@ static async Task<string?> ReadDaemonLogAsync(int pid)
 
 static bool IsJsonOutputRequested(string[] args)
 {
-    for (var i = 0; i < args.Length; i++)
-    {
-        if (string.Equals(args[i], DevProxyCommand.OutputOptionName, StringComparison.OrdinalIgnoreCase) &&
-            i + 1 < args.Length)
-        {
-            return string.Equals(args[i + 1], "json", StringComparison.OrdinalIgnoreCase);
-        }
-    }
-    return false;
+    // Use the configuration-options parser so attached values (--output=json) and
+    // response files are recognized like they are by the full command.
+    var options = new DevProxyConfigOptions();
+    options.ParseOptions(args);
+    return options.Output == DevProxy.Abstractions.Proxy.OutputFormat.Json;
 }
 
 static void WriteUnresolvedEnvironmentVariables(IConfiguration configuration, DevProxyConfigOptions options)
@@ -531,6 +513,15 @@ if (DevProxyCommand.IsConfigValidateCommand)
     _ = Announcement.ShowOnceAsync();
     var validateExitCode = await ConfigCommand.RunValidateStandaloneAsync(args);
     Environment.Exit(validateExitCode);
+    return;
+}
+
+// Handle 'system-proxy reset' early so a broken configuration or plugin can't
+// prevent restoring network access.
+if (DevProxyCommand.IsSystemProxyResetCommand)
+{
+    var resetExitCode = await SystemProxyCommand.RunResetStandaloneAsync(args);
+    Environment.Exit(resetExitCode);
     return;
 }
 

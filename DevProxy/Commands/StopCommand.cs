@@ -17,6 +17,7 @@ namespace DevProxy.Commands;
 internal sealed class StopCommand : Command
 {
     private readonly ILogger<StopCommand> _logger;
+    private readonly ILogger<SystemProxyManager> _systemProxyLogger;
     private readonly Option<bool> _forceOption = new("--force", "-f")
     {
         Description = "Force stop the proxy by killing the process"
@@ -27,7 +28,7 @@ internal sealed class StopCommand : Command
         Description = "Stop a specific Dev Proxy instance by PID"
     };
 
-    public StopCommand(ILogger<StopCommand> logger) : base("stop", """
+    public StopCommand(ILogger<StopCommand> logger, ILogger<SystemProxyManager> systemProxyLogger) : base("stop", """
                 Stop running Dev Proxy instances.
 
                 JSON output: one result event per outcome, with pid, status, message and,
@@ -37,6 +38,7 @@ internal sealed class StopCommand : Command
                 """)
     {
         _logger = logger;
+        _systemProxyLogger = systemProxyLogger;
         Add(_forceOption);
         Add(_pidOption);
         SetAction(RunAsync);
@@ -57,10 +59,10 @@ internal sealed class StopCommand : Command
         // Reconcile any system-proxy registrations left behind by crashed
         // instances first — this must run before LoadAllStatesAsync, which prunes
         // (deletes) the stale state files it depends on.
-        var reconciliation = await SystemProxyManager.ReconcileOrphanedSystemProxiesAsync(cancellationToken);
+        var reconciliation = await SystemProxyManager.ReconcileOrphanedSystemProxiesAsync(_systemProxyLogger, cancellationToken);
 
         var states = await StateManager.LoadAllStatesAsync(cancellationToken);
-        if (states.Count == 0 && reconciliation.Orphans.Count == 0)
+        if (states.Count == 0 && reconciliation.OrphanedPids.Count == 0)
         {
             reporter.Report(null, "notRunning", "Dev Proxy is not running.");
             return 1;
@@ -76,38 +78,54 @@ internal sealed class StopCommand : Command
             }
         }
 
-        ReportReconciledOrphans(reconciliation, reporter);
+        if (!ReportReconciledOrphans(reconciliation, reporter))
+        {
+            exitCode = 1;
+        }
 
         return exitCode;
     }
 
-    private static async Task<int> StopByPidAsync(int pid, bool force, StopReporter reporter, CancellationToken cancellationToken)
+    private async Task<int> StopByPidAsync(int pid, bool force, StopReporter reporter, CancellationToken cancellationToken)
     {
-        // Capture a potential orphaned system-proxy record before LoadStateByPidAsync
-        // prunes (deletes) the stale state file for a dead PID.
+        // Recover an orphan before looking up live state so failed recovery keeps
+        // its registration available for a later retry.
         var orphan = (await StateManager.GetOrphanedSystemProxyStatesAsync(cancellationToken))
             .Find(o => o.Pid == pid);
-
-        var state = await StateManager.LoadStateByPidAsync(pid, cancellationToken);
-        if (state is not null)
-        {
-            return await StopInstanceAsync(state, force, reporter, cancellationToken);
-        }
+        var recoveredOrphan = false;
 
         if (orphan is not null)
         {
-            var liveOwner = await StateManager.FindSystemProxyInstanceAsync(cancellationToken);
+            var liveOwner = await SystemProxyManager.FindLiveSystemProxyOwnerAsync(cancellationToken);
             if (liveOwner is null)
             {
-                new SystemProxyManager(NullLogger<SystemProxyManager>.Instance).Disable();
+                if (new SystemProxyManager(_systemProxyLogger).Restore() is SystemProxyRestoreResult.Failed)
+                {
+                    // Keep the state record so a later stop or start retries.
+                    reporter.Report(pid, "failed", $"Couldn't restore the system proxy left by crashed Dev Proxy (PID: {pid}).", RestoreFailedHint);
+                    return 1;
+                }
                 reporter.Report(pid, "systemProxyRestored", $"Restored system proxy left by crashed Dev Proxy (PID: {pid}).");
             }
             else
             {
-                reporter.Report(pid, "staleRecordRemoved", $"Removed stale record for crashed Dev Proxy (PID: {pid}); system proxy is owned by a running instance (PID: {liveOwner.Pid}).");
+                reporter.Report(pid, "staleRecordRemoved", $"Removed stale record for crashed Dev Proxy (PID: {pid}); system proxy is owned by a running instance (PID: {liveOwner}).");
             }
 
             await StateManager.DeleteStateAsync(orphan, cancellationToken);
+            recoveredOrphan = true;
+        }
+
+        // A dead instance's legacy record can share its PID with a newer live instance,
+        // whose record the identity-checked deletion above keeps. Stop that one too.
+        var state = await StateManager.LoadStateByPidAsync(pid, cancellationToken);
+        if (state is not null && (!recoveredOrphan || StateManager.IsInstanceAlive(state)))
+        {
+            return await StopInstanceAsync(state, force, reporter, cancellationToken);
+        }
+
+        if (recoveredOrphan)
+        {
             return 0;
         }
 
@@ -115,22 +133,31 @@ internal sealed class StopCommand : Command
         return 1;
     }
 
-    private static void ReportReconciledOrphans(SystemProxyManager.OrphanReconciliation reconciliation, StopReporter reporter)
+    private const string RestoreFailedHint = "Run 'devproxy system-proxy reset' or see https://go.devproxy.net?go=proxy-reset.";
+
+    private static bool ReportReconciledOrphans(SystemProxyManager.OrphanReconciliation reconciliation, StopReporter reporter)
     {
-        foreach (var orphan in reconciliation.Orphans)
+        if (reconciliation.Outcome is SystemProxyManager.OrphanRestoreOutcome.Failed)
         {
-            if (reconciliation.SystemProxyDisabled)
+            reporter.Report(null, "failed", $"Couldn't restore the system proxy left by crashed Dev Proxy (PID: {string.Join(", ", reconciliation.OrphanedPids)}).", RestoreFailedHint);
+            return false;
+        }
+
+        foreach (var pid in reconciliation.OrphanedPids)
+        {
+            if (reconciliation.Outcome is SystemProxyManager.OrphanRestoreOutcome.Restored)
             {
-                reporter.Report(orphan.Pid, "systemProxyRestored", $"Restored system proxy left by crashed Dev Proxy (PID: {orphan.Pid}).");
+                reporter.Report(pid, "systemProxyRestored", $"Restored system proxy left by crashed Dev Proxy (PID: {pid}).");
             }
             else
             {
-                reporter.Report(orphan.Pid, "staleRecordRemoved", $"Removed stale record for crashed Dev Proxy (PID: {orphan.Pid}); system proxy is owned by a running instance.");
+                reporter.Report(pid, "staleRecordRemoved", $"Removed stale record for crashed Dev Proxy (PID: {pid}); system proxy is owned by a running instance.");
             }
         }
+        return true;
     }
 
-    private static async Task<int> StopInstanceAsync(ProxyInstanceState state, bool force, StopReporter reporter, CancellationToken cancellationToken)
+    private async Task<int> StopInstanceAsync(ProxyInstanceState state, bool force, StopReporter reporter, CancellationToken cancellationToken)
     {
         if (force)
         {
@@ -185,7 +212,7 @@ internal sealed class StopCommand : Command
         }
     }
 
-    private static async Task<int> ForceStopAsync(ProxyInstanceState state, StopReporter reporter, CancellationToken cancellationToken)
+    private async Task<int> ForceStopAsync(ProxyInstanceState state, StopReporter reporter, CancellationToken cancellationToken)
     {
         var identity = GetProcessIdentity(state);
         if (identity == ProcessIdentity.Unverifiable)
@@ -205,7 +232,15 @@ internal sealed class StopCommand : Command
             // alone when another live instance owns it.
             if (isAlive || await StateManager.FindSystemProxyInstanceAsync(cancellationToken) is null)
             {
-                new SystemProxyManager(NullLogger<SystemProxyManager>.Instance).Disable();
+                if (new SystemProxyManager(_systemProxyLogger).Restore() is SystemProxyRestoreResult.Failed)
+                {
+                    // Keep the process and its state record: without restored settings, they're
+                    // what lets a later stop, start, or reset put the system proxy back.
+                    reporter.Report(state.Pid, "failed", isAlive
+                        ? $"Couldn't restore the system proxy, so Dev Proxy (PID: {state.Pid}) wasn't terminated."
+                        : $"Couldn't restore the system proxy left by Dev Proxy (PID: {state.Pid}).", RestoreFailedHint);
+                    return 1;
+                }
             }
         }
 
