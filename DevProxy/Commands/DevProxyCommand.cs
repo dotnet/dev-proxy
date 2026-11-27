@@ -969,8 +969,14 @@ sealed class DevProxyCommand : RootCommand
 
     private async Task ReconcileOrphanedSystemProxiesAsync(CancellationToken cancellationToken)
     {
+        // Announce the recovery before its first message, so the detached parent can echo
+        // everything it logs (e.g. proxy credentials that couldn't be restored) along with
+        // the summary.
+        var recoveryLogger = new FirstEntryAnnouncingLogger<SystemProxyManager>(
+            _serviceProvider.GetRequiredService<ILogger<SystemProxyManager>>(),
+            () => _logger.LogInformation("Restoring the system proxy " + CrashedInstanceRecoveryMarker + "..."));
         var reconciliation = await SystemProxyManager.ReconcileOrphanedSystemProxiesAsync(
-            _serviceProvider.GetRequiredService<ILogger<SystemProxyManager>>(), cancellationToken);
+            recoveryLogger, cancellationToken);
         if (reconciliation.Outcome is SystemProxyManager.OrphanRestoreOutcome.Failed)
         {
             _logger.LogError(
@@ -991,6 +997,29 @@ sealed class DevProxyCommand : RootCommand
                     "Removed stale system-proxy registration " + CrashedInstanceRecoveryMarker + " (PID: {Pid}) while keeping the current system proxy owner unchanged.",
                     pid);
             }
+        }
+    }
+
+    private sealed class FirstEntryAnnouncingLogger<T>(ILogger<T> inner, Action announce) : ILogger<T>
+    {
+        private bool _announced;
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => inner.BeginScope(state);
+
+        public bool IsEnabled(LogLevel logLevel) => inner.IsEnabled(logLevel);
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (!inner.IsEnabled(logLevel))
+            {
+                return;
+            }
+            if (!_announced)
+            {
+                _announced = true;
+                announce();
+            }
+            inner.Log(logLevel, eventId, state, exception, formatter);
         }
     }
 

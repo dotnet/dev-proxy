@@ -381,7 +381,9 @@ static bool IsJsonObject(string line)
 }
 
 // The daemon recovers a system proxy left by a crashed instance before it starts
-// listening, so its log has the outcome by now. Show it like a foreground start would.
+// listening, so its log has the outcome by now. Show it like a foreground start would:
+// every record from the first to the last recovery message, so that warnings logged
+// while restoring (like proxy credentials that need re-entering) aren't hidden.
 static async Task EchoSystemProxyRecoveryAsync(int pid, bool isJsonOutput)
 {
     var log = await ReadDaemonLogAsync(pid);
@@ -390,22 +392,43 @@ static async Task EchoSystemProxyRecoveryAsync(int pid, bool isJsonOutput)
         return;
     }
 
-    foreach (var line in log.Split('\n'))
+    var lines = log.Split('\n').Select(l => l.TrimEnd('\r')).ToArray();
+    var first = Array.FindIndex(lines, IsRecoveryLine);
+    if (first < 0)
     {
-        var trimmed = line.TrimEnd('\r');
-        if (!trimmed.Contains(DevProxyCommand.CrashedInstanceRecoveryMarker, StringComparison.Ordinal))
+        return;
+    }
+    var last = Array.FindLastIndex(lines, IsRecoveryLine);
+
+    var toError = false;
+    foreach (var line in lines[first..(last + 1)])
+    {
+        if (isJsonOutput)
         {
+            await Console.Out.WriteLineAsync(line);
             continue;
         }
-        if (isJsonOutput || !trimmed.Contains("Couldn't restore", StringComparison.Ordinal))
+
+        // Exception details continue a record on the following lines, so they go to
+        // the same stream as the record they belong to.
+        var trimmed = line.TrimStart();
+        if (trimmed.StartsWith("info ", StringComparison.Ordinal) ||
+            trimmed.StartsWith("warn ", StringComparison.Ordinal) ||
+            trimmed.StartsWith("dbug ", StringComparison.Ordinal) ||
+            trimmed.StartsWith("trce ", StringComparison.Ordinal))
         {
-            await Console.Out.WriteLineAsync(trimmed);
+            toError = false;
         }
-        else
+        else if (trimmed.StartsWith("fail ", StringComparison.Ordinal) ||
+            trimmed.StartsWith("crit ", StringComparison.Ordinal))
         {
-            await Console.Error.WriteLineAsync(trimmed);
+            toError = true;
         }
+        await (toError ? Console.Error : Console.Out).WriteLineAsync(line);
     }
+
+    static bool IsRecoveryLine(string line) =>
+        line.Contains(DevProxyCommand.CrashedInstanceRecoveryMarker, StringComparison.Ordinal);
 }
 
 static async Task<string?> ReadDaemonLogAsync(int pid)
