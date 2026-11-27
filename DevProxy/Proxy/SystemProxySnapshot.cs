@@ -71,6 +71,10 @@ internal sealed class MacOSProxyEndpoint
 
     [JsonPropertyName("port")]
     public int Port { get; set; }
+
+    /// <summary>Whether the proxy required authentication. Credentials stay in the keychain and aren't captured.</summary>
+    [JsonPropertyName("authenticated")]
+    public bool Authenticated { get; set; }
 }
 
 /// <summary>
@@ -171,6 +175,9 @@ internal static class MacOSNetworkSetup
                 case "Port":
                     endpoint.Port = int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var port) ? port : 0;
                     break;
+                case "Authenticated Proxy Enabled":
+                    endpoint.Authenticated = value == "1";
+                    break;
                 default:
                     break;
             }
@@ -189,6 +196,32 @@ internal static class MacOSNetworkSetup
         AddEndpointCommands(commands, settings.Service, settings.SecureWeb, "-setsecurewebproxy", "-setsecurewebproxystate");
         return commands;
     }
+
+    /// <summary>
+    /// Returns the restored endpoints that required authentication. <c>networksetup</c> can
+    /// only turn authentication back on with the password, which stays in the keychain, so
+    /// restoring the server turns authentication off and the user has to turn it back on.
+    /// </summary>
+    public static List<(string Service, string Proxy, MacOSProxyEndpoint Endpoint)> GetAuthenticatedEndpoints(
+        IEnumerable<MacOSServiceProxySettings> services)
+    {
+        var endpoints = new List<(string, string, MacOSProxyEndpoint)>();
+        foreach (var settings in services)
+        {
+            if (IsAuthenticated(settings.Web))
+            {
+                endpoints.Add((settings.Service, "Web (HTTP)", settings.Web!));
+            }
+            if (IsAuthenticated(settings.SecureWeb))
+            {
+                endpoints.Add((settings.Service, "Secure web (HTTPS)", settings.SecureWeb!));
+            }
+        }
+        return endpoints;
+    }
+
+    private static bool IsAuthenticated(MacOSProxyEndpoint? endpoint) =>
+        endpoint is { Authenticated: true, Port: > 0 } && !string.IsNullOrEmpty(endpoint.Server);
 
     private static void AddEndpointCommands(
         List<string[]> commands,

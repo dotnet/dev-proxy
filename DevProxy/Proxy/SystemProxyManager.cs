@@ -403,6 +403,13 @@ internal sealed class SystemProxyManager : ISystemProxyManager
                 succeeded = false;
             }
         }
+
+        foreach (var (service, proxy, endpoint) in MacOSNetworkSetup.GetAuthenticatedEndpoints(services))
+        {
+            _logger.LogWarning(
+                "Restored the {Proxy} proxy {Server}:{Port} for {Service}, but its password can't be restored. Turn on 'Proxy server requires password' for {Service} in System Settings > Network > Details > Proxies and enter your credentials.",
+                proxy, endpoint.Server, endpoint.Port, service, service);
+        }
         return succeeded;
     }
 

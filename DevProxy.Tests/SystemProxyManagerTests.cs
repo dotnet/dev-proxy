@@ -141,6 +141,33 @@ public class MacOSNetworkSetupTests
         Assert.True(endpoint.Enabled);
         Assert.Equal("proxy.contoso.com", endpoint.Server);
         Assert.Equal(3128, endpoint.Port);
+        Assert.False(endpoint.Authenticated);
+    }
+
+    [Fact]
+    public void GetAuthenticatedEndpoints_ReturnsOnlyAuthenticatedEndpointsWithServer()
+    {
+        var authenticated = MacOSNetworkSetup.ParseProxyEndpoint(
+            "Enabled: Yes\nServer: proxy.contoso.com\nPort: 3128\nAuthenticated Proxy Enabled: 1\n");
+        var services = new[]
+        {
+            new MacOSServiceProxySettings
+            {
+                Service = "Wi-Fi",
+                Web = authenticated,
+                SecureWeb = new() { Enabled = true, Server = "proxy.contoso.com", Port = 3128 },
+            },
+            new MacOSServiceProxySettings
+            {
+                Service = "Ethernet",
+                SecureWeb = new() { Authenticated = true, Server = string.Empty, Port = 0 },
+            },
+        };
+
+        var (service, _, endpoint) = Assert.Single(MacOSNetworkSetup.GetAuthenticatedEndpoints(services));
+
+        Assert.Equal("Wi-Fi", service);
+        Assert.Same(authenticated, endpoint);
     }
 
     [Fact]
