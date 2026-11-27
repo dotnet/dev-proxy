@@ -909,9 +909,7 @@ sealed class ConfigCommand : Command
                 continue;
             }
 
-            if (!validateSchemas ||
-                !hasRawSection ||
-                configSection.ValueKind != JsonValueKind.Object)
+            if (!validateSchemas || !hasRawSection)
             {
                 continue;
             }

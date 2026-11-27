@@ -140,6 +140,24 @@ public sealed class ConfigValidateTests : IDisposable
     }
 
     [Fact]
+    public async Task ReportsNonObjectConfigSectionRejectedBySchema()
+    {
+        var result = await ValidateAsync($$"""
+            {
+              "plugins": [
+                { "name": "Plugin", "enabled": true, "pluginPath": "plugin.dll", "configSection": "mySection" }
+              ],
+              "urlsToWatch": ["https://api.example.com/*"],
+              "mySection": [],
+              "mySection:$schema": "{{SectionSchemaUrl}}"
+            }
+            """);
+
+        Assert.False(result.GetProperty("valid").GetBoolean());
+        Assert.Contains("mySection", GetPaths(result, "errors"));
+    }
+
+    [Fact]
     public async Task ResolvesEnvironmentPlaceholdersInPluginSettings()
     {
         var result = await ValidateAsync($$"""
