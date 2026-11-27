@@ -51,4 +51,18 @@ public class DevProxyCommandTests
 
         Assert.True(config.Record);
     }
+
+    [Theory]
+    [InlineData(true, "stdio", "npx", "@devproxy/mcp")]
+    [InlineData(true, "--log-level", "debug", "stdio", "npx")]
+    [InlineData(false, "jwt", "create", "--name", "stdio", "--output", "json")]
+    [InlineData(true, "--env", "A=1", "B=2", "stdio", "node", "server.js")]
+    [InlineData(true, "-e", "A=1", "B=2", "--log-level", "debug", "stdio", "node")]
+    [InlineData(true, "--urls-to-watch", "https://a/*", "https://b/*", "stdio", "node")]
+    [InlineData(true, "--watch-pids", "1", "2", "stdio", "node")]
+    [InlineData(true, "--watch-process-names", "a", "b", "stdio", "node")]
+    [InlineData(false, "config", "get", "stdio")]
+    [InlineData(false)]
+    public void IsStdioSubcommand_DetectsSubcommandNotArgumentValues(bool expected, params string[] args) =>
+        Assert.Equal(expected, DevProxyCommand.IsStdioSubcommand(args));
 }
