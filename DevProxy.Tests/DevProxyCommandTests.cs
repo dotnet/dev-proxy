@@ -53,6 +53,29 @@ public class DevProxyCommandTests
     }
 
     [Theory]
+    [InlineData(-1, 8897, "port")]
+    [InlineData(70000, 8897, "port")]
+    [InlineData(8000, -1, "apiPort")]
+    [InlineData(8000, 70000, "apiPort")]
+    public void GetInvalidConfigPortMessage_OutOfRange_NamesSettingAndRange(int port, int apiPort, string setting)
+    {
+        var message = DevProxyCommand.GetInvalidConfigPortMessage(port, apiPort);
+
+        Assert.NotNull(message);
+        Assert.Contains($"'{setting}'", message, StringComparison.Ordinal);
+        Assert.Contains("between 0 and 65535", message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(8000, 8897)]
+    [InlineData(65535, 65535)]
+    public void GetInvalidConfigPortMessage_InRange_ReturnsNull(int port, int apiPort)
+    {
+        Assert.Null(DevProxyCommand.GetInvalidConfigPortMessage(port, apiPort));
+    }
+
+    [Theory]
     [InlineData(true, "stdio", "npx", "@devproxy/mcp")]
     [InlineData(true, "--log-level", "debug", "stdio", "npx")]
     [InlineData(false, "jwt", "create", "--name", "stdio", "--output", "json")]

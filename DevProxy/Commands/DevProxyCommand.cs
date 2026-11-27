@@ -428,6 +428,20 @@ sealed class DevProxyCommand : RootCommand
         }
     }
 
+    internal static bool IsValidPort(int port) => port is >= 0 and <= System.Net.IPEndPoint.MaxPort;
+
+    // CLI port options are validated by ValidatePort, so an out-of-range
+    // value here comes from the configuration file.
+    internal static string? GetInvalidConfigPortMessage(int port, int apiPort)
+    {
+        var (setting, value) = !IsValidPort(port) ? ("port", port)
+            : !IsValidPort(apiPort) ? ("apiPort", apiPort)
+            : (null, 0);
+        return setting is null
+            ? null
+            : $"'{value}' is not a valid value for '{setting}' in the configuration file. Specify a number between 0 and {System.Net.IPEndPoint.MaxPort}.";
+    }
+
     private async Task<int> InvokeAsync(ParseResult parseResult, CancellationToken cancellationToken)
     {
         if (_app is null)
@@ -453,6 +467,13 @@ sealed class DevProxyCommand : RootCommand
         }
 
         ConfigureFromOptions(parseResult);
+
+        var invalidPort = GetInvalidConfigPortMessage(_proxyConfiguration.Port, _proxyConfiguration.ApiPort);
+        if (invalidPort is not null)
+        {
+            _logger.LogError("{InvalidPort}", invalidPort);
+            return 1;
+        }
 
         var portConflict =
             await PortConflict.CheckAsync(PortKind.Proxy, _proxyConfiguration.IPAddress, _proxyConfiguration.Port, cancellationToken) ??
