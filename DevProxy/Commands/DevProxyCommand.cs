@@ -251,111 +251,6 @@ sealed class DevProxyCommand : RootCommand
         }
     }
 
-    // Names of the commands registered in ConfigureCommand. Keep in sync.
-    internal static readonly string[] BuiltInCommandNames =
-    [
-        "api", "cert", "config", "jwt", "logs", "msgraphdb", "outdated",
-        "plugin", "status", "stdio", "stop", "system-proxy"
-    ];
-
-    /// <summary>
-    /// Returns whether the arguments (without the executable) start the proxy, rather than
-    /// invoking a subcommand, showing help or the version, or failing to parse. Parses the
-    /// arguments, including response files, wherever options appear and however their
-    /// values are attached. Runs before plugins load, so tokens that aren't a built-in
-    /// option or the value of an unknown (plugin) option are treated as a subcommand.
-    /// </summary>
-    internal static bool IsStartInvocation(string[] args)
-    {
-        // Mirrors the arity of the root options registered in ConfigureCommand. Values are
-        // parsed as strings so that invalid values don't affect where tokens are consumed.
-        static Option<string?> Value(string name, params string[] aliases) => new(name, aliases);
-        static Option<string[]> Values(string name, params string[] aliases) => new(name, aliases)
-        {
-            AllowMultipleArgumentsPerToken = true,
-            Arity = ArgumentArity.ZeroOrMore
-        };
-        static Option<bool?> Flag(string name, params string[] aliases) => new(name, aliases);
-
-        var rootCommand = new RootCommand { TreatUnmatchedTokensAsErrors = false };
-        Option[] options =
-        [
-            Value(ApiPortOptionName),
-            Value(ApiIpAddressOptionName),
-            Flag(AsSystemProxyOptionName),
-            Value(ConfigFileOptionName, "-c"),
-            Flag(DetachedOptionName, "-d"),
-            Flag(DiscoverOptionName),
-            Values(EnvOptionName, "-e"),
-            Flag(InstallCertOptionName),
-            Flag(InternalDaemonOptionName),
-            Value(IpAddressOptionName),
-            Value(LogLevelOptionName),
-            new Option<bool>(NoColorOptionName) { Arity = ArgumentArity.Zero },
-            Flag(NoFirstRunOptionName),
-            Flag(NoWatchOptionName),
-            Value(OutputOptionName),
-            Value(PortOptionName, "-p"),
-            Flag(RecordOptionName),
-            Value(TimeoutOptionName, "-t"),
-            Values(UrlsToWatchOptionName, "-u"),
-            Values(WatchPidsOptionName),
-            Values(WatchProcessNamesOptionName),
-            Flag(WatchProcessTreeOptionName),
-        ];
-        foreach (var option in options)
-        {
-            rootCommand.Options.Add(option);
-        }
-        // Registering the subcommands stops multi-value options and plugin options from
-        // consuming their names, e.g. 'devproxy --urls-to-watch https://example.com/* status'.
-        foreach (var commandName in BuiltInCommandNames)
-        {
-            rootCommand.Subcommands.Add(new Command(commandName) { TreatUnmatchedTokensAsErrors = false });
-        }
-        // Without an action, a root command with subcommands requires one of them.
-        rootCommand.SetAction(_ => { });
-
-        var parseResult = rootCommand.Parse(args);
-        // Subcommands, help, version and parse errors (such as a missing response file)
-        // resolve to a different action.
-        if (parseResult.Action != rootCommand.Action)
-        {
-            return false;
-        }
-
-        var knownTokens = new HashSet<Token>(ReferenceEqualityComparer.Instance);
-        foreach (var option in rootCommand.Options)
-        {
-            if (parseResult.GetResult(option) is OptionResult { Implicit: false } optionResult)
-            {
-                if (optionResult.IdentifierToken is not null)
-                {
-                    _ = knownTokens.Add(optionResult.IdentifierToken);
-                }
-                knownTokens.UnionWith(optionResult.Tokens);
-            }
-        }
-
-        var afterUnknownOption = false;
-        foreach (var token in parseResult.Tokens)
-        {
-            if (knownTokens.Contains(token))
-            {
-                afterUnknownOption = false;
-            }
-            else if (token.Value.StartsWith('-'))
-            {
-                afterUnknownOption = true;
-            }
-            else if (!afterUnknownOption)
-            {
-                return false;
-            }
-        }
-        return true;
-    }
-
     /// <summary>
     /// Determines if the root command (proxy itself) is being invoked.
     /// Returns true when no subcommand is specified (only options or no args).
@@ -556,6 +451,17 @@ sealed class DevProxyCommand : RootCommand
         if (_app is null)
         {
             throw new InvalidOperationException("WebApplication instance is not set. Please provide it when invoking the command.");
+        }
+
+        // Recover from a system-proxy registration left behind by a previous instance
+        // that crashed. This runs only once the command line resolved to starting the
+        // proxy, so other commands, including plugin commands, don't change the OS proxy
+        // settings. It must run before anything that loads instance state, which prunes
+        // the stale records it depends on. Detached daemons skip it because the parent
+        // process that spawned them already did it.
+        if (!IsInternalDaemon)
+        {
+            await ReconcileOrphanedSystemProxiesAsync(cancellationToken);
         }
         // Environment overrides from config and --env are applied by now, so this
         // validates and pins the effective token before anything reads it.
@@ -959,7 +865,6 @@ sealed class DevProxyCommand : RootCommand
             .Select(g => g.First()));
         this.AddOptions(options.OrderByName());
 
-        // Keep BuiltInCommandNames in sync with these commands.
         var commands = new List<Command>
         {
             ActivatorUtilities.CreateInstance<ApiCommand>(_serviceProvider),
@@ -1008,6 +913,32 @@ sealed class DevProxyCommand : RootCommand
         if (helpOption?.Action is SynchronousCommandLineAction currentAction)
         {
             helpOption.Action = new DevProxyHelpAction(currentAction);
+        }
+    }
+
+    private async Task ReconcileOrphanedSystemProxiesAsync(CancellationToken cancellationToken)
+    {
+        var reconciliation = await SystemProxyManager.ReconcileOrphanedSystemProxiesAsync(cancellationToken: cancellationToken);
+        if (reconciliation.Outcome is SystemProxyManager.OrphanRestoreOutcome.Failed)
+        {
+            _logger.LogError(
+                "Couldn't restore the system proxy left by a crashed Dev Proxy instance (PID: {Pids}). Run 'devproxy system-proxy reset' or see https://go.devproxy.net?go=proxy-reset.",
+                string.Join(", ", reconciliation.OrphanedPids));
+            return;
+        }
+
+        foreach (var pid in reconciliation.OrphanedPids)
+        {
+            if (reconciliation.Outcome is SystemProxyManager.OrphanRestoreOutcome.Restored)
+            {
+                _logger.LogInformation("Recovered system proxy left by a crashed Dev Proxy instance (PID: {Pid}).", pid);
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "Removed stale system-proxy registration left by a crashed Dev Proxy instance (PID: {Pid}) while keeping the current system proxy owner unchanged.",
+                    pid);
+            }
         }
     }
 
