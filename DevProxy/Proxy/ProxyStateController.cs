@@ -34,11 +34,11 @@ sealed class ProxyStateController(
         PrintRecordingIndicator(ProxyState.IsRecording);
     }
 
-    public async Task StopRecordingAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<string>> StopRecordingAsync(CancellationToken cancellationToken)
     {
         if (!ProxyState.IsRecording)
         {
-            return;
+            return [];
         }
 
         ProxyState.IsRecording = false;
@@ -65,6 +65,8 @@ sealed class ProxyStateController(
             }
         }
         _logger.LogInformation("DONE");
+
+        return [.. recordingArgs.ReportFiles];
     }
 
     public async Task MockRequestAsync(CancellationToken cancellationToken)

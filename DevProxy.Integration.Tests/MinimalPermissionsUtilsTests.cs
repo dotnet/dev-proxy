@@ -25,6 +25,17 @@ public sealed class MinimalPermissionsUtilsTests : IDisposable
     }
 
     [Fact]
+    public void GetMinimalScopes_OperationWithoutScopes_IsUnmatched()
+    {
+        var (minimalScopes, unmatched) = MinimalPermissionsUtils.GetMinimalScopes(
+            ["read", "write"],
+            new Dictionary<string, string[]> { ["read"] = ["Read.All"], ["write"] = [] });
+
+        Assert.Equal(["Read.All"], minimalScopes);
+        Assert.Equal(["write"], unmatched);
+    }
+
+    [Fact]
     public void ResolveApiSpecVariables_Yaml_ResolvesValuesOnly()
     {
         var yaml = $$"""

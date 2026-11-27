@@ -30,12 +30,13 @@ sealed class UpdateNotification(HttpClient httpClient)
     /// <summary>
     /// Checks if a new version of the proxy is available.
     /// </summary>
-    /// <returns>Instance of ReleaseInfo if a new version is available and null if the current version is the latest</returns>
-    public async Task<ReleaseInfo?> CheckForNewVersionAsync(ReleaseType releaseType)
+    /// <returns>Instance of ReleaseInfo if a new version is available and null if the current version is the latest,
+    /// or if the check failed or was canceled</returns>
+    public async Task<ReleaseInfo?> CheckForNewVersionAsync(ReleaseType releaseType, CancellationToken cancellationToken = default)
     {
         try
         {
-            var latestRelease = await GetLatestReleaseAsync(releaseType);
+            var latestRelease = await GetLatestReleaseAsync(releaseType, cancellationToken);
             if (latestRelease == null || latestRelease.Version == null)
             {
                 return null;
@@ -62,11 +63,11 @@ sealed class UpdateNotification(HttpClient httpClient)
         }
     }
 
-    private async Task<ReleaseInfo?> GetLatestReleaseAsync(ReleaseType releaseType)
+    private async Task<ReleaseInfo?> GetLatestReleaseAsync(ReleaseType releaseType, CancellationToken cancellationToken)
     {
         // GitHub API requires user agent to be set
         _httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("dev-proxy", ProxyUtils.ProductVersion));
-        var response = await _httpClient.GetStringAsync(new Uri(releasesUrl));
+        var response = await _httpClient.GetStringAsync(new Uri(releasesUrl), cancellationToken);
         var releases = JsonSerializer.Deserialize<ReleaseInfo[]>(response, ProxyUtils.JsonSerializerOptions);
 
         if (releases == null || releaseType == ReleaseType.None)

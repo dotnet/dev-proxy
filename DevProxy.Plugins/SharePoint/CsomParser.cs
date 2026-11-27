@@ -92,7 +92,7 @@ static class CsomParser
             ?.Where(o => o.Value.Delegated != null || o.Value.Application != null)
             .ToDictionary(
                 o => o.Key,
-                o => (accessType == AccessType.Delegated ? o.Value.Delegated : o.Value.Application)!.ToArray()
+                o => (accessType == AccessType.Delegated ? o.Value.Delegated : o.Value.Application)?.ToArray() ?? []
             );
         return MinimalPermissionsUtils.GetMinimalScopes([.. actions], operationsAndScopes!);
     }

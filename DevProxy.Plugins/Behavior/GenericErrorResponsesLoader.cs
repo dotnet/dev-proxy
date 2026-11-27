@@ -26,6 +26,7 @@ internal sealed class GenericErrorResponsesLoader(
         try
         {
             var responsesConfig = JsonSerializer.Deserialize<GenericRandomErrorConfiguration>(fileContents, ProxyUtils.JsonSerializerOptions);
+            RemoveNullEntries(responsesConfig);
             var configResponses = responsesConfig?.Errors;
             if (configResponses is not null)
             {
