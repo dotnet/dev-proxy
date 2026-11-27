@@ -324,7 +324,7 @@ static class PluginServiceExtensions
     private static UrlToWatch ConvertToRegex(string stringMatcher)
     {
         var exclude = false;
-        if (stringMatcher.StartsWith('!'))
+        if (stringMatcher.StartsWith('!', StringComparison.Ordinal))
         {
             exclude = true;
             stringMatcher = stringMatcher[1..];

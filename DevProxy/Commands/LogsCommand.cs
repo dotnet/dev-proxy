@@ -74,7 +74,7 @@ internal sealed class LogsCommand : Command
             var notice = GetMultipleInstancesNotice(state, states);
             if (notice is not null)
             {
-                await Console.Error.WriteLineAsync(notice);
+                await Console.Error.WriteLineAsync(notice, cancellationToken);
             }
         }
 

@@ -263,7 +263,7 @@ sealed class ProxyConsoleFormatter : ConsoleFormatter
             return;
         }
 
-        var pluginName = categoryOrPluginName[(categoryOrPluginName.LastIndexOf('.') + 1)..];
+        var pluginName = categoryOrPluginName[(categoryOrPluginName.LastIndexOf('.', StringComparison.Ordinal) + 1)..];
         if (pluginName != nameof(KestrelProxyEngine))
         {
             textWriter.Write($"{pluginName}: ");

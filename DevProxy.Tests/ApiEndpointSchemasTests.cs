@@ -79,14 +79,29 @@ public class ApiEndpointSchemasTests
         Assert.Equal(CamelCasePropertyNames<JwtOptions>(), properties);
     }
 
-    [Fact]
-    public void Get_ProxyStatusResponse_ListsAllProxyInfoProperties()
+    [Theory]
+    [InlineData("GET")]
+    [InlineData("POST")]
+    public void Get_ProxyStatusResponse_ListsAllProxyInfoProperties(string method)
     {
-        var schema = ApiEndpointSchemas.Get("GET", "/proxy")!;
+        var schema = ApiEndpointSchemas.Get(method, "/proxy")!;
         var properties = schema.Responses["200"]!["content"]![ApiEndpointSchemas.JsonContentType]!["schema"]!["properties"]!
             .AsObject().Select(p => p.Key).Order(StringComparer.Ordinal);
 
         Assert.Equal(CamelCasePropertyNames<ProxyInfo>(), properties);
+    }
+
+    [Theory]
+    [InlineData("GET")]
+    [InlineData("POST")]
+    public void Get_ProxyStatusResponse_ReportsIsOptionalStringArray(string method)
+    {
+        var schema = ApiEndpointSchemas.Get(method, "/proxy")!.Responses["200"]!["content"]![ApiEndpointSchemas.JsonContentType]!["schema"]!;
+        var reports = schema["properties"]!["reports"]!;
+
+        Assert.Equal("array", reports["type"]!.GetValue<string>());
+        Assert.Equal("string", reports["items"]!["type"]!.GetValue<string>());
+        Assert.DoesNotContain(schema["required"]?.AsArray() ?? [], p => p!.GetValue<string>() == "reports");
     }
 
     [Fact]

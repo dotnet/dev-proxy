@@ -383,7 +383,7 @@ public class MockStdioResponsePlugin(
         }
 
         // Remove surrounding quotes if present (from JSON string serialization)
-        if (contentString.StartsWith('"') && contentString.EndsWith('"'))
+        if (contentString.StartsWith('"', StringComparison.Ordinal) && contentString.EndsWith('"', StringComparison.Ordinal))
         {
             contentString = contentString[1..^1];
             // Unescape JSON string

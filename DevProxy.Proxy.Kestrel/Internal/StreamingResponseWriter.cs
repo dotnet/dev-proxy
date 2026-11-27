@@ -40,13 +40,14 @@ internal static class StreamingResponseWriter
     /// <summary>
     /// Streams <paramref name="originBody"/> to <paramref name="clientStream"/> as chunked
     /// transfer and returns the accumulated body (empty when accumulation is disabled or
-    /// the body exceeded <paramref name="accumulateCap"/>).
+    /// the body exceeded <paramref name="accumulateCap"/>) and whether accumulation was
+    /// abandoned because the body exceeded the cap.
     /// </summary>
     /// <param name="accumulateCap">
     /// Maximum bytes to retain for inspectors. Pass <c>0</c> to disable accumulation
     /// (pure pass-through, e.g. for non-watched traffic).
     /// </param>
-    public static async Task<ReadOnlyMemory<byte>> WriteAsync(
+    public static async Task<(ReadOnlyMemory<byte> Body, bool Truncated)> WriteAsync(
         Stream clientStream,
         IHttpResponse response,
         Stream originBody,
@@ -100,7 +101,9 @@ internal static class StreamingResponseWriter
             ArrayPool<byte>.Shared.Return(buffer);
         }
 
-        return accumulator is null || truncated ? ReadOnlyMemory<byte>.Empty : accumulator.WrittenMemory;
+        return accumulator is null || truncated
+            ? (ReadOnlyMemory<byte>.Empty, truncated)
+            : (accumulator.WrittenMemory, false);
     }
 
     private static async Task WriteHeadAsync(Stream clientStream, IHttpResponse response, bool keepAlive, CancellationToken ct)

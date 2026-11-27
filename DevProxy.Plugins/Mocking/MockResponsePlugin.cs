@@ -477,7 +477,7 @@ public class MockResponsePlugin(
                 ? s_serializedBodies.GetValue(currentBody, static b => new(ProxyUtils.SerializeBody(b)))
                 : null;
             string bodyString = serialized?.Text ?? ProxyUtils.SerializeBody(currentBody);
-            if (bodyString.StartsWith('@'))
+            if (bodyString.StartsWith('@', StringComparison.Ordinal))
             {
                 // we've got a mock body starting with @-token which means we're sending
                 // a response from a file on disk
