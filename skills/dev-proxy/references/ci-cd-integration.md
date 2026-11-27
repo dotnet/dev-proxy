@@ -4,6 +4,8 @@ Dev Proxy runs headlessly in CI/CD pipelines to automate API testing — catchin
 
 With Dev Proxy 3.3.1 or later, every management API request requires a bearer token. Set `CI=true` in the proxy process to suppress automatic token output, and retrieve credentials explicitly with `devproxy api token`. Keep shell tracing disabled around credentials. For multiple instances, add `--pid <PID>` and use the actual API URL from `devproxy status`.
 
+When `CI` is set, Dev Proxy doesn't register itself as the system proxy or install its root certificate, unless you set `asSystemProxy` or `installCert` in the config file or pass `--as-system-proxy` or `--install-cert`. Point your app at Dev Proxy with `HTTPS_PROXY`/`HTTP_PROXY` and trust the root certificate as shown below.
+
 Use action versions that support the authenticated API. For integrations that have not yet added bearer authentication, use the CLI and authenticated HTTP examples below.
 
 ## GitHub Actions (Recommended)

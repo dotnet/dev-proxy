@@ -28,8 +28,7 @@ public sealed class EngineInactivityTimeoutTests
 
         await RunEngineAsync(configuration, lifetime, async () =>
         {
-            var stopped = await Task.WhenAny(lifetime.StopRequested.Task, Task.Delay(10_000));
-            Assert.Same(lifetime.StopRequested.Task, stopped);
+            await lifetime.StopRequested.Task.WaitAsync(TimeSpan.FromSeconds(10));
         });
     }
 
@@ -73,8 +72,7 @@ public sealed class EngineInactivityTimeoutTests
                 await Task.Delay(400);
             }
 
-            var stopped = await Task.WhenAny(lifetime.StopRequested.Task, Task.Delay(10_000));
-            Assert.Same(lifetime.StopRequested.Task, stopped);
+            await lifetime.StopRequested.Task.WaitAsync(TimeSpan.FromSeconds(10));
         });
     }
 

@@ -97,7 +97,11 @@ public sealed class BaseLoaderSchemaValidationTests : IDisposable
 
         // The reload must wait for the initial load instead of reading the file.
         var reloadReadFile = loader.WaitForFilePathAccessAsync();
-        _ = await Task.WhenAny(reloadReadFile, Task.Delay(TimeSpan.FromMilliseconds(500)));
+        using (var delayCancellation = new CancellationTokenSource())
+        {
+            _ = await Task.WhenAny(reloadReadFile, Task.Delay(TimeSpan.FromMilliseconds(500), delayCancellation.Token));
+            await delayCancellation.CancelAsync();
+        }
         Assert.False(reloadReadFile.IsCompleted);
         Assert.False(init.IsCompleted);
 

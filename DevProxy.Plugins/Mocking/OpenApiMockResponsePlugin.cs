@@ -253,7 +253,7 @@ public sealed class OpenApiMockResponsePlugin(
         }
 
         var successResponse = responses
-            .Where(r => r.Key.StartsWith('2'))
+            .Where(r => r.Key.StartsWith('2', StringComparison.Ordinal))
             .OrderBy(r => r.Key, StringComparer.Ordinal)
             .FirstOrDefault();
         if (successResponse.Value is not null)
