@@ -224,7 +224,15 @@ internal sealed class StopCommand : Command
             // alone when another live instance owns it.
             if (isAlive || await StateManager.FindSystemProxyInstanceAsync(cancellationToken) is null)
             {
-                new SystemProxyManager(_systemProxyLogger).Disable();
+                if (new SystemProxyManager(_systemProxyLogger).Restore() is SystemProxyRestoreResult.Failed)
+                {
+                    // Keep the process and its state record: without restored settings, they're
+                    // what lets a later stop, start, or reset put the system proxy back.
+                    reporter.Report(state.Pid, "failed", isAlive
+                        ? $"Couldn't restore the system proxy, so Dev Proxy (PID: {state.Pid}) wasn't terminated."
+                        : $"Couldn't restore the system proxy left by Dev Proxy (PID: {state.Pid}).", RestoreFailedHint);
+                    return 1;
+                }
             }
         }
 

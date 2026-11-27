@@ -173,7 +173,17 @@ internal sealed class SystemProxyManager : ISystemProxyManager
 
         if (snapshot is not null)
         {
-            SystemProxySnapshotStore.Delete(_snapshotPath);
+            try
+            {
+                SystemProxySnapshotStore.Delete(_snapshotPath);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // The snapshot still names its owner, which would put these settings back
+                // when it stops, so don't report success.
+                _logger.LogError(ex, "Restored the system proxy settings, but couldn't remove {Path}. Remove the file, or run 'devproxy system-proxy reset' again to retry the cleanup.", _snapshotPath);
+                return SystemProxyRestoreResult.Failed;
+            }
         }
         return restoredPrevious
             ? SystemProxyRestoreResult.RestoredPrevious
@@ -193,9 +203,13 @@ internal sealed class SystemProxyManager : ISystemProxyManager
                 snapshot = new() { CreatedAt = DateTimeOffset.UtcNow };
                 capture(snapshot);
             }
-            else if (snapshot.Pid != Environment.ProcessId)
+            else
             {
-                previousOwner = new() { Pid = snapshot.Pid, ProcessStartTime = snapshot.ProcessStartTime };
+                if (snapshot.Pid != Environment.ProcessId)
+                {
+                    previousOwner = new() { Pid = snapshot.Pid, ProcessStartTime = snapshot.ProcessStartTime };
+                }
+                MergeNewSettings(snapshot, capture);
             }
             snapshot.Pid = Environment.ProcessId;
             snapshot.ProcessStartTime = StateManager.GetCurrentProcessStartTime();
@@ -222,6 +236,24 @@ internal sealed class SystemProxyManager : ISystemProxyManager
                 _logger.LogWarning(ex, "Couldn't record that Dev Proxy (PID: {Pid}) no longer owns the system proxy.", previousOwner.Pid);
             }
         }
+    }
+
+    // Registering configures every current service, including ones added after the
+    // snapshot was captured. Record their settings too, so restoring puts them back
+    // instead of leaving them pointing at this instance after it stops.
+    private void MergeNewSettings(SystemProxySnapshot snapshot, Action<SystemProxySnapshot> capture)
+    {
+        var current = new SystemProxySnapshot();
+        try
+        {
+            capture(current);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            _logger.LogWarning(ex, "Couldn't read the current system proxy settings. Settings of network services added since Dev Proxy first registered as the system proxy can't be restored when it stops.");
+            return;
+        }
+        SystemProxySnapshotStore.MergeNewServices(snapshot, current);
     }
 
     /// <summary>
@@ -253,7 +285,7 @@ internal sealed class SystemProxyManager : ISystemProxyManager
 
         foreach (var orphan in await StateManager.GetOrphanedSystemProxyStatesAsync())
         {
-            await StateManager.DeleteStateAsync(orphan);
+            await StateManager.RetireOrphanedStateAsync(orphan);
         }
     }
 

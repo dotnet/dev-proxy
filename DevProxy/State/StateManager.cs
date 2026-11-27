@@ -327,6 +327,19 @@ internal static class StateManager
     }
 
     /// <summary>
+    /// Removes the state record of a dead instance whose system-proxy registration was
+    /// reconciled. Like <see cref="DeleteStateAsync(ProxyInstanceState, CancellationToken)"/>,
+    /// only removes records that still describe the same instance, but propagates failures:
+    /// a surviving record would make the next start restore the system proxy again.
+    /// </summary>
+    public static async Task RetireOrphanedStateAsync(ProxyInstanceState state, CancellationToken cancellationToken = default)
+    {
+        await DeleteStateFileIfMatchesAsync(GetInstanceStateFilePath(state.Pid), state, cancellationToken, throwOnFailure: true);
+        await DeleteStateFileIfMatchesAsync(GetStateFilePath(), state, cancellationToken, throwOnFailure: true);
+        DeleteTokenIfProcessGone(state.Pid);
+    }
+
+    /// <summary>
     /// Records that the given instance no longer owns the system proxy, so stopping it or
     /// recovering after it crashes doesn't change the OS proxy settings. The on-disk record
     /// is re-read and only updated if it still describes the same instance, so a newer
@@ -535,14 +548,22 @@ internal static class StateManager
     private static async Task DeleteStateFileIfMatchesAsync(
         string filePath,
         ProxyInstanceState expected,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool throwOnFailure = false)
     {
         var current = await ReadStateFromFileAsync(filePath, cancellationToken);
         if (current is not null &&
             current.Pid == expected.Pid &&
             current.ProcessStartTime == expected.ProcessStartTime)
         {
-            DeleteFile(filePath);
+            if (throwOnFailure)
+            {
+                File.Delete(filePath);
+            }
+            else
+            {
+                DeleteFile(filePath);
+            }
         }
     }
 

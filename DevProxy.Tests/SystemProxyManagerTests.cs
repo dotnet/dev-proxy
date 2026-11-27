@@ -84,19 +84,31 @@ public class SystemProxyManagerTests
                 Pid = int.MaxValue,
                 ProcessStartTime = DateTimeOffset.UnixEpoch,
                 Windows = new() { ProxyEnable = 1, ProxyServer = "corp:8080" },
+                MacOS = [new() { Service = "Wi-Fi", Web = new() { Enabled = true, Server = "corp", Port = 8080 } }],
             });
             var manager = new SystemProxyManager(NullLogger<SystemProxyManager>.Instance, path);
-            var captured = false;
 
-            manager.SaveSnapshot(_ => captured = true);
+            // The current settings already point at the previous owner, except for a service
+            // added after the snapshot was captured.
+            manager.SaveSnapshot(current =>
+            {
+                current.Windows = new() { ProxyEnable = 1, ProxyServer = "127.0.0.1:8000" };
+                current.MacOS =
+                [
+                    new() { Service = "Wi-Fi", Web = new() { Enabled = true, Server = "127.0.0.1", Port = 8000 } },
+                    new() { Service = "Ethernet", Web = new() { Enabled = true, Server = "lan-proxy", Port = 3128 } },
+                ];
+            });
 
             var snapshot = SystemProxySnapshotStore.Load(path);
             Assert.NotNull(snapshot);
-            Assert.False(captured);
             Assert.Equal(Environment.ProcessId, snapshot.Pid);
             Assert.NotNull(snapshot.ProcessStartTime);
             Assert.True(snapshot.IsOwnerAlive());
             Assert.Equal("corp:8080", snapshot.Windows?.ProxyServer);
+            Assert.Equal(["Wi-Fi", "Ethernet"], snapshot.MacOS!.Select(s => s.Service));
+            Assert.Equal("corp", snapshot.MacOS![0].Web?.Server);
+            Assert.Equal("lan-proxy", snapshot.MacOS![1].Web?.Server);
         }
         finally
         {

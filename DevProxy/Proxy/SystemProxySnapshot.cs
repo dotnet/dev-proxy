@@ -115,15 +115,32 @@ internal static class SystemProxySnapshotStore
 #pragma warning restore VSTHRD002
     }
 
+    /// <summary>
+    /// Deletes the snapshot file. Throws when the file exists but can't be deleted, so the
+    /// caller doesn't report the settings as restored while the snapshot still names an owner.
+    /// </summary>
     public static void Delete(string path)
     {
-        try
+        if (File.Exists(path))
         {
             File.Delete(path);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+    }
+
+    /// <summary>
+    /// Adds the macOS services in <paramref name="current"/> that <paramref name="snapshot"/>
+    /// doesn't record yet. Services added after the snapshot was captured still have their own
+    /// settings, which taking over the system proxy is about to overwrite.
+    /// </summary>
+    public static void MergeNewServices(SystemProxySnapshot snapshot, SystemProxySnapshot current)
+    {
+        if (snapshot.MacOS is null || current.MacOS is null)
         {
+            return;
         }
+
+        var recorded = snapshot.MacOS.Select(s => s.Service).ToHashSet(StringComparer.Ordinal);
+        snapshot.MacOS.AddRange(current.MacOS.Where(s => !recorded.Contains(s.Service)));
     }
 }
 
