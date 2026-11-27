@@ -199,10 +199,11 @@ internal static partial class OpenApiSchemaValidator
         return type;
     }
 
-    // Gets the distinct items schemas declared by the schema and its allOf/anyOf/oneOf subschemas
+    // Gets the distinct items schemas declared by the schema and its allOf/anyOf/oneOf subschemas.
+    // Composed subschemas can declare items schemas that further constrain the schema's own items.
     private static List<IOpenApiSchema?> GetItemsSchemas(IOpenApiSchema? schema)
     {
-        List<IOpenApiSchema?> itemsSchemas = [.. EnumerateComposition(schema, s => s.Items is null)
+        List<IOpenApiSchema?> itemsSchemas = [.. EnumerateComposition(schema, _ => true)
             .Where(s => s.Items is not null)
             .Select(s => s.Items)
             .Distinct(ReferenceEqualityComparer.Instance)

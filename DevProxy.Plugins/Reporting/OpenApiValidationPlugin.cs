@@ -44,6 +44,7 @@ public sealed class OpenApiValidationPlugin(
 
     private const int MaxBodySize = 5 * 1024 * 1024;
 
+    private readonly ConditionalWeakTable<IProxySession, object> _completedSessions = [];
     private readonly ConditionalWeakTable<IProxySession, ValidationOutcome> _outcomes = [];
     private List<LoadedSpec> _specs = [];
 
@@ -105,6 +106,11 @@ public sealed class OpenApiValidationPlugin(
 
         ArgumentNullException.ThrowIfNull(e);
 
+        // the pipeline calls AfterResponse only after the response has been fully
+        // sent, unlike FinishedProcessingRequest, which is also logged for failed
+        // or canceled streams
+        _completedSessions.AddOrUpdate(e.ProxySession, true);
+
         var loggingContext = new LoggingContext(e.ProxySession);
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
@@ -161,10 +167,18 @@ public sealed class OpenApiValidationPlugin(
             .Select(l => l.Context!.Session)
             .Distinct()];
 
-        // only validate completed sessions, because the body of a streamed
-        // response might still be arriving when the recording stops
-        var sessions = GetSessions(MessageType.FinishedProcessingRequest);
-        var pending = GetSessions(MessageType.InterceptedResponse).Except(sessions).ToArray();
+        // only validate sessions whose response was fully sent, because the body
+        // of a streamed response might still be arriving when the recording stops,
+        // or the stream might have failed or been canceled
+        var finished = GetSessions(MessageType.FinishedProcessingRequest);
+        var sessions = finished.Where(s => _completedSessions.TryGetValue(s, out _)).ToArray();
+        var pending = GetSessions(MessageType.InterceptedResponse)
+            .Union(finished)
+            .Except(sessions)
+            // like completed requests, requests to servers that aren't in any spec
+            // are only reported when reporting unmatched requests is enabled
+            .Where(s => Configuration.ReportUnmatchedRequests || FindOperation(s.Request) is not null)
+            .ToArray();
 
         if (sessions.Length == 0 && pending.Length == 0)
         {
@@ -178,7 +192,7 @@ public sealed class OpenApiValidationPlugin(
         var results = new List<OpenApiValidationResult>();
         var unmatched = new List<string>();
         var skipped = pending
-            .Select(s => $"{s.Request.Method} {s.Request.Url}: Skipped validating because the response hadn't completed when the recording stopped")
+            .Select(s => $"{s.Request.Method} {s.Request.Url}: Skipped validating because the response didn't complete before the recording stopped")
             .ToList();
 
         foreach (var session in sessions)
@@ -315,39 +329,58 @@ public sealed class OpenApiValidationPlugin(
         {
             foreach (var server in spec.Servers)
             {
-                var (url, serverMatch) = requestUrls
-                    .Select(u => (Url: u, Match: server.Regex.Match(u)))
-                    .FirstOrDefault(m => m.Match.Success);
-                if (serverMatch is null)
+                // server variables can match values with a different number of path
+                // segments (e.g. api or api/v1), so try every boundary between the
+                // server URL and the path, starting with the longest server URL
+                OperationMatch? serverPathMatch = null;
+                OperationMatch? serverOnlyMatch = null;
+                foreach (var relativePath in GetRelativePaths(server, requestUrls))
                 {
-                    continue;
-                }
-
-                var relativePath = url[serverMatch.Length..];
-                if (relativePath.Length == 0)
-                {
-                    relativePath = "/";
-                }
-
-                // paths are ordered from the most specific, which takes precedence
-                // per the OpenAPI spec, even if it doesn't document the method
-                var bestPath = FindPaths(server, relativePath).FirstOrDefault();
-                if (bestPath.Path is { } path)
-                {
-                    if (path.Operations.TryGetValue(method, out var operation))
+                    // paths are ordered from the most specific, which takes precedence
+                    // per the OpenAPI spec, even if it doesn't document the method
+                    var bestPath = FindPaths(server, relativePath).FirstOrDefault();
+                    if (bestPath.Path is { } path)
                     {
-                        return new OperationMatch(spec, relativePath, path.Template, path.PathItem, operation, bestPath.PathValues);
+                        if (path.Operations.TryGetValue(method, out var operation))
+                        {
+                            return new OperationMatch(spec, relativePath, path.Template, path.PathItem, operation, bestPath.PathValues);
+                        }
+                        serverPathMatch ??= new OperationMatch(spec, relativePath, path.Template, path.PathItem, null, bestPath.PathValues);
                     }
-                    firstPathMatch ??= new OperationMatch(spec, relativePath, path.Template, path.PathItem, null, bestPath.PathValues);
+                    else
+                    {
+                        serverOnlyMatch ??= new OperationMatch(spec, relativePath, null, null, null, []);
+                    }
                 }
-                else
-                {
-                    firstServerMatch ??= new OperationMatch(spec, relativePath, null, null, null, []);
-                }
+
+                firstPathMatch ??= serverPathMatch;
+                firstServerMatch ??= serverOnlyMatch;
             }
         }
 
         return firstPathMatch ?? firstServerMatch;
+    }
+
+    private static IEnumerable<string> GetRelativePaths(ServerScope server, string[] requestUrls)
+    {
+        foreach (var url in requestUrls)
+        {
+            var pathStart = url.IndexOf('/', url.IndexOf("://", StringComparison.Ordinal) + 3);
+            if (pathStart < 0)
+            {
+                pathStart = url.Length;
+            }
+
+            // the server URL must end at a path segment boundary
+            for (var boundary = url.Length; boundary >= pathStart; boundary--)
+            {
+                if ((boundary == url.Length || url[boundary] == '/') && server.Regex.IsMatch(url[..boundary]))
+                {
+                    var relativePath = url[boundary..];
+                    yield return relativePath.Length == 0 ? "/" : relativePath;
+                }
+            }
+        }
     }
 
     private static string InsertPort(Uri uri, string url)
@@ -1038,8 +1071,8 @@ public sealed class OpenApiValidationPlugin(
         string ToPattern(string value) =>
             Regex.Replace(Regex.Escape(value), @"\\\{([^}]+)\}", m => ToVariablePattern(Regex.Unescape(m.Groups[1].Value)));
 
-        // the server URL must end at a path segment boundary
-        return new Regex($"^(?i:{ToPattern(origin)}){ToPattern(basePath)}(?=/|$)", RegexOptions.CultureInvariant);
+        // the server URL must match up to a path segment boundary, which the caller tries
+        return new Regex($"^(?i:{ToPattern(origin)}){ToPattern(basePath)}$", RegexOptions.CultureInvariant);
     }
 
     private static CompiledPath CompilePath(string template, IOpenApiPathItem pathItem)

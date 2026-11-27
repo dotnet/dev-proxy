@@ -185,6 +185,13 @@ public sealed class OpenApiValidationPluginTests : IDisposable
                 headers: [("Content-Type", "application/json"), .. responseHeaders ?? []],
                 body: body);
 
+    // the pipeline calls AfterResponse only for responses that were fully sent
+    private static async Task<RequestLog> CompleteAsync(OpenApiValidationPlugin plugin, TestExchange exchange)
+    {
+        await plugin.AfterResponseAsync(exchange.ResponseArgs, CancellationToken.None);
+        return exchange.AsRequestLog(MessageType.FinishedProcessingRequest);
+    }
+
     private static string[] Messages(OpenApiValidationResult? result) =>
         [.. Assert.IsType<OpenApiValidationResult>(result).Issues.Select(i => i.ToString())];
 
@@ -342,9 +349,9 @@ public sealed class OpenApiValidationPluginTests : IDisposable
     {
         var plugin = await CreatePluginAsync($$"""{ "specsFolder": ".", "reportUnmatchedRequests": {{(reportUnmatchedRequests ? "true" : "false")}} }""");
         var args = Recording([
-            Get("https://api.contoso.com/v1/users/1", HttpStatusCode.OK, """{ "id": 1, "name": "Alex" }""").AsRequestLog(MessageType.FinishedProcessingRequest),
-            Get("https://api.contoso.com/v1/users/1", HttpStatusCode.OK, """{ "id": 1 }""").AsRequestLog(MessageType.FinishedProcessingRequest),
-            Get("https://api.contoso.com/other", HttpStatusCode.OK, "{}").AsRequestLog(MessageType.FinishedProcessingRequest),
+            await CompleteAsync(plugin, Get("https://api.contoso.com/v1/users/1", HttpStatusCode.OK, """{ "id": 1, "name": "Alex" }""")),
+            await CompleteAsync(plugin, Get("https://api.contoso.com/v1/users/1", HttpStatusCode.OK, """{ "id": 1 }""")),
+            await CompleteAsync(plugin, Get("https://api.contoso.com/other", HttpStatusCode.OK, "{}")),
         ]);
 
         await plugin.AfterRecordingStopAsync(args, CancellationToken.None);
@@ -371,8 +378,8 @@ public sealed class OpenApiValidationPluginTests : IDisposable
     {
         var plugin = await CreatePluginAsync();
         var args = Recording([
-            Get("https://api.contoso.com/v1/users/1", HttpStatusCode.OK, """{ "id": 1, "name": "Alex" }""").AsRequestLog(MessageType.FinishedProcessingRequest),
-            Get("https://api.contoso.com/v1/users/2", HttpStatusCode.OK, $$"""{ "id": 2, "name": "{{new string('a', 5 * 1024 * 1024)}}" }""").AsRequestLog(MessageType.FinishedProcessingRequest),
+            await CompleteAsync(plugin, Get("https://api.contoso.com/v1/users/1", HttpStatusCode.OK, """{ "id": 1, "name": "Alex" }""")),
+            await CompleteAsync(plugin, Get("https://api.contoso.com/v1/users/2", HttpStatusCode.OK, $$"""{ "id": 2, "name": "{{new string('a', 5 * 1024 * 1024)}}" }""")),
         ]);
 
         await plugin.AfterRecordingStopAsync(args, CancellationToken.None);
@@ -1347,15 +1354,39 @@ public sealed class OpenApiValidationPluginTests : IDisposable
     {
         var plugin = await CreatePluginAsync();
         var pending = Get("https://api.contoso.com/v1/users/1", HttpStatusCode.OK, """{ "id": 1, "name": "Alex" }""");
-        var args = Recording([pending.AsRequestLog(MessageType.InterceptedResponse)]);
+        // e.g. a stream that failed or was canceled, which still logs FinishedProcessingRequest
+        var interrupted = Get("https://api.contoso.com/v1/users/2", HttpStatusCode.OK, string.Empty);
+        var unmatched = Get("https://api.contoso.com/other", HttpStatusCode.OK, "{}");
+        var args = Recording([
+            pending.AsRequestLog(MessageType.InterceptedResponse),
+            interrupted.AsRequestLog(MessageType.InterceptedResponse),
+            interrupted.AsRequestLog(MessageType.FinishedProcessingRequest),
+            unmatched.AsRequestLog(MessageType.InterceptedResponse),
+        ]);
 
         await plugin.AfterRecordingStopAsync(args, CancellationToken.None);
 
         var report = Assert.IsType<OpenApiValidationPluginReport>(
             ((Dictionary<string, object>)args.GlobalData[ProxyUtils.ReportsKey])[plugin.Name]);
         Assert.Equal(0, report.ValidatedRequests);
-        Assert.Contains("hadn't completed", Assert.Single(report.SkippedValidations!), StringComparison.Ordinal);
+        Assert.Empty(report.Results);
+        Assert.Collection(report.SkippedValidations!,
+            s => Assert.StartsWith("GET https://api.contoso.com/v1/users/1: Skipped validating because the response didn't complete", s, StringComparison.Ordinal),
+            s => Assert.StartsWith("GET https://api.contoso.com/v1/users/2: Skipped validating because the response didn't complete", s, StringComparison.Ordinal));
         Assert.DoesNotContain("All validated requests", report.ToMarkdown()!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task IgnoresUnfinishedRequestsNotMatchingAnySpecWhenNotReportingUnmatchedRequests()
+    {
+        var plugin = await CreatePluginAsync();
+        var args = Recording([Get("https://api.contoso.com/other", HttpStatusCode.OK, "{}").AsRequestLog(MessageType.InterceptedResponse)]);
+        var reports = (Dictionary<string, object>)args.GlobalData[ProxyUtils.ReportsKey];
+        reports[plugin.Name] = new OpenApiValidationPluginReport { Results = [], ValidatedRequests = 1 };
+
+        await plugin.AfterRecordingStopAsync(args, CancellationToken.None);
+
+        Assert.False(reports.ContainsKey(plugin.Name));
     }
 
     [Fact]
@@ -1424,6 +1455,32 @@ public sealed class OpenApiValidationPluginTests : IDisposable
         Assert.Empty(v1!.Issues);
         Assert.Equal("GET /items", beta?.Operation);
         Assert.Empty(beta!.Issues);
+    }
+
+    [Fact]
+    public async Task TriesShorterServerVariableValuesToFindDocumentedOperations()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("basepath.yaml", """
+            openapi: 3.0.3
+            info: { title: Base path, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com/{basePath}
+                variables:
+                  basePath:
+                    default: api
+                    enum: [ api, api/v1 ]
+            paths:
+              /v1/items:
+                get:
+                  responses: { '204': { description: ok } }
+            """));
+
+        var result = plugin.Validate(Call("GET", "https://api.fabrikam.com/api/v1/items").Session);
+
+        Assert.Equal("GET /v1/items", result?.Operation);
+        Assert.Empty(result!.Issues);
+        Assert.Equal("Path '/other' isn't documented in the spec",
+            Assert.Single(Messages(plugin.Validate(Call("GET", "https://api.fabrikam.com/api/v1/other").Session))));
     }
 
     [Fact]
@@ -1521,6 +1578,31 @@ public sealed class OpenApiValidationPluginTests : IDisposable
 
         Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?q=1&q=2").Session)!.Issues);
         Assert.NotEmpty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?q=1&q=3").Session)!.Issues);
+    }
+
+    [Fact]
+    public async Task InterpretsArrayItemsUsingItemsSchemasOfComposedBranches()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("items.yaml", """
+            openapi: 3.1.0
+            info: { title: Items, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            paths:
+              /items:
+                get:
+                  parameters:
+                    - name: q
+                      in: query
+                      schema:
+                        type: array
+                        items: { type: [ integer, string ] }
+                        allOf:
+                          - items: { anyOf: [ { type: integer, enum: [1] }, { type: string, enum: ['2'] } ] }
+                  responses: { '204': { description: ok } }
+            """));
+
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?q=1&q=2").Session)!.Issues);
     }
 
     private sealed class WarningLogger : ILogger<OpenApiValidationPlugin>
