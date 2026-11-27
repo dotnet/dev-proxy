@@ -24,6 +24,8 @@ sealed class DevProxyCommand : RootCommand
     private readonly UpdateNotification _updateNotification;
     private WebApplication? _app;
 
+    internal static readonly TimeSpan NewVersionCheckTimeout = TimeSpan.FromSeconds(5);
+
     internal const string PortOptionName = "--port";
     internal const string ApiPortOptionName = "--api-port";
     internal const string ApiIpAddressOptionName = "--api-ip-address";
@@ -369,7 +371,12 @@ sealed class DevProxyCommand : RootCommand
             plugin.OptionsLoaded(optionsLoadedArgs);
         }
 
-        await CheckForNewVersionAsync();
+        // Check for a new version in the background so that startup doesn't wait
+        // for the network. Linking to the command's token (the host's
+        // ApplicationStopping) cancels the check on shutdown and hot reload.
+        using var newVersionCheckCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        newVersionCheckCts.CancelAfter(NewVersionCheckTimeout);
+        var newVersionCheck = CheckForNewVersionInBackgroundAsync(_updateNotification, _proxyConfiguration.NewVersionNotification, _logger, newVersionCheckCts.Token);
 
         try
         {
@@ -445,6 +452,13 @@ sealed class DevProxyCommand : RootCommand
 #else
             return 1;
 #endif
+        }
+        finally
+        {
+            // Stop the check before the host is disposed so that it doesn't use
+            // the disposed logger or HttpClient. The check never throws.
+            await newVersionCheckCts.CancelAsync();
+            await newVersionCheck;
         }
     }
 
@@ -862,16 +876,28 @@ sealed class DevProxyCommand : RootCommand
         }
     }
 
-    private async Task CheckForNewVersionAsync()
+    internal static Task CheckForNewVersionInBackgroundAsync(UpdateNotification updateNotification, ReleaseType releaseType, ILogger logger, CancellationToken cancellationToken) =>
+        Task.Run(() => CheckForNewVersionAsync(updateNotification, releaseType, logger, cancellationToken), CancellationToken.None);
+
+    private static async Task CheckForNewVersionAsync(UpdateNotification updateNotification, ReleaseType releaseType, ILogger logger, CancellationToken cancellationToken)
     {
-        var newReleaseInfo = await _updateNotification.CheckForNewVersionAsync(_proxyConfiguration.NewVersionNotification);
-        if (newReleaseInfo != null)
+        try
         {
-            _logger.LogInformation(
+            var newReleaseInfo = await updateNotification.CheckForNewVersionAsync(releaseType, cancellationToken);
+            if (newReleaseInfo is null || cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            logger.LogInformation(
                 "New Dev Proxy version {Version} is available.{NewLine}See https://aka.ms/devproxy/upgrade for more information.",
                 newReleaseInfo.Version,
                 Environment.NewLine
             );
+        }
+        catch
+        {
+            // The version check is best-effort and must never fail startup or shutdown.
         }
     }
 
