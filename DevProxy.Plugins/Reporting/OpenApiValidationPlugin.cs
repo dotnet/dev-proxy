@@ -13,6 +13,7 @@ using Microsoft.OpenApi;
 using Microsoft.OpenApi.Reader;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -43,6 +44,7 @@ public sealed class OpenApiValidationPlugin(
 
     private const int MaxBodySize = 5 * 1024 * 1024;
 
+    private readonly ConditionalWeakTable<IProxySession, object> _completedSessions = [];
     private readonly ConditionalWeakTable<IProxySession, ValidationOutcome> _outcomes = [];
     private List<LoadedSpec> _specs = [];
 
@@ -104,6 +106,11 @@ public sealed class OpenApiValidationPlugin(
 
         ArgumentNullException.ThrowIfNull(e);
 
+        // the pipeline calls AfterResponse only after the response has been fully
+        // sent, unlike FinishedProcessingRequest, which is also logged for failed
+        // or canceled streams
+        _completedSessions.AddOrUpdate(e.ProxySession, true);
+
         var loggingContext = new LoggingContext(e.ProxySession);
         if (!e.HasRequestUrlMatch(UrlsToWatch))
         {
@@ -150,18 +157,33 @@ public sealed class OpenApiValidationPlugin(
 
         ArgumentNullException.ThrowIfNull(e);
 
-        var sessions = e.RequestLogs
+        IProxySession[] GetSessions(MessageType messageType) => [.. e.RequestLogs
             .Where(l =>
-                l.MessageType == MessageType.InterceptedResponse &&
+                l.MessageType == messageType &&
                 l.Context?.Session is not null &&
                 l.Context.Session.HasResponse &&
                 ProxyUtils.MatchesUrlToWatch(UrlsToWatch, l.Context.Session.Request.RequestUri.AbsoluteUri) &&
                 !IsCorsPreflight(l.Context.Session.Request))
             .Select(l => l.Context!.Session)
-            .Distinct();
+            .Distinct()];
 
-        if (!sessions.Any())
+        // only validate sessions whose response was fully sent, because the body
+        // of a streamed response might still be arriving when the recording stops,
+        // or the stream might have failed or been canceled
+        var finished = GetSessions(MessageType.FinishedProcessingRequest);
+        var sessions = finished.Where(s => _completedSessions.TryGetValue(s, out _)).ToArray();
+        var pending = GetSessions(MessageType.InterceptedResponse)
+            .Union(finished)
+            .Except(sessions)
+            // like completed requests, requests to servers that aren't in any spec
+            // are only reported when reporting unmatched requests is enabled
+            .Where(s => Configuration.ReportUnmatchedRequests || FindOperation(s.Request) is not null)
+            .ToArray();
+
+        if (sessions.Length == 0 && pending.Length == 0)
         {
+            // don't leave the report from a previous recording behind
+            _ = ((Dictionary<string, object>)e.GlobalData[ProxyUtils.ReportsKey]).Remove(Name);
             Logger.LogRequest("No requests to process", MessageType.Skipped);
             return Task.CompletedTask;
         }
@@ -169,7 +191,9 @@ public sealed class OpenApiValidationPlugin(
         var validated = 0;
         var results = new List<OpenApiValidationResult>();
         var unmatched = new List<string>();
-        var skipped = new List<string>();
+        var skipped = pending
+            .Select(s => $"{s.Request.Method} {s.Request.Url}: Skipped validating because the response didn't complete before the recording stopped")
+            .ToList();
 
         foreach (var session in sessions)
         {
@@ -290,6 +314,11 @@ public sealed class OpenApiValidationPlugin(
     private OperationMatch? FindOperation(IHttpRequest request)
     {
         var requestUrl = request.RequestUri.GetLeftPart(UriPartial.Path);
+        // request URLs omit default ports, but servers can require them, e.g. through
+        // a variable like https://api.contoso.com:{port} with port: { default: '443' }
+        string[] requestUrls = request.RequestUri.IsDefaultPort && request.RequestUri.Port >= 0
+            ? [requestUrl, InsertPort(request.RequestUri, requestUrl)]
+            : [requestUrl];
         var method = new HttpMethod(request.Method);
         OperationMatch? firstPathMatch = null;
         OperationMatch? firstServerMatch = null;
@@ -300,42 +329,64 @@ public sealed class OpenApiValidationPlugin(
         {
             foreach (var server in spec.Servers)
             {
-                var serverMatch = server.Regex.Match(requestUrl);
-                if (!serverMatch.Success)
+                // server variables can match values with a different number of path
+                // segments (e.g. api or api/v1), so try every boundary between the
+                // server URL and the path, starting with the longest server URL
+                OperationMatch? serverPathMatch = null;
+                OperationMatch? serverOnlyMatch = null;
+                foreach (var relativePath in GetRelativePaths(server, requestUrls))
                 {
-                    continue;
-                }
-
-                var relativePath = requestUrl[serverMatch.Length..];
-                if (relativePath.Length > 0 && relativePath[0] != '/')
-                {
-                    // server URL matched only part of a path segment
-                    continue;
-                }
-                if (relativePath.Length == 0)
-                {
-                    relativePath = "/";
-                }
-
-                // paths are ordered from the most specific, which takes precedence
-                // per the OpenAPI spec, even if it doesn't document the method
-                var bestPath = FindPaths(server, relativePath).FirstOrDefault();
-                if (bestPath.Path is { } path)
-                {
-                    if (path.Operations.TryGetValue(method, out var operation))
+                    // paths are ordered from the most specific, which takes precedence
+                    // per the OpenAPI spec, even if it doesn't document the method
+                    var bestPath = FindPaths(server, relativePath).FirstOrDefault();
+                    if (bestPath.Path is { } path)
                     {
-                        return new OperationMatch(spec, relativePath, path.Template, path.PathItem, operation, bestPath.PathValues);
+                        if (path.Operations.TryGetValue(method, out var operation))
+                        {
+                            return new OperationMatch(spec, relativePath, path.Template, path.PathItem, operation, bestPath.PathValues);
+                        }
+                        serverPathMatch ??= new OperationMatch(spec, relativePath, path.Template, path.PathItem, null, bestPath.PathValues);
                     }
-                    firstPathMatch ??= new OperationMatch(spec, relativePath, path.Template, path.PathItem, null, bestPath.PathValues);
+                    else
+                    {
+                        serverOnlyMatch ??= new OperationMatch(spec, relativePath, null, null, null, []);
+                    }
                 }
-                else
-                {
-                    firstServerMatch ??= new OperationMatch(spec, relativePath, null, null, null, []);
-                }
+
+                firstPathMatch ??= serverPathMatch;
+                firstServerMatch ??= serverOnlyMatch;
             }
         }
 
         return firstPathMatch ?? firstServerMatch;
+    }
+
+    private static IEnumerable<string> GetRelativePaths(ServerScope server, string[] requestUrls)
+    {
+        foreach (var url in requestUrls)
+        {
+            var pathStart = url.IndexOf('/', url.IndexOf("://", StringComparison.Ordinal) + 3, StringComparison.Ordinal);
+            if (pathStart < 0)
+            {
+                pathStart = url.Length;
+            }
+
+            // the server URL must end at a path segment boundary
+            for (var boundary = url.Length; boundary >= pathStart; boundary--)
+            {
+                if ((boundary == url.Length || url[boundary] == '/') && server.Regex.IsMatch(url.AsSpan(0, boundary)))
+                {
+                    var relativePath = url[boundary..];
+                    yield return relativePath.Length == 0 ? "/" : relativePath;
+                }
+            }
+        }
+    }
+
+    private static string InsertPort(Uri uri, string url)
+    {
+        var authority = uri.GetLeftPart(UriPartial.Authority);
+        return string.Create(CultureInfo.InvariantCulture, $"{authority}:{uri.Port}{url[authority.Length..]}");
     }
 
     private static IEnumerable<(CompiledPath Path, Dictionary<string, string> PathValues)> FindPaths(ServerScope server, string relativePath)
@@ -353,7 +404,8 @@ public sealed class OpenApiValidationPlugin(
             var values = new Dictionary<string, string>(StringComparer.Ordinal);
             for (var i = 0; i < path.ParameterNames.Count; i++)
             {
-                values[path.ParameterNames[i]] = Uri.UnescapeDataString(m.Groups[i + 1].Value);
+                // values are decoded after splitting arrays, so that encoded delimiters are kept in items
+                values[path.ParameterNames[i]] = m.Groups[i + 1].Value;
             }
             yield return (path, values);
         }
@@ -364,6 +416,20 @@ public sealed class OpenApiValidationPlugin(
         var parameters = GetEffectiveParameters(match.PathItem!, match.Operation!);
         var query = ParseQueryString(request.RequestUri.Query);
 
+        var queryParameters = parameters
+            .Where(p => p.In == ParameterLocation.Query && p.Name is not null)
+            .ToArray();
+        var knownQueryKeys = queryParameters
+            .Select(p => new ObjectQueryKey(p.Name!, false))
+            .Concat(queryParameters.SelectMany(GetObjectQueryKeys))
+            .Concat(GetQueryApiKeyNames(match).Select(n => new ObjectQueryKey(n, false)))
+            .ToArray();
+        // exploded form dictionaries (e.g. owner=Alex) are sent as arbitrary keys,
+        // so they consist of the query keys that aren't otherwise documented
+        var dynamicQueryKeys = query.Keys
+            .Where(name => !knownQueryKeys.Any(k => k.IsMatch(name)))
+            .ToArray();
+
         foreach (var parameter in parameters)
         {
             if (parameter.Name is null || parameter.In is null)
@@ -372,20 +438,24 @@ public sealed class OpenApiValidationPlugin(
             }
 
             List<string>? values = null;
+            Func<string, string>? decode = null;
             switch (parameter.In)
             {
                 case ParameterLocation.Path:
                     if (match.PathValues.TryGetValue(parameter.Name, out var pathValue))
                     {
                         values = [pathValue];
+                        decode = Uri.UnescapeDataString;
                     }
                     break;
                 case ParameterLocation.Query:
                     if (query.TryGetValue(parameter.Name, out var queryValues))
                     {
                         values = queryValues;
+                        decode = Unescape;
                     }
-                    else if (GetObjectQueryKeys(parameter).Any(k => query.Keys.Any(k.IsMatch)))
+                    else if (GetObjectQueryKeys(parameter).Any(k => query.Keys.Any(k.IsMatch)) ||
+                        (dynamicQueryKeys.Length > 0 && IsExplodedFormDictionary(parameter)))
                     {
                         // values of deepObject (e.g. filter[name]=value) and exploded
                         // form object (e.g. name=value) parameters aren't validated
@@ -425,30 +495,18 @@ public sealed class OpenApiValidationPlugin(
 
             ValidateParameterValue(parameter.Name, $"{locationName} parameter", values, parameter.Schema,
                 parameter.Style ?? GetDefaultStyle(parameter.In.Value), parameter.Explode,
-                OpenApiValidationIssueLocation.Request, issues, match.Spec);
+                OpenApiValidationIssueLocation.Request, issues, match.Spec, decode);
         }
 
         // unknown query parameters
         var hasQueryStringParameter = parameters.Any(p => p.In == ParameterLocation.QueryString);
-        if (hasQueryStringParameter)
+        if (hasQueryStringParameter || queryParameters.Any(IsExplodedFormDictionary))
         {
             return;
         }
 
-        var queryParameters = parameters
-            .Where(p => p.In == ParameterLocation.Query && p.Name is not null)
-            .ToArray();
-        var knownQueryKeys = queryParameters
-            .Select(p => new ObjectQueryKey(p.Name!, false))
-            .Concat(queryParameters.SelectMany(GetObjectQueryKeys))
-            .ToArray();
-        foreach (var name in query.Keys)
+        foreach (var name in dynamicQueryKeys)
         {
-            if (knownQueryKeys.Any(k => k.IsMatch(name)))
-            {
-                continue;
-            }
-
             issues.Add(new()
             {
                 Location = OpenApiValidationIssueLocation.Request,
@@ -457,6 +515,14 @@ public sealed class OpenApiValidationPlugin(
             });
         }
     }
+
+    // API keys sent in the query string are documented by apiKey security schemes
+    // applied to the operation (or by default, to the document) rather than by parameters
+    private static IEnumerable<string> GetQueryApiKeyNames(OperationMatch match) =>
+        (match.Operation!.Security ?? match.Spec.Security ?? [])
+            .SelectMany(requirement => requirement.Keys)
+            .Where(scheme => scheme.Type == SecuritySchemeType.ApiKey && scheme.In == ParameterLocation.Query && scheme.Name is not null)
+            .Select(scheme => scheme.Name!);
 
     private static ParameterStyle GetDefaultStyle(ParameterLocation location) => location switch
     {
@@ -485,9 +551,7 @@ public sealed class OpenApiValidationPlugin(
             return [new($"{parameter.Name}[", true)];
         }
 
-        var type = OpenApiSchemaValidator.GetEffectiveType(parameter.Schema);
-        if ((parameter.Style ?? ParameterStyle.Form) == ParameterStyle.Form && parameter.Explode &&
-            type is not null && type.Value.HasFlag(JsonSchemaType.Object))
+        if (IsExplodedFormObject(parameter))
         {
             return OpenApiSchemaValidator.GetPropertyNames(parameter.Schema).Select(p => new ObjectQueryKey(p, false));
         }
@@ -495,38 +559,52 @@ public sealed class OpenApiValidationPlugin(
         return [];
     }
 
+    private static bool IsExplodedFormObject(IOpenApiParameter parameter)
+    {
+        var type = OpenApiSchemaValidator.GetEffectiveType(parameter.Schema);
+        return parameter.In == ParameterLocation.Query &&
+            (parameter.Style ?? ParameterStyle.Form) == ParameterStyle.Form && parameter.Explode &&
+            type is not null && type.Value.HasFlag(JsonSchemaType.Object);
+    }
+
+    private static bool IsExplodedFormDictionary(IOpenApiParameter parameter) =>
+        IsExplodedFormObject(parameter) && OpenApiSchemaValidator.AllowsDynamicProperties(parameter.Schema);
+
+    /// <param name="decode">Function to decode <paramref name="values"/>, or null if they aren't encoded.</param>
     private static void ValidateParameterValue(string name, string kind, List<string> values, IOpenApiSchema? schema,
         ParameterStyle style, bool explode, OpenApiValidationIssueLocation location, List<OpenApiValidationIssue> issues,
-        LoadedSpec spec)
+        LoadedSpec spec, Func<string, string>? decode = null)
     {
         if (schema is null || OpenApiSchemaValidator.GetEffectiveType(schema) == JsonSchemaType.Object)
         {
             return;
         }
 
-        var value = OpenApiSchemaValidator.CoerceParameterValue(values, schema, name, style, explode);
         var direction = location == OpenApiValidationIssueLocation.Request
             ? SchemaValidationDirection.Request
             : SchemaValidationDirection.Response;
-        var errors = OpenApiSchemaValidator.Validate(value, schema, direction, name, spec.StrictNullableEnums, spec.DocumentUri);
-        if (errors.Count > 0)
+        // serialized values are ambiguous, e.g. a value might be valid as a string when
+        // the schema allows multiple types, so the value is valid if any interpretation is.
+        // Errors are reported for the most likely interpretation, which comes first
+        List<SchemaValidationError>? errors = null;
+        foreach (var candidate in OpenApiSchemaValidator.GetParameterValueCandidates(values, schema, name, style, explode, decode, direction, spec.StrictNullableEnums))
         {
-            // the value might be valid as a string when the schema allows
-            // multiple types, e.g. anyOf: [{ type: integer, enum: [1] }, { type: string }]
-            var raw = OpenApiSchemaValidator.CoerceParameterValue(values, schema, name, style, explode, coerce: false);
-            if (OpenApiSchemaValidator.Validate(raw, schema, direction, name, spec.StrictNullableEnums, spec.DocumentUri).Count == 0)
+            var candidateErrors = OpenApiSchemaValidator.Validate(candidate, schema, direction, name, spec.StrictNullableEnums, spec.DocumentUri);
+            if (candidateErrors.Count == 0)
             {
                 return;
             }
+            errors ??= candidateErrors;
         }
 
-        foreach (var error in errors)
+        var displayValue = string.Join(",", decode is null ? values : values.Select(decode));
+        foreach (var error in errors ?? [])
         {
             issues.Add(new()
             {
                 Location = location,
                 Path = error.Path,
-                Message = $"Invalid {kind} value '{string.Join(",", values)}': {error.Message}"
+                Message = $"Invalid {kind} value '{displayValue}': {error.Message}"
             });
         }
     }
@@ -612,7 +690,9 @@ public sealed class OpenApiValidationPlugin(
                 OpenApiValidationIssueLocation.Response, issues, spec);
         }
 
-        if (response.Body.Length == 0)
+        // a body that the proxy didn't capture (e.g. a large streamed response) is
+        // still validated for its content type
+        if (response.Body.Length == 0 && response.IsBodyCaptured)
         {
             return;
         }
@@ -666,6 +746,12 @@ public sealed class OpenApiValidationPlugin(
             return;
         }
 
+        if (!message.IsBodyCaptured)
+        {
+            notes.Add($"Skipped validating the {locationName} body because the proxy didn't capture it (streamed bodies larger than the inspection limit aren't retained)");
+            return;
+        }
+
         // validation runs inline while processing the response, so skip
         // large bodies to avoid stalling the proxy
         if (message.Body.Length > MaxBodySize)
@@ -678,7 +764,13 @@ public sealed class OpenApiValidationPlugin(
         JsonDocument json;
         try
         {
-            json = JsonDocument.Parse(message.Body);
+            // BodyString decodes the body using the declared charset; UTF-8 bodies
+            // are parsed as bytes, without the byte order mark which the parser rejects
+            json = HasNonUtf8Charset(message.ContentType)
+                ? JsonDocument.Parse(message.BodyString.TrimStart('\uFEFF'))
+                : JsonDocument.Parse(message.Body.Span.StartsWith(Encoding.UTF8.Preamble)
+                    ? message.Body[Encoding.UTF8.Preamble.Length..]
+                    : message.Body);
         }
         catch (JsonException ex)
         {
@@ -739,6 +831,17 @@ public sealed class OpenApiValidationPlugin(
         return contentType.Split(';')[0].Trim().ToLowerInvariant();
     }
 
+    private static bool HasNonUtf8Charset(string? contentType)
+    {
+        var charset = contentType?.Split(';')
+            .Select(p => p.Trim())
+            .FirstOrDefault(p => p.StartsWith("charset=", StringComparison.OrdinalIgnoreCase))?["charset=".Length..]
+            .Trim('"');
+        return !string.IsNullOrEmpty(charset) &&
+            !charset.Equals("utf-8", StringComparison.OrdinalIgnoreCase) &&
+            !charset.Equals("utf8", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool IsJsonMediaType(string mediaType) =>
         mediaType == "application/json" ||
         mediaType.EndsWith("+json", StringComparison.Ordinal);
@@ -748,10 +851,14 @@ public sealed class OpenApiValidationPlugin(
         var parameters = new List<IOpenApiParameter>();
         parameters.AddRange(pathItem.Parameters ?? []);
 
-        // operation-level parameters override path-level parameters with the same name and location
+        // operation-level parameters override path-level parameters with the same name
+        // and location; header names are case-insensitive
         foreach (var parameter in operation.Parameters ?? [])
         {
-            _ = parameters.RemoveAll(p => p.Name == parameter.Name && p.In == parameter.In);
+            var comparison = parameter.In == ParameterLocation.Header
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+            _ = parameters.RemoveAll(p => p.In == parameter.In && string.Equals(p.Name, parameter.Name, comparison));
             parameters.Add(parameter);
         }
 
@@ -770,7 +877,8 @@ public sealed class OpenApiValidationPlugin(
         {
             var separatorIndex = pair.IndexOf('=', StringComparison.Ordinal);
             var name = Unescape(separatorIndex < 0 ? pair : pair[..separatorIndex]);
-            var value = separatorIndex < 0 ? string.Empty : Unescape(pair[(separatorIndex + 1)..]);
+            // values are decoded after splitting arrays, so that encoded delimiters are kept in items
+            var value = separatorIndex < 0 ? string.Empty : pair[(separatorIndex + 1)..];
 
             if (!result.TryGetValue(name, out var values))
             {
@@ -849,7 +957,7 @@ public sealed class OpenApiValidationPlugin(
                 continue;
             }
 
-            specs.Add(new LoadedSpec(file, servers, strictNullableEnums));
+            specs.Add(new LoadedSpec(file, servers, strictNullableEnums, document.Security));
             Logger.LogInformation("Loaded OpenAPI spec '{File}'", file);
         }
 
@@ -863,8 +971,9 @@ public sealed class OpenApiValidationPlugin(
         var scopes = new Dictionary<string, (Regex Regex, Dictionary<string, CompiledPath> Paths)>(StringComparer.Ordinal);
         var skippedServers = new HashSet<string>(StringComparer.Ordinal);
 
-        (Regex Regex, Dictionary<string, CompiledPath> Paths)? GetScope(string? url)
+        (Regex Regex, Dictionary<string, CompiledPath> Paths)? GetScope(OpenApiServer server)
         {
+            var url = server.Url;
             if (string.IsNullOrWhiteSpace(url) || !url.Contains("://", StringComparison.Ordinal))
             {
                 if (skippedServers.Add(url ?? string.Empty))
@@ -874,10 +983,12 @@ public sealed class OpenApiValidationPlugin(
                 return null;
             }
 
-            var key = url.TrimEnd('/');
+            // servers with the same URL can declare different variable values
+            var regex = CompileServerUrl(url.TrimEnd('/'), server.Variables);
+            var key = regex.ToString();
             if (!scopes.TryGetValue(key, out var scope))
             {
-                scope = (CompileServerUrl(key), new(StringComparer.Ordinal));
+                scope = (regex, new(StringComparer.Ordinal));
                 scopes[key] = scope;
             }
             return scope;
@@ -891,7 +1002,7 @@ public sealed class OpenApiValidationPlugin(
             // there, so that requests with undocumented methods are reported
             foreach (var server in pathServers)
             {
-                if (GetScope(server.Url) is { } scope)
+                if (GetScope(server) is { } scope)
                 {
                     GetOrAddPath(scope.Paths, template, pathItem);
                 }
@@ -902,7 +1013,7 @@ public sealed class OpenApiValidationPlugin(
                 var operationServers = operation.Servers is { Count: > 0 } ? operation.Servers : pathServers;
                 foreach (var server in operationServers)
                 {
-                    if (GetScope(server.Url) is { } scope)
+                    if (GetScope(server) is { } scope)
                     {
                         GetOrAddPath(scope.Paths, template, pathItem).Operations[method] = operation;
                     }
@@ -914,7 +1025,7 @@ public sealed class OpenApiValidationPlugin(
         // to undocumented paths are reported
         foreach (var server in document.Servers ?? [])
         {
-            _ = GetScope(server.Url);
+            _ = GetScope(server);
         }
 
         return [.. scopes.Values.Select(s => new ServerScope(
@@ -932,7 +1043,7 @@ public sealed class OpenApiValidationPlugin(
         return path;
     }
 
-    private static Regex CompileServerUrl(string url)
+    private static Regex CompileServerUrl(string url, IDictionary<string, OpenApiServerVariable>? variables)
     {
         // scheme and host are case-insensitive, but the base path is case-sensitive
         var authorityStart = url.IndexOf("://", StringComparison.Ordinal) + 3;
@@ -943,10 +1054,25 @@ public sealed class OpenApiValidationPlugin(
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         var basePath = pathStart < 0 ? string.Empty : url[pathStart..];
 
-        static string ToPattern(string value) =>
-            Regex.Replace(Regex.Escape(value), @"\\\{[^}]+\}", "[^/]*");
+        // variables match their documented values, which can span multiple path
+        // segments (e.g. api/v1), or any other value within a single segment
+        string ToVariablePattern(string name)
+        {
+            var variable = variables?.TryGetValue(name, out var v) == true ? v : null;
+            var documentedValues = (variable?.Enum ?? [])
+                .Append(variable?.Default)
+                .Where(value => !string.IsNullOrEmpty(value))
+                .Distinct(StringComparer.Ordinal)
+                .OrderByDescending(value => value!.Length)
+                .Select(value => Regex.Escape(value!));
+            return $"(?:{string.Join("|", documentedValues.Append("[^/]*"))})";
+        }
 
-        return new Regex($"^(?i:{ToPattern(origin)}){ToPattern(basePath)}", RegexOptions.CultureInvariant);
+        string ToPattern(string value) =>
+            Regex.Replace(Regex.Escape(value), @"\\\{([^}]+)\}", m => ToVariablePattern(Regex.Unescape(m.Groups[1].Value)));
+
+        // the server URL must match up to a path segment boundary, which the caller tries
+        return new Regex($"^(?i:{ToPattern(origin)}){ToPattern(basePath)}$", RegexOptions.CultureInvariant);
     }
 
     private static CompiledPath CompilePath(string template, IOpenApiPathItem pathItem)
@@ -971,7 +1097,7 @@ public sealed class OpenApiValidationPlugin(
     private sealed record ServerScope(Regex Regex, List<CompiledPath> Paths);
 
     // OAS 3.1 requires null to be listed in enums, unlike OAS 3.0 nullable enums
-    private sealed record LoadedSpec(string FilePath, List<ServerScope> Servers, bool StrictNullableEnums)
+    private sealed record LoadedSpec(string FilePath, List<ServerScope> Servers, bool StrictNullableEnums, IList<OpenApiSecurityRequirement>? Security)
     {
         // used to resolve self-relative references, like 'pets.yaml#/components/schemas/Cat'
         public Uri DocumentUri { get; } = new(Path.GetFullPath(FilePath));

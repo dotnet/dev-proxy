@@ -10,6 +10,7 @@ using DevProxy.Plugins;
 using System.CommandLine;
 using System.CommandLine.Parsing;
 using System.Diagnostics;
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Reflection;
 using System.Text.Json;
@@ -70,25 +71,23 @@ sealed class ConfigCommand : Command
     /// </summary>
     internal static async Task<int> RunValidateStandaloneAsync(string[] args)
     {
-        string? configFile = null;
-        var isJsonOutput = false;
+        var parseResult = ParseValidateArgs(args, out var configFileOptions, out var outputOption);
 
-        for (var i = 0; i < args.Length; i++)
+        OutputFormat? output = null;
+        try
         {
-            if ((string.Equals(args[i], "--config-file", StringComparison.OrdinalIgnoreCase) ||
-                 string.Equals(args[i], "-c", StringComparison.OrdinalIgnoreCase)) &&
-                i + 1 < args.Length)
-            {
-                configFile = args[i + 1];
-                i++;
-            }
-            else if (string.Equals(args[i], DevProxyCommand.OutputOptionName, StringComparison.OrdinalIgnoreCase) &&
-                     i + 1 < args.Length)
-            {
-                isJsonOutput = string.Equals(args[i + 1], "json", StringComparison.OrdinalIgnoreCase);
-                i++;
-            }
+            output = parseResult.GetValue(outputOption);
         }
+        catch (InvalidOperationException)
+        {
+            // invalid --output value, reported as a parse error below
+        }
+        var isJsonOutput = output == OutputFormat.Json;
+        var configFile = parseResult.Errors.Count == 0
+            ? configFileOptions
+                .Select(o => parseResult.GetValue(o))
+                .FirstOrDefault(v => v is not null)
+            : null;
 
         using var httpClient = new HttpClient();
         httpClient.DefaultRequestHeaders.UserAgent.Add(
@@ -122,8 +121,50 @@ sealed class ConfigCommand : Command
         });
         var logger = loggerFactory.CreateLogger<ConfigCommand>();
 
+        if (parseResult.Errors.Count > 0)
+        {
+            foreach (var error in parseResult.Errors)
+            {
+                logger.LogError("{Error}", error.Message);
+            }
+            return 2;
+        }
+
         return await ValidateConfigCoreAsync(configFile, isJsonOutput, httpClient, logger, CancellationToken.None);
     }
+
+    /// <summary>
+    /// Parses 'validate' and 'config validate' arguments with a lightweight
+    /// command tree that doesn't require loading the config or plugins.
+    /// </summary>
+    internal static ParseResult ParseValidateArgs(
+        string[] args,
+        out IReadOnlyList<Option<string?>> configFileOptions,
+        out Option<OutputFormat?> outputOption)
+    {
+        outputOption = new Option<OutputFormat?>(DevProxyCommand.OutputOptionName) { Recursive = true };
+        var validateConfigFileOption = CreateValidateConfigFileOption();
+        var configValidateConfigFileOption = CreateValidateConfigFileOption();
+        configFileOptions = [validateConfigFileOption, configValidateConfigFileOption];
+
+        var rootCommand = new RootCommand
+        {
+            new Command("validate") { validateConfigFileOption },
+            new Command("config") { new Command("validate") { configValidateConfigFileOption } }
+        };
+        rootCommand.Options.Add(outputOption);
+        // accepted for consistency with the main command, but not used by validation
+        rootCommand.Options.Add(new Option<string?>(DevProxyCommand.LogLevelOptionName) { Recursive = true });
+        rootCommand.Options.Add(new Option<bool>(DevProxyCommand.NoColorOptionName) { Arity = ArgumentArity.Zero, Recursive = true });
+
+        return rootCommand.Parse(args);
+    }
+
+    internal static Option<string?> CreateValidateConfigFileOption() => new("--config-file", "-c")
+    {
+        Description = "The path to the configuration file to validate",
+        HelpName = "config-file"
+    };
 
     private void ConfigureCommand()
     {
@@ -170,12 +211,8 @@ sealed class ConfigCommand : Command
             _ = Process.Start(cfgPsi);
         });
 
-        var configValidateCommand = new Command("validate", "Validate a Dev Proxy configuration file");
-        var validateConfigFileOption = new Option<string?>("--config-file", "-c")
-        {
-            Description = "The path to the configuration file to validate",
-            HelpName = "config-file"
-        };
+        var configValidateCommand = new Command("validate", "Validate a Dev Proxy configuration file without starting the proxy");
+        var validateConfigFileOption = CreateValidateConfigFileOption();
         configValidateCommand.Add(validateConfigFileOption);
         configValidateCommand.SetAction(async (parseResult, cancellationToken) =>
         {
@@ -199,6 +236,7 @@ sealed class ConfigCommand : Command
             ("devproxy config new myconfig.json", "Create named config file"),
             ("devproxy config get <config-id>", "Download config from gallery"),
             ("devproxy config open", "Open config in default editor"),
+            ("devproxy config validate -c myconfig.json", "Validate config without starting"),
         ]);
     }
 
@@ -602,10 +640,39 @@ sealed class ConfigCommand : Command
 
         using (configDoc)
         {
-            var schemaUrl = configDoc.RootElement.TryGetProperty("$schema", out var schemaProp)
-                ? schemaProp.GetString()
-                : null;
-            if (!string.IsNullOrEmpty(schemaUrl))
+            if (configDoc.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                errors.Add(new("configFile", $"Expected the configuration to be an object but got {configDoc.RootElement.ValueKind}"));
+                WriteResults(isJsonOutput, resolvedConfigFile, errors, warnings, pluginNames, urlPatterns, logger);
+                return 2;
+            }
+
+            // The configuration with resolved environment placeholders, which
+            // is what the proxy uses at startup. Null if it can't be loaded.
+            IConfiguration? configuration = null;
+            try
+            {
+                configuration = new ConfigurationBuilder().AddConfigFile(resolvedConfigFile).Build();
+            }
+            catch (Exception ex) when (ex is FormatException or InvalidDataException or YamlException)
+            {
+                errors.Add(new("configFile", $"Invalid configuration: {ex.Message}"));
+            }
+
+            string? schemaUrl = null;
+            if (TryGetPropertyIgnoreCase(configDoc.RootElement, "$schema", out var schemaProp))
+            {
+                if (schemaProp.ValueKind == JsonValueKind.String)
+                {
+                    schemaUrl = configuration?["$schema"] ?? schemaProp.GetString();
+                }
+                else if (schemaProp.ValueKind != JsonValueKind.Null)
+                {
+                    errors.Add(new("$schema", $"Expected a string but got {schemaProp.ValueKind}"));
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(schemaUrl))
             {
                 var result = await ProxyUtils.ValidateJsonAgainstSchemaAsync(
                     configJson, schemaUrl, httpClient, logger, cancellationToken);
@@ -623,24 +690,26 @@ sealed class ConfigCommand : Command
 
                 ValidateSchemaVersion(schemaUrl, warnings);
             }
-            else
+            else if (schemaProp.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null or JsonValueKind.String)
             {
                 warnings.Add(new("$schema", "No schema URL found, skipping schema validation"));
             }
 
             var configFileDirectory = Path.GetDirectoryName(resolvedConfigFile) ?? ".";
 
-            if (configDoc.RootElement.TryGetProperty("plugins", out var pluginsElement) &&
+            List<PluginEntry>? pluginEntries = null;
+            if (TryGetPropertyIgnoreCase(configDoc.RootElement, "plugins", out var pluginsElement) &&
                 pluginsElement.ValueKind == JsonValueKind.Array)
             {
-                ValidatePlugins(pluginsElement, configFileDirectory, errors, pluginNames);
+                pluginEntries = GetPluginEntries(pluginsElement, configuration);
+                ValidatePlugins(pluginEntries, configFileDirectory, errors, pluginNames);
             }
             else
             {
                 errors.Add(new("plugins", "No plugins configured"));
             }
 
-            if (configDoc.RootElement.TryGetProperty("urlsToWatch", out var urlsElement) &&
+            if (TryGetPropertyIgnoreCase(configDoc.RootElement, "urlsToWatch", out var urlsElement) &&
                 urlsElement.ValueKind == JsonValueKind.Array)
             {
                 ValidateUrls(urlsElement, errors, warnings, urlPatterns);
@@ -648,6 +717,12 @@ sealed class ConfigCommand : Command
             else
             {
                 warnings.Add(new("urlsToWatch", "No URLs to watch configured"));
+            }
+
+            if (pluginEntries is not null)
+            {
+                await ValidatePluginSettingsAsync(
+                    configDoc.RootElement, configuration, pluginEntries, urlPatterns.Count > 0, httpClient, logger, errors, warnings, cancellationToken);
             }
         }
 
@@ -665,43 +740,76 @@ sealed class ConfigCommand : Command
         }
     }
 
+    /// <summary>
+    /// Reads plugin references the way the proxy does at startup: from the
+    /// loaded configuration with environment placeholders resolved. Falls
+    /// back to the raw JSON if the configuration couldn't be loaded.
+    /// </summary>
+    private static List<PluginEntry> GetPluginEntries(JsonElement pluginsElement, IConfiguration? configuration)
+    {
+        var entries = new List<PluginEntry>();
+        var i = 0;
+
+        foreach (var plugin in pluginsElement.EnumerateArray())
+        {
+            if (configuration is not null)
+            {
+                var pluginSection = configuration.GetSection($"plugins:{i}");
+                var enabledValue = pluginSection["enabled"];
+                var enabled = true;
+                string? error = null;
+                if (enabledValue is not null && !bool.TryParse(enabledValue, out enabled))
+                {
+                    error = $"Invalid plugin definition: '{enabledValue}' is not a valid value for 'enabled'";
+                }
+                entries.Add(new(i, plugin, pluginSection["name"], enabled, pluginSection["pluginPath"], pluginSection["configSection"], error));
+            }
+            else
+            {
+                try
+                {
+                    var name = TryGetPropertyIgnoreCase(plugin, "name", out var nameProp) ? nameProp.GetString() : null;
+                    var enabled = !TryGetPropertyIgnoreCase(plugin, "enabled", out var enabledProp) || enabledProp.GetBoolean();
+                    var pluginPath = TryGetPropertyIgnoreCase(plugin, "pluginPath", out var pathProp) ? pathProp.GetString() : null;
+                    var configSection = TryGetPropertyIgnoreCase(plugin, "configSection", out var sectionProp) &&
+                        sectionProp.ValueKind == JsonValueKind.String ? sectionProp.GetString() : null;
+                    entries.Add(new(i, plugin, name, enabled, pluginPath, configSection, null));
+                }
+                catch (InvalidOperationException ex)
+                {
+                    entries.Add(new(i, plugin, null, false, null, null, $"Invalid plugin definition: {ex.Message}"));
+                }
+            }
+            i++;
+        }
+
+        return entries;
+    }
+
     private static void ValidatePlugins(
-        JsonElement pluginsElement,
+        List<PluginEntry> pluginEntries,
         string configFileDirectory,
         List<ValidationMessage> errors,
         List<string> pluginNames)
     {
         var hasEnabledPlugins = false;
-        var i = 0;
 
-        foreach (var plugin in pluginsElement.EnumerateArray())
+        foreach (var (i, _, name, enabled, pluginPath, _, error) in pluginEntries)
         {
-            string? name;
-            bool enabled;
-            string? pluginPath;
-            try
+            if (error is not null)
             {
-                name = plugin.TryGetProperty("name", out var nameProp) ? nameProp.GetString() : null;
-                enabled = !plugin.TryGetProperty("enabled", out var enabledProp) || enabledProp.GetBoolean();
-                pluginPath = plugin.TryGetProperty("pluginPath", out var pathProp) ? pathProp.GetString() : null;
-            }
-            catch (InvalidOperationException ex)
-            {
-                errors.Add(new($"plugins[{i}]", $"Invalid plugin definition: {ex.Message}"));
-                i++;
+                errors.Add(new($"plugins[{i}]", error));
                 continue;
             }
 
             if (string.IsNullOrEmpty(name))
             {
                 errors.Add(new($"plugins[{i}].name", "Plugin name is required"));
-                i++;
                 continue;
             }
 
             if (!enabled)
             {
-                i++;
                 continue;
             }
 
@@ -711,7 +819,6 @@ sealed class ConfigCommand : Command
             if (string.IsNullOrEmpty(pluginPath))
             {
                 errors.Add(new($"plugins[{i}].pluginPath", $"Plugin path is required for '{name}'"));
-                i++;
                 continue;
             }
 
@@ -724,7 +831,6 @@ sealed class ConfigCommand : Command
             {
                 errors.Add(new($"plugins[{i}].pluginPath",
                     $"Plugin assembly '{resolvedPluginPath}' not found"));
-                i++;
                 continue;
             }
 
@@ -746,8 +852,6 @@ sealed class ConfigCommand : Command
                 errors.Add(new($"plugins[{i}]",
                     $"Failed to load plugin assembly: {ex.Message}"));
             }
-
-            i++;
         }
 
         if (!hasEnabledPlugins)
@@ -755,6 +859,172 @@ sealed class ConfigCommand : Command
             errors.Add(new("plugins", "No enabled plugins found"));
         }
     }
+
+    /// <summary>
+    /// Validates plugin-level settings that are otherwise only checked when
+    /// the proxy starts: each plugin needs URLs to watch, and plugin config
+    /// sections must exist and match the plugin's schema.
+    /// </summary>
+    private static async Task ValidatePluginSettingsAsync(
+        JsonElement rootElement,
+        IConfiguration? configuration,
+        List<PluginEntry> pluginEntries,
+        bool hasGlobalUrls,
+        HttpClient httpClient,
+        ILogger logger,
+        List<ValidationMessage> errors,
+        List<ValidationMessage> warnings,
+        CancellationToken cancellationToken)
+    {
+        var validateSchemas = configuration is not null
+            ? !(bool.TryParse(configuration["validateSchemas"], out var validateSchemasValue) && !validateSchemasValue)
+            : !TryGetPropertyIgnoreCase(rootElement, "validateSchemas", out var validateSchemasProp) || !IsFalse(validateSchemasProp);
+
+        foreach (var (i, plugin, name, enabled, _, configSectionName, pluginError) in pluginEntries)
+        {
+            if (pluginError is not null || string.IsNullOrEmpty(name) || !enabled)
+            {
+                continue;
+            }
+
+            var hasPluginUrls = TryGetPropertyIgnoreCase(plugin, "urlsToWatch", out var pluginUrlsProp) &&
+                pluginUrlsProp.ValueKind == JsonValueKind.Array &&
+                pluginUrlsProp.GetArrayLength() > 0;
+            if (!hasPluginUrls && !hasGlobalUrls)
+            {
+                warnings.Add(new($"plugins[{i}].urlsToWatch",
+                    $"Plugin '{name}' has no URLs to watch and won't be loaded. Add URLs to the global or plugin-level urlsToWatch, or pass --urls-to-watch when starting Dev Proxy"));
+            }
+
+            if (string.IsNullOrEmpty(configSectionName))
+            {
+                continue;
+            }
+
+            var hasRawSection = TryGetConfigSection(rootElement, configSectionName.Split(':'), 0, out var configSection);
+            if (!hasRawSection && configuration?.GetSection(configSectionName).Exists() != true)
+            {
+                warnings.Add(new($"plugins[{i}].configSection",
+                    $"Config section '{configSectionName}' for plugin '{name}' not found. The plugin will use its default configuration"));
+                continue;
+            }
+
+            if (!validateSchemas || !hasRawSection)
+            {
+                continue;
+            }
+
+            string? rawSectionSchemaUrl = null;
+            if (TryGetPropertyIgnoreCase(configSection, "$schema", out var sectionSchemaProp) &&
+                sectionSchemaProp.ValueKind != JsonValueKind.Null)
+            {
+                if (sectionSchemaProp.ValueKind != JsonValueKind.String)
+                {
+                    errors.Add(new($"{configSectionName}.$schema", $"Expected a string but got {sectionSchemaProp.ValueKind}"));
+                    continue;
+                }
+                rawSectionSchemaUrl = sectionSchemaProp.GetString();
+            }
+
+            // the schema URL can also come from a root key like "mySection:$schema",
+            // which startup reads through IConfiguration
+            var sectionSchemaUrl = configuration?.GetSection(configSectionName)["$schema"] ?? rawSectionSchemaUrl;
+            if (string.IsNullOrWhiteSpace(sectionSchemaUrl))
+            {
+                continue;
+            }
+            try
+            {
+                var result = await ProxyUtils.ValidateJsonAgainstSchemaAsync(
+                    configSection.GetRawText(), sectionSchemaUrl, httpClient, logger, cancellationToken);
+                if (result.Status == SchemaValidationStatus.SchemaUnavailable)
+                {
+                    warnings.Add(new($"{configSectionName}.$schema", $"Could not retrieve schema, skipping schema validation: {string.Join(", ", result.Errors)}"));
+                }
+                else if (result.Status == SchemaValidationStatus.Invalid)
+                {
+                    foreach (var error in result.Errors)
+                    {
+                        errors.Add(new(configSectionName, error));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                warnings.Add(new($"{configSectionName}.$schema", $"Could not validate schema: {ex.Message}"));
+            }
+
+            var versionWarning = ProxyUtils.GetSchemaVersionMismatchWarning(sectionSchemaUrl);
+            if (versionWarning is not null)
+            {
+                warnings.Add(new($"{configSectionName}.$schema", versionWarning));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Resolves a config section using the same semantics as IConfiguration:
+    /// case-insensitive keys, ':' as the path separator (including literal
+    /// keys that contain ':') and numeric array indices.
+    /// </summary>
+    private static bool TryGetConfigSection(JsonElement element, string[] segments, int start, out JsonElement section)
+    {
+        if (start == segments.Length)
+        {
+            section = element;
+            return true;
+        }
+
+        for (var end = segments.Length; end > start; end--)
+        {
+            var key = string.Join(':', segments, start, end - start);
+            if (TryGetPropertyIgnoreCase(element, key, out var child) &&
+                TryGetConfigSection(child, segments, end, out section))
+            {
+                return true;
+            }
+        }
+
+        if (element.ValueKind == JsonValueKind.Array &&
+            int.TryParse(segments[start], NumberStyles.None, CultureInfo.InvariantCulture, out var index) &&
+            index < element.GetArrayLength() &&
+            TryGetConfigSection(element[index], segments, start + 1, out section))
+        {
+            return true;
+        }
+
+        section = default;
+        return false;
+    }
+
+    /// <summary>
+    /// Gets a property case-insensitively, like IConfiguration does. When keys
+    /// differ only by case, the last one wins.
+    /// </summary>
+    private static bool TryGetPropertyIgnoreCase(JsonElement element, string name, out JsonElement value)
+    {
+        value = default;
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        var found = false;
+        foreach (var property in element.EnumerateObject())
+        {
+            if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                found = true;
+            }
+        }
+        return found;
+    }
+
+    private static bool IsFalse(JsonElement element) =>
+        element.ValueKind == JsonValueKind.False ||
+        (element.ValueKind == JsonValueKind.String &&
+            bool.TryParse(element.GetString(), out var value) && !value);
 
     private static void ValidateUrls(
         JsonElement urlsElement,
@@ -891,4 +1161,13 @@ sealed class ConfigCommand : Command
     }
 
     private sealed record ValidationMessage(string Path, string Message);
+
+    private sealed record PluginEntry(
+        int Index,
+        JsonElement Element,
+        string? Name,
+        bool Enabled,
+        string? PluginPath,
+        string? ConfigSection,
+        string? Error);
 }

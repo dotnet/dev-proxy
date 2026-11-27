@@ -44,6 +44,13 @@ public interface IHttpMessage
     bool HasBody { get; }
 
     /// <summary>
+    /// False when the message had a body that the engine didn't retain for
+    /// inspection, e.g. a streamed response that exceeded the inspection cap.
+    /// <see cref="Body"/> is then empty even though a body was transferred.
+    /// </summary>
+    bool IsBodyCaptured => true;
+
+    /// <summary>
     /// The decompressed body bytes when buffered for this exchange; otherwise an
     /// empty buffer. See the body-visibility contract on <see cref="IHttpMessage"/>.
     /// </summary>
