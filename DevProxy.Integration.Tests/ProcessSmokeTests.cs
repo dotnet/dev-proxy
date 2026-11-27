@@ -191,7 +191,7 @@ public sealed class ProcessSmokeTests
                 {
                     File.Delete(logFile);
                 }
-                workDir.Delete(recursive: true);
+                DeleteWorkDir(workDir);
             }
         }
     }
@@ -302,7 +302,7 @@ public sealed class ProcessSmokeTests
                 {
                     File.Delete(logFile);
                 }
-                workDir.Delete(recursive: true);
+                DeleteWorkDir(workDir);
             }
         }
     }
@@ -521,7 +521,7 @@ public sealed class ProcessSmokeTests
         }
         finally
         {
-            workDir.Delete(recursive: true);
+            DeleteWorkDir(workDir);
             // The host writes a timestamped log to the working dir's parent in some modes;
             // the temp dir delete above covers logs written under workDir. Best-effort.
         }
@@ -591,7 +591,7 @@ public sealed class ProcessSmokeTests
         }
         finally
         {
-            workDir.Delete(recursive: true);
+            DeleteWorkDir(workDir);
         }
     }
 
@@ -650,7 +650,7 @@ public sealed class ProcessSmokeTests
         }
         finally
         {
-            workDir.Delete(recursive: true);
+            DeleteWorkDir(workDir);
         }
     }
 
@@ -732,6 +732,31 @@ public sealed class ProcessSmokeTests
         catch (OperationCanceledException)
         {
             return null;
+        }
+    }
+
+    // On Windows, a killed process can keep its working directory in use for a moment after
+    // Kill returns, and descendants such as the stdio child can't be waited for.
+    private static void DeleteWorkDir(DirectoryInfo workDir)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (true)
+        {
+            workDir.Refresh();
+            if (!workDir.Exists)
+            {
+                return;
+            }
+
+            try
+            {
+                workDir.Delete(recursive: true);
+                return;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException && DateTime.UtcNow < deadline)
+            {
+                Thread.Sleep(200);
+            }
         }
     }
 
