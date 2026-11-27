@@ -4,6 +4,7 @@
 
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
+using DevProxy.Logging;
 using DevProxy.Proxy;
 using DevProxy.Proxy.Kestrel.Internal;
 using System.CommandLine;
@@ -24,9 +25,12 @@ enum CertExportFormat
 sealed class CertCommand : Command
 {
     private readonly ILogger _logger;
-    private readonly X509Certificate2 _rootCertificate;
-    private readonly CertificateAuthority _certificateAuthority;
+    // Resolved on use, because creating the root certificate logs diagnostics that
+    // cert export must route to stderr first
+    private readonly Lazy<X509Certificate2> _rootCertificate;
+    private readonly Lazy<CertificateAuthority> _certificateAuthority;
     private readonly IRootCertificateTrust _rootCertificateTrust;
+    private readonly ConsoleLogRouting? _logRouting;
     private readonly Option<bool> _forceOption = new("--force", "-f")
     {
         Description = "Don't prompt for confirmation when removing the certificate. Required for non-interactive use (CI, piped stdin, automation)."
@@ -46,15 +50,30 @@ sealed class CertCommand : Command
 
     public CertCommand(
         ILogger<CertCommand> logger,
-        X509Certificate2 rootCertificate,
-        CertificateAuthority certificateAuthority,
+        IServiceProvider serviceProvider,
         IRootCertificateTrust rootCertificateTrust) :
+        this(
+            logger,
+            serviceProvider.GetRequiredService<X509Certificate2>,
+            serviceProvider.GetRequiredService<CertificateAuthority>,
+            rootCertificateTrust,
+            serviceProvider.GetService<ConsoleLogRouting>())
+    {
+    }
+
+    internal CertCommand(
+        ILogger<CertCommand> logger,
+        Func<X509Certificate2> rootCertificate,
+        Func<CertificateAuthority> certificateAuthority,
+        IRootCertificateTrust rootCertificateTrust,
+        ConsoleLogRouting? logRouting = null) :
         base("cert", "Manage the Dev Proxy certificate")
     {
         _logger = logger;
-        _rootCertificate = rootCertificate;
-        _certificateAuthority = certificateAuthority;
+        _rootCertificate = new(rootCertificate);
+        _certificateAuthority = new(certificateAuthority);
         _rootCertificateTrust = rootCertificateTrust;
+        _logRouting = logRouting;
 
         ConfigureCommand();
     }
@@ -95,7 +114,7 @@ sealed class CertCommand : Command
         {
             // Resolving the shared root certificate creates + persists it on first run.
             _logger.LogInformation("Ensuring certificate exists and is trusted...");
-            _rootCertificateTrust.Trust(_rootCertificate);
+            _rootCertificateTrust.Trust(_rootCertificate.Value);
             _logger.LogInformation("DONE");
             return 0;
         }
@@ -135,7 +154,7 @@ sealed class CertCommand : Command
 
             _logger.LogInformation("Uninstalling the root certificate...");
 
-            _rootCertificateTrust.Untrust(_rootCertificate);
+            _rootCertificateTrust.Untrust(_rootCertificate.Value);
 
             _logger.LogInformation("DONE");
             return 0;
@@ -153,13 +172,15 @@ sealed class CertCommand : Command
 
     public int ExportCert(ParseResult parseResult)
     {
+        // stdout is reserved for the exported file path, which scripts capture
+        _logRouting?.RouteAllToStandardError();
         _logger.LogTrace("ExportCert() called");
 
         var outputFormat = parseResult.GetValueOrDefault<OutputFormat?>(DevProxyCommand.OutputOptionName) ?? OutputFormat.Text;
 
         try
         {
-            if (!_certificateAuthority.IsRootPersisted)
+            if (!_certificateAuthority.Value.IsRootPersisted)
             {
                 // An unsaved root is replaced on the next run, so an exported copy wouldn't be trusted.
                 _logger.LogError("The root certificate couldn't be saved to disk, so it would change on the next Dev Proxy run. Fix the permissions of the Dev Proxy configuration folder (or DEV_PROXY_CERT_PATH) and try again.");
@@ -172,7 +193,7 @@ sealed class CertCommand : Command
                 ? GetDefaultExportFileName(format)
                 : ProxyUtils.ReplacePathTokens(file));
 
-            if (IsSameFile(filePath, _certificateAuthority.RootCertificatePath))
+            if (IsSameFile(filePath, _certificateAuthority.Value.RootCertificatePath))
             {
                 _logger.LogError("Can't export the certificate to {Path} because it would overwrite the stored root certificate and its private key. Choose a different file.", filePath);
                 return 1;
@@ -184,7 +205,7 @@ sealed class CertCommand : Command
                 _ = Directory.CreateDirectory(directory);
             }
 
-            File.WriteAllBytes(filePath, GetCertificateBytes(_rootCertificate, format));
+            File.WriteAllBytes(filePath, GetCertificateBytes(_rootCertificate.Value, format));
 
             var output = parseResult.InvocationConfiguration.Output;
             if (outputFormat == OutputFormat.Json)

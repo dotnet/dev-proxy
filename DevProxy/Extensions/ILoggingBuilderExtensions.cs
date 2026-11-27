@@ -5,6 +5,8 @@
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Commands;
 using DevProxy.Logging;
+using Microsoft.Extensions.Logging.Console;
+using Microsoft.Extensions.Options;
 
 #pragma warning disable IDE0130
 namespace Microsoft.Extensions.Logging;
@@ -23,7 +25,7 @@ static class ILoggingBuilderExtensions
         this ILoggingBuilder builder,
         ConfigurationManager configuration,
         DevProxyConfigOptions options) =>
-        builder.ConfigureDevProxyLogging(configuration, options, DevProxyCommand.IsStdioCommand, DevProxyCommand.IsJwtCommand, DevProxyCommand.IsRootCommand);
+        builder.ConfigureDevProxyLogging(configuration, options, DevProxyCommand.IsStdioCommand, DevProxyCommand.IsJwtCommand, DevProxyCommand.IsRootCommand, DevProxyCommand.IsCertExportCommand);
 
     internal static ILoggingBuilder ConfigureDevProxyLogging(
         this ILoggingBuilder builder,
@@ -31,8 +33,18 @@ static class ILoggingBuilderExtensions
         DevProxyConfigOptions options,
         bool isStdioCommand,
         bool isJwtCommand,
-        bool isRootCommand)
+        bool isRootCommand,
+        bool isCertExportCommand = false)
     {
+        // Registered for every command so that commands can depend on it. cert export is detected
+        // early when possible, so that diagnostics logged before it runs also go to stderr.
+#pragma warning disable CA2000 // Lives for the whole process
+        var logRouting = new ConsoleLogRouting(allToStandardError: isCertExportCommand);
+#pragma warning restore CA2000
+        _ = builder.Services
+            .AddSingleton(logRouting)
+            .AddSingleton<IOptionsChangeTokenSource<ConsoleLoggerOptions>>(logRouting);
+
         var configuredLogLevel = options.LogLevel ??
             configuration.GetValue("logLevel", LogLevel.Information);
 
@@ -72,9 +84,8 @@ static class ILoggingBuilderExtensions
             ? JsonConsoleFormatter.FormatterName
             : ProxyConsoleFormatter.DefaultCategoryName;
 
-        // For root command (proxy itself), use rich logging. IsRootCommand is also true
-        // when options precede a subcommand, so exclude cert export explicitly.
-        if (isRootCommand && !DevProxyCommand.IsCertExportCommand)
+        // For root command (proxy itself), use rich logging
+        if (isRootCommand)
         {
             _ = builder
                 .AddFilter("Microsoft.Hosting.*", LogLevel.Error)
@@ -88,7 +99,7 @@ static class ILoggingBuilderExtensions
                 .AddConsole(consoleOptions =>
                     {
                         consoleOptions.FormatterName = formatterName;
-                        consoleOptions.LogToStandardErrorThreshold = LogLevel.Warning;
+                        consoleOptions.LogToStandardErrorThreshold = logRouting.GetStandardErrorThreshold(LogLevel.Warning);
                     }
                 )
                 .AddConsoleFormatter<ProxyConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
@@ -114,12 +125,6 @@ static class ILoggingBuilderExtensions
         // For other subcommands (cert, config, outdated, msgraphdb), use rich logging
         // but with plugin messages filtered out
 
-        // cert export prints the exported file path to stdout for scripts to capture,
-        // so all diagnostics go to stderr
-        var logToStandardErrorThreshold = DevProxyCommand.IsCertExportCommand
-            ? LogLevel.Trace
-            : LogLevel.Warning;
-
         // Structured results are logged at Information. When JSON output is
         // requested with a higher log level, let Information through the
         // pipeline and have the JSON formatter drop diagnostic messages below
@@ -137,7 +142,7 @@ static class ILoggingBuilderExtensions
             .AddConsole(consoleOptions =>
                 {
                     consoleOptions.FormatterName = formatterName;
-                    consoleOptions.LogToStandardErrorThreshold = logToStandardErrorThreshold;
+                    consoleOptions.LogToStandardErrorThreshold = logRouting.GetStandardErrorThreshold(LogLevel.Warning);
                 }
             )
             .AddConsoleFormatter<ProxyConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>

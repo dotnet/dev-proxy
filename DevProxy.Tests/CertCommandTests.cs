@@ -260,40 +260,27 @@ public sealed class CertCommandTests : IDisposable
         Assert.False(File.Exists(file));
     }
 
+    // Only invocations that are cert export with built-in options alone are routed early.
+    // Others are resolved by the full parser once plugins have registered their options.
     [Theory]
     [InlineData(new[] { "cert", "export" }, true)]
-    [InlineData(new[] { "--log-level", "debug", "cert", "--output", "json", "export" }, true)]
     [InlineData(new[] { "cert", "export", "--format", "der", "--file", "ca.der" }, true)]
-    [InlineData(new[] { "--watch-process-names", "cert", "export" }, false)]
-    [InlineData(new[] { "-u", "cert", "export" }, true)]
+    [InlineData(new[] { "--log-level", "debug", "cert", "--output", "json", "export" }, true)]
+    [InlineData(new[] { "-c", "devproxyrc.json", "cert", "export" }, true)]
     [InlineData(new[] { "--watch-process-names", "node", "cert", "export" }, true)]
-    [InlineData(new[] { "jwt", "create", "--name", "cert", "--scopes", "export" }, false)]
-    [InlineData(new[] { "--failure-rate", "10", "cert", "export" }, true)]
-    [InlineData(new[] { "--failure-rate", "10", "jwt", "create", "--name", "cert", "--scopes", "export", "--output", "json" }, false)]
-    [InlineData(new[] { "--mock-flag", "config", "get", "cert", "export" }, false)]
-    [InlineData(new[] { "--mock-flag", "jwt", "create", "--name", "cert", "--scopes", "export" }, false)]
-    [InlineData(new[] { "--mocks-file", "config", "cert", "export", "--output", "json" }, true)]
-    [InlineData(new[] { "--mocks-file", "config", "--failure-rate", "10", "cert", "export" }, true)]
-    [InlineData(new[] { "--allowed-errors", "429", "500", "cert", "export" }, true)]
-    [InlineData(new[] { "--mock-flag", "cert", "export" }, true)]
+    [InlineData(new[] { "--watch-process-names", "cert", "export" }, false)]
+    [InlineData(new[] { "--failure-rate", "10", "cert", "export" }, false)]
+    [InlineData(new[] { "--mocks-file", "cert", "cert", "export", "--output", "json" }, false)]
+    [InlineData(new[] { "--failure-rate", "10", "mocks", "from-http-responses", "cert", "export", "--mocks-file", "out.json" }, false)]
+    [InlineData(new[] { "--no-mocks", "mocks", "from-http-responses", "cert", "export", "--mocks-file", "generated.json" }, false)]
+    [InlineData(new[] { "--mocks-file", "cert", "--watch-process-names", "export", "jwt", "create", "--output", "json" }, false)]
     [InlineData(new[] { "--mocks-file", "cert", "jwt", "create", "--scopes", "export", "--output", "json" }, false)]
-    [InlineData(new[] { "--mocks-file", "cert", "cert", "export", "--output", "json" }, true)]
-    [InlineData(new[] { "--mocks-file", "cert", "jwt", "create", "--name", "cert", "--scopes", "export" }, false)]
+    [InlineData(new[] { "jwt", "create", "--name", "cert", "--scopes", "export" }, false)]
     [InlineData(new[] { "cert", "ensure" }, false)]
     [InlineData(new[] { "export" }, false)]
-    public void IsCertExportInvocation_DetectsCommand(string[] args, bool expected)
+    public void IsCertExportInvocation_RecognizesOnlyUnambiguousInvocations(string[] args, bool expected)
     {
         Assert.Equal(expected, DevProxyCommand.IsCertExportInvocation(args));
-    }
-
-    [Fact]
-    public void IsCertExportInvocation_ExpandsResponseFile()
-    {
-        _ = Directory.CreateDirectory(_caDirectory);
-        var responseFile = Path.Combine(_caDirectory, "export.rsp");
-        File.WriteAllText(responseFile, "cert export");
-
-        Assert.True(DevProxyCommand.IsCertExportInvocation(["@" + responseFile]));
     }
 
     private static (int ExitCode, string Stdout) InvokeExport(CertificateAuthority ca, string[] args)
@@ -301,7 +288,7 @@ public sealed class CertCommandTests : IDisposable
         var root = new RootCommand
         {
             new Option<OutputFormat?>(DevProxyCommand.OutputOptionName) { Recursive = true },
-            new CertCommand(NullLogger<CertCommand>.Instance, ca.RootCertificate, ca, new TestCertificateTrust(fail: false))
+            new CertCommand(NullLogger<CertCommand>.Instance, () => ca.RootCertificate, () => ca, new TestCertificateTrust(fail: false))
         };
         using var stdout = new StringWriter();
         var exitCode = root.Parse(args).Invoke(new InvocationConfiguration { Output = stdout });
@@ -323,7 +310,7 @@ public sealed class CertCommandTests : IDisposable
     {
         using var certificate = CreateCertificate();
         var trust = new TestCertificateTrust(fail);
-        var command = new CertCommand(NullLogger<CertCommand>.Instance, certificate, GetCertificateAuthority(), trust);
+        var command = new CertCommand(NullLogger<CertCommand>.Instance, () => certificate, GetCertificateAuthority, trust);
 
         Assert.Equal(expectedExitCode, command.Parse("ensure").Invoke());
         Assert.True(trust.TrustCalled);
@@ -340,7 +327,7 @@ public sealed class CertCommandTests : IDisposable
         using var certificate = CreateCertificate();
         certificate.Dispose();
         var trust = new RootCertificateTrust(new FakeProxyConfiguration(), NullLogger<RootCertificateTrust>.Instance);
-        var command = new CertCommand(NullLogger<CertCommand>.Instance, certificate, GetCertificateAuthority(), trust);
+        var command = new CertCommand(NullLogger<CertCommand>.Instance, () => certificate, GetCertificateAuthority, trust);
 
         Assert.Equal(1, command.Parse("ensure").Invoke());
     }

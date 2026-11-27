@@ -443,7 +443,7 @@ public sealed class ProcessSmokeTests
         throw new InvalidOperationException("Command did not emit a JSON result.");
     }
 
-    private static async Task<(int ExitCode, string Output)> RunCommandAsync(
+    private static async Task<(int ExitCode, string Output, string Error)> RunCommandAsync(
         string host, string workDir, IEnumerable<string> args, IReadOnlyDictionary<string, string>? environment = null)
     {
         var startInfo = new ProcessStartInfo(host)
@@ -474,7 +474,7 @@ public sealed class ProcessSmokeTests
         {
             await process.WaitForExitAsync(timeout.Token);
             await Task.WhenAll(output, error);
-            return (process.ExitCode, await output);
+            return (process.ExitCode, await output, await error);
         }
         finally
         {
@@ -485,6 +485,146 @@ public sealed class ProcessSmokeTests
             }
         }
     }
+
+    // Options before a command can't be fully resolved until plugins register theirs, so these
+    // run the real host to verify which command runs and where its output goes.
+    [Theory]
+    [InlineData(new[] { "cert", "export" }, "text")]
+    [InlineData(new[] { "--log-level", "debug", "cert", "export" }, "text")]
+    [InlineData(new[] { "cert", "export", "--output", "json" }, "json")]
+    public async Task CertExport_WritesOnlyResultToStdout(string[] args, string output)
+    {
+        var host = Path.Combine(Path.GetDirectoryName(LocateHostDll())!,
+            OperatingSystem.IsWindows() ? "devproxy.exe" : "devproxy");
+        var workDir = Directory.CreateTempSubdirectory("devproxy-cert-export-");
+        try
+        {
+            await WriteCommandConfigAsync(workDir.FullName);
+            var file = Path.Combine(workDir.FullName, "ca.pem");
+
+            var result = await RunCommandAsync(host, workDir.FullName, [.. args, "--file", file], GetCommandEnvironment(workDir.FullName));
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.True(File.Exists(file), result.Error);
+            string? exportedPath;
+            if (output == "json")
+            {
+                using var json = JsonDocument.Parse(result.Output);
+                exportedPath = json.RootElement.GetProperty("path").GetString();
+            }
+            else
+            {
+                exportedPath = result.Output.Trim();
+            }
+            Assert.Equal(Path.GetFileName(file), Path.GetFileName(exportedPath));
+            // First run creates the root certificate, which is logged to stderr
+            Assert.Contains("root certificate", result.Error, StringComparison.Ordinal);
+        }
+        finally
+        {
+            workDir.Delete(recursive: true);
+        }
+    }
+
+    // cert is the value of a plugin option here, so the export runs but plugins that initialize
+    // before the command is resolved may still log to stdout
+    [Fact]
+    public async Task CertExport_AfterPluginOptionWithCertValue_ExportsCertificate()
+    {
+        var host = Path.Combine(Path.GetDirectoryName(LocateHostDll())!,
+            OperatingSystem.IsWindows() ? "devproxy.exe" : "devproxy");
+        var workDir = Directory.CreateTempSubdirectory("devproxy-cert-export-");
+        try
+        {
+            await WriteCommandConfigAsync(workDir.FullName);
+            var file = Path.Combine(workDir.FullName, "ca.pem");
+
+            var result = await RunCommandAsync(host, workDir.FullName,
+                ["--mocks-file", "cert", "cert", "export", "--output", "json", "--file", file],
+                GetCommandEnvironment(workDir.FullName));
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.True(File.Exists(file), result.Error);
+            Assert.Contains("\"path\"", result.Output, StringComparison.Ordinal);
+        }
+        finally
+        {
+            workDir.Delete(recursive: true);
+        }
+    }
+
+    // cert and export are values of plugin options or arguments of a plugin command here
+    [Theory]
+    [InlineData("--failure-rate", "10", "mocks", "from-http-responses", "cert", "export", "--mocks-file", "out.json")]
+    [InlineData("--no-mocks", "mocks", "from-http-responses", "cert", "export", "--mocks-file", "generated.json")]
+    public async Task PluginCommand_WithCertExportArguments_ReportsPluginErrors(params string[] args)
+    {
+        var host = Path.Combine(Path.GetDirectoryName(LocateHostDll())!,
+            OperatingSystem.IsWindows() ? "devproxy.exe" : "devproxy");
+        var workDir = Directory.CreateTempSubdirectory("devproxy-cert-export-");
+        try
+        {
+            await WriteCommandConfigAsync(workDir.FullName);
+
+            var result = await RunCommandAsync(host, workDir.FullName, args, GetCommandEnvironment(workDir.FullName));
+
+            Assert.Equal(1, result.ExitCode);
+            Assert.Contains("No matching HTTP response files found", result.Error, StringComparison.Ordinal);
+            Assert.False(File.Exists(Path.Combine(workDir.FullName, "dev-proxy-ca.pem")));
+        }
+        finally
+        {
+            workDir.Delete(recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData("--mocks-file", "cert", "--watch-process-names", "export", "jwt", "create", "--output", "json")]
+    [InlineData("--mocks-file", "cert", "jwt", "create", "--scopes", "export", "--output", "json")]
+    public async Task JwtCreate_WithCertExportArguments_WritesResultToStdout(params string[] args)
+    {
+        var host = Path.Combine(Path.GetDirectoryName(LocateHostDll())!,
+            OperatingSystem.IsWindows() ? "devproxy.exe" : "devproxy");
+        var workDir = Directory.CreateTempSubdirectory("devproxy-cert-export-");
+        try
+        {
+            await WriteCommandConfigAsync(workDir.FullName);
+
+            var result = await RunCommandAsync(host, workDir.FullName, args, GetCommandEnvironment(workDir.FullName));
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.False(string.IsNullOrEmpty(GetResultData(result.Output).GetProperty("token").GetString()));
+            Assert.False(File.Exists(Path.Combine(workDir.FullName, "dev-proxy-ca.pem")));
+        }
+        finally
+        {
+            workDir.Delete(recursive: true);
+        }
+    }
+
+    private static async Task WriteCommandConfigAsync(string workDir)
+    {
+        var config = JsonNode.Parse(ConfigFile)!.AsObject();
+        config["installCert"] = false;
+        config["noFirstRun"] = true;
+        config["validateSchemas"] = false;
+        // Registers --failure-rate
+        config["plugins"]!.AsArray().Insert(0, new JsonObject
+        {
+            ["name"] = "GenericRandomErrorPlugin",
+            ["enabled"] = true,
+            ["pluginPath"] = "~appFolder/plugins/DevProxy.Plugins.dll",
+            ["configSection"] = "errorsPlugin"
+        });
+        config["errorsPlugin"] = new JsonObject { ["errorsFile"] = "errors.json" };
+        await File.WriteAllTextAsync(Path.Combine(workDir, "errors.json"), """{ "errors": [] }""");
+        await File.WriteAllTextAsync(Path.Combine(workDir, "mocks.json"), MocksFile);
+        await File.WriteAllTextAsync(Path.Combine(workDir, "devproxyrc.json"), config.ToJsonString());
+    }
+
+    // Isolates the root certificate so that tests don't create or reuse the user's one
+    private static Dictionary<string, string> GetCommandEnvironment(string workDir) =>
+        new() { ["DEV_PROXY_CERT_PATH"] = Path.Combine(workDir, "rootCert.pfx") };
 
     [Fact]
     public async Task Host_LoadsMockPluginFromConfig_AndServesMock()

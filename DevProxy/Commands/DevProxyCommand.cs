@@ -175,89 +175,39 @@ sealed class DevProxyCommand : RootCommand
         }
     }
 
-    private static readonly HashSet<string> otherBuiltInCommandNames = new(StringComparer.Ordinal)
+    // Logging is configured before plugins register their options and commands, so this only
+    // recognizes invocations that parse as cert export using built-in options alone. Anything
+    // else (e.g. a plugin option or command) is left to CertCommand, which reroutes logging
+    // once the full command line is parsed.
+    internal static bool IsCertExportInvocation(string[] args)
     {
-        "api", "config", "jwt", "logs", "msgraphdb", "outdated", "plugin", "status", "stdio", "stop", "validate"
-    };
-
-    internal static bool IsCertExportInvocation(string[] args) => IsCertExportInvocation(args, expandResponseFiles: true);
-
-    private static bool IsCertExportInvocation(IReadOnlyList<string> args, bool expandResponseFiles)
-    {
-        // Parse with the real root options so their values (e.g. --watch-process-names cert export)
-        // aren't mistaken for subcommands. Parsing also expands response files (devproxy @export.rsp).
         var exportCommand = new Command("export") { TreatUnmatchedTokensAsErrors = false };
-        var certCommand = new Command("cert") { exportCommand };
-        var rootCommand = new RootCommand { certCommand, new Option<string?>(ConfigFileOptionName, "-c") };
+        var rootCommand = new RootCommand
+        {
+            new Command("cert") { exportCommand },
+            new Option<string?>(ConfigFileOptionName, "-c")
+        };
         // The install-cert validator only adds parse errors, which don't affect command detection
         rootCommand.AddOptions(CreateRootOptions(new ProxyConfiguration(new ConfigurationBuilder().Build(), isCi: false)));
 
-        var configuration = new ParserConfiguration();
-        if (!expandResponseFiles)
-        {
-            configuration.ResponseFileTokenReplacer = null;
-        }
-
-        var parseResult = rootCommand.Parse(args, configuration);
+        var parseResult = rootCommand.Parse(args);
         if (parseResult.CommandResult.Command != exportCommand ||
             parseResult.CommandResult.Parent is not CommandResult certResult)
         {
             return false;
         }
 
-        // Plugin options aren't registered yet when logging is configured, so allow unknown
-        // options (and their values) before cert. A bare word before cert that no option
-        // consumes means another command was invoked (devproxy jwt create --name cert ...).
-        // A built-in command name is only taken as an unknown option's value when it directly
-        // follows the option (--mocks-file config) and isn't followed by another bare word
-        // (--failure-rate 10 jwt create, --mock-flag jwt create).
-        // The same applies between cert and export, because cert itself may be an unknown
-        // option's value (devproxy --mocks-file cert jwt create --scopes export).
-        var knownOptionTokens = parseResult.RootCommandResult.Children
+        // Every token before export must be cert or a built-in option and its values.
+        // Export options are validated by the real parse.
+        var recognizedTokens = parseResult.RootCommandResult.Children
             .Concat(certResult.Children)
             .OfType<OptionResult>()
             .SelectMany(o => o.IdentifierToken is null ? o.Tokens : o.Tokens.Prepend(o.IdentifierToken))
+            .Append(certResult.IdentifierToken)
             .ToHashSet();
-        var afterUnknownOption = false;
-        var valuesAfterUnknownOption = 0;
-        var previousMayBeCommand = false;
-        var certMayBeOptionValue = false;
-        foreach (var token in parseResult.Tokens.TakeWhile(t => !ReferenceEquals(t, parseResult.CommandResult.IdentifierToken)))
-        {
-            if (ReferenceEquals(token, certResult.IdentifierToken))
-            {
-                certMayBeOptionValue = afterUnknownOption && !previousMayBeCommand;
-                afterUnknownOption = false;
-                previousMayBeCommand = false;
-            }
-            else if (knownOptionTokens.Contains(token))
-            {
-                afterUnknownOption = false;
-                previousMayBeCommand = false;
-            }
-            else if (token.Value.StartsWith('-', StringComparison.Ordinal))
-            {
-                afterUnknownOption = true;
-                valuesAfterUnknownOption = 0;
-                previousMayBeCommand = false;
-            }
-            else if (!afterUnknownOption || previousMayBeCommand ||
-                (otherBuiltInCommandNames.Contains(token.Value) && valuesAfterUnknownOption > 0))
-            {
-                // When cert follows an unknown option, it may be that option's value rather than
-                // the command (devproxy --mocks-file cert cert export), so retry with it as a value.
-                return certMayBeOptionValue && IsCertExportInvocation(
-                    [.. parseResult.Tokens.Select(t => ReferenceEquals(t, certResult.IdentifierToken) ? "_" : t.Value)],
-                    expandResponseFiles: false);
-            }
-            else
-            {
-                previousMayBeCommand = otherBuiltInCommandNames.Contains(token.Value);
-                valuesAfterUnknownOption++;
-            }
-        }
-
-        return true;
+        return parseResult.Tokens
+            .TakeWhile(t => !ReferenceEquals(t, parseResult.CommandResult.IdentifierToken))
+            .All(recognizedTokens.Contains);
     }
 
     public static bool IsConfigValidateCommand
