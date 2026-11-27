@@ -4,14 +4,27 @@
 
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace DevProxy.Plugins.Reporters;
 
-public class MarkdownReporter(
-    ILogger<MarkdownReporter> logger,
-    ISet<UrlToWatch> urlsToWatch) : BaseReporter(logger, urlsToWatch)
+public class MarkdownReporter : BaseReporter
 {
+    public MarkdownReporter(
+        ILogger<MarkdownReporter> logger,
+        ISet<UrlToWatch> urlsToWatch) : base(logger, urlsToWatch)
+    {
+    }
+
+    [ActivatorUtilitiesConstructor]
+    public MarkdownReporter(
+        ILogger<MarkdownReporter> logger,
+        ISet<UrlToWatch> urlsToWatch,
+        IProxyConfiguration proxyConfiguration) : base(logger, urlsToWatch, proxyConfiguration)
+    {
+    }
+
     public override string Name => nameof(MarkdownReporter);
     public override string FileExtension => ".md";
 
