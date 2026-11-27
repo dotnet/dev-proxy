@@ -900,10 +900,11 @@ sealed class DevProxyCommand : RootCommand
             ActivatorUtilities.CreateInstance<ValidateCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<PluginCommand>(_serviceProvider)
         };
-        var pluginCommands = _plugins.SelectMany(p => p.GetCommands());
-        foreach (var group in pluginCommands.GroupBy(c => c.Name))
+        var pluginCommands = _plugins.SelectMany(p => p.GetCommands().Select(c => (Plugin: p, Command: c)));
+        foreach (var group in pluginCommands.GroupBy(pc => pc.Command.Name))
         {
-            var command = group.First();
+            var (plugin, command) = group.First();
+            HelpDocs.Set(command, DocsLinks.ForPlugin(plugin.GetType()));
             commands.Add(command);
             if (group.Count() > 1)
             {
@@ -922,18 +923,9 @@ sealed class DevProxyCommand : RootCommand
         ]);
         HelpExamples.Install(this);
 
-        CustomizeHelp();
+        DevProxyHelpAction.Install(this);
 
         SetAction(InvokeAsync);
-    }
-
-    private void CustomizeHelp()
-    {
-        var helpOption = Options.OfType<HelpOption>().FirstOrDefault();
-        if (helpOption?.Action is SynchronousCommandLineAction currentAction)
-        {
-            helpOption.Action = new DevProxyHelpAction(currentAction);
-        }
     }
 
     internal static void ApplyDiscoverOption(IProxyConfiguration proxyConfiguration, bool? isDiscover)

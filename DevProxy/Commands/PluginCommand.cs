@@ -108,6 +108,7 @@ sealed class PluginCommand : Command
             new PluginCommand(loggerFactory.CreateLogger<PluginCommand>())
         };
         HelpExamples.Install(rootCommand);
+        DevProxyHelpAction.Install(rootCommand);
 
         var parseResult = rootCommand.Parse(args);
         if (parseResult.Action is ParseErrorAction parseErrorAction)

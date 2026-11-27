@@ -170,7 +170,8 @@ sealed class ApiCommand : Command
                         requestBody = schema?.RequestBody,
                         responses = schema?.Responses
                     };
-                })
+                }),
+                docs = DocsLinks.Api
             }, ProxyUtils.JsonSerializerOptions);
             _logger.LogStructuredOutput(json);
         }
@@ -186,6 +187,8 @@ sealed class ApiCommand : Command
             {
                 _logger.LogInformation("  {Method,-6} {Path,-30} {Description}", endpoint.Method, endpoint.Path, FormatDescription(endpoint));
             }
+            _logger.LogInformation("");
+            _logger.LogInformation("Docs: {DocsUrl}", DocsLinks.Api);
         }
     }
 }

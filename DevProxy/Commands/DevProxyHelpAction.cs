@@ -10,17 +10,39 @@ namespace DevProxy.Commands;
 
 sealed class DevProxyHelpAction(SynchronousCommandLineAction originalAction) : SynchronousCommandLineAction
 {
+    // Wraps the root command's current help action (e.g. the examples action)
+    // so the docs footer is printed after it.
+    public static void Install(RootCommand rootCommand)
+    {
+        var helpOption = rootCommand.Options.OfType<HelpOption>().FirstOrDefault();
+        if (helpOption?.Action is SynchronousCommandLineAction currentAction)
+        {
+            helpOption.Action = new DevProxyHelpAction(currentAction);
+        }
+    }
+
     public override int Invoke(ParseResult parseResult)
     {
         originalAction.Invoke(parseResult);
 
-        if (parseResult.CommandResult.Command is not RootCommand)
-        {
-            return 0;
-        }
-
         var output = Console.Out;
 
+        if (parseResult.CommandResult.Command is RootCommand)
+        {
+            WriteRootHelp(output);
+        }
+
+        var docsLink = HelpDocs.GetLink(parseResult);
+        if (docsLink is not null)
+        {
+            output.WriteLine($"Docs: {docsLink}");
+        }
+
+        return 0;
+    }
+
+    private static void WriteRootHelp(TextWriter output)
+    {
         output.WriteLine();
         output.WriteLine("  Additional commands may be available depending on configured plugins.");
         output.WriteLine("  Use -c <config-file> to load a specific configuration.");
@@ -36,7 +58,6 @@ sealed class DevProxyHelpAction(SynchronousCommandLineAction originalAction) : S
         output.WriteLine("  0  Success");
         output.WriteLine("  1  Runtime error");
         output.WriteLine("  2  Invalid input or usage");
-
-        return 0;
+        output.WriteLine();
     }
 }
