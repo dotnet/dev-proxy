@@ -113,6 +113,15 @@ public sealed class CertificateAuthority : IDisposable
     /// <summary>The root CA certificate clients must trust to allow interception.</summary>
     public X509Certificate2 RootCertificate => _ca;
 
+    /// <summary>Path of the PKCS#12 file that stores the root certificate and its private key.</summary>
+    public string RootCertificatePath => _rootPfxPath;
+
+    /// <summary>
+    /// Whether <see cref="RootCertificate"/> is stored on disk and will be reused by
+    /// subsequent runs. <c>false</c> when a newly generated root couldn't be saved.
+    /// </summary>
+    public bool IsRootPersisted { get; private set; }
+
     public X509Certificate2 GetCertificateForHost(string host) => _cache.GetOrAdd(host, LoadOrCreateLeaf);
 
     // Mirrors Titanium's CertificateDiskCache.GetRootCertificateDirectory: on Windows the
@@ -137,6 +146,7 @@ public sealed class CertificateAuthority : IDisposable
             if (existing is not null)
             {
                 _logger.LogDebug("Loaded persisted root certificate from {Path}", _rootPfxPath);
+                IsRootPersisted = true;
                 return existing;
             }
 
@@ -201,6 +211,7 @@ public sealed class CertificateAuthority : IDisposable
 
             File.WriteAllBytes(_rootPfxPath, root.Export(X509ContentType.Pkcs12, string.Empty));
             _logger.LogInformation("Saved new root certificate to {Path}", _rootPfxPath);
+            IsRootPersisted = true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

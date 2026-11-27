@@ -62,6 +62,7 @@ sealed class DevProxyCommand : RootCommand
     private static bool _hasGlobalOptionsResolved;
     private static bool _isStdioCommandResolved;
     private static bool _isJwtCommandResolved;
+    private static bool _isCertExportCommandResolved;
     private static bool _isRootCommandResolved;
     private static bool _isConfigValidateCommandResolved;
     private static bool _isPluginCommandResolved;
@@ -157,6 +158,56 @@ sealed class DevProxyCommand : RootCommand
             _isJwtCommandResolved = true;
             return field;
         }
+    }
+
+    public static bool IsCertExportCommand
+    {
+        get
+        {
+            if (_isCertExportCommandResolved)
+            {
+                return field;
+            }
+
+            field = IsCertExportInvocation(Environment.GetCommandLineArgs()[1..]);
+            _isCertExportCommandResolved = true;
+            return field;
+        }
+    }
+
+    // Logging is configured before plugins register their options and commands, so this only
+    // recognizes invocations that parse as cert export using built-in options alone. Anything
+    // else (e.g. a plugin option or command) is left to CertCommand, which reroutes logging
+    // once the full command line is parsed.
+    internal static bool IsCertExportInvocation(string[] args)
+    {
+        var exportCommand = new Command("export") { TreatUnmatchedTokensAsErrors = false };
+        var rootCommand = new RootCommand
+        {
+            new Command("cert") { exportCommand },
+            new Option<string?>(ConfigFileOptionName, "-c")
+        };
+        // The install-cert validator only adds parse errors, which don't affect command detection
+        rootCommand.AddOptions(CreateRootOptions(new ProxyConfiguration(new ConfigurationBuilder().Build(), isCi: false)));
+
+        var parseResult = rootCommand.Parse(args);
+        if (parseResult.CommandResult.Command != exportCommand ||
+            parseResult.CommandResult.Parent is not CommandResult certResult)
+        {
+            return false;
+        }
+
+        // Every token before export must be cert or a built-in option and its values.
+        // Export options are validated by the real parse.
+        var recognizedTokens = parseResult.RootCommandResult.Children
+            .Concat(certResult.Children)
+            .OfType<OptionResult>()
+            .SelectMany(o => o.IdentifierToken is null ? o.Tokens : o.Tokens.Prepend(o.IdentifierToken))
+            .Append(certResult.IdentifierToken)
+            .ToHashSet();
+        return parseResult.Tokens
+            .TakeWhile(t => !ReferenceEquals(t, parseResult.CommandResult.IdentifierToken))
+            .All(recognizedTokens.Contains);
     }
 
     public static bool IsConfigValidateCommand
@@ -646,6 +697,61 @@ sealed class DevProxyCommand : RootCommand
             }
         });
 
+        var options = CreateRootOptions(_proxyConfiguration);
+        options.Add(ConfigFileOption);
+        options.AddRange(_plugins
+            .SelectMany(p => p.GetOptions())
+            // remove duplicates by comparing the option names
+            .GroupBy(o => o.Name)
+            .Select(g => g.First()));
+        this.AddOptions(options.OrderByName());
+
+        var commands = new List<Command>
+        {
+            ActivatorUtilities.CreateInstance<ApiCommand>(_serviceProvider),
+            ActivatorUtilities.CreateInstance<MsGraphDbCommand>(_serviceProvider),
+            ActivatorUtilities.CreateInstance<ConfigCommand>(_serviceProvider),
+            ActivatorUtilities.CreateInstance<OutdatedCommand>(_serviceProvider),
+            ActivatorUtilities.CreateInstance<JwtCommand>(_serviceProvider),
+            ActivatorUtilities.CreateInstance<CertCommand>(_serviceProvider),
+            ActivatorUtilities.CreateInstance<StdioCommand>(_serviceProvider),
+            ActivatorUtilities.CreateInstance<StatusCommand>(_serviceProvider),
+            ActivatorUtilities.CreateInstance<StopCommand>(_serviceProvider),
+            ActivatorUtilities.CreateInstance<LogsCommand>(_serviceProvider),
+            ActivatorUtilities.CreateInstance<ValidateCommand>(_serviceProvider),
+            ActivatorUtilities.CreateInstance<PluginCommand>(_serviceProvider)
+        };
+        var pluginCommands = _plugins.SelectMany(p => p.GetCommands());
+        foreach (var group in pluginCommands.GroupBy(c => c.Name))
+        {
+            var command = group.First();
+            commands.Add(command);
+            if (group.Count() > 1)
+            {
+                _logger.LogWarning(
+                    "Multiple plugins register the '{CommandName}' command. Only the first registration will be used",
+                    command.Name);
+            }
+        }
+        this.AddCommands(commands.OrderByName());
+
+        HelpExamples.Add(this, [
+            ("devproxy", "Start with default config"),
+            ("devproxy -c myconfig.json", "Start with custom config"),
+            ("devproxy -u \"https://api.example.com/*\"", "Watch specific URLs"),
+            ("devproxy --port 9000 --record", "Custom port, record requests"),
+        ]);
+        HelpExamples.Install(this);
+
+        CustomizeHelp();
+
+        SetAction(InvokeAsync);
+    }
+
+    // Root options except --config-file, whose validator depends on the parsed config options.
+    // Shared with IsCertExportInvocation so it consumes option values exactly like the real parser.
+    private static List<Option> CreateRootOptions(IProxyConfiguration proxyConfiguration)
+    {
         var ipAddressOption = new Option<string?>(IpAddressOptionName)
         {
             Description = "The IP address for the proxy to bind to",
@@ -760,7 +866,7 @@ sealed class DevProxyCommand : RootCommand
             HelpName = "true|false"
         };
 
-        var installCertOption = CreateInstallCertOption(asSystemProxyOption, _proxyConfiguration);
+        var installCertOption = CreateInstallCertOption(asSystemProxyOption, proxyConfiguration);
 
         var timeoutOption = new Option<long?>(TimeoutOptionName, "-t")
         {
@@ -852,12 +958,11 @@ sealed class DevProxyCommand : RootCommand
             Recursive = true
         };
 
-        var options = new List<Option>
+        return new List<Option>
         {
             apiPortOption,
             apiIpAddressOption,
             asSystemProxyOption,
-            ConfigFileOption,
             detachedOption,
             discoverOption,
             envOption,
@@ -878,53 +983,6 @@ sealed class DevProxyCommand : RootCommand
             watchProcessNamesOption,
             watchProcessTreeOption
         };
-        options.AddRange(_plugins
-            .SelectMany(p => p.GetOptions())
-            // remove duplicates by comparing the option names
-            .GroupBy(o => o.Name)
-            .Select(g => g.First()));
-        this.AddOptions(options.OrderByName());
-
-        var commands = new List<Command>
-        {
-            ActivatorUtilities.CreateInstance<ApiCommand>(_serviceProvider),
-            ActivatorUtilities.CreateInstance<MsGraphDbCommand>(_serviceProvider),
-            ActivatorUtilities.CreateInstance<ConfigCommand>(_serviceProvider),
-            ActivatorUtilities.CreateInstance<OutdatedCommand>(_serviceProvider),
-            ActivatorUtilities.CreateInstance<JwtCommand>(_serviceProvider),
-            ActivatorUtilities.CreateInstance<CertCommand>(_serviceProvider),
-            ActivatorUtilities.CreateInstance<StdioCommand>(_serviceProvider),
-            ActivatorUtilities.CreateInstance<StatusCommand>(_serviceProvider),
-            ActivatorUtilities.CreateInstance<StopCommand>(_serviceProvider),
-            ActivatorUtilities.CreateInstance<LogsCommand>(_serviceProvider),
-            ActivatorUtilities.CreateInstance<ValidateCommand>(_serviceProvider),
-            ActivatorUtilities.CreateInstance<PluginCommand>(_serviceProvider)
-        };
-        var pluginCommands = _plugins.SelectMany(p => p.GetCommands());
-        foreach (var group in pluginCommands.GroupBy(c => c.Name))
-        {
-            var command = group.First();
-            commands.Add(command);
-            if (group.Count() > 1)
-            {
-                _logger.LogWarning(
-                    "Multiple plugins register the '{CommandName}' command. Only the first registration will be used",
-                    command.Name);
-            }
-        }
-        this.AddCommands(commands.OrderByName());
-
-        HelpExamples.Add(this, [
-            ("devproxy", "Start with default config"),
-            ("devproxy -c myconfig.json", "Start with custom config"),
-            ("devproxy -u \"https://api.example.com/*\"", "Watch specific URLs"),
-            ("devproxy --port 9000 --record", "Custom port, record requests"),
-        ]);
-        HelpExamples.Install(this);
-
-        CustomizeHelp();
-
-        SetAction(InvokeAsync);
     }
 
     private void CustomizeHelp()
@@ -1112,4 +1170,4 @@ sealed class DevProxyCommand : RootCommand
 
         await StateManager.SaveStateAsync(state);
     }
-}
+}

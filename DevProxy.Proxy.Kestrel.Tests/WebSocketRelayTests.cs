@@ -132,12 +132,11 @@ public class WebSocketRelayTests
         await relayTask;
 
         // Verify captured messages (origin→client "origin-frame", client→origin "client-frame", close).
+        // Each direction is relayed independently, and an origin frame is captured after it's
+        // forwarded, so the client's reply can be captured first.
         var messages = capturedMessages.ToArray();
-        Assert.True(messages.Length >= 2, $"Expected at least 2 messages, got {messages.Length}");
-        Assert.Equal(WebSocketMessageDirection.Receive, messages[0].Direction);
-        Assert.Equal("origin-frame", messages[0].Text);
-        Assert.Equal(WebSocketMessageDirection.Send, messages[1].Direction);
-        Assert.Equal("client-frame", messages[1].Text);
+        Assert.Contains(messages, m => m.Direction == WebSocketMessageDirection.Receive && m.Text == "origin-frame");
+        Assert.Contains(messages, m => m.Direction == WebSocketMessageDirection.Send && m.Text == "client-frame");
     }
 
     [Fact]

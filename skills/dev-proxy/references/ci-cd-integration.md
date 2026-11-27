@@ -331,8 +331,23 @@ done
 
 ### 4. Trust the Root Certificate
 
+Dev Proxy versions later than v4.0.0 can write the public root certificate to a file without a running instance, an API token, or OpenSSL. `devproxy cert export` creates the root certificate if needed and prints the path of the written file (`--format pem|crt|der`, `--file <path>`):
+
+```bash
+./devproxy/devproxy cert export --format crt --file dev-proxy-ca.crt
+```
+
+`cert export` writes only the result to stdout and logs to stderr. Don't pass plugin options (such as `--mocks-file` or `--failure-rate`) with `cert export`. They don't affect the export, and when placed before the command, plugin startup logs can appear on stdout before the result.
+
+With v4.0.0 and earlier, extract the certificate with OpenSSL:
+
 ```bash
 openssl pkcs12 -in ~/.config/dev-proxy/rootCert.pfx -clcerts -nokeys -out dev-proxy-ca.crt -passin pass:""
+```
+
+Then add the certificate to the system trust store:
+
+```bash
 sudo cp dev-proxy-ca.crt /usr/local/share/ca-certificates/
 sudo update-ca-certificates
 ```
