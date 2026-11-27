@@ -27,6 +27,7 @@ internal sealed class CsomTypesDefinitionLoader(
         try
         {
             var types = JsonSerializer.Deserialize<CsomTypesDefinition>(fileContents, ProxyUtils.JsonSerializerOptions);
+            RemoveNullEntries(types);
             if (types is not null)
             {
                 _configuration.TypesDefinitions = types;

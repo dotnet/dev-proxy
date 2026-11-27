@@ -33,6 +33,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="DevProxy.Abstractions.Tests" />
+    <InternalsVisibleTo Include="DevProxy.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Markdig" Version="1.6.0" />
     <PackageReference Include="Microsoft.OpenApi" Version="3.11.1" />
     <PackageReference Include="Microsoft.OpenApi.YamlReader" Version="3.11.1" />

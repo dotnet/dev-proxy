@@ -23,6 +23,14 @@
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!-- JSON schemas for this version, shipped so that config and data files
+         can be validated without downloading the schemas. Prerelease versions
+         (e.g. 4.1.0-beta.2) use the schemas of the release version. -->
+    <DevProxySchemaVersion>$([System.Text.RegularExpressions.Regex]::Replace('$(Version)', '-.*$', ''))</DevProxySchemaVersion>
+    <DevProxySchemaDir>$(MSBuildThisFileDirectory)..\schemas\v$(DevProxySchemaVersion)\</DevProxySchemaDir>
+  </PropertyGroup>
+
   <ItemGroup>
     <None Include="..\LICENSE">
       <Pack>True</Pack>
@@ -99,6 +107,13 @@
     <None Update="prompts\*.prompty">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="$(DevProxySchemaDir)*.json" Link="schemas\%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
+
+  <Target Name="EnsureSchemas" BeforeTargets="BeforeBuild">
+    <Error Condition="!Exists('$(DevProxySchemaDir)')" Text="Missing JSON schemas for v$(DevProxySchemaVersion). Expected folder: $(DevProxySchemaDir)" />
+  </Target>
 
 </Project>
