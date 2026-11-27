@@ -189,7 +189,8 @@ sealed class DevProxyCommand : RootCommand
         var exportCommand = new Command("export") { TreatUnmatchedTokensAsErrors = false };
         var certCommand = new Command("cert") { exportCommand };
         var rootCommand = new RootCommand { certCommand, new Option<string?>(ConfigFileOptionName, "-c") };
-        rootCommand.AddOptions(CreateRootOptions());
+        // The install-cert validator only adds parse errors, which don't affect command detection
+        rootCommand.AddOptions(CreateRootOptions(new ProxyConfiguration(new ConfigurationBuilder().Build(), isCi: false)));
 
         var configuration = new ParserConfiguration();
         if (!expandResponseFiles)
@@ -234,7 +235,7 @@ sealed class DevProxyCommand : RootCommand
                 afterUnknownOption = false;
                 previousMayBeCommand = false;
             }
-            else if (token.Value.StartsWith('-'))
+            else if (token.Value.StartsWith('-', StringComparison.Ordinal))
             {
                 afterUnknownOption = true;
                 valuesAfterUnknownOption = 0;
@@ -746,7 +747,7 @@ sealed class DevProxyCommand : RootCommand
             }
         });
 
-        var options = CreateRootOptions();
+        var options = CreateRootOptions(_proxyConfiguration);
         options.Add(ConfigFileOption);
         options.AddRange(_plugins
             .SelectMany(p => p.GetOptions())
@@ -799,7 +800,7 @@ sealed class DevProxyCommand : RootCommand
 
     // Root options except --config-file, whose validator depends on the parsed config options.
     // Shared with IsCertExportInvocation so it consumes option values exactly like the real parser.
-    private static List<Option> CreateRootOptions()
+    private static List<Option> CreateRootOptions(IProxyConfiguration proxyConfiguration)
     {
         var ipAddressOption = new Option<string?>(IpAddressOptionName)
         {
@@ -915,7 +916,7 @@ sealed class DevProxyCommand : RootCommand
             HelpName = "true|false"
         };
 
-        var installCertOption = CreateInstallCertOption(asSystemProxyOption, _proxyConfiguration);
+        var installCertOption = CreateInstallCertOption(asSystemProxyOption, proxyConfiguration);
 
         var timeoutOption = new Option<long?>(TimeoutOptionName, "-t")
         {
