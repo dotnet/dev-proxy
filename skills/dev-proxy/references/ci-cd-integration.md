@@ -337,6 +337,8 @@ Dev Proxy versions later than v4.0.0 can write the public root certificate to a 
 ./devproxy/devproxy cert export --format crt --file dev-proxy-ca.crt
 ```
 
+`cert export` writes only the result to stdout and logs to stderr. Don't pass plugin options (such as `--mocks-file` or `--failure-rate`) with `cert export`. They don't affect the export, and when placed before the command, plugin startup logs can appear on stdout before the result.
+
 With v4.0.0 and earlier, extract the certificate with OpenSSL:
 
 ```bash
