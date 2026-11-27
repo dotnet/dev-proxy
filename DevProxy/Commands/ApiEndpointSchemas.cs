@@ -145,12 +145,7 @@ static class ApiEndpointSchemas
                 ["type"] = new JsonArray("string", "null"),
                 ["description"] = "Path of the configuration file Dev Proxy loaded. Read-only."
             },
-            ["reports"] = new JsonObject
-            {
-                ["type"] = "array",
-                ["items"] = new JsonObject { ["type"] = "string" },
-                ["description"] = "Absolute paths of the report files written after recording stopped. Only returned in response to stopping recording. Read-only."
-            }
+            ["reports"] = StringArrayProperty("Absolute paths of report files written after recording stopped. Only returned in response to stopping recording. Read-only.")
         }
     };
 

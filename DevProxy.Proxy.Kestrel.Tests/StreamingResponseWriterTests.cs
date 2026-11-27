@@ -27,14 +27,14 @@ public class StreamingResponseWriterTests
 
     private static byte[] Seg(string text) => Encoding.ASCII.GetBytes(text);
 
-    private static async Task<(string Raw, ReadOnlyMemory<byte> Accumulated)> WriteAsync(
+    private static async Task<(string Raw, ReadOnlyMemory<byte> Accumulated, bool Truncated)> WriteAsync(
         MutableHttpResponse response, IReadOnlyList<byte[]> segments, bool keepAlive = true, int accumulateCap = 1024)
     {
         using var client = new MemoryStream();
         using var origin = new ScriptedReadStream(segments);
-        var accumulated = await StreamingResponseWriter.WriteAsync(
+        var (accumulated, truncated) = await StreamingResponseWriter.WriteAsync(
             client, response, origin, keepAlive, accumulateCap, CancellationToken.None);
-        return (Encoding.ASCII.GetString(client.ToArray()), accumulated);
+        return (Encoding.ASCII.GetString(client.ToArray()), accumulated, truncated);
     }
 
     // Splits the wire output into head and the decoded chunked body.
@@ -78,7 +78,7 @@ public class StreamingResponseWriterTests
     {
         var response = Response(("Content-Type", "text/event-stream"));
 
-        var (raw, _) = await WriteAsync(response, [Seg("data: 1\n\n")]);
+        var (raw, _, _) = await WriteAsync(response, [Seg("data: 1\n\n")]);
         var (head, _) = Parse(raw);
 
         Assert.StartsWith("HTTP/1.1 200 OK\r\n", head, StringComparison.Ordinal);
@@ -91,7 +91,7 @@ public class StreamingResponseWriterTests
     [Fact]
     public async Task WriteAsync_KeepAliveFalse_EmitsConnectionClose()
     {
-        var (raw, _) = await WriteAsync(Response(), [Seg("x")], keepAlive: false);
+        var (raw, _, _) = await WriteAsync(Response(), [Seg("x")], keepAlive: false);
         var (head, _) = Parse(raw);
 
         Assert.Contains("Connection: close\r\n", head, StringComparison.Ordinal);
@@ -101,7 +101,7 @@ public class StreamingResponseWriterTests
     public async Task WriteAsync_ForwardsEachSegmentAsItsOwnChunk()
     {
         // Two distinct SSE events arrive in two reads → two chunks on the wire.
-        var (raw, _) = await WriteAsync(Response(), [Seg("data: a\n\n"), Seg("data: bb\n\n")]);
+        var (raw, _, _) = await WriteAsync(Response(), [Seg("data: a\n\n"), Seg("data: bb\n\n")]);
 
         // "data: a\n\n" is 9 bytes (0x9), "data: bb\n\n" is 10 bytes (0xA).
         Assert.Contains("9\r\ndata: a\n\n\r\n", raw, StringComparison.Ordinal);
@@ -112,7 +112,7 @@ public class StreamingResponseWriterTests
     [Fact]
     public async Task WriteAsync_DecodedBody_EqualsConcatenatedSegments()
     {
-        var (raw, _) = await WriteAsync(Response(), [Seg("hello "), Seg("world")]);
+        var (raw, _, _) = await WriteAsync(Response(), [Seg("hello "), Seg("world")]);
         var (_, body) = Parse(raw);
 
         Assert.Equal("hello world", Encoding.ASCII.GetString(body));
@@ -121,29 +121,32 @@ public class StreamingResponseWriterTests
     [Fact]
     public async Task WriteAsync_AccumulatesFullBody_WhenUnderCap()
     {
-        var (_, accumulated) = await WriteAsync(Response(), [Seg("abc"), Seg("def")], accumulateCap: 1024);
+        var (_, accumulated, truncated) = await WriteAsync(Response(), [Seg("abc"), Seg("def")], accumulateCap: 1024);
 
         Assert.Equal("abcdef", Encoding.ASCII.GetString(accumulated.Span));
+        Assert.False(truncated);
     }
 
     [Fact]
     public async Task WriteAsync_DropsAccumulation_WhenOverCap_ButStillRelaysFullBody()
     {
         // cap=4, body=6 bytes → accumulation abandoned, but the client still gets it all.
-        var (raw, accumulated) = await WriteAsync(Response(), [Seg("abc"), Seg("def")], accumulateCap: 4);
+        var (raw, accumulated, truncated) = await WriteAsync(Response(), [Seg("abc"), Seg("def")], accumulateCap: 4);
         var (_, body) = Parse(raw);
 
         Assert.True(accumulated.IsEmpty);
+        Assert.True(truncated);
         Assert.Equal("abcdef", Encoding.ASCII.GetString(body));
     }
 
     [Fact]
     public async Task WriteAsync_NoAccumulation_WhenCapZero()
     {
-        var (raw, accumulated) = await WriteAsync(Response(), [Seg("abc")], accumulateCap: 0);
+        var (raw, accumulated, truncated) = await WriteAsync(Response(), [Seg("abc")], accumulateCap: 0);
         var (_, body) = Parse(raw);
 
         Assert.True(accumulated.IsEmpty);
+        Assert.False(truncated);
         Assert.Equal("abc", Encoding.ASCII.GetString(body));
     }
 
@@ -156,7 +159,7 @@ public class StreamingResponseWriterTests
             ("Transfer-Encoding", "chunked"),
             ("Cache-Control", "no-cache"));
 
-        var (raw, _) = await WriteAsync(response, [Seg("x")]);
+        var (raw, _, _) = await WriteAsync(response, [Seg("x")]);
         var (head, _) = Parse(raw);
 
         Assert.DoesNotContain("Content-Length: 99", head, StringComparison.Ordinal);
@@ -169,11 +172,12 @@ public class StreamingResponseWriterTests
     [Fact]
     public async Task WriteAsync_EmptyBody_WritesOnlyTerminatingChunk()
     {
-        var (raw, accumulated) = await WriteAsync(Response(), []);
+        var (raw, accumulated, truncated) = await WriteAsync(Response(), []);
         var (_, body) = Parse(raw);
 
         Assert.Empty(body);
         Assert.True(accumulated.IsEmpty);
+        Assert.False(truncated);
         Assert.EndsWith("0\r\n\r\n", raw, StringComparison.Ordinal);
     }
 }

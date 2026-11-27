@@ -178,7 +178,11 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
 
         while (stopwatch.Elapsed < timeout)
         {
-            _ = await Task.WhenAny(Task.Delay(pollInterval), processExited);
+            using (var pollDelayCancellation = new CancellationTokenSource())
+            {
+                _ = await Task.WhenAny(Task.Delay(pollInterval, pollDelayCancellation.Token), processExited);
+                await pollDelayCancellation.CancelAsync();
+            }
 
             var state = await StateManager.LoadStateByPidAsync(process.Id);
             if (state is { Port: > 0 } && !string.IsNullOrEmpty(state.ApiUrl) && !state.ApiUrl.EndsWith(":0", StringComparison.Ordinal))
@@ -375,7 +379,7 @@ static IEnumerable<string> ToJsonLogEntries(string log)
 
 static bool IsJsonObject(string line)
 {
-    if (!line.StartsWith('{'))
+    if (!line.StartsWith('{', StringComparison.Ordinal))
     {
         return false;
     }
@@ -520,7 +524,7 @@ static async Task<int> RunProxyAsync(string[] args, DevProxyConfigOptions option
     }
 }
 
-// Handle 'config validate' early to allow validation of broken configs
+// Handle 'validate' and 'config validate' early to allow validation of broken configs
 // without requiring the full DI container to be built
 if (DevProxyCommand.IsConfigValidateCommand)
 {

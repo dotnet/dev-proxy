@@ -39,7 +39,7 @@ public sealed class CommandExitCodeTests
 
         Assert.True(exitCode == 0, output);
         var results = stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(line => JsonDocument.Parse(line).RootElement)
+            .Select(line => JsonElement.Parse(line))
             .Where(entry => entry.GetProperty("type").GetString() == "result")
             .ToArray();
         var result = Assert.Single(results);
@@ -259,7 +259,7 @@ public sealed class CommandExitCodeTests
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null)
         {
-            var candidate = Path.Combine(dir.FullName, "DevProxy", "bin", config, "net10.0", "devproxy.dll");
+            var candidate = Path.Combine(dir.FullName, "DevProxy", "bin", config, "net11.0", "devproxy.dll");
             if (File.Exists(candidate))
             {
                 return candidate;

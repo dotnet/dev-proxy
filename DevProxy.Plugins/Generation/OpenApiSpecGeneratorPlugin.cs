@@ -1048,7 +1048,7 @@ public sealed class OpenApiSpecGeneratorPlugin(
                 {
                     parameterName = $"{parameterName}-{count}";
                 }
-                segments[i] = $"{{{parameterName}}}{(requestUri.Segments[i].EndsWith('/') ? "/" : "")}";
+                segments[i] = $"{{{parameterName}}}{(requestUri.Segments[i].EndsWith('/', StringComparison.Ordinal) ? "/" : "")}";
 
                 pathItem.Parameters?.Add(new OpenApiParameter
                 {

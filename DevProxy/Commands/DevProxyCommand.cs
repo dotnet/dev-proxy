@@ -115,13 +115,13 @@ sealed class DevProxyCommand : RootCommand
                 return true;
             }
 
-            if (args[i].StartsWith('-'))
+            if (args[i].StartsWith('-', StringComparison.Ordinal))
             {
                 inMultiValueOption = _multiValueRootOptions.Contains(args[i]);
                 continue;
             }
 
-            var isOptionValue = inMultiValueOption || (i > 0 && args[i - 1].StartsWith('-'));
+            var isOptionValue = inMultiValueOption || (i > 0 && args[i - 1].StartsWith('-', StringComparison.Ordinal));
             if (!isOptionValue)
             {
                 return false;
@@ -169,13 +169,56 @@ sealed class DevProxyCommand : RootCommand
             }
 
             var args = Environment.GetCommandLineArgs();
-            field = args.Length > 2 &&
-                string.Equals(args[1], "config", StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(args[2], "validate", StringComparison.OrdinalIgnoreCase) &&
-                !args.Any(arg => helpOptions.Contains(arg));
+            field = IsValidateInvocation(args.Skip(1).ToArray());
             _isConfigValidateCommandResolved = true;
             return field;
         }
+    }
+
+    /// <summary>
+    /// Returns true when args invoke 'validate' or 'config validate', allowing
+    /// global options (like --output) before the command. Help is excluded so
+    /// it's rendered by the full command tree.
+    /// </summary>
+    internal static bool IsValidateInvocation(string[] args)
+    {
+        if (args.Any(arg => helpOptions.Contains(arg)))
+        {
+            return false;
+        }
+
+        var commandTokens = new List<string>(2);
+        for (var i = 0; i < args.Length && commandTokens.Count < 2; i++)
+        {
+            var arg = args[i];
+            if (string.Equals(arg, OutputOptionName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(arg, LogLevelOptionName, StringComparison.OrdinalIgnoreCase))
+            {
+                i++;
+                continue;
+            }
+            if (arg.StartsWith(OutputOptionName + "=", StringComparison.OrdinalIgnoreCase) ||
+                arg.StartsWith(OutputOptionName + ":", StringComparison.OrdinalIgnoreCase) ||
+                arg.StartsWith(LogLevelOptionName + "=", StringComparison.OrdinalIgnoreCase) ||
+                arg.StartsWith(LogLevelOptionName + ":", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(arg, NoColorOptionName, StringComparison.OrdinalIgnoreCase) ||
+                (commandTokens.Count > 0 && arg.StartsWith('-', StringComparison.Ordinal)))
+            {
+                continue;
+            }
+            if (arg.StartsWith('-', StringComparison.Ordinal))
+            {
+                // other root options may take values, so we can't tell what follows
+                break;
+            }
+            commandTokens.Add(arg);
+        }
+
+        return commandTokens.Count > 0 &&
+            (string.Equals(commandTokens[0], "validate", StringComparison.OrdinalIgnoreCase) ||
+             (commandTokens.Count > 1 &&
+              string.Equals(commandTokens[0], "config", StringComparison.OrdinalIgnoreCase) &&
+              string.Equals(commandTokens[1], "validate", StringComparison.OrdinalIgnoreCase)));
     }
 
     public static bool IsPluginCommand
@@ -252,7 +295,7 @@ sealed class DevProxyCommand : RootCommand
             // If there are no more arguments, it's the root command
             // If the first argument starts with '-', it's an option (root command)
             // Otherwise, it's a subcommand name
-            field = args.Length <= 1 || args[1].StartsWith('-');
+            field = args.Length <= 1 || args[1].StartsWith('-', StringComparison.Ordinal);
             _isRootCommandResolved = true;
             return field;
         }
@@ -391,6 +434,32 @@ sealed class DevProxyCommand : RootCommand
         }
 
         return exitCode;
+    }
+
+    internal static Option<bool?> CreateInstallCertOption(Option<bool?> asSystemProxyOption, IProxyConfiguration proxyConfiguration)
+    {
+        var installCertOption = new Option<bool?>(InstallCertOptionName)
+        {
+            Description = "Install and trust the root certificate (default: true, false when CI is set). On Linux, trust it manually",
+            HelpName = "true|false"
+        };
+        installCertOption.Validators.Add(input =>
+        {
+            try
+            {
+                var asSystemProxy = input.GetValue(asSystemProxyOption) ?? proxyConfiguration.AsSystemProxy;
+                var installCert = input.GetValue(installCertOption) ?? proxyConfiguration.InstallCert;
+                if (asSystemProxy && !installCert)
+                {
+                    input.AddError($"Requires option '{AsSystemProxyOptionName}' to be 'false'");
+                }
+            }
+            catch (InvalidOperationException ex)
+            {
+                input.AddError(ex.Message);
+            }
+        });
+        return installCertOption;
     }
 
     // Reads the raw token rather than the parsed value, because the parsed
@@ -687,31 +756,11 @@ sealed class DevProxyCommand : RootCommand
 
         var asSystemProxyOption = new Option<bool?>(AsSystemProxyOptionName)
         {
-            Description = "Register Dev Proxy as the system proxy (default: true). See https://go.devproxy.net?go=system-proxy",
+            Description = "Register Dev Proxy as the system proxy (default: true, false when CI is set). See https://go.devproxy.net?go=system-proxy",
             HelpName = "true|false"
         };
 
-        var installCertOption = new Option<bool?>(InstallCertOptionName)
-        {
-            Description = "Install and trust the root certificate (default: true). On Linux, trust it manually",
-            HelpName = "true|false"
-        };
-        installCertOption.Validators.Add(input =>
-        {
-            try
-            {
-                var asSystemProxy = input.GetValue(asSystemProxyOption) ?? true;
-                var installCert = input.GetValue(installCertOption) ?? true;
-                if (asSystemProxy && !installCert)
-                {
-                    input.AddError($"Requires option '{AsSystemProxyOptionName}' to be 'false'");
-                }
-            }
-            catch (InvalidOperationException ex)
-            {
-                input.AddError(ex.Message);
-            }
-        });
+        var installCertOption = CreateInstallCertOption(asSystemProxyOption, _proxyConfiguration);
 
         var timeoutOption = new Option<long?>(TimeoutOptionName, "-t")
         {
@@ -848,6 +897,7 @@ sealed class DevProxyCommand : RootCommand
             ActivatorUtilities.CreateInstance<StatusCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<StopCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<LogsCommand>(_serviceProvider),
+            ActivatorUtilities.CreateInstance<ValidateCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<PluginCommand>(_serviceProvider)
         };
         var pluginCommands = _plugins.SelectMany(p => p.GetCommands().Select(c => (Plugin: p, Command: c)));
@@ -956,6 +1006,7 @@ sealed class DevProxyCommand : RootCommand
         {
             _proxyConfiguration.InstallCert = installCert.Value;
         }
+        LogCiDefaults(asSystemProxy, installCert);
         var timeout = parseResult.GetValueOrDefault<long?>(TimeoutOptionName);
         if (timeout is not null)
         {
@@ -980,6 +1031,26 @@ sealed class DevProxyCommand : RootCommand
             _proxyConfiguration.Output = output.Value;
         }
     }
+
+    private void LogCiDefaults(bool? asSystemProxyOption, bool? installCertOption)
+    {
+        if (_proxyConfiguration is not ProxyConfiguration proxyConfiguration ||
+            !ShouldLogCiDefaults(proxyConfiguration, asSystemProxyOption, installCertOption))
+        {
+            return;
+        }
+
+        _logger.LogInformation(
+            "CI environment detected. Using asSystemProxy: {AsSystemProxy}, installCert: {InstallCert}. To change, use {AsSystemProxyOption} and {InstallCertOption} or set asSystemProxy and installCert in the config file.",
+            proxyConfiguration.AsSystemProxy.ToString().ToLowerInvariant(),
+            proxyConfiguration.InstallCert.ToString().ToLowerInvariant(),
+            AsSystemProxyOptionName,
+            InstallCertOptionName);
+    }
+
+    internal static bool ShouldLogCiDefaults(ProxyConfiguration proxyConfiguration, bool? asSystemProxyOption, bool? installCertOption) =>
+        (proxyConfiguration.AsSystemProxyDefaultedForCi && asSystemProxyOption is null) ||
+        (proxyConfiguration.InstallCertDefaultedForCi && installCertOption is null);
 
     internal static Task CheckForNewVersionInBackgroundAsync(UpdateNotification updateNotification, ReleaseType releaseType, ILogger logger, CancellationToken cancellationToken) =>
         Task.Run(() => CheckForNewVersionAsync(updateNotification, releaseType, logger, cancellationToken), CancellationToken.None);
@@ -1033,4 +1104,4 @@ sealed class DevProxyCommand : RootCommand
 
         await StateManager.SaveStateAsync(state);
     }
-}
+}

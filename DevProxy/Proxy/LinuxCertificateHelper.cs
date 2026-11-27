@@ -125,7 +125,7 @@ internal static class LinuxCertificateHelper
     {
         if (isRoot)
         {
-            if (command.FileName.StartsWith('/'))
+            if (command.FileName.StartsWith('/', StringComparison.Ordinal))
             {
                 return command;
             }

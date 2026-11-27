@@ -80,10 +80,10 @@ sealed class ApiCommand : Command
                 var states = await StateManager.LoadAllStatesAsync(cancellationToken);
                 if (states.Count > 1)
                 {
-                    await Console.Error.WriteLineAsync("Multiple Dev Proxy instances are running. Select one with devproxy api token --pid <PID>:");
+                    await Console.Error.WriteLineAsync("Multiple Dev Proxy instances are running. Select one with devproxy api token --pid <PID>:", cancellationToken);
                     foreach (var instance in states.OrderBy(instance => instance.Pid))
                     {
-                        await Console.Error.WriteLineAsync($"  {instance.Pid}: {instance.ApiUrl}");
+                        await Console.Error.WriteLineAsync($"  {instance.Pid}: {instance.ApiUrl}", cancellationToken);
                     }
                     return 1;
                 }
@@ -95,7 +95,7 @@ sealed class ApiCommand : Command
             {
                 await Console.Error.WriteLineAsync(pid.HasValue
                     ? $"No running Dev Proxy instance with PID {pid.Value}. Run devproxy status to find an instance."
-                    : "Dev Proxy is not running. Start it with devproxy first.");
+                    : "Dev Proxy is not running. Start it with devproxy first.", cancellationToken);
                 return 1;
             }
 
@@ -112,9 +112,34 @@ sealed class ApiCommand : Command
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            await Console.Error.WriteLineAsync("Unable to read the API token. Restart the selected Dev Proxy instance using the current version and the same user account.");
+            await Console.Error.WriteLineAsync("Unable to read the API token. Restart the selected Dev Proxy instance using the current version and the same user account.", cancellationToken);
             return 1;
         }
+    }
+
+    internal static IReadOnlyList<ApiEndpointInfo> Endpoints { get; } =
+    [
+        new() { Method = "GET", Path = "/proxy", Description = "Get proxy status" },
+        new() { Method = "POST", Path = "/proxy", Description = "Update proxy status (e.g. start/stop recording)", Body = """{"recording": true|false}""" },
+        new() { Method = "POST", Path = "/proxy/mockRequest", Description = "Issue a mock request" },
+        new() { Method = "POST", Path = "/proxy/stopProxy", Description = "Stop the proxy" },
+        new() { Method = "POST", Path = "/proxy/jwtToken", Description = "Create a JWT token", Body = """{"name": "...", "audiences": ["..."], "issuer": "...", "roles": ["..."], "scopes": ["..."], "claims": {"key": "value"}, "validFor": 60, "signingKey": "..."} (all optional; validFor in minutes)""" },
+        new() { Method = "GET", Path = "/proxy/rootCertificate", Description = "Get the root certificate in PEM format", Query = "format=crt|pem (optional, default crt)" },
+        new() { Method = "GET", Path = "/proxy/logs", Description = "Get proxy logs (for detached mode access)", Query = "lines=50&follow=true&since=5m (all optional)" }
+    ];
+
+    internal static string FormatDescription(ApiEndpointInfo endpoint)
+    {
+        var description = endpoint.Description;
+        if (endpoint.Query is not null)
+        {
+            description += $"  query: {endpoint.Query}";
+        }
+        if (endpoint.Body is not null)
+        {
+            description += $"  body: {endpoint.Body}";
+        }
+        return description;
     }
 
     private void PrintApiInfo(OutputFormat outputFormat)
@@ -123,16 +148,7 @@ sealed class ApiCommand : Command
         var baseUrl = ApiSecurity.GetApiUrl(new UriBuilder(Uri.UriSchemeHttp, _proxyConfiguration.ApiIpAddress, apiPort).Uri.AbsoluteUri);
         var tokenFilePattern = Path.Combine(StateManager.GetConfigFolder(), "credentials", "api-<PID>.token");
 
-        var endpoints = new[]
-        {
-            new ApiEndpointInfo { Method = "GET", Path = "/proxy", Description = "Get proxy status" },
-            new ApiEndpointInfo { Method = "POST", Path = "/proxy", Description = "Update proxy status (e.g. start/stop recording)" },
-            new ApiEndpointInfo { Method = "POST", Path = "/proxy/mockRequest", Description = "Issue a mock request" },
-            new ApiEndpointInfo { Method = "POST", Path = "/proxy/stopProxy", Description = "Stop the proxy" },
-            new ApiEndpointInfo { Method = "POST", Path = "/proxy/jwtToken", Description = "Create a JWT token" },
-            new ApiEndpointInfo { Method = "GET", Path = "/proxy/rootCertificate", Description = "Get the root certificate in PEM format (optional ?format=crt|pem, default crt)" },
-            new ApiEndpointInfo { Method = "GET", Path = "/proxy/logs", Description = "Get proxy logs (for detached mode access)" }
-        };
+        var endpoints = Endpoints;
 
         if (outputFormat == OutputFormat.Json)
         {
@@ -148,6 +164,8 @@ sealed class ApiCommand : Command
                         method = e.Method,
                         path = e.Path,
                         description = e.Description,
+                        query = e.Query,
+                        body = e.Body,
                         parameters = schema?.Parameters,
                         requestBody = schema?.RequestBody,
                         responses = schema?.Responses
@@ -167,7 +185,7 @@ sealed class ApiCommand : Command
             _logger.LogInformation("Endpoints:");
             foreach (var endpoint in endpoints)
             {
-                _logger.LogInformation("  {Method,-6} {Path,-30} {Description}", endpoint.Method, endpoint.Path, endpoint.Description);
+                _logger.LogInformation("  {Method,-6} {Path,-30} {Description}", endpoint.Method, endpoint.Path, FormatDescription(endpoint));
             }
             _logger.LogInformation("");
             _logger.LogInformation("Docs: {DocsUrl}", DocsLinks.Api);
@@ -180,4 +198,6 @@ sealed class ApiEndpointInfo
     public string Method { get; set; } = string.Empty;
     public string Path { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
+    public string? Query { get; set; }
+    public string? Body { get; set; }
 }

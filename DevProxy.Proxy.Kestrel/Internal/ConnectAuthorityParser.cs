@@ -88,7 +88,7 @@ internal static class ConnectAuthorityParser
         else
         {
             var firstColon = authority.IndexOf(':', StringComparison.Ordinal);
-            var lastColon = authority.LastIndexOf(':');
+            var lastColon = authority.LastIndexOf(':', StringComparison.Ordinal);
             if (firstColon != lastColon)
             {
                 return false; // multiple colons without brackets (bare IPv6 / garbage)

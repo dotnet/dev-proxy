@@ -3,9 +3,12 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Net;
+using System.Text;
 using DevProxy.Abstractions.Proxy;
+using DevProxy.Abstractions.Proxy.Http;
 using DevProxy.Abstractions.Utils;
 using DevProxy.Plugins.Reporting;
+using DevProxy.Proxy.Kestrel.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -182,6 +185,13 @@ public sealed class OpenApiValidationPluginTests : IDisposable
                 headers: [("Content-Type", "application/json"), .. responseHeaders ?? []],
                 body: body);
 
+    // the pipeline calls AfterResponse only for responses that were fully sent
+    private static async Task<RequestLog> CompleteAsync(OpenApiValidationPlugin plugin, TestExchange exchange)
+    {
+        await plugin.AfterResponseAsync(exchange.ResponseArgs, CancellationToken.None);
+        return exchange.AsRequestLog(MessageType.FinishedProcessingRequest);
+    }
+
     private static string[] Messages(OpenApiValidationResult? result) =>
         [.. Assert.IsType<OpenApiValidationResult>(result).Issues.Select(i => i.ToString())];
 
@@ -339,9 +349,9 @@ public sealed class OpenApiValidationPluginTests : IDisposable
     {
         var plugin = await CreatePluginAsync($$"""{ "specsFolder": ".", "reportUnmatchedRequests": {{(reportUnmatchedRequests ? "true" : "false")}} }""");
         var args = Recording([
-            Get("https://api.contoso.com/v1/users/1", HttpStatusCode.OK, """{ "id": 1, "name": "Alex" }""").AsRequestLog(MessageType.InterceptedResponse),
-            Get("https://api.contoso.com/v1/users/1", HttpStatusCode.OK, """{ "id": 1 }""").AsRequestLog(MessageType.InterceptedResponse),
-            Get("https://api.contoso.com/other", HttpStatusCode.OK, "{}").AsRequestLog(MessageType.InterceptedResponse),
+            await CompleteAsync(plugin, Get("https://api.contoso.com/v1/users/1", HttpStatusCode.OK, """{ "id": 1, "name": "Alex" }""")),
+            await CompleteAsync(plugin, Get("https://api.contoso.com/v1/users/1", HttpStatusCode.OK, """{ "id": 1 }""")),
+            await CompleteAsync(plugin, Get("https://api.contoso.com/other", HttpStatusCode.OK, "{}")),
         ]);
 
         await plugin.AfterRecordingStopAsync(args, CancellationToken.None);
@@ -368,8 +378,8 @@ public sealed class OpenApiValidationPluginTests : IDisposable
     {
         var plugin = await CreatePluginAsync();
         var args = Recording([
-            Get("https://api.contoso.com/v1/users/1", HttpStatusCode.OK, """{ "id": 1, "name": "Alex" }""").AsRequestLog(MessageType.InterceptedResponse),
-            Get("https://api.contoso.com/v1/users/2", HttpStatusCode.OK, $$"""{ "id": 2, "name": "{{new string('a', 5 * 1024 * 1024)}}" }""").AsRequestLog(MessageType.InterceptedResponse),
+            await CompleteAsync(plugin, Get("https://api.contoso.com/v1/users/1", HttpStatusCode.OK, """{ "id": 1, "name": "Alex" }""")),
+            await CompleteAsync(plugin, Get("https://api.contoso.com/v1/users/2", HttpStatusCode.OK, $$"""{ "id": 2, "name": "{{new string('a', 5 * 1024 * 1024)}}" }""")),
         ]);
 
         await plugin.AfterRecordingStopAsync(args, CancellationToken.None);
@@ -1049,6 +1059,603 @@ public sealed class OpenApiValidationPluginTests : IDisposable
 
         Assert.NotNull(plugin.Validate(Call("GET", "https://api.fabrikam.com/items").Session));
         Assert.Contains(logger.Warnings, w => w.Contains("broken.yaml' has errors", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("1.00000000000000000000000000001", false)]
+    [InlineData("10000000000000000000000000000.1", false)]
+    [InlineData("1.5", false)]
+    [InlineData("1e-1", false)]
+    [InlineData("1e100", true)]
+    [InlineData("1.5e1", true)]
+    [InlineData("-2.55E1", false)]
+    [InlineData("-2.50E1", true)]
+    [InlineData("1.000", true)]
+    [InlineData("0.0e-5", true)]
+    [InlineData("18446744073709551615", true)]
+    public async Task ClassifiesIntegerBodiesExactly(string body, bool isInteger)
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("integer.yaml", """
+            openapi: 3.0.3
+            info: { title: Integer, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            paths:
+              /integer-body:
+                get:
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema: { type: integer }
+            """));
+
+        var messages = Messages(plugin.Validate(Get("https://api.fabrikam.com/integer-body", HttpStatusCode.OK, body).Session));
+
+        if (isInteger)
+        {
+            Assert.Empty(messages);
+        }
+        else
+        {
+            Assert.Equal("$: Expected integer but got number", Assert.Single(messages));
+        }
+    }
+
+    [Fact]
+    public async Task ValidatesBodiesUsingDeclaredCharset()
+    {
+        var plugin = await CreatePluginAsync();
+        var exchange = TestExchange.Request("GET", "https://api.contoso.com/v1/users/me");
+        var headers = new HeaderCollection();
+        headers.Add(new HttpHeader("Content-Type", "application/json; charset=utf-16"));
+        exchange.Session.SetOriginResponse(new MutableHttpResponse(
+            HttpStatusCode.OK,
+            HttpVersion.Version11,
+            headers,
+            Encoding.Unicode.GetBytes("""{ "id": "1", "name": "Alex" }""")));
+
+        Assert.Equal("$.id: Expected integer but got string", Assert.Single(Messages(plugin.Validate(exchange.Session))));
+    }
+
+    [Fact]
+    public async Task ValidatesContentTypeOfUncapturedResponseBodies()
+    {
+        var plugin = await CreatePluginAsync();
+
+        static TestExchange Uncaptured(string contentType)
+        {
+            var exchange = TestExchange.Request("GET", "https://api.contoso.com/v1/users/me");
+            var headers = new HeaderCollection();
+            headers.Add(new HttpHeader("Content-Type", contentType));
+            var response = new MutableHttpResponse(HttpStatusCode.OK, HttpVersion.Version11, headers, ReadOnlyMemory<byte>.Empty);
+            response.MarkBodyNotCaptured();
+            exchange.Session.SetOriginResponse(response);
+            return exchange;
+        }
+
+        var undocumented = Uncaptured("text/event-stream");
+        Assert.StartsWith("Content type 'text/event-stream' isn't documented",
+            Assert.Single(Messages(plugin.Validate(undocumented.Session))), StringComparison.Ordinal);
+
+        var documented = Uncaptured("application/json");
+        Assert.Empty(plugin.Validate(documented.Session)!.Issues);
+        Assert.Contains("didn't capture it", Assert.Single(plugin.GetNotes(documented.Session)), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AcceptsScalarValuesForSchemasAllowingArraysAndScalars()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("mixed.yaml", """
+            openapi: 3.0.3
+            info: { title: Mixed, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            paths:
+              /items:
+                get:
+                  parameters:
+                    - { name: q, in: query, schema: { anyOf: [ { type: array, items: { type: integer } }, { type: string } ] } }
+                  responses: { '204': { description: ok } }
+            """));
+
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?q=hello").Session)!.Issues);
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?q=1&q=2").Session)!.Issues);
+    }
+
+    [Fact]
+    public async Task CoercesParametersUsingTypesReachedThroughShorterBranches()
+    {
+        // Wrap is first reached through a chain ending at the depth limit,
+        // and then directly from anyOf
+        var chain = string.Join(",\n", Enumerable.Range(0, 63).Select(i =>
+            $$"""      "L{{i}}": { "allOf": [ { "$ref": "#/components/schemas/{{(i < 62 ? $"L{i + 1}" : "Wrap")}}" } ] }"""));
+        var plugin = await CreatePluginWithSpecsAsync(("depth.json", $$"""
+            {
+              "openapi": "3.1.0",
+              "info": { "title": "Depth", "version": "1.0" },
+              "servers": [ { "url": "https://api.fabrikam.com" } ],
+              "paths": {
+                "/items": {
+                  "get": {
+                    "parameters": [
+                      { "name": "n", "in": "query", "schema": { "anyOf": [ { "$ref": "#/components/schemas/L0" }, { "$ref": "#/components/schemas/Wrap" } ] } }
+                    ],
+                    "responses": { "204": { "description": "ok" } }
+                  }
+                }
+              },
+              "components": {
+                "schemas": {
+            {{chain}},
+                  "Wrap": { "allOf": [ { "type": "integer" } ] }
+                }
+              }
+            }
+            """));
+
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?n=42").Session)!.Issues);
+    }
+
+    [Fact]
+    public async Task ValidatesEachOccurrenceOfDuplicateProperties()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("duplicates.yaml", """
+            openapi: 3.0.3
+            info: { title: Duplicates, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            paths:
+              /items:
+                get:
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+                            properties:
+                              x: { allOf: [ { type: string } ] }
+            """));
+
+        var result = plugin.Validate(TestExchange.Request("GET", "https://api.fabrikam.com/items")
+            .WithResponse(HttpStatusCode.OK, headers: [("Content-Type", "application/json")], body: """{"x":"ok","x":123}""").Session);
+
+        Assert.Equal("$.x: Expected string but got integer", Assert.Single(Messages(result)));
+    }
+
+    [Fact]
+    public async Task OverridesPathLevelHeaderParametersCaseInsensitively()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("headers.yaml", """
+            openapi: 3.0.3
+            info: { title: Headers, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            paths:
+              /items:
+                parameters:
+                  - { name: X-Tenant, in: header, required: true, schema: { type: string } }
+                get:
+                  parameters:
+                    - { name: x-tenant, in: header, schema: { type: string } }
+                  responses: { '204': { description: ok } }
+            """));
+
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items").Session)!.Issues);
+    }
+
+    [Fact]
+    public async Task KeepsEncodedDelimitersInArrayItems()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("delimiters.yaml", """
+            openapi: 3.0.3
+            info: { title: Delimiters, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            paths:
+              /items/{names}:
+                get:
+                  parameters:
+                    - { name: names, in: path, required: true, schema: { type: array, items: { type: string, enum: [ 'a,b', c ] } } }
+                    - { name: tags, in: query, explode: false, schema: { type: array, items: { type: string, enum: [ 'a,b', c ] } } }
+                  responses: { '204': { description: ok } }
+            """));
+
+        var valid = plugin.Validate(Call("GET", "https://api.fabrikam.com/items/a%2Cb,c?tags=a%2Cb,c").Session);
+        var invalid = plugin.Validate(Call("GET", "https://api.fabrikam.com/items/c?tags=d").Session);
+
+        Assert.Empty(valid!.Issues);
+        Assert.Contains("isn't one of the allowed values", Assert.Single(Messages(invalid)), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ParsesUtf8BodiesWithByteOrderMark()
+    {
+        var plugin = await CreatePluginAsync();
+        var exchange = TestExchange.Request("GET", "https://api.contoso.com/v1/users/me");
+        var headers = new HeaderCollection();
+        headers.Add(new HttpHeader("Content-Type", "application/json"));
+        exchange.Session.SetOriginResponse(new MutableHttpResponse(
+            HttpStatusCode.OK,
+            HttpVersion.Version11,
+            headers,
+            (byte[])[.. Encoding.UTF8.Preamble, .. Encoding.UTF8.GetBytes("""{ "id": "1", "name": "Alex" }""")]));
+
+        Assert.Equal("$.id: Expected integer but got string", Assert.Single(Messages(plugin.Validate(exchange.Session))));
+    }
+
+    [Theory]
+    [InlineData("anyOf", "integer", "boolean")]
+    [InlineData("anyOf", "boolean", "integer")]
+    [InlineData("oneOf", "integer", "boolean")]
+    [InlineData("oneOf", "boolean", "integer")]
+    public async Task CoercesArrayItemsUsingEachComposedItemsSchema(string composition, string firstType, string secondType)
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("items.yaml", $$"""
+            openapi: 3.0.3
+            info: { title: Items, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            paths:
+              /items:
+                get:
+                  parameters:
+                    - { name: q, in: query, schema: { {{composition}}: [ { type: array, items: { type: {{firstType}} } }, { type: array, items: { type: {{secondType}} } } ] } }
+                  responses: { '204': { description: ok } }
+            """));
+
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?q=true&q=false").Session)!.Issues);
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?q=1&q=2").Session)!.Issues);
+        Assert.NotEmpty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?q=1&q=true").Session)!.Issues);
+    }
+
+    [Fact]
+    public async Task AcceptsQueryApiKeysDocumentedBySecuritySchemes()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("security.yaml", """
+            openapi: 3.0.3
+            info: { title: Security, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            security:
+              - docKey: []
+            paths:
+              /document:
+                get:
+                  responses: { '204': { description: ok } }
+              /operation:
+                get:
+                  security:
+                    - opKey: []
+                  responses: { '204': { description: ok } }
+              /public:
+                get:
+                  security: []
+                  responses: { '204': { description: ok } }
+            components:
+              securitySchemes:
+                docKey: { type: apiKey, in: query, name: api_key }
+                opKey: { type: apiKey, in: query, name: key }
+            """));
+
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/document?api_key=secret").Session)!.Issues);
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/operation?key=secret").Session)!.Issues);
+        Assert.Equal("api_key: Query parameter 'api_key' isn't documented",
+            Assert.Single(Messages(plugin.Validate(Call("GET", "https://api.fabrikam.com/operation?api_key=secret").Session))));
+        Assert.Equal("api_key: Query parameter 'api_key' isn't documented",
+            Assert.Single(Messages(plugin.Validate(Call("GET", "https://api.fabrikam.com/public?api_key=secret").Session))));
+    }
+
+    [Fact]
+    public async Task SkipsResponsesThatHaventCompletedWhenRecordingStops()
+    {
+        var plugin = await CreatePluginAsync();
+        var pending = Get("https://api.contoso.com/v1/users/1", HttpStatusCode.OK, """{ "id": 1, "name": "Alex" }""");
+        // e.g. a stream that failed or was canceled, which still logs FinishedProcessingRequest
+        var interrupted = Get("https://api.contoso.com/v1/users/2", HttpStatusCode.OK, string.Empty);
+        var unmatched = Get("https://api.contoso.com/other", HttpStatusCode.OK, "{}");
+        var args = Recording([
+            pending.AsRequestLog(MessageType.InterceptedResponse),
+            interrupted.AsRequestLog(MessageType.InterceptedResponse),
+            interrupted.AsRequestLog(MessageType.FinishedProcessingRequest),
+            unmatched.AsRequestLog(MessageType.InterceptedResponse),
+        ]);
+
+        await plugin.AfterRecordingStopAsync(args, CancellationToken.None);
+
+        var report = Assert.IsType<OpenApiValidationPluginReport>(
+            ((Dictionary<string, object>)args.GlobalData[ProxyUtils.ReportsKey])[plugin.Name]);
+        Assert.Equal(0, report.ValidatedRequests);
+        Assert.Empty(report.Results);
+        Assert.Collection(report.SkippedValidations!,
+            s => Assert.StartsWith("GET https://api.contoso.com/v1/users/1: Skipped validating because the response didn't complete", s, StringComparison.Ordinal),
+            s => Assert.StartsWith("GET https://api.contoso.com/v1/users/2: Skipped validating because the response didn't complete", s, StringComparison.Ordinal));
+        Assert.DoesNotContain("All validated requests", report.ToMarkdown()!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task IgnoresUnfinishedRequestsNotMatchingAnySpecWhenNotReportingUnmatchedRequests()
+    {
+        var plugin = await CreatePluginAsync();
+        var args = Recording([Get("https://api.contoso.com/other", HttpStatusCode.OK, "{}").AsRequestLog(MessageType.InterceptedResponse)]);
+        var reports = (Dictionary<string, object>)args.GlobalData[ProxyUtils.ReportsKey];
+        reports[plugin.Name] = new OpenApiValidationPluginReport { Results = [], ValidatedRequests = 1 };
+
+        await plugin.AfterRecordingStopAsync(args, CancellationToken.None);
+
+        Assert.False(reports.ContainsKey(plugin.Name));
+    }
+
+    [Fact]
+    public async Task RemovesPreviousReportWhenRecordingHasNoRequests()
+    {
+        var plugin = await CreatePluginAsync();
+        var args = Recording([]);
+        var reports = (Dictionary<string, object>)args.GlobalData[ProxyUtils.ReportsKey];
+        reports[plugin.Name] = new OpenApiValidationPluginReport { Results = [], ValidatedRequests = 1 };
+
+        await plugin.AfterRecordingStopAsync(args, CancellationToken.None);
+
+        Assert.False(reports.ContainsKey(plugin.Name));
+    }
+
+    [Fact]
+    public async Task HandlesExplodedFormDictionaryQueryParameters()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("dictionary.yaml", """
+            openapi: 3.0.3
+            info: { title: Dictionary, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            paths:
+              /typed:
+                get:
+                  parameters:
+                    - { name: filter, in: query, required: true, style: form, explode: true, schema: { type: object, additionalProperties: { type: string } } }
+                    - { name: top, in: query, schema: { type: integer } }
+                  responses: { '204': { description: ok } }
+              /freeform:
+                get:
+                  parameters:
+                    - { name: filter, in: query, required: true, schema: { type: object } }
+                  responses: { '204': { description: ok } }
+            """));
+
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/typed?owner=Alex&top=5").Session)!.Issues);
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/freeform?owner=Alex").Session)!.Issues);
+        Assert.Equal("filter: Missing required query parameter 'filter'",
+            Assert.Single(Messages(plugin.Validate(Call("GET", "https://api.fabrikam.com/typed?top=5").Session))));
+    }
+
+    [Fact]
+    public async Task MatchesServerVariablesSpanningMultiplePathSegments()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("basepath.yaml", """
+            openapi: 3.0.3
+            info: { title: Base path, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com/{basePath}
+                variables:
+                  basePath:
+                    default: api/v1
+                    enum: [ api/v1, api/beta ]
+            paths:
+              /items:
+                get:
+                  responses: { '204': { description: ok } }
+            """));
+
+        var v1 = plugin.Validate(Call("GET", "https://api.fabrikam.com/api/v1/items").Session);
+        var beta = plugin.Validate(Call("GET", "https://api.fabrikam.com/api/beta/items").Session);
+
+        Assert.Equal("GET /items", v1?.Operation);
+        Assert.Empty(v1!.Issues);
+        Assert.Equal("GET /items", beta?.Operation);
+        Assert.Empty(beta!.Issues);
+    }
+
+    [Fact]
+    public async Task TriesShorterServerVariableValuesToFindDocumentedOperations()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("basepath.yaml", """
+            openapi: 3.0.3
+            info: { title: Base path, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com/{basePath}
+                variables:
+                  basePath:
+                    default: api
+                    enum: [ api, api/v1 ]
+            paths:
+              /v1/items:
+                get:
+                  responses: { '204': { description: ok } }
+            """));
+
+        var result = plugin.Validate(Call("GET", "https://api.fabrikam.com/api/v1/items").Session);
+
+        Assert.Equal("GET /v1/items", result?.Operation);
+        Assert.Empty(result!.Issues);
+        Assert.Equal("Path '/other' isn't documented in the spec",
+            Assert.Single(Messages(plugin.Validate(Call("GET", "https://api.fabrikam.com/api/v1/other").Session))));
+    }
+
+    [Fact]
+    public async Task CoercesParametersUsingEnumValueTypesAndWideIntegers()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("enums.yaml", """
+            openapi: 3.0.3
+            info: { title: Enums, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            paths:
+              /items:
+                get:
+                  parameters:
+                    - { name: n, in: query, schema: { enum: [1, 2] } }
+                    - { name: flag, in: query, schema: { enum: [true, false] } }
+                    - { name: big, in: query, schema: { type: integer } }
+                  responses: { '204': { description: ok } }
+            """));
+
+        var valid = plugin.Validate(Call("GET", "https://api.fabrikam.com/items?n=1&flag=true&big=18446744073709551615").Session);
+        var invalid = plugin.Validate(Call("GET", "https://api.fabrikam.com/items?n=3").Session);
+
+        Assert.Empty(valid!.Issues);
+        Assert.Contains("isn't one of the allowed values", Assert.Single(Messages(invalid)), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task KeepsNumberParametersLosslessWhenComparingToEnums()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("numbers.yaml", """
+            openapi: 3.0.3
+            info: { title: Numbers, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            paths:
+              /items:
+                get:
+                  parameters:
+                    - { name: big, in: query, schema: { type: number, enum: [9007199254740992] } }
+                    - { name: dec, in: query, schema: { type: number, enum: [1] } }
+                  responses: { '204': { description: ok } }
+            """));
+
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?big=9007199254740992&dec=1.0").Session)!.Issues);
+        var big = plugin.Validate(Call("GET", "https://api.fabrikam.com/items?big=9007199254740993").Session);
+        var dec = plugin.Validate(Call("GET", "https://api.fabrikam.com/items?dec=1.00000000000000001").Session);
+        Assert.Contains("isn't one of the allowed values", Assert.Single(Messages(big)), StringComparison.Ordinal);
+        Assert.Contains("isn't one of the allowed values", Assert.Single(Messages(dec)), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task MatchesServersWithDefaultPortsFromVariables()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("variable-ports.yaml", """
+            openapi: 3.0.3
+            info: { title: Ports, version: '1.0' }
+            servers:
+              - url: https://api.contoso.com:{port}/v1
+                variables: { port: { default: '443' } }
+              - url: http://api.fabrikam.com:{port}/v1
+                variables: { port: { default: '80' } }
+            paths:
+              /items:
+                get:
+                  responses: { '204': { description: ok } }
+            """));
+
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.contoso.com/v1/items").Session)!.Issues);
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.contoso.com:443/v1/items").Session)!.Issues);
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.contoso.com:8443/v1/items").Session)!.Issues);
+        Assert.Empty(plugin.Validate(Call("GET", "http://api.fabrikam.com/v1/items").Session)!.Issues);
+        Assert.Empty(plugin.Validate(Call("GET", "http://api.fabrikam.com:8080/v1/items").Session)!.Issues);
+    }
+
+    [Fact]
+    public async Task InterpretsArrayItemsWithCompositionIndividually()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("items.yaml", """
+            openapi: 3.0.3
+            info: { title: Items, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            paths:
+              /items:
+                get:
+                  parameters:
+                    - name: q
+                      in: query
+                      schema:
+                        type: array
+                        items: { anyOf: [ { type: integer, enum: [1] }, { type: string, enum: ['2'] } ] }
+                  responses: { '204': { description: ok } }
+            """));
+
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?q=1&q=2").Session)!.Issues);
+        Assert.NotEmpty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?q=1&q=3").Session)!.Issues);
+    }
+
+    [Fact]
+    public async Task InterpretsArrayItemsUsingItemsSchemasOfComposedBranches()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("items.yaml", """
+            openapi: 3.1.0
+            info: { title: Items, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            paths:
+              /items:
+                get:
+                  parameters:
+                    - name: q
+                      in: query
+                      schema:
+                        type: array
+                        items: { type: [ integer, string ] }
+                        allOf:
+                          - items: { anyOf: [ { type: integer, enum: [1] }, { type: string, enum: ['2'] } ] }
+                  responses: { '204': { description: ok } }
+            """));
+
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?q=1&q=2").Session)!.Issues);
+    }
+
+    [Fact]
+    public async Task InterpretsArrayItemsUsingIntersectionOfAllOfItemsSchemas()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("items.yaml", """
+            openapi: 3.0.3
+            info: { title: Items, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            paths:
+              /items:
+                get:
+                  parameters:
+                    - name: q
+                      in: query
+                      schema:
+                        type: array
+                        items: { anyOf: [ { type: integer, enum: [1, 2] }, { type: string, enum: ['2', '3'] } ] }
+                        allOf:
+                          - items: { anyOf: [ { type: integer, enum: [1, 3] }, { type: string, enum: ['2', '3'] } ] }
+                  responses: { '204': { description: ok } }
+            """));
+
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?q=1&q=2&q=3").Session)!.Issues);
+        Assert.NotEmpty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?q=1&q=4").Session)!.Issues);
+    }
+
+    [Fact]
+    public async Task InterpretsArrayItemsUsingIntersectionOfAnyOfAndOneOfItemsSchemas()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("items.yaml", """
+            openapi: 3.0.3
+            info: { title: Items, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            paths:
+              /items:
+                get:
+                  parameters:
+                    - name: q
+                      in: query
+                      schema:
+                        type: array
+                        anyOf:
+                          - items: { anyOf: [ { type: integer, enum: [1, 2] }, { type: string, enum: ['2', '3'] } ] }
+                        oneOf:
+                          - items: { anyOf: [ { type: integer, enum: [1, 3] }, { type: string, enum: ['2', '3'] } ] }
+                  responses: { '204': { description: ok } }
+            """));
+
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?q=1&q=2&q=3").Session)!.Issues);
+        Assert.NotEmpty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?q=1&q=4").Session)!.Issues);
     }
 
     private sealed class WarningLogger : ILogger<OpenApiValidationPlugin>
