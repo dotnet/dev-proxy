@@ -21,7 +21,7 @@ internal sealed class GenericErrorResponsesLoader(
 
     protected override string FilePath => _configuration.ErrorsFile;
 
-    protected override void LoadData(string fileContents)
+    protected override void LoadData(Stream fileContents)
     {
         try
         {

@@ -19,6 +19,11 @@ public sealed class ProxyUtilsSchemaValidationTests : IDisposable
     private const string JsonWithoutName = """{ "other": 1 }""";
 
     private readonly string _schemasFolder = Directory.CreateTempSubdirectory("devproxy-schemas-").FullName;
+    // unique per test, because downloaded schemas are cached per process
+    private readonly string _schemaFile = $"{Guid.NewGuid()}.schema.json";
+
+    private string UniqueSchemaUrl(string version = CurrentVersion) =>
+        $"https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v{version}/{_schemaFile}";
 
     public void Dispose() => Directory.Delete(_schemasFolder, true);
 
@@ -32,7 +37,7 @@ public sealed class ProxyUtilsSchemaValidationTests : IDisposable
     [InlineData("", false)]
     public void GetLocalSchemaPath_MapsOnlyCurrentVersionDevProxySchemas(string schemaUrl, bool expectLocal)
     {
-        WriteLocalSchema(AllowAnythingSchema);
+        File.WriteAllText(Path.Combine(_schemasFolder, SchemaFile), AllowAnythingSchema);
 
         var localPath = ProxyUtils.GetLocalSchemaPath(schemaUrl, CurrentVersion, _schemasFolder);
 
@@ -52,7 +57,7 @@ public sealed class ProxyUtilsSchemaValidationTests : IDisposable
         WriteLocalSchema(AllowAnythingSchema);
         using var handler = new FakeHandler(_ => throw new InvalidOperationException("Unexpected HTTP call"));
 
-        var (isValid, errors) = await ValidateAsync(JsonWithoutName, SchemaUrl, handler);
+        var (isValid, errors) = await ValidateAsync(JsonWithoutName, UniqueSchemaUrl(), handler);
 
         Assert.True(isValid);
         Assert.Empty(errors);
@@ -65,7 +70,7 @@ public sealed class ProxyUtilsSchemaValidationTests : IDisposable
         WriteLocalSchema(RequireNameSchema);
         using var handler = new FakeHandler(_ => Ok(AllowAnythingSchema));
 
-        var (isValid, _) = await ValidateAsync(JsonWithoutName, SchemaUrl, handler);
+        var (isValid, _) = await ValidateAsync(JsonWithoutName, UniqueSchemaUrl(), handler);
 
         Assert.True(isValid);
         Assert.Equal(1, handler.CallCount);
@@ -77,7 +82,7 @@ public sealed class ProxyUtilsSchemaValidationTests : IDisposable
         WriteLocalSchema(RequireNameSchema);
         using var handler = new FakeHandler(_ => throw new HttpRequestException("offline"));
 
-        var (isValid, errors) = await ValidateAsync(JsonWithoutName, SchemaUrl, handler);
+        var (isValid, errors) = await ValidateAsync(JsonWithoutName, UniqueSchemaUrl(), handler);
 
         Assert.False(isValid);
         Assert.Contains(errors, e => e.Contains("name", StringComparison.Ordinal));
@@ -94,7 +99,7 @@ public sealed class ProxyUtilsSchemaValidationTests : IDisposable
             return await Ok(AllowAnythingSchema);
         });
 
-        var (isValid, _) = await ValidateAsync(JsonWithoutName, SchemaUrl, handler, TimeSpan.FromMilliseconds(50));
+        var (isValid, _) = await ValidateAsync(JsonWithoutName, UniqueSchemaUrl(), handler, TimeSpan.FromMilliseconds(50));
 
         Assert.False(isValid);
     }
@@ -102,7 +107,7 @@ public sealed class ProxyUtilsSchemaValidationTests : IDisposable
     [Fact]
     public async Task ValidateJsonAgainstSchemaAsync_NoLocalSchema_DownloadsSchema()
     {
-        const string otherVersionUrl = "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v4.0.0/test.schema.json";
+        var otherVersionUrl = UniqueSchemaUrl("4.0.0");
         WriteLocalSchema(AllowAnythingSchema);
         using var handler = new FakeHandler(_ => Ok(RequireNameSchema));
 
@@ -112,8 +117,40 @@ public sealed class ProxyUtilsSchemaValidationTests : IDisposable
         Assert.Equal(1, handler.CallCount);
     }
 
+    [Fact]
+    public async Task ValidateJsonAgainstSchemaAsync_StreamWithLocalSchema_DoesNotDownloadSchema()
+    {
+        WriteLocalSchema(RequireNameSchema);
+        using var handler = new FakeHandler(_ => throw new InvalidOperationException("Unexpected HTTP call"));
+        using var httpClient = new HttpClient(handler, false);
+        using var json = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("""{ "name": "a" }"""));
+
+        var result = await ProxyUtils.ValidateJsonAgainstSchemaAsync(json, UniqueSchemaUrl(), httpClient, NullLogger.Instance, _schemasFolder, CurrentVersion, TimeSpan.FromSeconds(5), CancellationToken.None);
+
+        Assert.Equal(SchemaValidationStatus.Valid, result.Status);
+        Assert.Equal(0, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task ValidateJsonAgainstSchemaAsync_StreamLocalSchemaInvalid_ValidatesAgainstRemoteSchemaOncePerProcess()
+    {
+        WriteLocalSchema(RequireNameSchema);
+        using var handler = new FakeHandler(_ => Ok(AllowAnythingSchema));
+        using var httpClient = new HttpClient(handler, false);
+        var schemaUrl = UniqueSchemaUrl();
+
+        for (var i = 0; i < 2; i++)
+        {
+            using var json = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(JsonWithoutName));
+            var result = await ProxyUtils.ValidateJsonAgainstSchemaAsync(json, schemaUrl, httpClient, NullLogger.Instance, _schemasFolder, CurrentVersion, TimeSpan.FromSeconds(5), CancellationToken.None);
+            Assert.Equal(SchemaValidationStatus.Valid, result.Status);
+        }
+
+        Assert.Equal(1, handler.CallCount);
+    }
+
     private void WriteLocalSchema(string contents) =>
-        File.WriteAllText(Path.Combine(_schemasFolder, SchemaFile), contents);
+        File.WriteAllText(Path.Combine(_schemasFolder, _schemaFile), contents);
 
     private async Task<(bool IsValid, IEnumerable<string> ValidationErrors)> ValidateAsync(string json, string schemaUrl, FakeHandler handler, TimeSpan? timeout = null)
     {

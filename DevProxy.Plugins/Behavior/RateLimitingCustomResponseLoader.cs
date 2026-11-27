@@ -22,7 +22,7 @@ internal sealed class RateLimitingCustomResponseLoader(
 
     protected override string FilePath => _configuration.CustomResponseFile;
 
-    protected override void LoadData(string fileContents)
+    protected override void LoadData(Stream fileContents)
     {
         try
         {

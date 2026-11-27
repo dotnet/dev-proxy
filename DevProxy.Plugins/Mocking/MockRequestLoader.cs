@@ -21,7 +21,7 @@ internal sealed class MockRequestLoader(
 
     protected override string FilePath => _configuration.MockFile;
 
-    protected override void LoadData(string fileContents)
+    protected override void LoadData(Stream fileContents)
     {
         try
         {

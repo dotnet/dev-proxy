@@ -201,6 +201,16 @@ public abstract class BasePlugin<TConfiguration>(
             }
 
             var configSectionName = ConfigurationSection.Key;
+            var cacheKey = SchemaValidationCache.CreateKey(ProxyConfiguration.ConfigFile, schemaUrl, configSectionName);
+            // read before the contents so that a change while validating isn't missed
+            var fileVersion = SchemaValidationCache.GetFileVersion(ProxyConfiguration.ConfigFile);
+            if (SchemaValidationCache.HasPassed(cacheKey, fileVersion))
+            {
+                ProxyUtils.ValidateSchemaVersion(schemaUrl, Logger);
+                Logger.LogDebug("Configuration section {SectionName} hasn't changed since it passed schema validation. Skipping schema validation", configSectionName);
+                return (true, []);
+            }
+
             var configFile = await File.ReadAllTextAsync(ProxyConfiguration.ConfigFile, cancellationToken);
 
             using var document = JsonDocument.Parse(configFile, ProxyUtils.JsonDocumentOptions);
@@ -214,6 +224,8 @@ public abstract class BasePlugin<TConfiguration>(
 
             ProxyUtils.ValidateSchemaVersion(schemaUrl, Logger);
             var result = await ProxyUtils.ValidateJsonAgainstSchemaAsync(configSection.GetRawText(), schemaUrl, _httpClient, Logger, cancellationToken);
+            // a pass without a schema isn't cached, so that the section is validated once the schema is available
+            SchemaValidationCache.SetResult(cacheKey, fileVersion, result.Status == SchemaValidationStatus.Valid);
             if (result.Status == SchemaValidationStatus.SchemaUnavailable)
             {
                 if (Logger.IsEnabled(LogLevel.Warning))

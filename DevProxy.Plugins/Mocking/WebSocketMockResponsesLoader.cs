@@ -25,7 +25,7 @@ internal sealed class WebSocketMockResponsesLoader(
 
     protected override string FilePath => _configuration.MocksFile;
 
-    protected override void LoadData(string fileContents)
+    protected override void LoadData(Stream fileContents)
     {
         try
         {

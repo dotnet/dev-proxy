@@ -6,6 +6,7 @@ using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace DevProxy.Plugins.Mocking;
@@ -27,11 +28,17 @@ internal sealed class CrudApiDataLoader(
             Path.GetDirectoryName(_configuration.ApiFile) ?? string.Empty
         );
 
-    protected override void LoadData(string fileContents)
+    protected override void LoadData(Stream fileContents)
     {
         try
         {
-            var data = JArray.Parse(fileContents);
+            using var streamReader = new StreamReader(fileContents, leaveOpen: true);
+            using var jsonReader = new JsonTextReader(streamReader);
+            var data = JArray.Load(jsonReader);
+            // same as JArray.Parse: fail on anything other than comments after the array
+            while (jsonReader.Read())
+            {
+            }
             for (var i = data.Count - 1; i >= 0; i--)
             {
                 if (data[i].Type == JTokenType.Null)

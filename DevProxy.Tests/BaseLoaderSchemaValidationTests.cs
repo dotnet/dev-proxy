@@ -11,10 +11,11 @@ namespace DevProxy.Tests;
 
 public sealed class BaseLoaderSchemaValidationTests : IDisposable
 {
-    private const string SchemaUrl = "https://schemas.example.test/mocks.schema.json";
     private const string Schema = """{ "properties": { "name": { "type": "string" } } }""";
+    // unique per test, because downloaded schemas are cached per process
+    private readonly string _schemaUrl = $"https://schemas.example.test/mocks-{Guid.NewGuid()}.schema.json";
     // Doesn't match the schema, which requires name to be a string
-    private const string Contents = $$"""{ "$schema": "{{SchemaUrl}}", "name": 1 }""";
+    private string Contents => $$"""{ "$schema": "{{_schemaUrl}}", "name": 1 }""";
     private readonly string _folder = Directory.CreateTempSubdirectory("devproxy-loader").FullName;
 
     public void Dispose() => Directory.Delete(_folder, true);
@@ -52,7 +53,7 @@ public sealed class BaseLoaderSchemaValidationTests : IDisposable
         {
             cts.Cancel();
             throw new OperationCanceledException(cts.Token);
-        }, logger, cts.Token);
+        }, logger, cancellationToken: cts.Token);
 
         Assert.Null(loader.Contents);
         Assert.DoesNotContain(logger.Messages, m => m.LogLevel >= LogLevel.Warning);
@@ -64,8 +65,8 @@ public sealed class BaseLoaderSchemaValidationTests : IDisposable
     public async Task AppliesNewestDataWhenFileChangesWhileRetrievingSchema(bool schemaAvailable)
     {
         var timeout = TimeSpan.FromSeconds(10);
-        var initialContents = $$"""{ "$schema": "{{SchemaUrl}}", "name": "initial" }""";
-        var updatedContents = $$"""{ "$schema": "{{SchemaUrl}}", "name": "updated" }""";
+        var initialContents = $$"""{ "$schema": "{{_schemaUrl}}", "name": "initial" }""";
+        var updatedContents = $$"""{ "$schema": "{{_schemaUrl}}", "name": "updated" }""";
         var path = Path.Combine(_folder, "mocks.json");
         await File.WriteAllTextAsync(path, initialContents, CancellationToken.None);
 
@@ -115,10 +116,90 @@ public sealed class BaseLoaderSchemaValidationTests : IDisposable
         Assert.Equal([initialContents, updatedContents], loader.LoadedContents);
     }
 
-    private async Task<TestLoader> LoadAsync(Func<HttpRequestMessage, HttpResponseMessage> sendSchemaRequest, ILogger logger, CancellationToken cancellationToken = default)
+    [Theory]
+    [InlineData("""[{ "id": 3 }] { "extra": true }""")]
+    [InlineData("""{ "name": "a" } { "extra": true }""")]
+    public async Task DoesNotLoadInvalidJsonWithoutSchemaReference(string contents)
+    {
+        var logger = new RecordingLogger();
+
+        var loader = await LoadAsync(_ => new(HttpStatusCode.OK) { Content = new StringContent(Schema) }, logger, contents: contents);
+
+        Assert.Null(loader.Contents);
+        Assert.Contains(logger.Messages, m => m.LogLevel == LogLevel.Error);
+    }
+
+    [Theory]
+    [InlineData("""{ "$schema": null, "name": }""")]
+    [InlineData("""{ "$schema": "", "name": }""")]
+    public async Task DoesNotLoadInvalidJsonAfterEmptySchemaReference(string contents)
+    {
+        var logger = new RecordingLogger();
+
+        var loader = await LoadAsync(_ => new(HttpStatusCode.OK) { Content = new StringContent(Schema) }, logger, contents: contents);
+
+        Assert.Null(loader.Contents);
+        Assert.Contains(logger.Messages, m => m.LogLevel == LogLevel.Error);
+    }
+
+    [Fact]
+    public async Task DoesNotLoadInvalidJsonWhenSchemaCannotBeRetrieved()
+    {
+        var logger = new RecordingLogger();
+
+        var loader = await LoadAsync(_ => throw new HttpRequestException("Connection refused"), logger, contents: $$"""{ "$schema": "{{_schemaUrl}}", "name": }""");
+
+        Assert.Null(loader.Contents);
+        Assert.Contains(logger.Messages, m => m.LogLevel == LogLevel.Error);
+    }
+
+    [Fact]
+    public async Task KeepsLoadedDataWhenReloadedFileIsInvalidJson()
+    {
+        var timeout = TimeSpan.FromSeconds(10);
+        const string validContents = """[{ "id": 2, "name": "reloaded" }]""";
+        var path = Path.Combine(_folder, "items.json");
+        await File.WriteAllTextAsync(path, validContents, CancellationToken.None);
+        using var handler = new FakeHttpMessageHandler(_ => new(HttpStatusCode.OK) { Content = new StringContent(Schema) });
+        using var httpClient = new HttpClient(handler);
+        var errorLogged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var logger = new ErrorSignalingLogger(errorLogged);
+        using var loader = new TestLoader(httpClient, logger, path);
+        await loader.InitFileWatcherAsync(CancellationToken.None);
+        Assert.Equal(validContents, loader.Contents);
+
+        await File.WriteAllTextAsync(path, """[{ "id": 3, "name": "invalid" }] { "extra": true }""", CancellationToken.None);
+        await errorLogged.Task.WaitAsync(timeout);
+
+        Assert.Equal(validContents, loader.Contents);
+        Assert.Equal([validContents], loader.LoadedContents);
+    }
+
+    [Fact]
+    public async Task KeepsLoadedDataWhenReloadedFileIsInvalidJsonThatMatchesSchema()
+    {
+        var timeout = TimeSpan.FromSeconds(10);
+        var validContents = $$"""{ "$schema": "{{_schemaUrl}}", "name": "previous" }""";
+        var path = Path.Combine(_folder, "mocks.json");
+        await File.WriteAllTextAsync(path, validContents, CancellationToken.None);
+        using var handler = new FakeHttpMessageHandler(_ => new(HttpStatusCode.OK) { Content = new StringContent(Schema) });
+        using var httpClient = new HttpClient(handler);
+        var errorLogged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var logger = new ErrorSignalingLogger(errorLogged);
+        using var loader = new TestLoader(httpClient, logger, path);
+        await loader.InitFileWatcherAsync(CancellationToken.None);
+        Assert.Equal(validContents, loader.Contents);
+
+        await File.WriteAllTextAsync(path, $$"""{ "$schema": "{{_schemaUrl}}", "name": 'malformed' }""", CancellationToken.None);
+        await errorLogged.Task.WaitAsync(timeout);
+
+        Assert.Equal([validContents], loader.LoadedContents);
+    }
+
+    private async Task<TestLoader> LoadAsync(Func<HttpRequestMessage, HttpResponseMessage> sendSchemaRequest, ILogger logger, string? contents = null, CancellationToken cancellationToken = default)
     {
         var path = Path.Combine(_folder, "mocks.json");
-        await File.WriteAllTextAsync(path, Contents, CancellationToken.None);
+        await File.WriteAllTextAsync(path, contents ?? Contents, CancellationToken.None);
         using var handler = new FakeHttpMessageHandler(sendSchemaRequest);
         using var httpClient = new HttpClient(handler);
         var loader = new TestLoader(httpClient, logger, path);
@@ -189,6 +270,21 @@ public sealed class BaseLoaderSchemaValidationTests : IDisposable
                     loaded.SetResult();
                 }
                 _ = _loadWaiters.RemoveAll(w => w.Contents == fileContents);
+            }
+        }
+    }
+
+    private sealed class ErrorSignalingLogger(TaskCompletionSource errorLogged) : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel >= LogLevel.Error)
+            {
+                _ = errorLogged.TrySetResult();
             }
         }
     }

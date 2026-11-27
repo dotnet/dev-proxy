@@ -22,7 +22,7 @@ internal sealed class LanguageModelPricesLoader(
 
     protected override string FilePath => _configuration.PricesFile ?? throw new ArgumentNullException(nameof(_configuration.PricesFile), "Prices file path must be set in the configuration.");
 
-    protected override void LoadData(string fileContents)
+    protected override void LoadData(Stream fileContents)
     {
         try
         {

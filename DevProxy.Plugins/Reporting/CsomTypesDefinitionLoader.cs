@@ -22,7 +22,7 @@ internal sealed class CsomTypesDefinitionLoader(
 
     protected override string FilePath => _configuration.TypesFilePath!;
 
-    protected override void LoadData(string fileContents)
+    protected override void LoadData(Stream fileContents)
     {
         try
         {
