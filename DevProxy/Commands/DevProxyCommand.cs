@@ -436,6 +436,32 @@ sealed class DevProxyCommand : RootCommand
         return exitCode;
     }
 
+    internal static Option<bool?> CreateInstallCertOption(Option<bool?> asSystemProxyOption, IProxyConfiguration proxyConfiguration)
+    {
+        var installCertOption = new Option<bool?>(InstallCertOptionName)
+        {
+            Description = "Install and trust the root certificate (default: true, false when CI is set). On Linux, trust it manually",
+            HelpName = "true|false"
+        };
+        installCertOption.Validators.Add(input =>
+        {
+            try
+            {
+                var asSystemProxy = input.GetValue(asSystemProxyOption) ?? proxyConfiguration.AsSystemProxy;
+                var installCert = input.GetValue(installCertOption) ?? proxyConfiguration.InstallCert;
+                if (asSystemProxy && !installCert)
+                {
+                    input.AddError($"Requires option '{AsSystemProxyOptionName}' to be 'false'");
+                }
+            }
+            catch (InvalidOperationException ex)
+            {
+                input.AddError(ex.Message);
+            }
+        });
+        return installCertOption;
+    }
+
     // Reads the raw token rather than the parsed value, because the parsed
     // value isn't available when the parse result has errors
     internal static bool IsJsonOutputRequested(ParseResult parseResult) =>
@@ -730,31 +756,11 @@ sealed class DevProxyCommand : RootCommand
 
         var asSystemProxyOption = new Option<bool?>(AsSystemProxyOptionName)
         {
-            Description = "Register Dev Proxy as the system proxy (default: true). See https://go.devproxy.net?go=system-proxy",
+            Description = "Register Dev Proxy as the system proxy (default: true, false when CI is set). See https://go.devproxy.net?go=system-proxy",
             HelpName = "true|false"
         };
 
-        var installCertOption = new Option<bool?>(InstallCertOptionName)
-        {
-            Description = "Install and trust the root certificate (default: true). On Linux, trust it manually",
-            HelpName = "true|false"
-        };
-        installCertOption.Validators.Add(input =>
-        {
-            try
-            {
-                var asSystemProxy = input.GetValue(asSystemProxyOption) ?? true;
-                var installCert = input.GetValue(installCertOption) ?? true;
-                if (asSystemProxy && !installCert)
-                {
-                    input.AddError($"Requires option '{AsSystemProxyOptionName}' to be 'false'");
-                }
-            }
-            catch (InvalidOperationException ex)
-            {
-                input.AddError(ex.Message);
-            }
-        });
+        var installCertOption = CreateInstallCertOption(asSystemProxyOption, _proxyConfiguration);
 
         var timeoutOption = new Option<long?>(TimeoutOptionName, "-t")
         {
@@ -1008,6 +1014,7 @@ sealed class DevProxyCommand : RootCommand
         {
             _proxyConfiguration.InstallCert = installCert.Value;
         }
+        LogCiDefaults(asSystemProxy, installCert);
         var timeout = parseResult.GetValueOrDefault<long?>(TimeoutOptionName);
         if (timeout is not null)
         {
@@ -1032,6 +1039,26 @@ sealed class DevProxyCommand : RootCommand
             _proxyConfiguration.Output = output.Value;
         }
     }
+
+    private void LogCiDefaults(bool? asSystemProxyOption, bool? installCertOption)
+    {
+        if (_proxyConfiguration is not ProxyConfiguration proxyConfiguration ||
+            !ShouldLogCiDefaults(proxyConfiguration, asSystemProxyOption, installCertOption))
+        {
+            return;
+        }
+
+        _logger.LogInformation(
+            "CI environment detected. Using asSystemProxy: {AsSystemProxy}, installCert: {InstallCert}. To change, use {AsSystemProxyOption} and {InstallCertOption} or set asSystemProxy and installCert in the config file.",
+            proxyConfiguration.AsSystemProxy.ToString().ToLowerInvariant(),
+            proxyConfiguration.InstallCert.ToString().ToLowerInvariant(),
+            AsSystemProxyOptionName,
+            InstallCertOptionName);
+    }
+
+    internal static bool ShouldLogCiDefaults(ProxyConfiguration proxyConfiguration, bool? asSystemProxyOption, bool? installCertOption) =>
+        (proxyConfiguration.AsSystemProxyDefaultedForCi && asSystemProxyOption is null) ||
+        (proxyConfiguration.InstallCertDefaultedForCi && installCertOption is null);
 
     internal static Task CheckForNewVersionInBackgroundAsync(UpdateNotification updateNotification, ReleaseType releaseType, ILogger logger, CancellationToken cancellationToken) =>
         Task.Run(() => CheckForNewVersionAsync(updateNotification, releaseType, logger, cancellationToken), CancellationToken.None);
@@ -1085,4 +1112,4 @@ sealed class DevProxyCommand : RootCommand
 
         await StateManager.SaveStateAsync(state);
     }
-}
+}
