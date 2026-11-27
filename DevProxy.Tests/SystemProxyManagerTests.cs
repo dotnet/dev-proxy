@@ -425,3 +425,37 @@ public class SystemProxyOwnerLookupTests
         }
     }
 }
+
+[Collection("management-environment")]
+public class OrphanedSystemProxyStateTests
+{
+    [Fact]
+    public async Task GetOrphanedSystemProxyStates_SamePidDifferentProcesses_ReturnsBoth()
+    {
+        var legacyPath = StateManager.GetStateFilePath();
+        if (File.Exists(legacyPath))
+        {
+            // Don't touch a real legacy record.
+            return;
+        }
+        var pid = Random.Shared.Next(int.MaxValue / 2, int.MaxValue);
+        var statePath = StateManager.GetInstanceStateFilePath(pid);
+        Assert.False(File.Exists(statePath));
+        try
+        {
+            // A legacy record and a per-PID record for different dead processes that shared a PID.
+            await StateManager.SaveStateAsync(new() { Pid = pid, ProcessStartTime = DateTimeOffset.UnixEpoch, AsSystemProxy = true });
+            File.Copy(statePath, legacyPath);
+            await StateManager.SaveStateAsync(new() { Pid = pid, ProcessStartTime = DateTimeOffset.UnixEpoch.AddDays(1), AsSystemProxy = true });
+
+            var orphans = await StateManager.GetOrphanedSystemProxyStatesAsync();
+
+            Assert.Equal(2, orphans.Count(o => o.Pid == pid));
+        }
+        finally
+        {
+            File.Delete(statePath);
+            File.Delete(legacyPath);
+        }
+    }
+}

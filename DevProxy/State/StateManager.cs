@@ -253,7 +253,9 @@ internal static class StateManager
         }
 
         var orphaned = new List<ProxyInstanceState>();
-        var seenPids = new HashSet<int>();
+        // Dedupe by identity, not PID: the per-PID and legacy records can describe different
+        // processes with the same PID, and each must be retired after the proxy is restored.
+        var seen = new HashSet<(int, DateTimeOffset?)>();
 
         var stateFiles = Directory.GetFiles(configFolder, $"{StateFilePrefix}*{StateFileExtension}");
         var legacyPath = GetStateFilePath();
@@ -265,7 +267,7 @@ internal static class StateManager
             if (state is not null &&
                 state.AsSystemProxy &&
                 !IsInstanceAlive(state) &&
-                seenPids.Add(state.Pid))
+                seen.Add((state.Pid, state.ProcessStartTime)))
             {
                 orphaned.Add(state);
             }

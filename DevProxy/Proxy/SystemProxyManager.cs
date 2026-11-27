@@ -594,7 +594,7 @@ internal sealed class SystemProxyManager : ISystemProxyManager
     public static async Task<OrphanReconciliation> ReconcileOrphanedSystemProxiesAsync(ILogger<SystemProxyManager> logger, CancellationToken cancellationToken = default)
     {
         var orphans = await StateManager.GetOrphanedSystemProxyStatesAsync(cancellationToken);
-        var orphanedPids = orphans.Select(o => o.Pid).ToList();
+        var orphanedPids = orphans.Select(o => o.Pid).Distinct().ToList();
 
         // A snapshot left by a dead instance without a state record (e.g. a crashed
         // foreground instance) is also an orphan.
