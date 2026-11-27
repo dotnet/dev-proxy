@@ -81,7 +81,7 @@ internal sealed class RecordingLogger<T> : ILogger<T>
 /// Minimal <see cref="IProxyConfiguration"/>; only Output/ApiIpAddress/ApiPort/Record
 /// are read by the interactive console, the rest carry inert defaults.
 /// </summary>
-internal sealed class FakeProxyConfiguration : IProxyConfiguration, IProcessTreeProxyConfiguration
+internal sealed class FakeProxyConfiguration : IProxyConfiguration, IProcessTreeProxyConfiguration, IReportsProxyConfiguration
 {
     public string ApiIpAddress { get; set; } = "127.0.0.1";
     public int ApiPort { get; set; } = 8897;
@@ -98,6 +98,7 @@ internal sealed class FakeProxyConfiguration : IProxyConfiguration, IProcessTree
     public bool NoWatch { get; set; }
     public int Port { get; set; } = 8000;
     public bool Record { get; set; }
+    public string? ReportsFolder { get; set; }
     public bool ShowTimestamps => false;
     public long? TimeoutSeconds { get; set; }
     public bool ValidateSchemas { get; set; }
