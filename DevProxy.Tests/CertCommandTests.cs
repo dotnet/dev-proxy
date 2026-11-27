@@ -22,7 +22,7 @@ public class CertCommandTests
     {
         using var certificate = CreateCertificate();
         var trust = new TestCertificateTrust(fail);
-        var command = new CertCommand(NullLogger<CertCommand>.Instance, certificate, trust);
+        var command = new CertCommand(NullLogger<CertCommand>.Instance, new Lazy<X509Certificate2>(() => certificate), trust);
 
         Assert.Equal(expectedExitCode, command.Parse("ensure").Invoke());
         Assert.True(trust.TrustCalled);
@@ -39,7 +39,7 @@ public class CertCommandTests
         using var certificate = CreateCertificate();
         certificate.Dispose();
         var trust = new RootCertificateTrust(new FakeProxyConfiguration(), NullLogger<RootCertificateTrust>.Instance);
-        var command = new CertCommand(NullLogger<CertCommand>.Instance, certificate, trust);
+        var command = new CertCommand(NullLogger<CertCommand>.Instance, new Lazy<X509Certificate2>(() => certificate), trust);
 
         Assert.Equal(1, command.Parse("ensure").Invoke());
     }

@@ -29,6 +29,25 @@ public sealed class CommandExitCodeTests
     }
 
     [Theory]
+    [InlineData("--version")]
+    [InlineData("--help")]
+    [InlineData("jwt --help")]
+    public async Task NonProxyCommands_DoNotCreateRootCertificate(string args)
+    {
+        using var workDir = new TempDir();
+        var rootCertPath = Path.Combine(workDir.Path, "rootCert.pfx");
+        var env = new Dictionary<string, string>
+        {
+            ["DEV_PROXY_CERT_PATH"] = rootCertPath,
+        };
+
+        var (exitCode, output) = await RunHostAsync(workDir.Path, env, args.Split(' '));
+
+        Assert.True(exitCode == 0, output);
+        Assert.False(File.Exists(rootCertPath), output);
+    }
+
+    [Theory]
     [InlineData("warning")]
     [InlineData("none")]
     public async Task ConfigNew_JsonOutputAboveInformation_EmitsResultRecord(string logLevel)

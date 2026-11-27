@@ -77,8 +77,21 @@ public sealed class CertificateAuthorityTests : IDisposable
         var rootPath = CertificateAuthority.ResolveRootPfxPath("rootCert/rootCert.pfx", _dir);
 
         using var ca = new CertificateAuthority(rootPath, _leafDir);
+        _ = ca.RootCertificate;
 
         Assert.True(File.Exists(Path.Combine(_dir, "rootCert", "rootCert.pfx")));
+    }
+
+    [Fact]
+    public void Constructor_DoesNotCreateRootUntilFirstUse()
+    {
+        using var ca = new CertificateAuthority(_rootPath, _leafDir);
+
+        Assert.False(File.Exists(_rootPath));
+
+        _ = ca.RootCertificate;
+
+        Assert.True(File.Exists(_rootPath));
     }
 
     [Fact]
@@ -219,8 +232,9 @@ public sealed class CertificateAuthorityTests : IDisposable
         var stale = Path.Combine(_leafDir, "stale.pfx");
         File.WriteAllBytes(stale, [0x00]);
 
-        // No root file exists -> a fresh root is created -> the old leaf cache is dropped.
+        // No root file exists -> a fresh root is created on first use -> the old leaf cache is dropped.
         using var ca = new CertificateAuthority(_rootPath, _leafDir);
+        _ = ca.RootCertificate;
 
         Assert.False(File.Exists(stale));
     }
@@ -268,9 +282,10 @@ public sealed class CertificateAuthorityTests : IDisposable
     public void GetCertificateForHost_LeafWithoutAki_Regenerates()
     {
         using var ca = new CertificateAuthority(_rootPath, _leafDir);
+        var root = ca.RootCertificate;
 
         _ = Directory.CreateDirectory(_leafDir);
-        File.WriteAllBytes(Path.Combine(_leafDir, "example.com.pfx"), CreateLeafPfx(ca.RootCertificate, null));
+        File.WriteAllBytes(Path.Combine(_leafDir, "example.com.pfx"), CreateLeafPfx(root, null));
 
         var leaf = ca.GetCertificateForHost("example.com");
 
@@ -283,9 +298,10 @@ public sealed class CertificateAuthorityTests : IDisposable
         var rootNotAfter = DateTimeOffset.UtcNow.AddDays(10);
         using var otherCa = CreateRootCertificate(rootNotAfter);
         using var ca = new CertificateAuthority(_rootPath, _leafDir);
+        var root = ca.RootCertificate;
 
         _ = Directory.CreateDirectory(_leafDir);
-        File.WriteAllBytes(Path.Combine(_leafDir, "example.com.pfx"), CreateLeafPfx(ca.RootCertificate, otherCa));
+        File.WriteAllBytes(Path.Combine(_leafDir, "example.com.pfx"), CreateLeafPfx(root, otherCa));
 
         var leaf = ca.GetCertificateForHost("example.com");
 
