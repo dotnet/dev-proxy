@@ -140,6 +140,9 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
             return true;
         }
 
+        // the schema validator accepts JSON that System.Text.Json rejects, such as
+        // single-quoted strings, so check the syntax first to not load or cache it
+        EnsureValidJson(fileContents);
         var result = await ProxyUtils.ValidateJsonAgainstSchemaAsync(fileContents, schemaUrl, _httpClient, Logger, cancellationToken);
         fileContents.Position = 0;
         // a pass without a schema isn't cached, so that the file is validated once the schema is available
@@ -151,7 +154,6 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
             {
                 Logger.LogWarning("Skipping schema validation for {File} because the schema {SchemaUrl} could not be retrieved: {Error}", FilePath, schemaUrl, string.Join(", ", result.Errors));
             }
-            EnsureValidJson(fileContents);
             return true;
         }
 
@@ -167,8 +169,8 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
         return true;
     }
 
-    // Without schema validation, JSON that's invalid after the $schema property
-    // must still be rejected, so that it doesn't replace previously loaded data
+    // JSON that's invalid after the $schema property must be rejected,
+    // so that it doesn't replace previously loaded data
     private static void EnsureValidJson(Stream fileContents)
     {
         ProxyUtils.EnsureValidJson(fileContents);

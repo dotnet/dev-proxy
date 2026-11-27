@@ -171,6 +171,27 @@ public sealed class BaseLoaderSchemaValidationTests : IDisposable
         Assert.Equal([validContents], loader.LoadedContents);
     }
 
+    [Fact]
+    public async Task KeepsLoadedDataWhenReloadedFileIsInvalidJsonThatMatchesSchema()
+    {
+        var timeout = TimeSpan.FromSeconds(10);
+        var validContents = $$"""{ "$schema": "{{_schemaUrl}}", "name": "previous" }""";
+        var path = Path.Combine(_folder, "mocks.json");
+        await File.WriteAllTextAsync(path, validContents, CancellationToken.None);
+        using var handler = new FakeHttpMessageHandler(_ => new(HttpStatusCode.OK) { Content = new StringContent(Schema) });
+        using var httpClient = new HttpClient(handler);
+        var errorLogged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var logger = new ErrorSignalingLogger(errorLogged);
+        using var loader = new TestLoader(httpClient, logger, path);
+        await loader.InitFileWatcherAsync(CancellationToken.None);
+        Assert.Equal(validContents, loader.Contents);
+
+        await File.WriteAllTextAsync(path, $$"""{ "$schema": "{{_schemaUrl}}", "name": 'malformed' }""", CancellationToken.None);
+        await errorLogged.Task.WaitAsync(timeout);
+
+        Assert.Equal([validContents], loader.LoadedContents);
+    }
+
     private async Task<TestLoader> LoadAsync(Func<HttpRequestMessage, HttpResponseMessage> sendSchemaRequest, ILogger logger, string? contents = null, CancellationToken cancellationToken = default)
     {
         var path = Path.Combine(_folder, "mocks.json");

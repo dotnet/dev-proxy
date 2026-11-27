@@ -79,6 +79,19 @@ public sealed class BaseLoaderSchemaValidationCacheTests : IDisposable
     }
 
     [Fact]
+    public async Task DoesNotLoadOrCacheInvalidJsonThatMatchesSchema()
+    {
+        var path = await WriteFileAsync("mocks.json", """{ "$schema": "{schema}", "name": 'abc' }""");
+
+        var first = await LoadAsync(path);
+        var second = await LoadAsync(path);
+
+        Assert.Null(first.Contents);
+        Assert.Null(second.Contents);
+        Assert.Equal(2, _logger.ErrorCount);
+    }
+
+    [Fact]
     public async Task ValidatesAgainWhenResolvedPlaceholdersChange()
     {
         var path = await WriteFileAsync("mocks.json", $$"""{ "$schema": "{schema}", "name": "${{{Variable}}}" }""");
@@ -151,11 +164,19 @@ public sealed class BaseLoaderSchemaValidationCacheTests : IDisposable
     private sealed class TestLogger : ILogger
     {
         private readonly ConcurrentQueue<string> _messages = new();
+        private int _errorCount;
         public int ValidationCount => _messages.Count(m => m.StartsWith("Validating JSON against schema", StringComparison.Ordinal));
+        public int ErrorCount => _errorCount;
 
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
         public bool IsEnabled(LogLevel logLevel) => true;
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel == LogLevel.Error)
+            {
+                _ = Interlocked.Increment(ref _errorCount);
+            }
             _messages.Enqueue(formatter(state, exception));
+        }
     }
 }
