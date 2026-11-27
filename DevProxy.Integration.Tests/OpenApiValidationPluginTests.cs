@@ -1605,6 +1605,32 @@ public sealed class OpenApiValidationPluginTests : IDisposable
         Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?q=1&q=2").Session)!.Issues);
     }
 
+    [Fact]
+    public async Task InterpretsArrayItemsUsingIntersectionOfAllOfItemsSchemas()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("items.yaml", """
+            openapi: 3.0.3
+            info: { title: Items, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            paths:
+              /items:
+                get:
+                  parameters:
+                    - name: q
+                      in: query
+                      schema:
+                        type: array
+                        items: { anyOf: [ { type: integer, enum: [1, 2] }, { type: string, enum: ['2', '3'] } ] }
+                        allOf:
+                          - items: { anyOf: [ { type: integer, enum: [1, 3] }, { type: string, enum: ['2', '3'] } ] }
+                  responses: { '204': { description: ok } }
+            """));
+
+        Assert.Empty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?q=1&q=2&q=3").Session)!.Issues);
+        Assert.NotEmpty(plugin.Validate(Call("GET", "https://api.fabrikam.com/items?q=1&q=4").Session)!.Issues);
+    }
+
     private sealed class WarningLogger : ILogger<OpenApiValidationPlugin>
     {
         public List<string> Warnings { get; } = [];

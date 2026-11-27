@@ -374,7 +374,7 @@ public sealed class OpenApiValidationPlugin(
             // the server URL must end at a path segment boundary
             for (var boundary = url.Length; boundary >= pathStart; boundary--)
             {
-                if ((boundary == url.Length || url[boundary] == '/') && server.Regex.IsMatch(url[..boundary]))
+                if ((boundary == url.Length || url[boundary] == '/') && server.Regex.IsMatch(url.AsSpan(0, boundary)))
                 {
                     var relativePath = url[boundary..];
                     yield return relativePath.Length == 0 ? "/" : relativePath;

@@ -121,10 +121,11 @@ internal static partial class OpenApiSchemaValidator
                 yield return new JsonArray([.. split().Select(item => (JsonNode?)JsonValue.Create(item))]);
 
                 // items can have different types, e.g. items: { anyOf: [{ type: integer }, { type: string }] },
-                // so also interpret each item on its own, as the first interpretation allowed by the items schema
-                foreach (var itemsSchema in itemsSchemas.Where(s => s is not null))
+                // so also interpret each item on its own, as the first interpretation allowed by all
+                // items schemas that apply together (e.g. the schema's items and its allOf items)
+                foreach (var conjunction in GetItemsSchemaConjunctions(schema!))
                 {
-                    yield return new JsonArray([.. split().Select(item => ResolveItem(item, itemsSchema!, direction, strictNullableEnums))]);
+                    yield return new JsonArray([.. split().Select(item => ResolveItem(item, conjunction, direction, strictNullableEnums))]);
                 }
             }
         }
@@ -319,12 +320,62 @@ internal static partial class OpenApiSchemaValidator
     private static IEnumerable<IOpenApiSchema> GetComposedSchemas(IOpenApiSchema schema) =>
         (schema.AllOf ?? []).Concat(schema.AnyOf ?? []).Concat(schema.OneOf ?? []);
 
-    private static JsonNode? ResolveItem(string item, IOpenApiSchema itemsSchema, SchemaValidationDirection direction, bool strictNullableEnums)
+    private const int MaxItemsSchemaConjunctions = 32;
+
+    // Gets the sets of items schemas that apply to array items together: the items of
+    // the schema and of its allOf subschemas all apply, while anyOf/oneOf subschemas are
+    // alternatives, each combined with the items schemas that apply regardless of them
+    private static List<List<IOpenApiSchema>> GetItemsSchemaConjunctions(IOpenApiSchema schema)
+    {
+        List<List<IOpenApiSchema>> Combine(List<List<IOpenApiSchema>> left, List<List<IOpenApiSchema>> right) =>
+            [.. left.SelectMany(l => right.Select(r => l.Concat(r).Distinct(ReferenceEqualityComparer.Instance).Cast<IOpenApiSchema>().ToList()))
+                .Take(MaxItemsSchemaConjunctions)];
+
+        var memo = new Dictionary<IOpenApiSchema, List<List<IOpenApiSchema>>>(ReferenceEqualityComparer.Instance);
+        var inProgress = new HashSet<IOpenApiSchema>(ReferenceEqualityComparer.Instance);
+
+        List<List<IOpenApiSchema>> Get(IOpenApiSchema current)
+        {
+            var target = ResolveTarget(current);
+            if (memo.TryGetValue(target, out var cached))
+            {
+                return cached;
+            }
+            List<List<IOpenApiSchema>> result = [current.Items is null ? [] : [current.Items]];
+            // recursive schemas don't add other items schemas
+            if (!inProgress.Add(target))
+            {
+                return result;
+            }
+
+            foreach (var allOf in current.AllOf ?? [])
+            {
+                result = Combine(result, Get(allOf));
+            }
+
+            var alternatives = (current.AnyOf ?? []).Concat(current.OneOf ?? []).ToArray();
+            if (alternatives.Length > 0)
+            {
+                result = Combine(result, [.. alternatives.SelectMany(a => Get(a))]);
+            }
+
+            _ = inProgress.Remove(target);
+            memo[target] = result;
+            return result;
+        }
+
+        return [.. Get(schema).Where(c => c.Count > 0)];
+    }
+
+    private static JsonNode? ResolveItem(string item, List<IOpenApiSchema> itemsSchemas, SchemaValidationDirection direction, bool strictNullableEnums)
     {
         JsonNode? first = null;
-        foreach (var candidate in GetPrimitiveInterpretations(item, itemsSchema))
+        var candidates = itemsSchemas
+            .SelectMany(s => GetPrimitiveInterpretations(item, s))
+            .DistinctBy(c => c?.ToJsonString());
+        foreach (var candidate in candidates)
         {
-            if (Validate(candidate, itemsSchema, direction, strictNullableEnums: strictNullableEnums).Count == 0)
+            if (itemsSchemas.All(s => Validate(candidate, s, direction, strictNullableEnums: strictNullableEnums).Count == 0))
             {
                 return candidate;
             }
