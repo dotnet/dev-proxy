@@ -177,7 +177,7 @@ internal static partial class OpenApiSchemaValidator
 
     private static string StripStylePrefix(string value, string name, ParameterStyle style) => style switch
     {
-        ParameterStyle.Label when value.StartsWith('.') => value[1..],
+        ParameterStyle.Label when value.StartsWith('.', StringComparison.Ordinal) => value[1..],
         ParameterStyle.Matrix when value.StartsWith($";{name}=", StringComparison.Ordinal) => value[(name.Length + 2)..],
         ParameterStyle.Matrix when value == $";{name}" => string.Empty,
         _ => value

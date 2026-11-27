@@ -21,7 +21,7 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
       with:
-        dotnet-version: 10.0.x
+        dotnet-version: 11.0.x
     - name: Setup Node.js
       uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
@@ -42,5 +42,5 @@ jobs:
         dotnet build DevProxy.Plugins/DevProxy.Plugins.csproj -c Release --no-restore
     - name: Run client smoke tests
       env:
-        DEVPROXY: ${{ github.workspace }}/DevProxy/bin/Release/net10.0/devproxy
+        DEVPROXY: ${{ github.workspace }}/DevProxy/bin/Release/net11.0/devproxy
       run: tests/clients/run.sh

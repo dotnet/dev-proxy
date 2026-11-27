@@ -274,7 +274,7 @@ public sealed class GenericRandomErrorPlugin(
 
         var statusCode = (HttpStatusCode)(error.StatusCode ?? 400);
         string body = ProxyUtils.SerializeBody(error.Body);
-        if (body.StartsWith('@'))
+        if (body.StartsWith('@', StringComparison.Ordinal))
         {
             // we've got a mock body starting with @-token which means we're sending
             // a response from a file on disk

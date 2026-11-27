@@ -371,7 +371,9 @@ public sealed class ProcessSmokeTests
                 await process.WaitForExitAsync(exitTimeout.Token);
 
                 // The parent has exited; if the daemon inherited our pipes, EOF never comes.
-                completed = await Task.WhenAny(eof, Task.Delay(TimeSpan.FromSeconds(15)));
+                using var eofTimeout = new CancellationTokenSource();
+                completed = await Task.WhenAny(eof, Task.Delay(TimeSpan.FromSeconds(15), eofTimeout.Token));
+                await eofTimeout.CancelAsync();
             }
             finally
             {
@@ -766,7 +768,7 @@ public sealed class ProcessSmokeTests
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null)
         {
-            var candidate = Path.Combine(dir.FullName, "DevProxy", "bin", config, "net10.0", "devproxy.dll");
+            var candidate = Path.Combine(dir.FullName, "DevProxy", "bin", config, "net11.0", "devproxy.dll");
             if (File.Exists(candidate))
             {
                 return candidate;

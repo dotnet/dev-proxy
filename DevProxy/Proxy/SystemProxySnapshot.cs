@@ -161,7 +161,7 @@ internal static class MacOSNetworkSetup
             .Split('\n')
             .Skip(1)
             .Select(l => l.TrimEnd('\r'))
-            .Where(l => !string.IsNullOrWhiteSpace(l) && !l.StartsWith('*'))];
+            .Where(l => !string.IsNullOrWhiteSpace(l) && !l.StartsWith('*', StringComparison.Ordinal))];
     }
 
     /// <summary>

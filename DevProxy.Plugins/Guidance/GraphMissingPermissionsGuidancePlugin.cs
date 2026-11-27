@@ -98,7 +98,7 @@ public sealed class GraphMissingPermissionsGuidancePlugin(
             // analyze in parallel to limit the delay before the response is sent to the client
             var guidance = await Task.WhenAll(failedRequests.Select(failedRequest =>
             {
-                var relativeUrl = failedRequest.Url.StartsWith('/') ? failedRequest.Url : $"/{failedRequest.Url}";
+                var relativeUrl = failedRequest.Url.StartsWith('/', StringComparison.Ordinal) ? failedRequest.Url : $"/{failedRequest.Url}";
                 var absoluteUrl = $"https://{request.RequestUri.Host}/{graphVersion}{relativeUrl}";
                 return AnalyzeForbiddenRequestAsync(
                     failedRequest.Method,

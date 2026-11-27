@@ -333,7 +333,7 @@ public sealed class ApiCenterOnboardingPlugin(
         {
             if (Logger.IsEnabled(LogLevel.Error))
             {
-                Logger.LogError("Failed to create API version for {Api}", apiId[apiId.LastIndexOf('/')..]);
+                Logger.LogError("Failed to create API version for {Api}", apiId[apiId.LastIndexOf('/', StringComparison.Ordinal)..]);
             }
         }
 

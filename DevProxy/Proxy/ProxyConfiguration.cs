@@ -55,11 +55,42 @@ sealed class ProxyConfiguration : IProxyConfiguration, IProcessTreeProxyConfigur
     public IEnumerable<string> WatchProcessNames { get; set; } = [];
     public bool WatchProcessTree { get; set; }
 
-    public ProxyConfiguration(IConfigurationRoot configurationRoot)
+    // True when the value wasn't set in the config file and was turned off
+    // because Dev Proxy is running in CI.
+    internal bool AsSystemProxyDefaultedForCi { get; private set; }
+    internal bool InstallCertDefaultedForCi { get; private set; }
+
+    internal static bool IsCi => Environment.GetEnvironmentVariable("CI") is not null;
+
+    public ProxyConfiguration(IConfigurationRoot configurationRoot) : this(configurationRoot, IsCi)
+    {
+    }
+
+    internal ProxyConfiguration(IConfigurationRoot configurationRoot, bool isCi)
     {
         _configurationRoot = configurationRoot;
         _configurationRoot.Bind(this);
         ReportsFolder = ResolveReportsFolder(ReportsFolder, _configurationRoot);
+        if (isCi)
+        {
+            ApplyCiDefaults(_configurationRoot);
+        }
+    }
+
+    // In CI, don't change machine-wide state (system proxy, trusted root
+    // certificates) unless the config file explicitly asks for it.
+    private void ApplyCiDefaults(IConfiguration configuration)
+    {
+        if (configuration[nameof(AsSystemProxy)] is null)
+        {
+            AsSystemProxy = false;
+            AsSystemProxyDefaultedForCi = true;
+        }
+        if (configuration[nameof(InstallCert)] is null)
+        {
+            InstallCert = false;
+            InstallCertDefaultedForCi = true;
+        }
     }
 
     // reportsFolder from the config file is relative to the config file
@@ -94,4 +125,4 @@ sealed class ProxyConfiguration : IProxyConfiguration, IProcessTreeProxyConfigur
         var fileInfo = provider.Source.FileProvider!.GetFileInfo(provider.Source.Path!);
         return fileInfo.PhysicalPath!;
     }
-}
+}

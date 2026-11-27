@@ -1052,7 +1052,7 @@ sealed class ConfigCommand : Command
                 urlPatterns.Add(pattern);
                 try
                 {
-                    var cleanPattern = pattern.StartsWith('!') ? pattern[1..] : pattern;
+                    var cleanPattern = pattern.StartsWith('!', StringComparison.Ordinal) ? pattern[1..] : pattern;
                     _ = new Regex(
                         $"^{Regex.Escape(cleanPattern).Replace("\\*", ".*", StringComparison.OrdinalIgnoreCase)}$");
                 }
