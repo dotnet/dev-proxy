@@ -44,6 +44,7 @@
 - Dev Proxy supports hot reload of configuration files (v2.1.0+). Modifying the configuration file while Dev Proxy is running automatically detects changes and restarts with the new configuration.
 - Hot reload works for the main configuration file and plugin-specific configuration files (mock files, CRUD API data files, etc.).
 - No manual restart needed after making configuration changes — save the file and changes take effect automatically.
+- When Dev Proxy is the system proxy, it stays registered during a reload. Known limitations: Azure sign-in requests (for example, from the API Center plugins) made while Dev Proxy restarts can fail, and if Dev Proxy can't apply a changed IP address or port, the system proxy can keep pointing at the old one until the next reload or until Dev Proxy stops.
 
 ## curl
 

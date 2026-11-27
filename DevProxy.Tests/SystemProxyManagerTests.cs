@@ -3,6 +3,8 @@
 // See the LICENSE file in the project root for more information.
 
 using DevProxy.Proxy;
+using Microsoft.Extensions.DependencyInjection;
+using System.Net;
 
 using Xunit;
 
@@ -22,5 +24,271 @@ public class SystemProxyManagerTests
         Assert.Equal(
             ["/Applications/Dev Proxy/toggle-proxy.sh", "on", "proxy host", "8897"],
             startInfo.ArgumentList);
+    }
+
+    [Fact]
+    public void SystemProxySession_RestartWithSameEndpoint_KeepsSystemProxyRegistered()
+    {
+        var restarting = false;
+        var manager = new CountingSystemProxyManager();
+        var session = new SystemProxySession(() => restarting);
+
+        session.BeginRun();
+        var run = session.Track(manager);
+        run.Enable("0.0.0.0", 8000);
+        restarting = true;
+        run.Disable();
+
+        restarting = false;
+        session.BeginRun();
+        run = session.Track(manager);
+        run.Enable("127.0.0.1", 8000);
+        session.ReleaseUnclaimed();
+
+        Assert.Equal(1, manager.EnableCount);
+        Assert.Equal(0, manager.DisableCount);
+
+        run.Disable();
+
+        Assert.Equal(1, manager.DisableCount);
+        Assert.Null(session.AppliedEndpoint);
+    }
+
+    [Fact]
+    public void SystemProxySession_RestartWithNewPort_AppliesNewEndpointWithoutDisabling()
+    {
+        var restarting = false;
+        var manager = new CountingSystemProxyManager();
+        var session = new SystemProxySession(() => restarting);
+
+        session.BeginRun();
+        session.Track(manager).Enable("127.0.0.1", 8000);
+        restarting = true;
+        session.Track(manager).Disable();
+
+        restarting = false;
+        session.BeginRun();
+        session.Track(manager).Enable("127.0.0.1", 8001);
+
+        Assert.Equal(2, manager.EnableCount);
+        Assert.Equal(0, manager.DisableCount);
+        Assert.Equal("127.0.0.1:8001", session.AppliedEndpoint);
+    }
+
+    [Fact]
+    public void SystemProxySession_RestartWithoutSystemProxy_ReleasesPreviousRegistration()
+    {
+        var restarting = false;
+        var manager = new CountingSystemProxyManager();
+        var session = new SystemProxySession(() => restarting);
+
+        session.BeginRun();
+        session.Track(manager).Enable("127.0.0.1", 8000);
+        restarting = true;
+        session.Track(manager).Disable();
+
+        restarting = false;
+        session.BeginRun();
+        _ = session.Track(manager);
+        session.ReleaseUnclaimed();
+
+        Assert.Equal(1, manager.DisableCount);
+        Assert.Null(session.AppliedEndpoint);
+    }
+
+    [Fact]
+    public void SystemProxySession_FailedRestart_ReleaseDisablesSystemProxy()
+    {
+        var manager = new CountingSystemProxyManager();
+        var session = new SystemProxySession(() => true);
+
+        session.BeginRun();
+        session.Track(manager).Enable("127.0.0.1", 8000);
+        session.Track(manager).Disable();
+        Assert.Equal(0, manager.DisableCount);
+
+        var cleanup = new CountingSystemProxyManager();
+        session.Release(cleanup);
+        session.Release(cleanup);
+
+        Assert.Equal(1, cleanup.DisableCount);
+        Assert.Null(session.AppliedEndpoint);
+    }
+
+    [Fact]
+    public void SystemProxySession_FailedEnable_RetriesOnRestartAndStillCleansUp()
+    {
+        var restarting = false;
+        var manager = new CountingSystemProxyManager { EnableSucceeds = false };
+        var session = new SystemProxySession(() => restarting);
+
+        session.BeginRun();
+        session.Track(manager).Enable("127.0.0.1", 8000);
+        restarting = true;
+        session.Track(manager).Disable();
+
+        restarting = false;
+        manager.EnableSucceeds = true;
+        session.BeginRun();
+        session.Track(manager).Enable("127.0.0.1", 8000);
+
+        Assert.Equal(2, manager.EnableCount);
+        Assert.Equal(0, manager.DisableCount);
+        Assert.Equal("127.0.0.1:8000", session.AppliedEndpoint);
+
+        manager.EnableSucceeds = false;
+        restarting = true;
+        session.Track(manager).Disable();
+        session.BeginRun();
+        session.Track(manager).Enable("127.0.0.1", 8001);
+        Assert.Null(session.AppliedEndpoint);
+
+        var cleanup = new CountingSystemProxyManager();
+        session.Release(cleanup);
+
+        Assert.Equal(1, cleanup.DisableCount);
+    }
+
+    [Fact]
+    public void RetainedSystemProxyBypass_BeforeRestartedRunBinds_SkipsOnlyRetainedEndpoint()
+    {
+        var restarting = false;
+        var manager = new CountingSystemProxyManager();
+        var session = new SystemProxySession(() => restarting);
+        var destination = new Uri("https://example.com/schema.json");
+        var devProxy = new WebProxy("http://127.0.0.1:8000");
+        var upstream = new WebProxy("http://corp-proxy:3128");
+
+        session.BeginRun();
+        var run = session.Track(manager);
+        run.Enable("0.0.0.0", 8000);
+        Assert.Equal(devProxy.Address, new RetainedSystemProxyBypass(devProxy, session).GetProxy(destination));
+
+        restarting = true;
+        run.Disable();
+        restarting = false;
+        session.BeginRun();
+
+        var bypass = new RetainedSystemProxyBypass(devProxy, session);
+        Assert.Null(bypass.GetProxy(destination));
+        Assert.True(bypass.IsBypassed(destination));
+        Assert.Equal(upstream.Address, new RetainedSystemProxyBypass(upstream, session).GetProxy(destination));
+
+        session.Track(manager).Enable("127.0.0.1", 8000);
+
+        Assert.Equal(devProxy.Address, bypass.GetProxy(destination));
+        Assert.False(bypass.IsBypassed(destination));
+    }
+
+    [Fact]
+    public void RetainedSystemProxyBypass_AfterFailedPortChange_SkipsPreviousAndAttemptedEndpoints()
+    {
+        var restarting = false;
+        var manager = new CountingSystemProxyManager();
+        var session = new SystemProxySession(() => restarting);
+        var destination = new Uri("https://example.com/schema.json");
+        var previous = new RetainedSystemProxyBypass(new WebProxy("http://127.0.0.1:8000"), session);
+        var attempted = new RetainedSystemProxyBypass(new WebProxy("http://127.0.0.1:8001"), session);
+
+        session.BeginRun();
+        session.Track(manager).Enable("127.0.0.1", 8000);
+        restarting = true;
+        session.Track(manager).Disable();
+        restarting = false;
+
+        manager.EnableSucceeds = false;
+        session.BeginRun();
+        session.Track(manager).Enable("127.0.0.1", 8001);
+        restarting = true;
+        session.Track(manager).Disable();
+        restarting = false;
+
+        session.BeginRun();
+        Assert.Null(previous.GetProxy(destination));
+        Assert.Null(attempted.GetProxy(destination));
+
+        manager.EnableSucceeds = true;
+        session.Track(manager).Enable("127.0.0.1", 8002);
+        restarting = true;
+        session.Track(manager).Disable();
+        restarting = false;
+
+        session.BeginRun();
+        Assert.NotNull(previous.GetProxy(destination));
+        Assert.NotNull(attempted.GetProxy(destination));
+    }
+
+    [Fact]
+    public void RetainedSystemProxyBypass_ExpandedIPv6Endpoint_MatchesCompressedProxyAddress()
+    {
+        var restarting = false;
+        var manager = new CountingSystemProxyManager();
+        var session = new SystemProxySession(() => restarting);
+
+        session.BeginRun();
+        var run = session.Track(manager);
+        run.Enable("0:0:0:0:0:0:0:1", 8000);
+        restarting = true;
+        run.Disable();
+        restarting = false;
+        session.BeginRun();
+
+        var bypass = new RetainedSystemProxyBypass(new WebProxy("http://[::1]:8000"), session);
+        Assert.Null(bypass.GetProxy(new Uri("https://example.com/schema.json")));
+    }
+
+    [Fact]
+    public void AddRetainedSystemProxyBypass_RoutesDefaultHttpClientThroughBypass()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddSingleton(new SystemProxySession(() => false));
+        _ = services.AddHttpClient().AddRetainedSystemProxyBypass();
+        using var provider = services.BuildServiceProvider();
+
+        var handler = provider.GetRequiredService<IHttpMessageHandlerFactory>().CreateHandler();
+        while (handler is DelegatingHandler delegatingHandler)
+        {
+            handler = delegatingHandler.InnerHandler!;
+        }
+
+        var proxy = handler switch
+        {
+            SocketsHttpHandler socketsHandler => socketsHandler.Proxy,
+            HttpClientHandler httpClientHandler => httpClientHandler.Proxy,
+            _ => null
+        };
+        _ = Assert.IsType<RetainedSystemProxyBypass>(proxy);
+    }
+
+    [Fact]
+    public void CreateLanguageModelHttpClient_RoutesThroughBypass()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddSingleton(new SystemProxySession(() => false));
+        using var provider = services.BuildServiceProvider();
+
+        using var client = IServiceCollectionExtensions.CreateLanguageModelHttpClient(provider);
+
+        var field = typeof(HttpMessageInvoker).GetField("_handler", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var handler = Assert.IsType<SocketsHttpHandler>(field.GetValue(client));
+        _ = Assert.IsType<RetainedSystemProxyBypass>(handler.Proxy);
+        Assert.False(handler.AllowAutoRedirect);
+    }
+
+    private sealed class CountingSystemProxyManager : IConfirmingSystemProxyManager
+    {
+        public bool EnableSucceeds { get; set; } = true;
+        public int EnableCount { get; private set; }
+        public int DisableCount { get; private set; }
+
+        public void Enable(string? ipAddress, int port) => _ = TryEnable(ipAddress, port);
+
+        public bool TryEnable(string? ipAddress, int port)
+        {
+            EnableCount++;
+            return EnableSucceeds;
+        }
+
+        public void Disable() => DisableCount++;
     }
 }

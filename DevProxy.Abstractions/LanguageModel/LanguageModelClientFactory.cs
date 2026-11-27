@@ -35,12 +35,23 @@ public static class LanguageModelClientFactory
     // Redirects are disabled so that credentials (eg. the api-key header,
     // which HttpClient doesn't strip on redirect) aren't forwarded to
     // another origin
-    public static HttpClient CreateHttpClient() =>
+    public static HttpClient CreateHttpClient() => CreateHttpClient(null);
+
+    // proxy overrides the default (system) proxy; null keeps the default
+    public static HttpClient CreateHttpClient(System.Net.IWebProxy? proxy)
+    {
 #pragma warning disable CA2000 // The handler is owned by the long-lived HttpClient
-        new(new SocketsHttpHandler
+        var handler = new SocketsHttpHandler
         {
             AllowAutoRedirect = false,
             PooledConnectionLifetime = TimeSpan.FromMinutes(5)
-        }, disposeHandler: true);
+        };
 #pragma warning restore CA2000
+        if (proxy is not null)
+        {
+            handler.Proxy = proxy;
+        }
+
+        return new(handler, disposeHandler: true);
+    }
 }

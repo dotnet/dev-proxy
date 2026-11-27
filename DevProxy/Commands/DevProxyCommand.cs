@@ -500,6 +500,10 @@ sealed class DevProxyCommand : RootCommand
                 return 1;
             }
 
+            // After a hot reload that turned off asSystemProxy, release the system proxy
+            // the previous run left registered.
+            _app.Services.GetService<SystemProxySession>()?.ReleaseUnclaimed();
+
             var serverAddresses = _app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>();
             var serverAddress = serverAddresses?.Addresses.FirstOrDefault();
             var address = ApiSecurity.GetApiUrl(serverAddress ??

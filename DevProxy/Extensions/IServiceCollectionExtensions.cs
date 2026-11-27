@@ -50,7 +50,14 @@ static class IServiceCollectionExtensions
     static IServiceCollection AddProxyEngine(this IServiceCollection services)
     {
         _ = services.AddSingleton<IRootCertificateTrust, RootCertificateTrust>();
-        _ = services.AddSingleton<ISystemProxyManager, SystemProxyManager>();
+        _ = services.AddSingleton<SystemProxyManager>();
+        // Route through the process-wide session (when registered) so the system proxy
+        // stays registered across hot-reload restarts.
+        _ = services.AddSingleton<ISystemProxyManager>(sp =>
+        {
+            var manager = sp.GetRequiredService<SystemProxyManager>();
+            return sp.GetService<SystemProxySession>()?.Track(manager) ?? manager;
+        });
         _ = services.AddKestrelCertificateAuthority();
         _ = services.AddHostedService(sp => new KestrelProxyEngine(
             sp.GetRequiredService<CertificateAuthority>(),
@@ -65,6 +72,40 @@ static class IServiceCollectionExtensions
 
         return services;
     }
+
+    // Startup requests (schema validation, update check) run before the listener binds, so
+    // keep them off a system proxy registration retained from the previous run.
+    internal static IServiceCollection AddRetainedSystemProxyBypass(this IServiceCollection services) =>
+        services.ConfigureHttpClientDefaults(builder =>
+            builder.ConfigurePrimaryHttpMessageHandler((handler, sp) =>
+            {
+                if (CreateRetainedSystemProxyBypass(sp) is not { } bypass)
+                {
+                    return;
+                }
+
+                switch (handler)
+                {
+                    case SocketsHttpHandler { UseProxy: true, Proxy: null } socketsHandler:
+                        socketsHandler.Proxy = bypass;
+                        break;
+                    case HttpClientHandler { UseProxy: true, Proxy: null } httpClientHandler:
+                        httpClientHandler.Proxy = bypass;
+                        break;
+                    default:
+                        break;
+                }
+            }));
+
+    // The language-model client builds its own handler (outside IHttpClientFactory),
+    // so it needs the bypass applied explicitly.
+    internal static HttpClient CreateLanguageModelHttpClient(IServiceProvider serviceProvider) =>
+        LanguageModelClientFactory.CreateHttpClient(CreateRetainedSystemProxyBypass(serviceProvider));
+
+    static RetainedSystemProxyBypass? CreateRetainedSystemProxyBypass(IServiceProvider serviceProvider) =>
+        serviceProvider.GetService<SystemProxySession>() is { } session
+            ? new RetainedSystemProxyBypass(HttpClient.DefaultProxy, session)
+            : null;
 
     static IServiceCollection AddApplicationServices(
         this IServiceCollection services,
@@ -82,12 +123,13 @@ static class IServiceCollectionExtensions
             // Share the hosted instance so the command can release its startup-output gate.
             .AddSingleton<InteractiveConsoleService>()
             .AddHostedService(sp => sp.GetRequiredService<InteractiveConsoleService>())
-            .AddKeyedSingleton(LanguageModelClientFactory.HttpClientServiceKey, (_, _) => LanguageModelClientFactory.CreateHttpClient())
+            .AddKeyedSingleton(LanguageModelClientFactory.HttpClientServiceKey, (sp, _) => CreateLanguageModelHttpClient(sp))
             .AddSingleton(sp => LanguageModelClientFactory.Create(sp, configuration))
             .AddSingleton<UpdateNotification>()
             .AddSingleton<DevProxyCommand>()
             .AddSingleton<MSGraphDb>()
-            .AddHttpClient();
+            .AddHttpClient()
+            .AddRetainedSystemProxyBypass();
 
         _ = services.AddPlugins(configuration, options);
 

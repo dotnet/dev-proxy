@@ -7,6 +7,7 @@ using DevProxy.Abstractions.Utils;
 using DevProxy.Commands;
 using DevProxy.Proxy;
 using DevProxy.State;
+using Microsoft.Extensions.Logging.Abstractions;
 using System.Diagnostics;
 using System.Globalization;
 using System.Net;
@@ -437,7 +438,7 @@ static void WriteUnresolvedEnvironmentVariables(IConfiguration configuration, De
 }
 
 static WebApplication BuildApplication(
-    DevProxyConfigOptions options, ProcessEnvironment environment, HttpProxyEnvironment proxyEnvironment)
+    DevProxyConfigOptions options, ProcessEnvironment environment, HttpProxyEnvironment proxyEnvironment, SystemProxySession systemProxySession)
 {
     // Don't pass command-line args to WebApplication.CreateBuilder because:
     // 1. Dev Proxy uses System.CommandLine for CLI parsing, not ASP.NET Core's CommandLineConfigurationProvider
@@ -447,7 +448,7 @@ static WebApplication BuildApplication(
     _ = builder.Configuration.ConfigureDevProxyConfig(options);
     try
     {
-        return BuildApplicationCore(builder, options, environment, proxyEnvironment);
+        return BuildApplicationCore(builder, options, environment, proxyEnvironment, systemProxySession);
     }
     catch
     {
@@ -459,13 +460,14 @@ static WebApplication BuildApplication(
 }
 
 static WebApplication BuildApplicationCore(
-    WebApplicationBuilder builder, DevProxyConfigOptions options, ProcessEnvironment environment, HttpProxyEnvironment proxyEnvironment)
+    WebApplicationBuilder builder, DevProxyConfigOptions options, ProcessEnvironment environment, HttpProxyEnvironment proxyEnvironment, SystemProxySession systemProxySession)
 {
     environment.Apply(builder.Configuration, options.Env);
     var changedProxyVariables = proxyEnvironment.GetChangedVariables();
     _ = Announcement.ShowOnceAsync();
     _ = builder.Logging.ConfigureDevProxyLogging(builder.Configuration, options);
     var allowedOrigins = ApiSecurity.GetAllowedOrigins(builder.Configuration);
+    _ = builder.Services.AddSingleton(systemProxySession);
     _ = builder.Services.ConfigureDevProxyServices(builder.Configuration, options, allowedOrigins);
 
     var defaultApiPort = 8897;
@@ -504,11 +506,11 @@ static WebApplication BuildApplicationCore(
     return app;
 }
 
-static async Task<int> RunProxyAsync(string[] args, DevProxyConfigOptions options, HttpProxyEnvironment proxyEnvironment)
+static async Task<int> RunProxyAsync(string[] args, DevProxyConfigOptions options, HttpProxyEnvironment proxyEnvironment, SystemProxySession systemProxySession)
 {
     // Keep overrides through host shutdown, but restore inherited values before a hot reload.
     using var environment = new ProcessEnvironment();
-    var app = BuildApplication(options, environment, proxyEnvironment);
+    var app = BuildApplication(options, environment, proxyEnvironment, systemProxySession);
     try
     {
         var devProxyCommand = app.Services.GetRequiredService<DevProxyCommand>();
@@ -545,16 +547,18 @@ options.ParseOptions(args);
 int exitCode;
 bool shouldRestart;
 var proxyEnvironment = new HttpProxyEnvironment();
+var systemProxySession = new SystemProxySession();
 do
 {
     try
     {
         // Reset the restart flag before each run
         ConfigFileWatcher.Reset();
-        // RunProxyAsync only returns after the host has fully stopped, which
-        // means the proxy engine's shutdown (including system proxy
-        // deregistration) has completed — so it's safe to start a new instance.
-        exitCode = await RunProxyAsync(args, options, proxyEnvironment);
+        systemProxySession.BeginRun();
+        // RunProxyAsync only returns after the host has fully stopped, so it's safe
+        // to start a new instance. On a restart, the system proxy stays registered
+        // and the next run only updates it if the endpoint changed.
+        exitCode = await RunProxyAsync(args, options, proxyEnvironment, systemProxySession);
 
         shouldRestart = ConfigFileWatcher.IsRestarting;
     }
@@ -566,6 +570,9 @@ do
         shouldRestart = false;
     }
 } while (shouldRestart);
+
+// Don't leave the system proxy pointing at Dev Proxy when a restart failed.
+systemProxySession.Release(new SystemProxyManager(NullLogger<SystemProxyManager>.Instance));
 
 if (DevProxyCommand.IsRootCommand)
 {
