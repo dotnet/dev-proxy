@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Proxy OpenApiValidationPlugin config schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "The JSON schema reference for validation."
+    },
+    "specFiles": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Relative or absolute paths to OpenAPI spec files (JSON or YAML) to validate requests and responses against."
+    },
+    "specsFolder": {
+      "type": "string",
+      "description": "Relative or absolute path to a folder with OpenAPI spec files (JSON or YAML). The folder is scanned recursively."
+    },
+    "reportUnmatchedRequests": {
+      "type": "boolean",
+      "default": false,
+      "description": "Set to true to list requests that don't match any of the OpenAPI specs in the report."
+    }
+  },
+  "anyOf": [
+    {
+      "required": [
+        "specFiles"
+      ]
+    },
+    {
+      "required": [
+        "specsFolder"
+      ]
+    }
+  ],
+  "additionalProperties": false
+}

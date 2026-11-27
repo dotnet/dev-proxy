@@ -177,7 +177,8 @@ public sealed class GenericRandomErrorPlugin(
                 return false;
             }
 
-            if (errorResponse.Responses is null)
+            if (errorResponse.Responses is null ||
+                !errorResponse.Responses.Any())
             {
                 return false;
             }
@@ -323,6 +324,12 @@ public sealed class GenericRandomErrorPlugin(
             if (string.IsNullOrEmpty(error.Request.Url))
             {
                 Logger.LogDebug("Error response is missing a URL");
+                continue;
+            }
+
+            if (error.Responses is null || !error.Responses.Any())
+            {
+                Logger.LogWarning("Error for {Url} in {ErrorsFile} has no responses and will be ignored", error.Request.Url, Configuration.ErrorsFile);
                 continue;
             }
 
