@@ -4,8 +4,10 @@
 
 using Microsoft.OpenApi;
 using System.Globalization;
+using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 
 namespace DevProxy.Plugins.Utils;
 
@@ -25,7 +27,7 @@ internal sealed record SchemaValidationError(string Path, string Message, string
 /// required, properties, additionalProperties, items, enum, allOf, anyOf, oneOf
 /// (incl. discriminator) and $ref. Other keywords (format, min/max, pattern, etc.) are ignored.
 /// </summary>
-internal static class OpenApiSchemaValidator
+internal static partial class OpenApiSchemaValidator
 {
     private const int MaxDepth = 64;
     // bounds total work, e.g. for schemas that reference the same subschema repeatedly
@@ -37,7 +39,7 @@ internal static class OpenApiSchemaValidator
         public bool BudgetExceeded { get; set; }
         public bool StrictNullableEnums { get; init; }
         public Uri? DocumentUri { get; init; }
-        public Dictionary<(IOpenApiSchema Schema, string Path, int Depth), List<SchemaValidationError>> Memo { get; } = [];
+        public Dictionary<(IOpenApiSchema Schema, string Path, int Depth), List<SchemaValidationError>> Memo { get; set; } = [];
     }
 
     public static List<SchemaValidationError> Validate(
@@ -71,35 +73,71 @@ internal static class OpenApiSchemaValidator
     }
 
     /// <summary>
-    /// Converts raw (string) parameter values into a JSON value, decoding them
-    /// according to the parameter's serialization style and coercing them
-    /// to the primitive type declared by the schema when possible, so that they
-    /// can be validated with <see cref="Validate(JsonNode?, IOpenApiSchema?, SchemaValidationDirection, string)"/>.
-    /// When <paramref name="coerce"/> is false, values are kept as strings.
+    /// Gets the possible interpretations of raw (string) parameter values as JSON
+    /// values, decoding them according to the parameter's serialization style, so that
+    /// they can be validated with <see cref="Validate(JsonNode?, IOpenApiSchema?, SchemaValidationDirection, string, bool)"/>.
+    /// Serialized values are ambiguous, so the parameter is valid if any of the
+    /// interpretations is valid. The first interpretation is the most likely one:
+    /// values coerced to the primitive type declared by the schema when possible.
+    /// When the schema declares multiple items schemas (e.g. in anyOf
+    /// branches), items are coerced using each of them. Other interpretations keep
+    /// values as strings, treat values as scalars when the
+    /// schema allows both arrays and scalars, and when <paramref name="decode"/> is set,
+    /// decode array items after splitting, so that encoded delimiters are kept in items, and
+    /// interpret each array item on its own as the first interpretation allowed by the items schema.
     /// </summary>
-    public static JsonNode? CoerceParameterValue(
+    /// <param name="values">Raw values; when <paramref name="decode"/> is set, they're still encoded.</param>
+    /// <param name="decode">Function to decode (e.g. URI-unescape) values, or null if they aren't encoded.</param>
+    public static IEnumerable<JsonNode?> GetParameterValueCandidates(
         IReadOnlyList<string> values,
         IOpenApiSchema? schema,
         string name,
         ParameterStyle style,
         bool explode,
-        bool coerce = true)
+        Func<string, string>? decode = null,
+        SchemaValidationDirection direction = SchemaValidationDirection.Request,
+        bool strictNullableEnums = false)
     {
         var type = GetEffectiveType(schema);
-        if (type is not null && type.Value.HasFlag(JsonSchemaType.Array))
+        var isArray = type is not null && type.Value.HasFlag(JsonSchemaType.Array);
+        IReadOnlyList<string> decodedValues = decode is null ? values : [.. values.Select(decode)];
+
+        if (isArray)
         {
-            var itemsSchema = GetItems(schema);
-            var array = new JsonArray();
-            foreach (var item in SplitArrayValues(values, name, style, explode))
+            // e.g. anyOf: [{ type: array, items: { type: integer } }, { type: array, items: { type: boolean } }]
+            var itemsSchemas = GetItemsSchemas(schema);
+            var splits = new List<Func<IEnumerable<string>>> { () => SplitArrayValues(decodedValues, name, style, explode) };
+            if (decode is not null)
             {
-                array.Add(coerce ? CoercePrimitive(item, itemsSchema) : JsonValue.Create(item));
+                splits.Add(() => SplitArrayValues(values, name, style, explode).Select(decode));
             }
-            return array;
+
+            foreach (var split in splits)
+            {
+                foreach (var itemsSchema in itemsSchemas)
+                {
+                    yield return new JsonArray([.. split().Select(item => CoercePrimitive(item, itemsSchema))]);
+                }
+                yield return new JsonArray([.. split().Select(item => (JsonNode?)JsonValue.Create(item))]);
+
+                // items can have different types, e.g. items: { anyOf: [{ type: integer }, { type: string }] },
+                // so also interpret each item on its own, as the first interpretation allowed by all
+                // items schemas that apply together (e.g. the schema's items and its allOf items)
+                foreach (var conjunction in GetItemsSchemaConjunctions(schema!))
+                {
+                    yield return new JsonArray([.. split().Select(item => ResolveItem(item, conjunction, direction, strictNullableEnums))]);
+                }
+            }
         }
 
-        var value = values.Count > 0 ? values[0] : string.Empty;
-        var stripped = StripStylePrefix(value, name, style);
-        return coerce ? CoercePrimitive(stripped, schema) : JsonValue.Create(stripped);
+        // e.g. anyOf: [{ type: array }, { type: string }]
+        if (!isArray || (type!.Value & ~JsonSchemaType.Array) != 0)
+        {
+            var value = decodedValues.Count > 0 ? decodedValues[0] : string.Empty;
+            var stripped = StripStylePrefix(value, name, style);
+            yield return CoercePrimitive(stripped, schema);
+            yield return JsonValue.Create(stripped);
+        }
     }
 
     private static IEnumerable<string> SplitArrayValues(IReadOnlyList<string> values, string name, ParameterStyle style, bool explode)
@@ -162,8 +200,17 @@ internal static class OpenApiSchemaValidator
         return type;
     }
 
-    private static IOpenApiSchema? GetItems(IOpenApiSchema? schema) =>
-        EnumerateComposition(schema, s => s.Items is null).FirstOrDefault(s => s.Items is not null)?.Items;
+    // Gets the distinct items schemas declared by the schema and its allOf/anyOf/oneOf subschemas.
+    // Composed subschemas can declare items schemas that further constrain the schema's own items.
+    private static List<IOpenApiSchema?> GetItemsSchemas(IOpenApiSchema? schema)
+    {
+        List<IOpenApiSchema?> itemsSchemas = [.. EnumerateComposition(schema, _ => true)
+            .Where(s => s.Items is not null)
+            .Select(s => s.Items)
+            .Distinct(ReferenceEqualityComparer.Instance)
+            .Cast<IOpenApiSchema?>()];
+        return itemsSchemas.Count > 0 ? itemsSchemas : [null];
+    }
 
     /// <summary>
     /// Gets the names of the properties declared by the schema and its allOf/anyOf/oneOf subschemas.
@@ -173,34 +220,78 @@ internal static class OpenApiSchemaValidator
             .SelectMany(s => s.Properties?.Keys ?? Enumerable.Empty<string>())
             .Distinct(StringComparer.Ordinal);
 
-    // Enumerates the schema and its allOf/anyOf/oneOf subschemas depth-first,
-    // visiting each (resolved) schema once so that repeated references and
-    // cycles don't cause exponential work.
-    private static IEnumerable<IOpenApiSchema> EnumerateComposition(IOpenApiSchema? schema, Func<IOpenApiSchema, bool> descend)
+    /// <summary>
+    /// Gets whether the schema describes a dictionary, i.e. an object whose property
+    /// names aren't known in advance: it (or one of its allOf/anyOf/oneOf subschemas)
+    /// declares an additionalProperties schema, or it's a free-form object that doesn't
+    /// declare any properties and doesn't disallow additional properties.
+    /// </summary>
+    public static bool AllowsDynamicProperties(IOpenApiSchema? schema)
     {
-        if (schema is null)
-        {
-            yield break;
-        }
+        var schemas = EnumerateComposition(schema, _ => true).ToArray();
+        return schemas.Any(s => s.AdditionalProperties is not null) ||
+            (schemas.Length > 0 &&
+                !schemas.Any(s => s.Properties is { Count: > 0 }) &&
+                schemas.All(s => s.AdditionalPropertiesAllowed));
+    }
 
-        var visited = new HashSet<IOpenApiSchema>(ReferenceEqualityComparer.Instance);
+    // Gets the primitive types of the values allowed by the enums of the schema and
+    // its allOf/anyOf/oneOf subschemas, for schemas that constrain values only by enum
+    private static JsonSchemaType? GetEnumType(IOpenApiSchema? schema)
+    {
+        JsonSchemaType? type = null;
+        foreach (var value in EnumerateComposition(schema, s => s.Type is null).SelectMany(s => s.Enum ?? []))
+        {
+            type = (type ?? 0) | (value?.GetValueKind() switch
+            {
+                JsonValueKind.Number => JsonSchemaType.Integer | JsonSchemaType.Number,
+                JsonValueKind.True or JsonValueKind.False => JsonSchemaType.Boolean,
+                JsonValueKind.Null or null => JsonSchemaType.Null,
+                _ => JsonSchemaType.String
+            });
+        }
+        return type;
+    }
+
+    // Enumerates the schema and its allOf/anyOf/oneOf subschemas depth-first
+    private static IEnumerable<IOpenApiSchema> EnumerateComposition(IOpenApiSchema? schema, Func<IOpenApiSchema, bool> descend) =>
+        schema is null
+            ? []
+            : Traverse(schema, s => descend(s) ? GetComposedSchemas(s) : []);
+
+    // Enumerates the schema and its descendants depth-first, yielding each
+    // (resolved) schema once so that repeated references and cycles don't cause
+    // exponential work. A schema first reached at the depth limit is revisited
+    // when it's reached again at a shallower depth, so that its descendants
+    // aren't skipped depending on the order of the branches.
+    private static IEnumerable<IOpenApiSchema> Traverse(IOpenApiSchema schema, Func<IOpenApiSchema, IEnumerable<IOpenApiSchema>> getChildren)
+    {
+        var shallowestDepths = new Dictionary<IOpenApiSchema, int>(ReferenceEqualityComparer.Instance);
         var stack = new Stack<(IOpenApiSchema Schema, int Depth)>();
         stack.Push((schema, 0));
         while (stack.Count > 0)
         {
             var (current, depth) = stack.Pop();
-            if (!visited.Add(ResolveTarget(current)))
+            var target = ResolveTarget(current);
+            if (shallowestDepths.TryGetValue(target, out var shallowestDepth))
             {
-                continue;
+                if (depth >= shallowestDepth)
+                {
+                    continue;
+                }
+                shallowestDepths[target] = depth;
+            }
+            else
+            {
+                shallowestDepths[target] = depth;
+                yield return current;
             }
 
-            yield return current;
-
-            if (depth < MaxDepth && descend(current))
+            if (depth < MaxDepth)
             {
-                foreach (var subSchema in GetComposedSchemas(current).Reverse())
+                foreach (var child in getChildren(current).Reverse())
                 {
-                    stack.Push((subSchema, depth + 1));
+                    stack.Push((child, depth + 1));
                 }
             }
         }
@@ -213,28 +304,11 @@ internal static class OpenApiSchemaValidator
     // subschemas (incl. references), which all apply to the value
     private static IEnumerable<IOpenApiSchema> FindAllOfPropertySchemas(IOpenApiSchema schema, string propertyName)
     {
-        var visited = new HashSet<IOpenApiSchema>(ReferenceEqualityComparer.Instance);
-        var stack = new Stack<(IOpenApiSchema Schema, int Depth)>();
-        stack.Push((schema, 0));
-        while (stack.Count > 0)
+        foreach (var current in Traverse(schema, s => s.AllOf ?? []))
         {
-            var (current, depth) = stack.Pop();
-            if (!visited.Add(ResolveTarget(current)))
-            {
-                continue;
-            }
-
             if (current.Properties?.TryGetValue(propertyName, out var propertySchema) == true)
             {
                 yield return propertySchema;
-            }
-
-            if (depth < MaxDepth)
-            {
-                foreach (var subSchema in current.AllOf ?? [])
-                {
-                    stack.Push((subSchema, depth + 1));
-                }
             }
         }
     }
@@ -246,24 +320,129 @@ internal static class OpenApiSchemaValidator
     private static IEnumerable<IOpenApiSchema> GetComposedSchemas(IOpenApiSchema schema) =>
         (schema.AllOf ?? []).Concat(schema.AnyOf ?? []).Concat(schema.OneOf ?? []);
 
-    private static JsonValue? CoercePrimitive(string value, IOpenApiSchema? schema)
+    private const int MaxItemsSchemaConjunctions = 32;
+
+    // Gets the sets of items schemas that apply to array items together: the items of
+    // the schema and of its allOf subschemas all apply, while the subschemas of each anyOf/oneOf
+    // are alternatives, each combined with the items schemas that apply regardless of them
+    private static List<List<IOpenApiSchema>> GetItemsSchemaConjunctions(IOpenApiSchema schema)
     {
-        var type = GetEffectiveType(schema);
+        List<List<IOpenApiSchema>> Combine(List<List<IOpenApiSchema>> left, List<List<IOpenApiSchema>> right) =>
+            [.. left.SelectMany(l => right.Select(r => l.Concat(r).Distinct(ReferenceEqualityComparer.Instance).Cast<IOpenApiSchema>().ToList()))
+                .Take(MaxItemsSchemaConjunctions)];
+
+        var memo = new Dictionary<IOpenApiSchema, List<List<IOpenApiSchema>>>(ReferenceEqualityComparer.Instance);
+        var inProgress = new HashSet<IOpenApiSchema>(ReferenceEqualityComparer.Instance);
+
+        List<List<IOpenApiSchema>> Get(IOpenApiSchema current)
+        {
+            var target = ResolveTarget(current);
+            if (memo.TryGetValue(target, out var cached))
+            {
+                return cached;
+            }
+            List<List<IOpenApiSchema>> result = [current.Items is null ? [] : [current.Items]];
+            // recursive schemas don't add other items schemas
+            if (!inProgress.Add(target))
+            {
+                return result;
+            }
+
+            foreach (var allOf in current.AllOf ?? [])
+            {
+                result = Combine(result, Get(allOf));
+            }
+
+            // anyOf and oneOf both apply, so each keyword's alternatives are combined separately
+            foreach (var alternatives in (IList<IOpenApiSchema>?[])[current.AnyOf, current.OneOf])
+            {
+                if (alternatives is { Count: > 0 })
+                {
+                    result = Combine(result, [.. alternatives.SelectMany(Get)]);
+                }
+            }
+
+            _ = inProgress.Remove(target);
+            memo[target] = result;
+            return result;
+        }
+
+        return [.. Get(schema).Where(c => c.Count > 0)];
+    }
+
+    private static JsonNode? ResolveItem(string item, List<IOpenApiSchema> itemsSchemas, SchemaValidationDirection direction, bool strictNullableEnums)
+    {
+        JsonNode? first = null;
+        var candidates = itemsSchemas
+            .SelectMany(s => GetPrimitiveInterpretations(item, s))
+            .DistinctBy(c => c?.ToJsonString());
+        foreach (var candidate in candidates)
+        {
+            if (itemsSchemas.All(s => Validate(candidate, s, direction, strictNullableEnums: strictNullableEnums).Count == 0))
+            {
+                return candidate;
+            }
+            first ??= candidate;
+        }
+        return first;
+    }
+
+    // Gets the interpretations of a raw value as each of the primitive types allowed by
+    // the schema, starting with the most likely one, and ending with the value as a string
+    private static IEnumerable<JsonNode?> GetPrimitiveInterpretations(string value, IOpenApiSchema schema)
+    {
+        var type = GetEffectiveType(schema) ?? GetEnumType(schema);
+        yield return CoercePrimitive(value, type);
+        if (type is not null)
+        {
+            foreach (var primitiveType in (JsonSchemaType[])[JsonSchemaType.Integer, JsonSchemaType.Number, JsonSchemaType.Boolean, JsonSchemaType.Null])
+            {
+                if (type.Value.HasFlag(primitiveType))
+                {
+                    yield return CoercePrimitive(value, primitiveType);
+                }
+            }
+        }
+        yield return JsonValue.Create(value);
+    }
+
+    // schemas without a type, e.g. { enum: [1, 2] }, are interpreted using the types of their enum values
+    private static JsonValue? CoercePrimitive(string value, IOpenApiSchema? schema) =>
+        CoercePrimitive(value, GetEffectiveType(schema) ?? GetEnumType(schema));
+
+    private static JsonValue? CoercePrimitive(string value, JsonSchemaType? type)
+    {
         if (type is null)
         {
             return JsonValue.Create(value);
         }
 
-        if (type.Value.HasFlag(JsonSchemaType.Integer) &&
-            long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var l))
+        if (type.Value.HasFlag(JsonSchemaType.Integer))
         {
-            return JsonValue.Create(l);
+            if (long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var l))
+            {
+                return JsonValue.Create(l);
+            }
+            // integers without a range can exceed 64 bits, so keep them lossless
+            if (BigInteger.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var big))
+            {
+                return JsonNode.Parse(big.ToString(CultureInfo.InvariantCulture))!.AsValue();
+            }
         }
         if (type.Value.HasFlag(JsonSchemaType.Number) &&
             double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) &&
             double.IsFinite(d))
         {
-            return JsonValue.Create(d);
+            // keep the number as written, because converting it to double can round it,
+            // e.g. 9007199254740993 to 9007199254740992, which could match a different enum value
+            var trimmed = value.Trim();
+            if (JsonNumberRegex().IsMatch(trimmed))
+            {
+                return JsonNode.Parse(trimmed)!.AsValue();
+            }
+            return decimal.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var m)
+                ? JsonValue.Create(m)
+                : JsonValue.Create(d);
         }
         if (type.Value.HasFlag(JsonSchemaType.Boolean) && bool.TryParse(value, out var b))
         {
@@ -568,9 +747,38 @@ internal static class OpenApiSchemaValidator
         return matches;
     }
 
+    // checks the raw JSON number exactly: integers can exceed the range of long
+    // and decimal, and conversions round away fractions such as 1.00000000000000000000000000001
     private static bool IsInteger(JsonElement value) =>
-        value.TryGetInt64(out _) ||
-        (value.TryGetDecimal(out var d) && decimal.Truncate(d) == d);
+        value.TryGetInt64(out _) || IsIntegralJsonNumber(value.GetRawText());
+
+    private static bool IsIntegralJsonNumber(string number)
+    {
+        var text = number.AsSpan().TrimStart('-');
+        var exponentIndex = text.IndexOfAny('e', 'E');
+        var exponent = BigInteger.Zero;
+        if (exponentIndex >= 0)
+        {
+            if (!BigInteger.TryParse(text[(exponentIndex + 1)..], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out exponent))
+            {
+                return false;
+            }
+            text = text[..exponentIndex];
+        }
+
+        var dotIndex = text.IndexOf('.');
+        var integerPart = dotIndex >= 0 ? text[..dotIndex] : text;
+        var fraction = dotIndex >= 0 ? text[(dotIndex + 1)..] : [];
+        var digits = string.Concat(integerPart, fraction);
+        var significant = digits.TrimEnd('0');
+        if (significant.TrimStart('0').Length == 0)
+        {
+            return true;
+        }
+
+        // value = significant digits * 10^(exponent - fraction digits + trailing zeros)
+        return exponent - fraction.Length + (digits.Length - significant.Length) >= 0;
+    }
 
     private static void ValidateEnum(JsonElement value, IOpenApiSchema schema, string path, List<SchemaValidationError> errors, bool strictNullableEnums)
     {
@@ -628,21 +836,39 @@ internal static class OpenApiSchemaValidator
             }
         }
 
+        var propertyNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var property in value.EnumerateObject())
         {
             var propertyPath = GetPropertyPath(path, property.Name);
-            if (schema.Properties is not null &&
-                schema.Properties.TryGetValue(property.Name, out var propertySchema))
+            var propertySchema = schema.Properties?.TryGetValue(property.Name, out var declaredSchema) == true
+                ? declaredSchema
+                : schema.AdditionalProperties;
+            if (propertySchema is null)
+            {
+                if (!schema.AdditionalPropertiesAllowed)
+                {
+                    errors.Add(new(propertyPath, $"Property '{property.Name}' isn't defined in the schema", property.Name));
+                }
+                continue;
+            }
+
+            if (propertyNames.Add(property.Name))
+            {
+                ValidateCore(property.Value, propertySchema, direction, propertyPath, errors, state, depth + 1);
+                continue;
+            }
+
+            // duplicate property names share paths, which are used as memo keys,
+            // so validate each repeated value without the memoized results of the others
+            var memo = state.Memo;
+            state.Memo = [];
+            try
             {
                 ValidateCore(property.Value, propertySchema, direction, propertyPath, errors, state, depth + 1);
             }
-            else if (schema.AdditionalProperties is not null)
+            finally
             {
-                ValidateCore(property.Value, schema.AdditionalProperties, direction, propertyPath, errors, state, depth + 1);
-            }
-            else if (!schema.AdditionalPropertiesAllowed)
-            {
-                errors.Add(new(propertyPath, $"Property '{property.Name}' isn't defined in the schema", property.Name));
+                state.Memo = memo;
             }
         }
     }
@@ -673,4 +899,7 @@ internal static class OpenApiSchemaValidator
         JsonValueKind.Number => IsInteger(value) ? "integer" : "number",
         _ => value.ValueKind.ToString().ToLowerInvariant()
     };
+
+    [GeneratedRegex(@"^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$", RegexOptions.CultureInvariant)]
+    private static partial Regex JsonNumberRegex();
 }
