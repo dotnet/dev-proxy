@@ -104,6 +104,11 @@ public class RecordingArgs(IEnumerable<RequestLog> requestLogs) : ProxyEventArgs
 {
     public IEnumerable<RequestLog> RequestLogs { get; set; } = requestLogs ??
         throw new ArgumentNullException(nameof(requestLogs));
+    /// <summary>
+    /// Absolute paths of the report files written by reporters while
+    /// processing this recording.
+    /// </summary>
+    public ICollection<string> ReportFiles { get; } = [];
 }
 
 public class RequestLogArgs(RequestLog requestLog)

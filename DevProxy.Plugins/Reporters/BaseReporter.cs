@@ -72,6 +72,7 @@ public abstract class BaseReporter : BasePlugin
                 _ = Directory.CreateDirectory(ReportsFolder);
             }
             await File.WriteAllTextAsync(fileName, reportContents, cancellationToken);
+            e.ReportFiles.Add(Path.GetFullPath(fileName));
         }
 
         Logger.LogTrace("Left {Name}", nameof(AfterRecordingStopAsync));
