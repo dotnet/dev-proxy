@@ -180,7 +180,9 @@ sealed class DevProxyCommand : RootCommand
         "api", "config", "jwt", "logs", "msgraphdb", "outdated", "plugin", "status", "stdio", "stop", "validate"
     };
 
-    internal static bool IsCertExportInvocation(string[] args)
+    internal static bool IsCertExportInvocation(string[] args) => IsCertExportInvocation(args, expandResponseFiles: true);
+
+    private static bool IsCertExportInvocation(IReadOnlyList<string> args, bool expandResponseFiles)
     {
         // Parse with the real root options so their values (e.g. --watch-process-names cert export)
         // aren't mistaken for subcommands. Parsing also expands response files (devproxy @export.rsp).
@@ -189,7 +191,13 @@ sealed class DevProxyCommand : RootCommand
         var rootCommand = new RootCommand { certCommand, new Option<string?>(ConfigFileOptionName, "-c") };
         rootCommand.AddOptions(CreateRootOptions());
 
-        var parseResult = rootCommand.Parse(args);
+        var configuration = new ParserConfiguration();
+        if (!expandResponseFiles)
+        {
+            configuration.ResponseFileTokenReplacer = null;
+        }
+
+        var parseResult = rootCommand.Parse(args, configuration);
         if (parseResult.CommandResult.Command != exportCommand ||
             parseResult.CommandResult.Parent is not CommandResult certResult)
         {
@@ -212,9 +220,16 @@ sealed class DevProxyCommand : RootCommand
         var afterUnknownOption = false;
         var valuesAfterUnknownOption = 0;
         var previousMayBeCommand = false;
+        var certMayBeOptionValue = false;
         foreach (var token in parseResult.Tokens.TakeWhile(t => !ReferenceEquals(t, parseResult.CommandResult.IdentifierToken)))
         {
-            if (knownOptionTokens.Contains(token) || ReferenceEquals(token, certResult.IdentifierToken))
+            if (ReferenceEquals(token, certResult.IdentifierToken))
+            {
+                certMayBeOptionValue = afterUnknownOption && !previousMayBeCommand;
+                afterUnknownOption = false;
+                previousMayBeCommand = false;
+            }
+            else if (knownOptionTokens.Contains(token))
             {
                 afterUnknownOption = false;
                 previousMayBeCommand = false;
@@ -225,19 +240,18 @@ sealed class DevProxyCommand : RootCommand
                 valuesAfterUnknownOption = 0;
                 previousMayBeCommand = false;
             }
-            else if (!afterUnknownOption || previousMayBeCommand)
+            else if (!afterUnknownOption || previousMayBeCommand ||
+                (otherBuiltInCommandNames.Contains(token.Value) && valuesAfterUnknownOption > 0))
             {
-                return false;
+                // When cert follows an unknown option, it may be that option's value rather than
+                // the command (devproxy --mocks-file cert cert export), so retry with it as a value.
+                return certMayBeOptionValue && IsCertExportInvocation(
+                    [.. parseResult.Tokens.Select(t => ReferenceEquals(t, certResult.IdentifierToken) ? "_" : t.Value)],
+                    expandResponseFiles: false);
             }
             else
             {
-                var isCommandName = otherBuiltInCommandNames.Contains(token.Value);
-                if (isCommandName && valuesAfterUnknownOption > 0)
-                {
-                    return false;
-                }
-
-                previousMayBeCommand = isCommandName;
+                previousMayBeCommand = otherBuiltInCommandNames.Contains(token.Value);
                 valuesAfterUnknownOption++;
             }
         }
