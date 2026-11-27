@@ -1,6 +1,7 @@
 using DevProxy.Abstractions.Plugins;
 using DevProxy.Abstractions.Proxy;
 using DevProxy.Abstractions.Utils;
+using DevProxy.Logging;
 using DevProxy.Proxy;
 using DevProxy.Proxy.Kestrel;
 using DevProxy.State;
@@ -345,6 +346,12 @@ sealed class DevProxyCommand : RootCommand
 
         if (parseResult.Action is ParseErrorAction parseErrorAction)
         {
+            if (IsJsonOutputRequested(parseResult))
+            {
+                WriteJsonParseErrors(parseResult);
+                return 2;
+            }
+
             parseErrorAction.ShowHelp = false;
         }
 
@@ -359,6 +366,32 @@ sealed class DevProxyCommand : RootCommand
         }
 
         return exitCode;
+    }
+
+    // Reads the raw token rather than the parsed value, because the parsed
+    // value isn't available when the parse result has errors
+    internal static bool IsJsonOutputRequested(ParseResult parseResult) =>
+        parseResult.GetResult(OutputOptionName) is OptionResult { Tokens: [var token, ..] } &&
+        string.Equals(token.Value, nameof(OutputFormat.Json), StringComparison.OrdinalIgnoreCase);
+
+    internal static void WriteJsonParseErrors(ParseResult parseResult)
+    {
+        // Usage errors must still be visible when normal logging is disabled,
+        // for example by the jwt command or --log-level None.
+        using var loggerFactory = LoggerFactory.Create(builder => builder
+            .SetMinimumLevel(LogLevel.Error)
+            .AddConsole(options =>
+            {
+                options.FormatterName = JsonConsoleFormatter.FormatterName;
+                options.LogToStandardErrorThreshold = LogLevel.Error;
+            })
+            .AddConsoleFormatter<JsonConsoleFormatter, ProxyConsoleFormatterOptions>());
+        var logger = loggerFactory.CreateLogger<DevProxyCommand>();
+
+        foreach (var error in parseResult.Errors)
+        {
+            logger.LogError("{ParseError}", error.Message);
+        }
     }
 
     internal static void ValidatePort(OptionResult input)
