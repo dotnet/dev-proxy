@@ -597,13 +597,18 @@ internal sealed class ProxyConnectionHandler(
             session.SetOriginResponse(origin.Response);
             await pipeline.RunStreamingResponseAsync(session, async innerCt =>
             {
-                var accumulated = await StreamingResponseWriter.WriteAsync(
+                var (accumulated, truncated) = await StreamingResponseWriter.WriteAsync(
                     clientStream, session.MutableResponse!, origin.BodyStream!, keepAlive, accumulateCap, innerCt)
                     .ConfigureAwait(false);
 
-                // Hand the captured stream to AfterResponse inspectors. Empty when the
-                // stream exceeded the cap — those plugins then simply see no body.
-                if (!accumulated.IsEmpty)
+                // Hand the captured stream to AfterResponse inspectors. When the stream
+                // exceeded the cap, the body is flagged as not captured so that inspectors
+                // can tell it apart from an empty body.
+                if (truncated)
+                {
+                    session.MutableResponse!.MarkBodyNotCaptured();
+                }
+                else if (!accumulated.IsEmpty)
                 {
                     session.MutableResponse!.SetBody(accumulated);
                 }

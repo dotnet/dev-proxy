@@ -34,6 +34,16 @@ public abstract class MutableHttpMessage : IHttpMessage
     public bool HasBody => !_body.IsEmpty;
 
     /// <inheritdoc />
+    public bool IsBodyCaptured { get; private set; } = true;
+
+    // The body was transferred but not retained, e.g. a streamed response over the inspection cap
+    internal void MarkBodyNotCaptured()
+    {
+        _body = ReadOnlyMemory<byte>.Empty;
+        IsBodyCaptured = false;
+    }
+
+    /// <inheritdoc />
     public ReadOnlyMemory<byte> Body => _body;
 
     /// <inheritdoc />
@@ -43,6 +53,7 @@ public abstract class MutableHttpMessage : IHttpMessage
     public void SetBody(ReadOnlyMemory<byte> body, string? contentType = null)
     {
         _body = body;
+        IsBodyCaptured = true;
         if (contentType is not null)
         {
             Headers.Replace("Content-Type", contentType);
