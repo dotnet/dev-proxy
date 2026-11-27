@@ -38,7 +38,9 @@ sealed class DevProxyCommand : RootCommand
     internal const string WatchProcessNamesOptionName = "--watch-process-names";
     internal const string WatchProcessTreeOptionName = "--watch-process-tree";
     internal const string ConfigFileOptionName = "--config-file";
-    internal static readonly Option<string?> ConfigFileOption = new(ConfigFileOptionName, "-c")
+    // Per instance: System.CommandLine records each command an option is added
+    // to, so a static option would keep every hot-reload generation alive.
+    private readonly Option<string?> _configFileOption = new(ConfigFileOptionName, "-c")
     {
         HelpName = "config-file",
         Description = "Path to config file. If not specified, Dev Proxy searches for devproxyrc.jsonc or devproxyrc.json in the current directory, then in a .devproxy/ directory, then under the ~appFolder location. Supports ~appFolder and ~dataFolder tokens, and a leading ~/ for the home directory."
@@ -631,8 +633,7 @@ sealed class DevProxyCommand : RootCommand
 
     private void ConfigureCommand(DevProxyConfigOptions configOptions)
     {
-        ConfigFileOption.Validators.Clear();
-        ConfigFileOption.Validators.Add(input =>
+        _configFileOption.Validators.Add(input =>
         {
             var filePath = configOptions.ConfigFile ?? ProxyUtils.ReplacePathTokens(input.Tokens[0].Value);
             if (string.IsNullOrEmpty(filePath))
@@ -857,7 +858,7 @@ sealed class DevProxyCommand : RootCommand
             apiPortOption,
             apiIpAddressOption,
             asSystemProxyOption,
-            ConfigFileOption,
+            _configFileOption,
             detachedOption,
             discoverOption,
             envOption,
@@ -893,7 +894,7 @@ sealed class DevProxyCommand : RootCommand
             ActivatorUtilities.CreateInstance<OutdatedCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<JwtCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<CertCommand>(_serviceProvider),
-            ActivatorUtilities.CreateInstance<StdioCommand>(_serviceProvider),
+            ActivatorUtilities.CreateInstance<StdioCommand>(_serviceProvider, _configFileOption),
             ActivatorUtilities.CreateInstance<StatusCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<StopCommand>(_serviceProvider),
             ActivatorUtilities.CreateInstance<LogsCommand>(_serviceProvider),

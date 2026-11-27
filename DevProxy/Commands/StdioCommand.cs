@@ -14,6 +14,7 @@ sealed class StdioCommand : Command
 {
     private readonly ILogger _logger;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly Option<string?> _configFileOption;
     private readonly IEnumerable<IStdioPlugin> _plugins;
 
     // Global data shared across stdio sessions
@@ -31,7 +32,8 @@ sealed class StdioCommand : Command
     public StdioCommand(
         ILogger<StdioCommand> logger,
         ILoggerFactory loggerFactory,
-        IEnumerable<IStdioPlugin> plugins) :
+        IEnumerable<IStdioPlugin> plugins,
+        Option<string?> configFileOption) :
         base("stdio", """
             Proxy stdin/stdout/stderr of local executables.
             Dev Proxy intercepts and processes the stdio streams of the specified command,
@@ -49,6 +51,7 @@ sealed class StdioCommand : Command
         _logger = logger;
         _loggerFactory = loggerFactory;
         _plugins = plugins;
+        _configFileOption = configFileOption;
 
         ConfigureCommand();
     }
@@ -57,7 +60,7 @@ sealed class StdioCommand : Command
     {
         Add(_commandArgument);
 
-        var options = new List<Option> { DevProxyCommand.ConfigFileOption };
+        var options = new List<Option> { _configFileOption };
         // Add plugin options
         options.AddRange(_plugins
             .OfType<IPlugin>()

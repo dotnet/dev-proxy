@@ -9,6 +9,7 @@ using Microsoft.OpenApi;
 using Microsoft.OpenApi.Reader;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Runtime.CompilerServices;
 
 namespace DevProxy.Abstractions.Data;
 
@@ -21,6 +22,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
 #pragma warning restore CA2213 // Disposable fields should be disposed
     private readonly ILogger<MSGraphDb> _logger = logger;
     private SqliteConnection? _connection;
+    private bool _connectionOpened;
 
     // v1 refers to v1 of the db schema, not the graph version
     public static string MSGraphDbFilePath => Path.Combine(ProxyUtils.AppFolder!, "msgraph-openapi-v1.db");
@@ -32,6 +34,7 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
             if (_connection is null)
             {
                 _connection = new($"Data Source={MSGraphDbFilePath}");
+                _connectionOpened = true;
                 _connection.Open();
             }
 
@@ -314,6 +317,14 @@ public sealed class MSGraphDb(HttpClient httpClient, ILogger<MSGraphDb> logger) 
 
     public void Dispose()
     {
-        _connection?.Dispose();
+        if (_connectionOpened)
+        {
+            DisposeConnection();
+        }
     }
+
+    // Kept separate so that disposing an unused instance doesn't need to
+    // load Microsoft.Data.Sqlite just to JIT-compile Dispose.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void DisposeConnection() => _connection?.Dispose();
 }
