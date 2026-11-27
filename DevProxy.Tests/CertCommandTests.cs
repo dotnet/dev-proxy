@@ -269,6 +269,8 @@ public sealed class CertCommandTests : IDisposable
     [InlineData(new[] { "--watch-process-names", "node", "cert", "export" }, true)]
     [InlineData(new[] { "jwt", "create", "--name", "cert", "--scopes", "export" }, false)]
     [InlineData(new[] { "--failure-rate", "10", "cert", "export" }, true)]
+    [InlineData(new[] { "--failure-rate", "10", "jwt", "create", "--name", "cert", "--scopes", "export", "--output", "json" }, false)]
+    [InlineData(new[] { "--mock-flag", "config", "get", "cert", "export" }, false)]
     [InlineData(new[] { "--mock-flag", "cert", "export" }, true)]
     [InlineData(new[] { "cert", "ensure" }, false)]
     [InlineData(new[] { "export" }, false)]

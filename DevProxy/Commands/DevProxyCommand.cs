@@ -175,6 +175,11 @@ sealed class DevProxyCommand : RootCommand
         }
     }
 
+    private static readonly HashSet<string> otherBuiltInCommandNames = new(StringComparer.Ordinal)
+    {
+        "api", "config", "jwt", "logs", "msgraphdb", "outdated", "plugin", "status", "stdio", "stop"
+    };
+
     internal static bool IsCertExportInvocation(string[] args)
     {
         // Parse with the real root options so their values (e.g. --watch-process-names cert export)
@@ -193,7 +198,8 @@ sealed class DevProxyCommand : RootCommand
 
         // Plugin options aren't registered yet when logging is configured, so allow unknown
         // options (and their values) before cert. A bare word before cert that no option
-        // consumes means another command was invoked (devproxy jwt create --name cert ...).
+        // consumes, or any other built-in command name, means another command was invoked
+        // (devproxy --failure-rate 10 jwt create --name cert ...).
         var rootOptionTokens = parseResult.RootCommandResult.Children
             .OfType<OptionResult>()
             .SelectMany(o => o.IdentifierToken is null ? o.Tokens : o.Tokens.Prepend(o.IdentifierToken))
@@ -209,7 +215,7 @@ sealed class DevProxyCommand : RootCommand
             {
                 afterUnknownOption = true;
             }
-            else if (!afterUnknownOption)
+            else if (!afterUnknownOption || otherBuiltInCommandNames.Contains(token.Value))
             {
                 return false;
             }
