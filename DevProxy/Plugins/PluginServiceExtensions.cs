@@ -116,7 +116,14 @@ static class PluginServiceExtensions
             }
             catch (Exception ex) when (IsBuiltInPluginsPath(pluginLocation))
             {
-                logger.LogError(ex, "Failed to load plugin {PluginName} from {PluginLocation}: {ErrorMessage}. Docs: {DocsUrl}", pluginRef.Name, pluginLocation, ex.Message.TrimEnd().TrimEnd('.'), DocsLinks.Get(pluginRef.Name));
+                if (string.IsNullOrWhiteSpace(pluginRef.Name))
+                {
+                    logger.LogError(ex, "Failed to load plugin {PluginName} from {PluginLocation}: {ErrorMessage}", pluginRef.Name, pluginLocation, ex.Message);
+                }
+                else
+                {
+                    logger.LogError(ex, "Failed to load plugin {PluginName} from {PluginLocation}: {ErrorMessage}. Docs: {DocsUrl}", pluginRef.Name, pluginLocation, ex.Message.TrimEnd().TrimEnd('.'), DocsLinks.Get(pluginRef.Name));
+                }
                 throw;
             }
             var pluginUrlsList = pluginRef.UrlsToWatch?.Select(ConvertToRegex);
@@ -141,7 +148,7 @@ static class PluginServiceExtensions
             }
             catch (Exception ex)
             {
-                var docsLink = DocsLinks.IsBuiltInPluginAssembly(assembly) ? DocsLinks.Get(pluginRef.Name) : null;
+                var docsLink = !string.IsNullOrWhiteSpace(pluginRef.Name) && DocsLinks.IsBuiltInPluginAssembly(assembly) ? DocsLinks.Get(pluginRef.Name) : null;
                 if (docsLink is null)
                 {
                     logger.LogError(ex, "Failed to load plugin {PluginName}: {ErrorMessage}", pluginRef.Name, ex.Message);
