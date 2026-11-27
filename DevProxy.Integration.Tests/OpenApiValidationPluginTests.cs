@@ -1539,4 +1539,187 @@ public sealed class OpenApiValidationPluginTests : IDisposable
             }
         }
     }
+
+    private const string DiscriminatorSpec = """
+        openapi: 3.0.3
+        info: { title: Pets, version: '1.0' }
+        servers:
+          - url: https://api.fabrikam.com
+        paths:
+          /pets:
+            post:
+              requestBody:
+                content:
+                  application/json:
+                    schema:
+                      oneOf:
+                        - $ref: '#/components/schemas/Cat'
+                        - $ref: '#/components/schemas/Dog'
+                        - $ref: '#/components/schemas/Lizard'
+                      discriminator:
+                        propertyName: petType
+                        mapping:
+                          doggo: '#/components/schemas/Dog'
+              responses:
+                '204': { description: ok }
+        components:
+          schemas:
+            Cat:
+              type: object
+              required: [ petType ]
+              properties: { petType: { type: string }, name: { type: string }, meows: { type: boolean } }
+            Dog:
+              type: object
+              required: [ petType ]
+              properties: { petType: { type: string }, name: { type: string }, barks: { type: boolean } }
+            Lizard:
+              type: object
+              required: [ petType ]
+              properties: { petType: { type: string }, name: { type: string } }
+        """;
+
+    private static TestExchange PostPet(string body) =>
+        TestExchange.Request("POST", "https://api.fabrikam.com/pets",
+                headers: [("Content-Type", "application/json")], body: body)
+            .WithResponse(HttpStatusCode.NoContent);
+
+    [Fact]
+    public async Task UsesDiscriminatorToSelectOneOfBranch()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("pets.yaml", DiscriminatorSpec));
+
+        // without the discriminator, these would match all overlapping branches
+        var implicitName = plugin.Validate(PostPet("""{ "petType": "Cat", "name": "Tom" }""").Session);
+        var mapped = plugin.Validate(PostPet("""{ "petType": "doggo", "name": "Rex" }""").Session);
+        var implicitNameWithMapping = plugin.Validate(PostPet("""{ "petType": "Dog", "name": "Rex" }""").Session);
+        var invalidBranch = plugin.Validate(PostPet("""{ "petType": "doggo", "barks": "loud" }""").Session);
+
+        Assert.Empty(implicitName!.Issues);
+        Assert.Empty(mapped!.Issues);
+        Assert.Empty(implicitNameWithMapping!.Issues);
+        Assert.Equal("$.barks: Expected boolean but got string", Assert.Single(Messages(invalidBranch)));
+    }
+
+    [Fact]
+    public async Task ReportsMissingOrUnknownDiscriminatorValues()
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("pets.yaml", DiscriminatorSpec));
+
+        var missing = plugin.Validate(PostPet("""{ "name": "Tom" }""").Session);
+        var unknown = plugin.Validate(PostPet("""{ "petType": "Fish" }""").Session);
+        var notString = plugin.Validate(PostPet("""{ "petType": 1 }""").Session);
+
+        Assert.Equal("$: Missing discriminator property 'petType' required to select a schema in 'oneOf'", Assert.Single(Messages(missing)));
+        Assert.Equal("$.petType: Discriminator value 'Fish' doesn't map to any schema in 'oneOf'. Allowed values: 'doggo', 'Cat', 'Dog', 'Lizard'", Assert.Single(Messages(unknown)));
+        Assert.Equal("$.petType: Discriminator property 'petType' must be a string but got integer", Assert.Single(Messages(notString)));
+    }
+
+    [Fact]
+    public async Task ReportsDiscriminatorMappingsOutsideOneOf()
+    {
+        var spec = DiscriminatorSpec.ReplaceLineEndings("\n")
+            .Replace("doggo: '#/components/schemas/Dog'", "doggo: '#/components/schemas/Dog'\n                  fish: '#/components/schemas/Fish'", StringComparison.Ordinal)
+            .Replace("    Lizard:", "    Fish:\n      type: object\n      properties: { fins: { type: integer } }\n    Lizard:", StringComparison.Ordinal);
+        var defaultSpec = spec
+            .Replace("openapi: 3.0.3", "openapi: 3.2.0", StringComparison.Ordinal)
+            .Replace("propertyName: petType", "propertyName: petType\n                defaultMapping: '#/components/schemas/Fish'", StringComparison.Ordinal);
+        var plugin = await CreatePluginWithSpecsAsync(("pets.yaml", spec));
+
+        var stale = plugin.Validate(PostPet("""{ "petType": "fish", "fins": 2 }""").Session);
+        var unknown = plugin.Validate(PostPet("""{ "petType": "Bird" }""").Session);
+
+        Assert.Equal("$.petType: Discriminator value 'fish' maps to schema 'Fish', which isn't one of the schemas in 'oneOf'", Assert.Single(Messages(stale)));
+        Assert.DoesNotContain("'fish'", Assert.Single(Messages(unknown)), StringComparison.Ordinal);
+
+        plugin = await CreatePluginWithSpecsAsync(("pets-default.yaml", defaultSpec));
+
+        var missing = plugin.Validate(PostPet("""{ "fins": 2 }""").Session);
+
+        Assert.Equal("$: Discriminator default mapping maps to schema 'Fish', which isn't one of the schemas in 'oneOf'", Assert.Single(Messages(missing)));
+    }
+
+    [Fact]
+    public async Task ExcludesRemappedSchemaNamesFromAllowedDiscriminatorValues()
+    {
+        var spec = DiscriminatorSpec.ReplaceLineEndings("\n")
+            .Replace("    Lizard:", "    Fish:\n      type: object\n      properties: { fins: { type: integer } }\n    Lizard:", StringComparison.Ordinal)
+            .Replace("doggo: '#/components/schemas/Dog'", "doggo: '#/components/schemas/Dog'\n                  Cat: '#/components/schemas/Lizard'\n                  Lizard: '#/components/schemas/Fish'", StringComparison.Ordinal);
+        var plugin = await CreatePluginWithSpecsAsync(("pets.yaml", spec));
+
+        var unknown = plugin.Validate(PostPet("""{ "petType": "Bird" }""").Session);
+
+        Assert.Equal("$.petType: Discriminator value 'Bird' doesn't map to any schema in 'oneOf'. Allowed values: 'doggo', 'Cat', 'Dog'", Assert.Single(Messages(unknown)));
+    }
+
+    [Fact]
+    public async Task DoesNotMatchSameNamedSchemasFromDifferentDocuments()
+    {
+        var spec = DiscriminatorSpec.ReplaceLineEndings("\n")
+            .Replace("doggo: '#/components/schemas/Dog'", "doggo: '#/components/schemas/Dog'\n                  kitty: 'other.yaml#/components/schemas/Cat'", StringComparison.Ordinal);
+        var externalBranchSpec = DiscriminatorSpec.ReplaceLineEndings("\n")
+            .Replace("- $ref: '#/components/schemas/Cat'", "- $ref: 'other.yaml#/components/schemas/Cat'", StringComparison.Ordinal)
+            .Replace("doggo: '#/components/schemas/Dog'", "doggo: '#/components/schemas/Dog'\n                  kitty: 'other.yaml#/components/schemas/Cat'\n                  tom: '#/components/schemas/Cat'", StringComparison.Ordinal);
+        var plugin = await CreatePluginWithSpecsAsync(("pets.yaml", spec));
+
+        var external = plugin.Validate(PostPet("""{ "petType": "kitty", "meows": true }""").Session);
+        var unknown = plugin.Validate(PostPet("""{ "petType": "Bird" }""").Session);
+
+        Assert.Equal("$.petType: Discriminator value 'kitty' maps to schema 'Cat', which isn't one of the schemas in 'oneOf'", Assert.Single(Messages(external)));
+        Assert.Equal("$.petType: Discriminator value 'Bird' doesn't map to any schema in 'oneOf'. Allowed values: 'doggo', 'Cat', 'Dog', 'Lizard'", Assert.Single(Messages(unknown)));
+
+        plugin = await CreatePluginWithSpecsAsync(("pets-external.yaml", externalBranchSpec));
+
+        var local = plugin.Validate(PostPet("""{ "petType": "tom", "meows": true }""").Session);
+        unknown = plugin.Validate(PostPet("""{ "petType": "Bird" }""").Session);
+
+        Assert.Equal("$.petType: Discriminator value 'tom' maps to schema 'Cat', which isn't one of the schemas in 'oneOf'", Assert.Single(Messages(local)));
+        Assert.Contains("Allowed values: 'doggo', 'kitty', ", Assert.Single(Messages(unknown)), StringComparison.Ordinal);
+        Assert.DoesNotContain("'tom'", Assert.Single(Messages(unknown)), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("pets.yaml#/components/schemas/Cat")]
+    [InlineData("./pets.yaml#/components/schemas/Cat")]
+    public async Task MatchesSelfRelativeDiscriminatorMappings(string catReference)
+    {
+        var spec = DiscriminatorSpec.ReplaceLineEndings("\n")
+            .Replace("doggo: '#/components/schemas/Dog'", $"doggo: '#/components/schemas/Dog'\n                  kitty: '{catReference}'", StringComparison.Ordinal);
+        var plugin = await CreatePluginWithSpecsAsync(("pets.yaml", spec));
+
+        var mapped = plugin.Validate(PostPet("""{ "petType": "kitty", "meows": true }""").Session);
+        var unknown = plugin.Validate(PostPet("""{ "petType": "Bird" }""").Session);
+
+        Assert.Empty(mapped!.Issues);
+        Assert.Equal("$.petType: Discriminator value 'Bird' doesn't map to any schema in 'oneOf'. Allowed values: 'doggo', 'kitty', 'Cat', 'Dog', 'Lizard'", Assert.Single(Messages(unknown)));
+    }
+
+    [Fact]
+    public async Task MatchesSelfRelativeDiscriminatorDefaultMapping()
+    {
+        var spec = DiscriminatorSpec.ReplaceLineEndings("\n")
+            .Replace("openapi: 3.0.3", "openapi: 3.2.0", StringComparison.Ordinal)
+            .Replace("propertyName: petType", "propertyName: petType\n                defaultMapping: 'defaults.yaml#/components/schemas/Lizard'", StringComparison.Ordinal)
+            .Replace("Lizard:\n      type: object\n      required: [ petType ]", "Lizard:\n      type: object\n      required: [ name ]", StringComparison.Ordinal);
+        var plugin = await CreatePluginWithSpecsAsync(("defaults.yaml", spec));
+
+        var missing = plugin.Validate(PostPet("""{ "name": "Spike" }""").Session);
+
+        Assert.Empty(missing!.Issues);
+    }
+
+    [Fact]
+    public async Task FallsBackToDiscriminatorDefaultMapping()
+    {
+        var spec = DiscriminatorSpec.ReplaceLineEndings("\n")
+            .Replace("openapi: 3.0.3", "openapi: 3.2.0", StringComparison.Ordinal)
+            .Replace("propertyName: petType", "propertyName: petType\n                defaultMapping: '#/components/schemas/Lizard'", StringComparison.Ordinal)
+            .Replace("Lizard:\n      type: object\n      required: [ petType ]", "Lizard:\n      type: object\n      required: [ name ]", StringComparison.Ordinal);
+        var plugin = await CreatePluginWithSpecsAsync(("pets.yaml", spec));
+
+        var missing = plugin.Validate(PostPet("""{ "name": "Spike" }""").Session);
+        var unknown = plugin.Validate(PostPet("""{ "petType": "Gecko" }""").Session);
+
+        Assert.Empty(missing!.Issues);
+        Assert.Equal("$: Missing required property 'name'", Assert.Single(Messages(unknown)));
+    }
 }

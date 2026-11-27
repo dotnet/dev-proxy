@@ -22,11 +22,13 @@ internal sealed class FakeProxyStateController : IProxyStateController
 
     public void StartRecording() => StartRecordingCalls++;
 
-    public Task StopRecordingAsync(CancellationToken cancellationToken)
+    public Task<IReadOnlyList<string>> StopRecordingAsync(CancellationToken cancellationToken)
     {
         StopRecordingCalls++;
-        return Task.CompletedTask;
+        return Task.FromResult(ReportFiles);
     }
+
+    public IReadOnlyList<string> ReportFiles { get; set; } = [];
 
     public Task MockRequestAsync(CancellationToken cancellationToken)
     {
@@ -64,11 +66,24 @@ internal sealed class RecordingConsole : ISystemConsole
     public void EnqueueKey(ConsoleKey key) => _keys.Enqueue(key);
 }
 
+/// <summary>Captures log entries, including structured output, for assertions.</summary>
+internal sealed class RecordingLogger<T> : ILogger<T>
+{
+    public List<(LogLevel Level, EventId EventId, string Message)> Entries { get; } = [];
+
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+    public bool IsEnabled(LogLevel logLevel) => true;
+
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+        Entries.Add((logLevel, eventId, formatter(state, exception)));
+}
+
 /// <summary>
 /// Minimal <see cref="IProxyConfiguration"/>; only Output/ApiIpAddress/ApiPort/Record
 /// are read by the interactive console, the rest carry inert defaults.
 /// </summary>
-internal sealed class FakeProxyConfiguration : IProxyConfiguration, IProcessTreeProxyConfiguration
+internal sealed class FakeProxyConfiguration : IProxyConfiguration, IProcessTreeProxyConfiguration, IReportsProxyConfiguration
 {
     public string ApiIpAddress { get; set; } = "127.0.0.1";
     public int ApiPort { get; set; } = 8897;
@@ -85,6 +100,7 @@ internal sealed class FakeProxyConfiguration : IProxyConfiguration, IProcessTree
     public bool NoWatch { get; set; }
     public int Port { get; set; } = 8000;
     public bool Record { get; set; }
+    public string? ReportsFolder { get; set; }
     public bool ShowTimestamps => false;
     public long? TimeoutSeconds { get; set; }
     public bool ValidateSchemas { get; set; }

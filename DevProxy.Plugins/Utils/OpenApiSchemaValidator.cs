@@ -25,7 +25,7 @@ internal sealed record SchemaValidationError(string Path, string Message, string
 /// Lightweight validator of JSON values against OpenAPI schemas
 /// (Microsoft.OpenApi object model). Supports: type (incl. nullable / type null),
 /// required, properties, additionalProperties, items, enum, allOf, anyOf, oneOf
-/// and $ref. Other keywords (format, min/max, pattern, etc.) are ignored.
+/// (incl. discriminator) and $ref. Other keywords (format, min/max, pattern, etc.) are ignored.
 /// </summary>
 internal static partial class OpenApiSchemaValidator
 {
@@ -38,6 +38,7 @@ internal static partial class OpenApiSchemaValidator
         public int Evaluations { get; set; }
         public bool BudgetExceeded { get; set; }
         public bool StrictNullableEnums { get; init; }
+        public Uri? DocumentUri { get; init; }
         public Dictionary<(IOpenApiSchema Schema, string Path, int Depth), List<SchemaValidationError>> Memo { get; set; } = [];
     }
 
@@ -46,10 +47,11 @@ internal static partial class OpenApiSchemaValidator
         IOpenApiSchema? schema,
         SchemaValidationDirection direction,
         string path = "$",
-        bool strictNullableEnums = false)
+        bool strictNullableEnums = false,
+        Uri? documentUri = null)
     {
         var errors = new List<SchemaValidationError>();
-        var state = new ValidationState { StrictNullableEnums = strictNullableEnums };
+        var state = new ValidationState { StrictNullableEnums = strictNullableEnums, DocumentUri = documentUri };
         ValidateCore(value, schema, direction, path, errors, state, 0);
         if (state.BudgetExceeded)
         {
@@ -63,10 +65,11 @@ internal static partial class OpenApiSchemaValidator
         IOpenApiSchema? schema,
         SchemaValidationDirection direction,
         string path = "$",
-        bool strictNullableEnums = false)
+        bool strictNullableEnums = false,
+        Uri? documentUri = null)
     {
         using var doc = JsonDocument.Parse(value?.ToJsonString() ?? "null");
-        return Validate(doc.RootElement.Clone(), schema, direction, path, strictNullableEnums);
+        return Validate(doc.RootElement.Clone(), schema, direction, path, strictNullableEnums, documentUri);
     }
 
     /// <summary>
@@ -483,7 +486,13 @@ internal static partial class OpenApiSchemaValidator
             errors.Add(new(path, "Value doesn't match any of the schemas in 'anyOf'"));
         }
 
-        if (schema.OneOf is { Count: > 0 })
+        if (schema.OneOf is { Count: > 0 } &&
+            schema.Discriminator?.PropertyName is { Length: > 0 } &&
+            value.ValueKind == JsonValueKind.Object)
+        {
+            ValidateDiscriminatedOneOf(value, schema, schema.Discriminator, direction, path, errors, firstError, state, depth);
+        }
+        else if (schema.OneOf is { Count: > 0 })
         {
             var matches = schema.OneOf.Count(s => IsValid(value, s, direction, path, state, depth));
             if (matches == 0)
@@ -496,6 +505,143 @@ internal static partial class OpenApiSchemaValidator
             }
         }
     }
+
+    // Validates the value only against the oneOf branch selected by the
+    // discriminator, so that overlapping branches don't cause false positives
+    private static void ValidateDiscriminatedOneOf(
+        JsonElement value,
+        IOpenApiSchema schema,
+        OpenApiDiscriminator discriminator,
+        SchemaValidationDirection direction,
+        string path,
+        List<SchemaValidationError> errors,
+        int firstError,
+        ValidationState state,
+        int depth)
+    {
+        var propertyName = discriminator.PropertyName!;
+        var oneOf = schema.OneOf!;
+        var errorPath = path;
+        IOpenApiSchema? candidate;
+        string source;
+        if (!value.TryGetProperty(propertyName, out var discriminatorValue))
+        {
+            if (discriminator.DefaultMapping is null)
+            {
+                errors.Add(new(path, $"Missing discriminator property '{propertyName}' required to select a schema in 'oneOf'"));
+                return;
+            }
+            candidate = discriminator.DefaultMapping;
+            source = "Discriminator default mapping";
+        }
+        else if (discriminatorValue.ValueKind != JsonValueKind.String)
+        {
+            errors.Add(new(GetPropertyPath(path, propertyName), $"Discriminator property '{propertyName}' must be a string but got {DescribeValueKind(discriminatorValue)}"));
+            return;
+        }
+        else
+        {
+            var discriminatorName = discriminatorValue.GetString()!;
+            errorPath = GetPropertyPath(path, propertyName);
+            source = $"Discriminator value '{discriminatorName}'";
+            // explicit mappings take precedence over implicit ones, which use
+            // the name of the referenced component schema
+            candidate = discriminator.Mapping is not null &&
+                discriminator.Mapping.TryGetValue(discriminatorName, out var mapped)
+                ? mapped
+                : oneOf.FirstOrDefault(s => GetSchemaName(s) == discriminatorName);
+            if (candidate is null && discriminator.DefaultMapping is not null)
+            {
+                candidate = discriminator.DefaultMapping;
+                source = "Discriminator default mapping";
+            }
+            if (candidate is null)
+            {
+                var allowed = GetDiscriminatorValues(oneOf, discriminator, state.DocumentUri);
+                var allowedMessage = allowed.Count > 0
+                    ? $". Allowed values: {string.Join(", ", allowed.Select(v => $"'{v}'"))}"
+                    : string.Empty;
+                errors.Add(new(errorPath, $"Discriminator value '{discriminatorName}' doesn't map to any schema in 'oneOf'{allowedMessage}"));
+                return;
+            }
+        }
+
+        // mappings must not select a schema outside the declared alternatives,
+        // otherwise the value could bypass oneOf validation
+        var selected = FindOneOfBranch(oneOf, candidate, state.DocumentUri);
+        if (selected is null)
+        {
+            var schemaName = GetSchemaName(candidate) is { } name ? $"schema '{name}'" : "a schema";
+            errors.Add(new(errorPath, $"{source} maps to {schemaName}, which isn't one of the schemas in 'oneOf'"));
+            return;
+        }
+
+        var seen = new HashSet<SchemaValidationError>(errors.Skip(firstError));
+        foreach (var error in ValidateComposed(value, selected, direction, path, state, depth + 1))
+        {
+            if (seen.Add(error))
+            {
+                errors.Add(error);
+            }
+        }
+    }
+
+    // References are compared by their complete reference, including the
+    // document, because Microsoft.OpenApi resolves references to schemas in
+    // other documents to same-named local schemas, which would otherwise make
+    // same-named schemas from different documents match
+    private static IOpenApiSchema? FindOneOfBranch(IList<IOpenApiSchema> oneOf, IOpenApiSchema candidate, Uri? documentUri)
+    {
+        var target = ResolveTarget(candidate);
+        var reference = GetFullReference(candidate, documentUri);
+        return oneOf.FirstOrDefault(s =>
+            reference is not null && GetFullReference(s, documentUri) is { } branchReference
+                ? string.Equals(branchReference, reference, StringComparison.Ordinal)
+                : ReferenceEquals(ResolveTarget(s), target));
+    }
+
+    // Self-relative references, like 'pets.yaml#/components/schemas/Cat' in
+    // pets.yaml, are resolved against the URI of the spec, so that they match
+    // fragment-only references to the same schema
+    private static string? GetFullReference(IOpenApiSchema schema, Uri? documentUri)
+    {
+        if (schema is not OpenApiSchemaReference { Reference.ReferenceV3: { } reference })
+        {
+            return null;
+        }
+
+        var fragmentIndex = reference.IndexOf('#', StringComparison.Ordinal);
+        if (documentUri is null || fragmentIndex < 0)
+        {
+            return reference;
+        }
+
+        var document = reference[..fragmentIndex];
+        if (document.Length > 0)
+        {
+            if (!Uri.TryCreate(documentUri, document, out var resolved))
+            {
+                return reference;
+            }
+            documentUri = resolved;
+        }
+        return documentUri.GetLeftPart(UriPartial.Query) + reference[fragmentIndex..];
+    }
+
+    // explicit mappings take precedence over implicit names, so implicit names
+    // that are remapped are only allowed if their mapping stays within oneOf
+    private static List<string> GetDiscriminatorValues(IList<IOpenApiSchema> oneOf, OpenApiDiscriminator discriminator, Uri? documentUri)
+    {
+        var mapping = discriminator.Mapping ?? new Dictionary<string, OpenApiSchemaReference>();
+        return [.. mapping
+            .Where(m => FindOneOfBranch(oneOf, m.Value, documentUri) is not null)
+            .Select(m => m.Key)
+            .Concat(oneOf.Select(GetSchemaName).OfType<string>().Where(n => !mapping.ContainsKey(n)))
+            .Distinct(StringComparer.Ordinal)];
+    }
+
+    private static string? GetSchemaName(IOpenApiSchema schema) =>
+        schema is OpenApiSchemaReference reference ? reference.Reference?.Id : null;
 
     private static bool IsValid(JsonElement value, IOpenApiSchema schema, SchemaValidationDirection direction, string path, ValidationState state, int depth) =>
         ValidateComposed(value, schema, direction, path, state, depth + 1).Count == 0;
