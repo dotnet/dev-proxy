@@ -500,12 +500,10 @@ sealed class DevProxyCommand : RootCommand
         // that crashed. This runs only once the command line resolved to starting the
         // proxy, so other commands, including plugin commands, don't change the OS proxy
         // settings. It must run before anything that loads instance state, which prunes
-        // the stale records it depends on. Detached daemons skip it because the parent
-        // process that spawned them already did it.
-        if (!IsInternalDaemon)
-        {
-            await ReconcileOrphanedSystemProxiesAsync(cancellationToken);
-        }
+        // the stale records it depends on. Detached daemons run it too, because only the
+        // daemon knows whether the command line resolved to starting the proxy. The
+        // parent process that spawned them echoes the outcome from the daemon's log.
+        await ReconcileOrphanedSystemProxiesAsync(cancellationToken);
         // Environment overrides from config and --env are applied by now, so this
         // validates and pins the effective token before anything reads it.
         if (!ApiSecurity.TryInitializeToken(out var tokenError))
@@ -960,6 +958,9 @@ sealed class DevProxyCommand : RootCommand
         }
     }
 
+    // Shared by every startup recovery message so a detached parent can find them in the daemon's log.
+    internal const string CrashedInstanceRecoveryMarker = "left by a crashed Dev Proxy instance";
+
     private async Task ReconcileOrphanedSystemProxiesAsync(CancellationToken cancellationToken)
     {
         var reconciliation = await SystemProxyManager.ReconcileOrphanedSystemProxiesAsync(
@@ -967,7 +968,7 @@ sealed class DevProxyCommand : RootCommand
         if (reconciliation.Outcome is SystemProxyManager.OrphanRestoreOutcome.Failed)
         {
             _logger.LogError(
-                "Couldn't restore the system proxy left by a crashed Dev Proxy instance (PID: {Pids}). Run 'devproxy system-proxy reset' or see https://go.devproxy.net?go=proxy-reset.",
+                "Couldn't restore the system proxy " + CrashedInstanceRecoveryMarker + " (PID: {Pids}). Run 'devproxy system-proxy reset' or see https://go.devproxy.net?go=proxy-reset.",
                 string.Join(", ", reconciliation.OrphanedPids));
             return;
         }
@@ -976,12 +977,12 @@ sealed class DevProxyCommand : RootCommand
         {
             if (reconciliation.Outcome is SystemProxyManager.OrphanRestoreOutcome.Restored)
             {
-                _logger.LogInformation("Recovered system proxy left by a crashed Dev Proxy instance (PID: {Pid}).", pid);
+                _logger.LogInformation("Recovered system proxy " + CrashedInstanceRecoveryMarker + " (PID: {Pid}).", pid);
             }
             else
             {
                 _logger.LogInformation(
-                    "Removed stale system-proxy registration left by a crashed Dev Proxy instance (PID: {Pid}) while keeping the current system proxy owner unchanged.",
+                    "Removed stale system-proxy registration " + CrashedInstanceRecoveryMarker + " (PID: {Pid}) while keeping the current system proxy owner unchanged.",
                     pid);
             }
         }

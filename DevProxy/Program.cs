@@ -52,54 +52,13 @@ if (DevProxyCommand.IsInternalDaemon)
     Console.SetError(_detachedLogWriter);
 }
 
-static async Task ReconcileOrphanedSystemProxiesAsync(bool isJsonOutput)
-{
-    // Log through the console like the host would, so warnings raised while restoring
-    // (for example, an authenticated proxy that needs its password re-entered) reach the user.
-    using var loggerFactory = SystemProxyCommand.CreateConsoleLoggerFactory(
-        isJsonOutput ? DevProxy.Abstractions.Proxy.OutputFormat.Json : DevProxy.Abstractions.Proxy.OutputFormat.Text,
-        LogLevel.Information);
-    var reconciliation = await SystemProxyManager.ReconcileOrphanedSystemProxiesAsync(
-        loggerFactory.CreateLogger<SystemProxyManager>());
-    if (reconciliation.Outcome is SystemProxyManager.OrphanRestoreOutcome.Failed)
-    {
-        var error = $"Couldn't restore the system proxy left by a crashed Dev Proxy instance (PID: {string.Join(", ", reconciliation.OrphanedPids)}). Run 'devproxy system-proxy reset' or see https://go.devproxy.net?go=proxy-reset.";
-        if (isJsonOutput)
-        {
-            await Console.Out.WriteLineAsync(FormatJsonLogEntry("error", error));
-        }
-        else
-        {
-            await Console.Error.WriteLineAsync(error);
-        }
-        return;
-    }
-
-    foreach (var pid in reconciliation.OrphanedPids)
-    {
-        var message = reconciliation.Outcome is SystemProxyManager.OrphanRestoreOutcome.Restored
-            ? $"Recovered system proxy left by a crashed Dev Proxy instance (PID: {pid})."
-            : $"Removed stale system-proxy registration left by a crashed Dev Proxy instance (PID: {pid}) while keeping the current system proxy owner unchanged.";
-        if (isJsonOutput)
-        {
-            await Console.Out.WriteLineAsync(FormatJsonLogEntry("info", message));
-        }
-        else
-        {
-            await Console.Out.WriteLineAsync(message);
-        }
-    }
-}
-
 static async Task<int> StartDetachedProcessAsync(string[] args)
 {
     var isJsonOutput = IsJsonOutputRequested(args);
 
-    // Recover from a system-proxy registration left behind by a previous
-    // instance that crashed before restoring the OS proxy. This must run before
-    // any state-loading call below, which prunes (deletes) the stale state files
-    // it depends on without restoring the proxy.
-    await ReconcileOrphanedSystemProxiesAsync(isJsonOutput);
+    // Recovering a system proxy left by a crashed instance is up to the daemon: only it
+    // knows whether the command line resolves to starting the proxy rather than to a
+    // (plugin) management command. Don't prune state here, because the daemon needs it.
 
     // Check if an instance is already running as system proxy
     var systemProxyInstance = await StateManager.FindSystemProxyInstanceAsync();
@@ -211,6 +170,8 @@ static async Task<int> StartDetachedProcessAsync(string[] args)
                 var proxyUrl = state.ProxyUrl;
                 var token = ApiSecurity.ShouldDisplayTokenFor(state) ?
                     (await File.ReadAllTextAsync(ApiSecurity.GetTokenFilePath(state.Pid))).Trim() : null;
+
+                await EchoSystemProxyRecoveryAsync(process.Id, isJsonOutput);
 
                 if (isJsonOutput)
                 {
@@ -412,6 +373,34 @@ static bool IsJsonObject(string line)
     catch (JsonException)
     {
         return false;
+    }
+}
+
+// The daemon recovers a system proxy left by a crashed instance before it starts
+// listening, so its log has the outcome by now. Show it like a foreground start would.
+static async Task EchoSystemProxyRecoveryAsync(int pid, bool isJsonOutput)
+{
+    var log = await ReadDaemonLogAsync(pid);
+    if (string.IsNullOrEmpty(log))
+    {
+        return;
+    }
+
+    foreach (var line in log.Split('\n'))
+    {
+        var trimmed = line.TrimEnd('\r');
+        if (!trimmed.Contains(DevProxyCommand.CrashedInstanceRecoveryMarker, StringComparison.Ordinal))
+        {
+            continue;
+        }
+        if (isJsonOutput || !trimmed.Contains("Couldn't restore", StringComparison.Ordinal))
+        {
+            await Console.Out.WriteLineAsync(trimmed);
+        }
+        else
+        {
+            await Console.Error.WriteLineAsync(trimmed);
+        }
     }
 }
 
