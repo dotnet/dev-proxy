@@ -104,7 +104,7 @@ sealed class JsonConsoleFormatter : ConsoleFormatter
         // Extract short plugin name from full category
         if (pluginName is not null)
         {
-            pluginName = pluginName[(pluginName.LastIndexOf('.') + 1)..];
+            pluginName = pluginName[(pluginName.LastIndexOf('.', StringComparison.Ordinal) + 1)..];
         }
 
         var logObject = new JsonRequestLogEntry
@@ -145,7 +145,7 @@ sealed class JsonConsoleFormatter : ConsoleFormatter
         // Extract short category name
         if (category is not null)
         {
-            category = category[(category.LastIndexOf('.') + 1)..];
+            category = category[(category.LastIndexOf('.', StringComparison.Ordinal) + 1)..];
         }
 
         var logObject = new JsonLogEntry
@@ -168,7 +168,7 @@ sealed class JsonConsoleFormatter : ConsoleFormatter
         // Extract short category name
         if (category is not null)
         {
-            category = category[(category.LastIndexOf('.') + 1)..];
+            category = category[(category.LastIndexOf('.', StringComparison.Ordinal) + 1)..];
         }
 
         try

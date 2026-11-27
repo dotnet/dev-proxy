@@ -95,7 +95,7 @@ public static class WatchedHostExtractor
             return true;
         }
 
-        var pathStart = pattern.IndexOf('/', scheme + 3);
-        return pathStart < 0 || pattern[pathStart..] is "/" or "/*";
+        var pathOffset = pattern.AsSpan(scheme + 3).IndexOf('/');
+        return pathOffset < 0 || pattern[(scheme + 3 + pathOffset)..] is "/" or "/*";
     }
 }

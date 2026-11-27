@@ -115,13 +115,13 @@ sealed class DevProxyCommand : RootCommand
                 return true;
             }
 
-            if (args[i].StartsWith('-'))
+            if (args[i].StartsWith('-', StringComparison.Ordinal))
             {
                 inMultiValueOption = _multiValueRootOptions.Contains(args[i]);
                 continue;
             }
 
-            var isOptionValue = inMultiValueOption || (i > 0 && args[i - 1].StartsWith('-'));
+            var isOptionValue = inMultiValueOption || (i > 0 && args[i - 1].StartsWith('-', StringComparison.Ordinal));
             if (!isOptionValue)
             {
                 return false;
@@ -202,11 +202,11 @@ sealed class DevProxyCommand : RootCommand
                 arg.StartsWith(LogLevelOptionName + "=", StringComparison.OrdinalIgnoreCase) ||
                 arg.StartsWith(LogLevelOptionName + ":", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(arg, NoColorOptionName, StringComparison.OrdinalIgnoreCase) ||
-                (commandTokens.Count > 0 && arg.StartsWith('-')))
+                (commandTokens.Count > 0 && arg.StartsWith('-', StringComparison.Ordinal)))
             {
                 continue;
             }
-            if (arg.StartsWith('-'))
+            if (arg.StartsWith('-', StringComparison.Ordinal))
             {
                 // other root options may take values, so we can't tell what follows
                 break;
@@ -295,7 +295,7 @@ sealed class DevProxyCommand : RootCommand
             // If there are no more arguments, it's the root command
             // If the first argument starts with '-', it's an option (root command)
             // Otherwise, it's a subcommand name
-            field = args.Length <= 1 || args[1].StartsWith('-');
+            field = args.Length <= 1 || args[1].StartsWith('-', StringComparison.Ordinal);
             _isRootCommandResolved = true;
             return field;
         }
