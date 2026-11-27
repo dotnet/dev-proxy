@@ -115,8 +115,13 @@ sealed class SystemProxyCommand : Command
     internal static ILoggerFactory CreateConsoleLoggerFactory(OutputFormat outputFormat, LogLevel logLevel) =>
         LoggerFactory.Create(builder =>
         {
+            // Results are logged at Information. For JSON output, let them through and have
+            // the formatter drop diagnostic messages below the requested level instead.
+            var pipelineLogLevel = outputFormat == OutputFormat.Json && logLevel > LogLevel.Information
+                ? LogLevel.Information
+                : logLevel;
             _ = builder
-                .SetMinimumLevel(logLevel)
+                .SetMinimumLevel(pipelineLogLevel)
                 .AddConsole(consoleOptions =>
                 {
                     consoleOptions.FormatterName = outputFormat == OutputFormat.Json
@@ -133,6 +138,7 @@ sealed class SystemProxyCommand : Command
                 {
                     formatterOptions.IncludeScopes = false;
                     formatterOptions.ShowTimestamps = false;
+                    formatterOptions.MinimumLogLevel = logLevel;
                 });
         });
 

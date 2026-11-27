@@ -92,6 +92,7 @@ internal sealed class StopCommand : Command
         // its registration available for a later retry.
         var orphan = (await StateManager.GetOrphanedSystemProxyStatesAsync(cancellationToken))
             .Find(o => o.Pid == pid);
+        var recoveredOrphan = false;
 
         if (orphan is not null)
         {
@@ -112,13 +113,20 @@ internal sealed class StopCommand : Command
             }
 
             await StateManager.DeleteStateAsync(orphan, cancellationToken);
-            return 0;
+            recoveredOrphan = true;
         }
 
+        // A dead instance's legacy record can share its PID with a newer live instance,
+        // whose record the identity-checked deletion above keeps. Stop that one too.
         var state = await StateManager.LoadStateByPidAsync(pid, cancellationToken);
-        if (state is not null)
+        if (state is not null && (!recoveredOrphan || StateManager.IsInstanceAlive(state)))
         {
             return await StopInstanceAsync(state, force, reporter, cancellationToken);
+        }
+
+        if (recoveredOrphan)
+        {
+            return 0;
         }
 
         reporter.Report(pid, "notRunning", $"No running Dev Proxy instance with PID {pid}.");
