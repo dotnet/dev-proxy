@@ -546,11 +546,38 @@ internal static partial class OpenApiSchemaValidator
         return matches;
     }
 
-    // integers can exceed the range of long and decimal, e.g. when the schema doesn't limit them
+    // checks the raw JSON number exactly: integers can exceed the range of long
+    // and decimal, and conversions round away fractions such as 1.00000000000000000000000000001
     private static bool IsInteger(JsonElement value) =>
-        value.TryGetInt64(out _) ||
-        (value.TryGetDecimal(out var d) && decimal.Truncate(d) == d) ||
-        BigInteger.TryParse(value.GetRawText(), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out _);
+        value.TryGetInt64(out _) || IsIntegralJsonNumber(value.GetRawText());
+
+    private static bool IsIntegralJsonNumber(string number)
+    {
+        var text = number.AsSpan().TrimStart('-');
+        var exponentIndex = text.IndexOfAny('e', 'E');
+        var exponent = BigInteger.Zero;
+        if (exponentIndex >= 0)
+        {
+            if (!BigInteger.TryParse(text[(exponentIndex + 1)..], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out exponent))
+            {
+                return false;
+            }
+            text = text[..exponentIndex];
+        }
+
+        var dotIndex = text.IndexOf('.');
+        var integerPart = dotIndex >= 0 ? text[..dotIndex] : text;
+        var fraction = dotIndex >= 0 ? text[(dotIndex + 1)..] : [];
+        var digits = string.Concat(integerPart, fraction);
+        var significant = digits.TrimEnd('0');
+        if (significant.TrimStart('0').Length == 0)
+        {
+            return true;
+        }
+
+        // value = significant digits * 10^(exponent - fraction digits + trailing zeros)
+        return exponent - fraction.Length + (digits.Length - significant.Length) >= 0;
+    }
 
     private static void ValidateEnum(JsonElement value, IOpenApiSchema schema, string path, List<SchemaValidationError> errors, bool strictNullableEnums)
     {

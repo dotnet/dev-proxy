@@ -1054,6 +1054,48 @@ public sealed class OpenApiValidationPluginTests : IDisposable
         Assert.Contains(logger.Warnings, w => w.Contains("broken.yaml' has errors", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData("1.00000000000000000000000000001", false)]
+    [InlineData("10000000000000000000000000000.1", false)]
+    [InlineData("1.5", false)]
+    [InlineData("1e-1", false)]
+    [InlineData("1e100", true)]
+    [InlineData("1.5e1", true)]
+    [InlineData("-2.55E1", false)]
+    [InlineData("-2.50E1", true)]
+    [InlineData("1.000", true)]
+    [InlineData("0.0e-5", true)]
+    [InlineData("18446744073709551615", true)]
+    public async Task ClassifiesIntegerBodiesExactly(string body, bool isInteger)
+    {
+        var plugin = await CreatePluginWithSpecsAsync(("integer.yaml", """
+            openapi: 3.0.3
+            info: { title: Integer, version: '1.0' }
+            servers:
+              - url: https://api.fabrikam.com
+            paths:
+              /integer-body:
+                get:
+                  responses:
+                    '200':
+                      description: ok
+                      content:
+                        application/json:
+                          schema: { type: integer }
+            """));
+
+        var messages = Messages(plugin.Validate(Get("https://api.fabrikam.com/integer-body", HttpStatusCode.OK, body).Session));
+
+        if (isInteger)
+        {
+            Assert.Empty(messages);
+        }
+        else
+        {
+            Assert.Equal("$: Expected integer but got number", Assert.Single(messages));
+        }
+    }
+
     [Fact]
     public async Task ValidatesBodiesUsingDeclaredCharset()
     {
