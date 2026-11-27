@@ -125,6 +125,30 @@ public sealed class BaseLoaderSchemaValidationTests : IDisposable
         Assert.Contains(logger.Messages, m => m.LogLevel == LogLevel.Error);
     }
 
+    [Theory]
+    [InlineData("""{ "$schema": null, "name": }""")]
+    [InlineData("""{ "$schema": "", "name": }""")]
+    public async Task DoesNotLoadInvalidJsonAfterEmptySchemaReference(string contents)
+    {
+        var logger = new RecordingLogger();
+
+        var loader = await LoadAsync(_ => new(HttpStatusCode.OK) { Content = new StringContent(Schema) }, logger, contents: contents);
+
+        Assert.Null(loader.Contents);
+        Assert.Contains(logger.Messages, m => m.LogLevel == LogLevel.Error);
+    }
+
+    [Fact]
+    public async Task DoesNotLoadInvalidJsonWhenSchemaCannotBeRetrieved()
+    {
+        var logger = new RecordingLogger();
+
+        var loader = await LoadAsync(_ => throw new HttpRequestException("Connection refused"), logger, contents: $$"""{ "$schema": "{{_schemaUrl}}", "name": }""");
+
+        Assert.Null(loader.Contents);
+        Assert.Contains(logger.Messages, m => m.LogLevel == LogLevel.Error);
+    }
+
     [Fact]
     public async Task KeepsLoadedDataWhenReloadedFileIsInvalidJson()
     {

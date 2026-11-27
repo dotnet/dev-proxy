@@ -127,6 +127,7 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
         if (string.IsNullOrEmpty(schemaUrl))
         {
             Logger.LogDebug("Schema reference not found in file {File}. Skipping schema validation", FilePath);
+            EnsureValidJson(fileContents);
             return true;
         }
 
@@ -150,6 +151,7 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
             {
                 Logger.LogWarning("Skipping schema validation for {File} because the schema {SchemaUrl} could not be retrieved: {Error}", FilePath, schemaUrl, string.Join(", ", result.Errors));
             }
+            EnsureValidJson(fileContents);
             return true;
         }
 
@@ -163,6 +165,14 @@ public abstract class BaseLoader(HttpClient httpClient, ILogger logger, IProxyCo
         }
 
         return true;
+    }
+
+    // Without schema validation, JSON that's invalid after the $schema property
+    // must still be rejected, so that it doesn't replace previously loaded data
+    private static void EnsureValidJson(Stream fileContents)
+    {
+        ProxyUtils.EnsureValidJson(fileContents);
+        fileContents.Position = 0;
     }
 
     private async Task LoadFileContentsAsync(CancellationToken cancellationToken)

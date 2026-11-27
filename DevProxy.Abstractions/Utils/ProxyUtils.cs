@@ -482,7 +482,7 @@ public static class ProxyUtils
     /// so that callers can skip validation instead of treating the document as invalid.
     /// </returns>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
-    public static Task<SchemaValidationResult> ValidateJsonAgainstSchemaAsync(Stream json, string? schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken) =>
+    internal static Task<SchemaValidationResult> ValidateJsonAgainstSchemaAsync(Stream json, string? schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken) =>
         ValidateJsonAgainstSchemaAsync(json, schemaUrl, httpClient, logger, Path.Combine(AppFolder ?? string.Empty, "schemas"), NormalizeVersion(ProductVersion), remoteSchemaFallbackTimeout, cancellationToken);
 
     internal static Task<SchemaValidationResult> ValidateJsonAgainstSchemaAsync(Stream json, string? schemaUrl, HttpClient httpClient, ILogger logger, string? localSchemasFolder, string currentVersion, TimeSpan remoteSchemaFallbackTimeout, CancellationToken cancellationToken)
@@ -551,7 +551,18 @@ public static class ProxyUtils
     /// <returns>The schema URL, or <c>null</c> if the root isn't an object or doesn't have a <c>$schema</c> property.</returns>
     /// <exception cref="JsonException">The JSON is invalid before the <c>$schema</c> property is found.</exception>
     /// <exception cref="InvalidOperationException">The <c>$schema</c> property isn't a string.</exception>
-    public static string? ReadSchemaReference(Stream utf8Json)
+    public static string? ReadSchemaReference(Stream utf8Json) =>
+        ReadSchemaReference(utf8Json, readToEnd: false);
+
+    /// <summary>
+    /// Reads UTF-8 JSON to the end without materializing it, to check that it's valid JSON.
+    /// The stream is read from its current position and isn't disposed.
+    /// </summary>
+    /// <exception cref="JsonException">The JSON is invalid.</exception>
+    internal static void EnsureValidJson(Stream utf8Json) =>
+        _ = ReadSchemaReference(utf8Json, readToEnd: true);
+
+    private static string? ReadSchemaReference(Stream utf8Json, bool readToEnd)
     {
         ArgumentNullException.ThrowIfNull(utf8Json);
 
@@ -573,6 +584,7 @@ public static class ProxyUtils
             }
 
             var isSchemaValue = false;
+            string? schemaUrl = null;
             bool? isRootObject = null;
             while (true)
             {
@@ -588,12 +600,18 @@ public static class ProxyUtils
                 {
                     if (isSchemaValue)
                     {
-                        return reader.TokenType switch
+                        isSchemaValue = false;
+                        schemaUrl = reader.TokenType switch
                         {
                             JsonTokenType.String => reader.GetString(),
                             JsonTokenType.Null => null,
                             _ => throw new InvalidOperationException("The $schema property must be a string")
                         };
+                        if (!readToEnd)
+                        {
+                            return schemaUrl;
+                        }
+                        continue;
                     }
 
                     // keep reading a root that isn't an object, so that invalid JSON is reported
@@ -609,7 +627,7 @@ public static class ProxyUtils
 
                 if (isFinalBlock)
                 {
-                    return null;
+                    return schemaUrl;
                 }
 
                 state = reader.CurrentState;
