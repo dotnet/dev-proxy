@@ -180,8 +180,7 @@ internal static class MacOSNetworkSetup
 
     /// <summary>
     /// Builds the <c>networksetup</c> argument lists that put back a service's previous
-    /// proxy server and state. Assumes the proxy has already been turned off for every
-    /// service, so endpoints without a previous server need no commands.
+    /// proxy server and state. Endpoints without a previous server are turned off.
     /// </summary>
     public static List<string[]> GetRestoreCommands(MacOSServiceProxySettings settings)
     {
@@ -200,6 +199,7 @@ internal static class MacOSNetworkSetup
     {
         if (endpoint is null || string.IsNullOrEmpty(endpoint.Server) || endpoint.Port <= 0)
         {
+            commands.Add([setStateCommand, service, "off"]);
             return;
         }
 

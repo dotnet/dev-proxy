@@ -51,11 +51,14 @@ sealed class SystemProxyCommand : Command
     /// Builds a minimal command tree mirroring the registered <c>system-proxy reset</c>
     /// command and the global options, so the standalone path parses arguments the same way.
     /// </summary>
-    private static (RootCommand RootCommand, Option<bool> ForceOption) CreateStandaloneResetParser()
+    internal static (RootCommand RootCommand, Option<bool> ForceOption) CreateStandaloneResetParser()
     {
         var forceOption = new Option<bool>("--force", "-f");
         var resetCommand = new Command("reset") { forceOption };
         var rootCommand = new RootCommand { new Command("system-proxy") { resetCommand } };
+        // Accepted only so invocations (or shell aliases) that pass a config file keep working.
+        // Reset doesn't load or validate it.
+        rootCommand.Options.Add(new Option<string?>(DevProxyCommand.ConfigFileOptionName, "-c"));
         rootCommand.Options.Add(new Option<OutputFormat?>(DevProxyCommand.OutputOptionName) { Recursive = true });
         rootCommand.Options.Add(new Option<LogLevel?>(DevProxyCommand.LogLevelOptionName) { Recursive = true });
         rootCommand.Options.Add(new Option<bool>(DevProxyCommand.NoColorOptionName) { Recursive = true, Arity = ArgumentArity.Zero });

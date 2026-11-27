@@ -41,7 +41,8 @@ internal enum SystemProxyRestoreResult
 ///   Windows → registry ProxyServer   Windows → registry ProxyServer/ProxyEnable
 ///             + ProxyEnable = 1                (or ProxyEnable = 0) + WinINET refresh
 ///             + WinINET refresh
-///   macOS   → toggle-proxy.sh on …   macOS   → toggle-proxy.sh off + networksetup
+///   macOS   → toggle-proxy.sh on …   macOS   → networksetup for the recorded services
+///                                              (toggle-proxy.sh off without a snapshot)
 ///   Linux   → log warning            Linux   → no-op
 /// </code>
 ///
@@ -147,14 +148,13 @@ internal sealed class SystemProxyManager : ISystemProxyManager
         }
         else
         {
-            succeeded = RunToggleScript("off");
+            // Only touch the services recorded in the snapshot: services added while Dev
+            // Proxy ran weren't changed by it, so turning their proxy off would lose their
+            // settings. Without a snapshot, turn the proxy off for every service.
             restoredPrevious = snapshot?.MacOS is not null;
-            // Restore even if turning off failed for some services, so the services that
-            // did turn off get their previous proxy back. Either failure keeps the snapshot.
-            if (restoredPrevious && !RestoreMacOS(snapshot!.MacOS!))
-            {
-                succeeded = false;
-            }
+            succeeded = restoredPrevious
+                ? RestoreMacOS(snapshot!.MacOS!)
+                : RunToggleScript("off");
         }
 
         if (!succeeded)
@@ -163,11 +163,18 @@ internal sealed class SystemProxyManager : ISystemProxyManager
             return SystemProxyRestoreResult.Failed;
         }
 
+        // Retire the registrations before deleting the snapshot. If that fails, a live
+        // instance would still claim the system proxy and could undo the restored settings
+        // when it stops or after it crashes, so report failure and keep the snapshot for a retry.
+        if (!RetireSystemProxyRegistrations())
+        {
+            return SystemProxyRestoreResult.Failed;
+        }
+
         if (snapshot is not null)
         {
             SystemProxySnapshotStore.Delete(_snapshotPath);
         }
-        RetireSystemProxyRegistrations();
         return restoredPrevious
             ? SystemProxyRestoreResult.RestoredPrevious
             : SystemProxyRestoreResult.Disabled;
@@ -223,15 +230,17 @@ internal sealed class SystemProxyManager : ISystemProxyManager
     /// longer owning it, and records of dead ones are removed. Otherwise, stopping or
     /// recovering after any of them would change the restored settings again.
     /// </summary>
-    private void RetireSystemProxyRegistrations()
+    private bool RetireSystemProxyRegistrations()
     {
         try
         {
             RunSynchronously(RetireSystemProxyRegistrationsAsync());
+            return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _logger.LogWarning(ex, "Couldn't update the records of Dev Proxy instances registered as the system proxy.");
+            _logger.LogError(ex, "Couldn't update the records of Dev Proxy instances registered as the system proxy.");
+            return false;
         }
     }
 

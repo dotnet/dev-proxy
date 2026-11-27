@@ -172,7 +172,7 @@ public class MacOSNetworkSetupTests
     }
 
     [Fact]
-    public void GetRestoreCommands_NoPreviousServer_ReturnsNoCommands()
+    public void GetRestoreCommands_NoPreviousServer_TurnsEndpointsOff()
     {
         var settings = new MacOSServiceProxySettings
         {
@@ -181,7 +181,11 @@ public class MacOSNetworkSetupTests
             SecureWeb = null,
         };
 
-        Assert.Empty(MacOSNetworkSetup.GetRestoreCommands(settings));
+        var commands = MacOSNetworkSetup.GetRestoreCommands(settings);
+
+        Assert.Equal(2, commands.Count);
+        Assert.Equal(["-setwebproxystate", "Wi-Fi", "off"], commands[0]);
+        Assert.Equal(["-setsecurewebproxystate", "Wi-Fi", "off"], commands[1]);
     }
 }
 
@@ -280,6 +284,12 @@ public class SystemProxyResetDetectionTests
     [InlineData("--log-level", "debug", "system-proxy", "reset", "--bogus")]
     public void IsResetInvocation_ReturnsTrue(params string[] args) =>
         Assert.True(DevProxy.Commands.SystemProxyCommand.IsResetInvocation(args));
+
+    [Theory]
+    [InlineData("-c", "missing/devproxyrc.json", "system-proxy", "reset")]
+    [InlineData("--config-file", "missing/devproxyrc.json", "--output", "json", "system-proxy", "reset")]
+    public void StandaloneResetParser_AcceptsConfigFileWithoutValidatingIt(params string[] args) =>
+        Assert.Empty(DevProxy.Commands.SystemProxyCommand.CreateStandaloneResetParser().RootCommand.Parse(args).Errors);
 
     [Theory]
     [InlineData("system-proxy")]
