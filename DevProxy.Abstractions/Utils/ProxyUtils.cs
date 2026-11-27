@@ -40,6 +40,10 @@ public static class ProxyUtils
     private static readonly Regex allAlphaRegex = new("^[a-z2]+$", RegexOptions.IgnoreCase);
     private static readonly Regex deprecationRegex = new("^[a-z]+_v2$", RegexOptions.IgnoreCase);
     private static readonly Regex functionCallRegex = new(@"^[a-z][a-z0-9_.]*\(.*\)$", RegexOptions.IgnoreCase);
+    private static readonly TimeSpan remoteSchemaFallbackTimeout = TimeSpan.FromSeconds(5);
+    private static readonly Regex devProxySchemaUrlRegex = new(
+        @"^https://raw\.githubusercontent\.com/dotnet/dev-proxy/main/schemas/v(?<version>[^/]+)/(?<file>[A-Za-z0-9_.-]+\.json)$",
+        RegexOptions.IgnoreCase);
 
     private static Assembly? _assembly;
     private static string _productVersion = string.Empty;
@@ -283,7 +287,8 @@ public static class ProxyUtils
     /// <summary>
     /// Validates <paramref name="json"/> against the schema at <paramref name="schemaUrl"/>.
     /// Reports a schema that couldn't be retrieved as invalid. Use
-    /// <see cref="ValidateJsonAgainstSchemaAsync"/> to tell these cases apart.
+    /// <see cref="ValidateJsonAgainstSchemaAsync(string?, string?, HttpClient, ILogger, CancellationToken)"/>
+    /// to tell these cases apart.
     /// </summary>
     public static async Task<(bool IsValid, IEnumerable<string> ValidationErrors)> ValidateJsonAsync(string? json, string? schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken)
     {
@@ -301,62 +306,186 @@ public static class ProxyUtils
 
     /// <summary>
     /// Validates <paramref name="json"/> against the schema at <paramref name="schemaUrl"/>.
+    /// Schemas for the current Dev Proxy version are loaded from the schemas shipped with
+    /// Dev Proxy, and only downloaded when the document doesn't match the local schema.
     /// </summary>
     /// <returns>
-    /// The validation result. If the schema can't be downloaded or parsed, for example when
+    /// The validation result. If the schema can't be loaded, downloaded or parsed, for example when
     /// there's no network connection, the status is <see cref="SchemaValidationStatus.SchemaUnavailable"/>
     /// so that callers can skip validation instead of treating the document as invalid.
     /// </returns>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
-    public static async Task<SchemaValidationResult> ValidateJsonAgainstSchemaAsync(string? json, string? schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken)
+    public static Task<SchemaValidationResult> ValidateJsonAgainstSchemaAsync(string? json, string? schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken) =>
+        ValidateJsonAgainstSchemaAsync(json, schemaUrl, httpClient, logger, Path.Combine(AppFolder ?? string.Empty, "schemas"), NormalizeVersion(ProductVersion), remoteSchemaFallbackTimeout, cancellationToken);
+
+    internal static Task<SchemaValidationResult> ValidateJsonAgainstSchemaAsync(string? json, string? schemaUrl, HttpClient httpClient, ILogger logger, string? localSchemasFolder, string currentVersion, TimeSpan remoteSchemaFallbackTimeout, CancellationToken cancellationToken)
     {
         logger.LogDebug("Validating JSON against schema {SchemaUrl}", schemaUrl);
 
         if (string.IsNullOrEmpty(json))
         {
             logger.LogDebug("JSON is empty, skipping validation");
-            return new(SchemaValidationStatus.Valid, []);
+            return Task.FromResult(new SchemaValidationResult(SchemaValidationStatus.Valid, []));
         }
         if (string.IsNullOrEmpty(schemaUrl))
         {
             logger.LogDebug("Schema URL is empty, skipping validation");
-            return new(SchemaValidationStatus.Valid, []);
+            return Task.FromResult(new SchemaValidationResult(SchemaValidationStatus.Valid, []));
         }
 
-        var (schema, schemaError) = await TryGetSchemaAsync(schemaUrl, httpClient, logger, cancellationToken);
-        if (schema is null)
+        return ValidateAgainstSchemaAsync(() => JToken.Parse(json), schemaUrl, httpClient, logger, localSchemasFolder, currentVersion, remoteSchemaFallbackTimeout, cancellationToken);
+    }
+
+    /// <summary>
+    /// Returns the path of the schema shipped with Dev Proxy that corresponds
+    /// to the given schema URL, or null if the URL doesn't point to a Dev Proxy
+    /// schema for the current version or the schema isn't available locally.
+    /// </summary>
+    internal static string? GetLocalSchemaPath(string? schemaUrl, string? currentVersion, string? localSchemasFolder)
+    {
+        if (string.IsNullOrEmpty(schemaUrl) ||
+            string.IsNullOrEmpty(currentVersion) ||
+            string.IsNullOrEmpty(localSchemasFolder))
         {
-            return schemaError!;
+            return null;
+        }
+
+        var match = devProxySchemaUrlRegex.Match(schemaUrl);
+        if (!match.Success ||
+            !string.Equals(match.Groups["version"].Value, currentVersion, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var localSchemaPath = Path.Combine(localSchemasFolder, match.Groups["file"].Value);
+        return File.Exists(localSchemaPath) ? localSchemaPath : null;
+    }
+
+    private static async Task<SchemaValidationResult> ValidateAgainstSchemaAsync(Func<JToken> parseJson, string schemaUrl, HttpClient httpClient, ILogger logger, string? localSchemasFolder, string currentVersion, TimeSpan remoteSchemaFallbackTimeout, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // parse the JSON at most once, because a stream can only be read once
+        JToken? token = null;
+        Exception? parseError = null;
+        SchemaValidationResult Validate(JSchema schema)
+        {
+            if (token is null && parseError is null)
+            {
+                try
+                {
+                    logger.LogDebug("Parsing JSON");
+                    token = parseJson();
+                }
+                catch (Exception ex)
+                {
+                    parseError = ex;
+                }
+            }
+
+            if (parseError is not null)
+            {
+                logger.LogDebug(parseError, "Error validating JSON");
+                return new(SchemaValidationStatus.Invalid, [parseError.Message]);
+            }
+
+            try
+            {
+                logger.LogDebug("Validating JSON");
+                var isValid = token!.IsValid(schema, out IList<string> errorMessages);
+                return new(isValid ? SchemaValidationStatus.Valid : SchemaValidationStatus.Invalid, errorMessages);
+            }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "Error validating JSON");
+                return new(SchemaValidationStatus.Invalid, [ex.Message]);
+            }
+        }
+
+        var localSchema = await LoadLocalSchemaAsync(schemaUrl, logger, localSchemasFolder, currentVersion, cancellationToken);
+        if (localSchema is not null)
+        {
+            var localResult = Validate(localSchema);
+            // an updated schema can't fix JSON that can't be parsed
+            if (localResult.Status == SchemaValidationStatus.Valid || parseError is not null)
+            {
+                return localResult;
+            }
+
+            // The schema might have been fixed after the release, so check
+            // the latest version online before reporting the document as invalid
+            JSchema remoteSchema;
+            try
+            {
+                logger.LogDebug("JSON doesn't match the local schema. Checking the online schema for updates");
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeoutCts.CancelAfter(remoteSchemaFallbackTimeout);
+                remoteSchema = await GetSchemaAsync(schemaUrl, httpClient, logger, timeoutCts.Token);
+            }
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                logger.LogDebug(ex, "Couldn't retrieve schema {SchemaUrl}. Using the local schema validation result", schemaUrl);
+                return localResult;
+            }
+
+            return Validate(remoteSchema);
+        }
+
+        JSchema schema;
+        try
+        {
+            schema = await GetSchemaAsync(schemaUrl, httpClient, logger, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Error retrieving schema {SchemaUrl}", schemaUrl);
+            return new(SchemaValidationStatus.SchemaUnavailable, [ex.Message]);
+        }
+
+        return Validate(schema);
+    }
+
+    private static async Task<JSchema?> LoadLocalSchemaAsync(string schemaUrl, ILogger logger, string? localSchemasFolder, string currentVersion, CancellationToken cancellationToken)
+    {
+        var localSchemaPath = GetLocalSchemaPath(schemaUrl, currentVersion, localSchemasFolder);
+        if (localSchemaPath is null)
+        {
+            return null;
         }
 
         try
         {
-            logger.LogDebug("Parsing JSON");
-            var token = JToken.Parse(json);
-
-            logger.LogDebug("Validating JSON");
-            var isValid = token.IsValid(schema, out IList<string> errorMessages);
-
-            return new(isValid ? SchemaValidationStatus.Valid : SchemaValidationStatus.Invalid, errorMessages);
+            logger.LogDebug("Loading local schema {LocalSchemaPath} for {SchemaUrl}", localSchemaPath, schemaUrl);
+            var schemaContents = await File.ReadAllTextAsync(localSchemaPath, cancellationToken);
+            return JSchema.Parse(schemaContents);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JSchemaReaderException or Newtonsoft.Json.JsonReaderException)
         {
-            logger.LogDebug(ex, "Error validating JSON");
-            return new(SchemaValidationStatus.Invalid, [ex.Message]);
+            logger.LogDebug(ex, "Couldn't load local schema {LocalSchemaPath}", localSchemaPath);
+            return null;
         }
     }
 
     /// <summary>
     /// Validates UTF-8 JSON read from <paramref name="json"/> against the schema at <paramref name="schemaUrl"/>.
     /// The stream is read from its current position and isn't disposed.
+    /// Schemas for the current Dev Proxy version are loaded from the schemas shipped with
+    /// Dev Proxy, and only downloaded when the document doesn't match the local schema.
     /// </summary>
     /// <returns>
-    /// The validation result. If the schema can't be downloaded or parsed, for example when
+    /// The validation result. If the schema can't be loaded, downloaded or parsed, for example when
     /// there's no network connection, the status is <see cref="SchemaValidationStatus.SchemaUnavailable"/>
     /// so that callers can skip validation instead of treating the document as invalid.
     /// </returns>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
-    public static async Task<SchemaValidationResult> ValidateJsonAgainstSchemaAsync(Stream json, string? schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken)
+    public static Task<SchemaValidationResult> ValidateJsonAgainstSchemaAsync(Stream json, string? schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken) =>
+        ValidateJsonAgainstSchemaAsync(json, schemaUrl, httpClient, logger, Path.Combine(AppFolder ?? string.Empty, "schemas"), NormalizeVersion(ProductVersion), remoteSchemaFallbackTimeout, cancellationToken);
+
+    internal static Task<SchemaValidationResult> ValidateJsonAgainstSchemaAsync(Stream json, string? schemaUrl, HttpClient httpClient, ILogger logger, string? localSchemasFolder, string currentVersion, TimeSpan remoteSchemaFallbackTimeout, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(json);
         ArgumentNullException.ThrowIfNull(logger);
@@ -366,73 +495,37 @@ public static class ProxyUtils
         if (json.CanSeek && json.Length - json.Position == 0)
         {
             logger.LogDebug("JSON is empty, skipping validation");
-            return new(SchemaValidationStatus.Valid, []);
+            return Task.FromResult(new SchemaValidationResult(SchemaValidationStatus.Valid, []));
         }
         if (string.IsNullOrEmpty(schemaUrl))
         {
             logger.LogDebug("Schema URL is empty, skipping validation");
-            return new(SchemaValidationStatus.Valid, []);
+            return Task.FromResult(new SchemaValidationResult(SchemaValidationStatus.Valid, []));
         }
 
-        var (schema, schemaError) = await TryGetSchemaAsync(schemaUrl, httpClient, logger, cancellationToken);
-        if (schema is null)
-        {
-            return schemaError!;
-        }
-
-        try
-        {
-            logger.LogDebug("Parsing JSON");
-            JToken token;
-            // the JSON is read from a local or in-memory stream, where sync reads are cheaper than async ones
-#pragma warning disable CA1849
-            using (var streamReader = new StreamReader(json, leaveOpen: true))
-            using (var jsonReader = new Newtonsoft.Json.JsonTextReader(streamReader))
-            {
-                token = JToken.Load(jsonReader);
-                // same as JToken.Parse: fail on anything other than comments after the root value
-                while (jsonReader.Read())
-                {
-                }
-            }
-#pragma warning restore CA1849
-
-            logger.LogDebug("Validating JSON");
-            var isValid = token.IsValid(schema, out IList<string> errorMessages);
-
-            return new(isValid ? SchemaValidationStatus.Valid : SchemaValidationStatus.Invalid, errorMessages);
-        }
-        catch (Exception ex)
-        {
-            logger.LogDebug(ex, "Error validating JSON");
-            return new(SchemaValidationStatus.Invalid, [ex.Message]);
-        }
+        return ValidateAgainstSchemaAsync(() => ParseJson(json), schemaUrl, httpClient, logger, localSchemasFolder, currentVersion, remoteSchemaFallbackTimeout, cancellationToken);
     }
 
-    /// <returns>The schema, or <c>null</c> and a <see cref="SchemaValidationStatus.SchemaUnavailable"/>
-    /// result if the schema couldn't be downloaded or parsed.</returns>
-    private static async Task<(JSchema? Schema, SchemaValidationResult? Error)> TryGetSchemaAsync(string schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken)
+    private static JToken ParseJson(Stream json)
     {
-        try
+        // the JSON is read from a local or in-memory stream, where sync reads are cheaper than async ones
+#pragma warning disable CA1849
+        using var streamReader = new StreamReader(json, leaveOpen: true);
+        using var jsonReader = new Newtonsoft.Json.JsonTextReader(streamReader);
+        var token = JToken.Load(jsonReader);
+        // same as JToken.Parse: fail on anything other than comments after the root value
+        while (jsonReader.Read())
         {
-            ArgumentNullException.ThrowIfNull(httpClient);
-            return (await GetSchemaAsync(schemaUrl, httpClient, logger, cancellationToken), null);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            logger.LogDebug(ex, "Error retrieving schema {SchemaUrl}", schemaUrl);
-            return (null, new(SchemaValidationStatus.SchemaUnavailable, [ex.Message]));
-        }
+#pragma warning restore CA1849
+        return token;
     }
 
-    // Schemas are downloaded once per process. Changes to a schema
+    // Downloaded schemas are cached per process. Changes to a schema
     // published online are picked up the next time Dev Proxy starts.
     private static async Task<JSchema> GetSchemaAsync(string schemaUrl, HttpClient httpClient, ILogger logger, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(httpClient);
         cancellationToken.ThrowIfCancellationRequested();
 
         if (_schemaCache.TryGetValue(schemaUrl, out var cachedSchema))

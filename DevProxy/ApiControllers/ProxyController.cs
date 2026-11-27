@@ -40,6 +40,13 @@ public sealed class ProxyController(IProxyStateController proxyStateController, 
             return ValidationProblem(ModelState);
         }
 
+        if (proxyInfo.Reports != null)
+        {
+            ModelState.AddModelError("Reports", "Reports cannot be set");
+            return ValidationProblem(ModelState);
+        }
+
+        IReadOnlyList<string>? reports = null;
         if (proxyInfo.Recording.HasValue)
         {
             if (proxyInfo.Recording.Value)
@@ -48,11 +55,13 @@ public sealed class ProxyController(IProxyStateController proxyStateController, 
             }
             else
             {
-                await _proxyStateController.StopRecordingAsync(cancellationToken);
+                reports = await _proxyStateController.StopRecordingAsync(cancellationToken);
             }
         }
 
-        return Ok(ProxyInfo.From(_proxyStateController.ProxyState, _proxyConfiguration));
+        var result = ProxyInfo.From(_proxyStateController.ProxyState, _proxyConfiguration);
+        result.Reports = reports;
+        return Ok(result);
     }
 
     [HttpPost("mockRequest")]

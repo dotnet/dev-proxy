@@ -39,6 +39,14 @@ internal sealed class CrudApiDataLoader(
             while (jsonReader.Read())
             {
             }
+            for (var i = data.Count - 1; i >= 0; i--)
+            {
+                if (data[i].Type == JTokenType.Null)
+                {
+                    Logger.LogWarning("Ignoring null entry {Path} in {File}", $"$[{i}]", FilePath);
+                    data.RemoveAt(i);
+                }
+            }
             _onDataLoaded(data);
             Logger.LogInformation(
                 "Data for CRUD API loaded from {DataFile} for API {ApiFile}",

@@ -37,6 +37,11 @@ internal sealed class LanguageModelPricesLoader(
                 foreach (var modelProperty in pricesElement.EnumerateObject())
                 {
                     var modelName = modelProperty.Name;
+                    if (modelProperty.Value.ValueKind != JsonValueKind.Object)
+                    {
+                        Logger.LogWarning("Ignoring invalid prices entry {Path} in {File}", $"prices.{modelName}", FilePath);
+                        continue;
+                    }
                     if (modelProperty.Value.TryGetProperty("input", out var inputElement) &&
                         modelProperty.Value.TryGetProperty("output", out var outputElement))
                     {

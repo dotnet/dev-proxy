@@ -30,6 +30,7 @@ internal sealed class WebSocketMockResponsesLoader(
         try
         {
             var config = JsonSerializer.Deserialize<WebSocketMockResponseConfiguration>(fileContents, ProxyUtils.JsonSerializerOptions);
+            RemoveNullEntries(config);
             var mocks = config?.Mocks;
             if (mocks is not null)
             {

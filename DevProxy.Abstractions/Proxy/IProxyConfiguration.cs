@@ -56,3 +56,12 @@ public interface IProcessTreeProxyConfiguration
 {
     bool WatchProcessTree { get; set; }
 }
+
+public interface IReportsProxyConfiguration
+{
+    /// <summary>
+    /// Absolute path of the folder where reporters write report files.
+    /// When null or empty, reports are written to the current working directory.
+    /// </summary>
+    string? ReportsFolder { get; set; }
+}

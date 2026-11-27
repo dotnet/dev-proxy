@@ -29,6 +29,7 @@ internal sealed class RewritesLoader(
         try
         {
             var rewritesConfig = JsonSerializer.Deserialize<RewritePluginConfiguration>(fileContents, ProxyUtils.JsonSerializerOptions);
+            RemoveNullEntries(rewritesConfig);
             var configRewrites = rewritesConfig?.Rewrites;
             if (configRewrites is not null)
             {
