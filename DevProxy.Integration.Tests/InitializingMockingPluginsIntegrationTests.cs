@@ -105,4 +105,63 @@ public sealed class InitializingMockingPluginsIntegrationTests
             dir.Delete(recursive: true);
         }
     }
+
+    [Fact]
+    public async Task CrudApiPlugin_RolesWithOnlyNullEntries_RejectsApiDefinition()
+    {
+        await using var origin = await FakeOrigin.StartAsync();
+
+        var dir = Directory.CreateTempSubdirectory("devproxy-crud-");
+        try
+        {
+            var baseUrl = $"http://{origin.Host}/api/items";
+            await File.WriteAllTextAsync(
+                Path.Combine(dir.FullName, "data.json"),
+                """[ { "id": 1, "name": "alpha" } ]""");
+            await File.WriteAllTextAsync(
+                Path.Combine(dir.FullName, "api.json"),
+                $$"""
+                {
+                  "baseUrl": "{{baseUrl}}",
+                  "dataFile": "data.json",
+                  "auth": "entra",
+                  "entraAuthConfig": { "roles": [ null ] },
+                  "actions": [ { "action": "getAll", "url": "" } ]
+                }
+                """);
+
+            var apiFile = Path.Combine(dir.FullName, "api.json");
+            var proxyConfig = new TestProxyConfiguration
+            {
+                ConfigFile = Path.Combine(dir.FullName, "devproxyrc.json"),
+            };
+            var config = PluginConfig.FromJson($$"""{ "apiFile": "{{apiFile.Replace("\\", "\\\\", StringComparison.Ordinal)}}" }""");
+
+            var plugin = new CrudApiPlugin(
+                TestDefaults.HttpClient,
+                NullLogger<CrudApiPlugin>.Instance,
+                KestrelProxyHarness.BuildUrlsToWatch(origin.Host),
+                proxyConfig,
+                config);
+
+            using var host = new PluginTestHost(proxyConfig);
+            await plugin.InitializeAsync(host.CreateInitArgs(), CancellationToken.None);
+
+            await using var proxy = await KestrelProxyHarness.StartAsync(origin.Host, [plugin]);
+            using var client = proxy.CreateHttpClient();
+
+            // unsigned token without roles; accepted if the roles restriction is dropped
+            using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(baseUrl));
+            request.Headers.Authorization = new("Bearer", "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJ0ZXN0In0.");
+            using var response = await client.SendAsync(request);
+            var body = await response.Content.ReadAsStringAsync();
+
+            // The API definition isn't loaded, so the data must not be served.
+            Assert.DoesNotContain("alpha", body, StringComparison.Ordinal);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
 }
