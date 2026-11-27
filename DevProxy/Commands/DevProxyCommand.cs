@@ -198,26 +198,44 @@ sealed class DevProxyCommand : RootCommand
 
         // Plugin options aren't registered yet when logging is configured, so allow unknown
         // options (and their values) before cert. A bare word before cert that no option
-        // consumes, or any other built-in command name, means another command was invoked
-        // (devproxy --failure-rate 10 jwt create --name cert ...).
+        // consumes means another command was invoked (devproxy jwt create --name cert ...).
+        // A built-in command name is only taken as an unknown option's value when it directly
+        // follows the option (--mocks-file config) and isn't followed by another bare word
+        // (--failure-rate 10 jwt create, --mock-flag jwt create).
         var rootOptionTokens = parseResult.RootCommandResult.Children
             .OfType<OptionResult>()
             .SelectMany(o => o.IdentifierToken is null ? o.Tokens : o.Tokens.Prepend(o.IdentifierToken))
             .ToHashSet();
         var afterUnknownOption = false;
+        var valuesAfterUnknownOption = 0;
+        var previousMayBeCommand = false;
         foreach (var token in parseResult.Tokens.TakeWhile(t => !ReferenceEquals(t, certResult.IdentifierToken)))
         {
             if (rootOptionTokens.Contains(token))
             {
                 afterUnknownOption = false;
+                previousMayBeCommand = false;
             }
             else if (token.Value.StartsWith('-'))
             {
                 afterUnknownOption = true;
+                valuesAfterUnknownOption = 0;
+                previousMayBeCommand = false;
             }
-            else if (!afterUnknownOption || otherBuiltInCommandNames.Contains(token.Value))
+            else if (!afterUnknownOption || previousMayBeCommand)
             {
                 return false;
+            }
+            else
+            {
+                var isCommandName = otherBuiltInCommandNames.Contains(token.Value);
+                if (isCommandName && valuesAfterUnknownOption > 0)
+                {
+                    return false;
+                }
+
+                previousMayBeCommand = isCommandName;
+                valuesAfterUnknownOption++;
             }
         }
 
