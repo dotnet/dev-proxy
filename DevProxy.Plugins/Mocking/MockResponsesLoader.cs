@@ -26,6 +26,7 @@ internal sealed class MockResponsesLoader(
         try
         {
             var responsesConfig = JsonSerializer.Deserialize<MockResponseConfiguration>(fileContents, ProxyUtils.JsonSerializerOptions);
+            RemoveNullEntries(responsesConfig);
             var configResponses = responsesConfig?.Mocks;
             if (configResponses is not null)
             {

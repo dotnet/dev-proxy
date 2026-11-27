@@ -27,6 +27,7 @@ internal sealed class LanguageModelRateLimitingCustomResponseLoader(
         try
         {
             var response = JsonSerializer.Deserialize<MockResponseResponse>(fileContents, ProxyUtils.JsonSerializerOptions);
+            RemoveNullEntries(response);
             if (response is not null)
             {
                 _configuration.CustomResponse = response;
