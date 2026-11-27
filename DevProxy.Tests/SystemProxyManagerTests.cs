@@ -260,6 +260,21 @@ public class SystemProxyManagerTests
         _ = Assert.IsType<RetainedSystemProxyBypass>(proxy);
     }
 
+    [Fact]
+    public void CreateLanguageModelHttpClient_RoutesThroughBypass()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddSingleton(new SystemProxySession(() => false));
+        using var provider = services.BuildServiceProvider();
+
+        using var client = IServiceCollectionExtensions.CreateLanguageModelHttpClient(provider);
+
+        var field = typeof(HttpMessageInvoker).GetField("_handler", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var handler = Assert.IsType<SocketsHttpHandler>(field.GetValue(client));
+        _ = Assert.IsType<RetainedSystemProxyBypass>(handler.Proxy);
+        Assert.False(handler.AllowAutoRedirect);
+    }
+
     private sealed class CountingSystemProxyManager : IConfirmingSystemProxyManager
     {
         public bool EnableSucceeds { get; set; } = true;

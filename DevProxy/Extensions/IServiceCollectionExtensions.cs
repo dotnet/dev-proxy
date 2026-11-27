@@ -79,7 +79,7 @@ static class IServiceCollectionExtensions
         services.ConfigureHttpClientDefaults(builder =>
             builder.ConfigurePrimaryHttpMessageHandler((handler, sp) =>
             {
-                if (sp.GetService<SystemProxySession>() is not { } session)
+                if (CreateRetainedSystemProxyBypass(sp) is not { } bypass)
                 {
                     return;
                 }
@@ -87,15 +87,25 @@ static class IServiceCollectionExtensions
                 switch (handler)
                 {
                     case SocketsHttpHandler { UseProxy: true, Proxy: null } socketsHandler:
-                        socketsHandler.Proxy = new RetainedSystemProxyBypass(HttpClient.DefaultProxy, session);
+                        socketsHandler.Proxy = bypass;
                         break;
                     case HttpClientHandler { UseProxy: true, Proxy: null } httpClientHandler:
-                        httpClientHandler.Proxy = new RetainedSystemProxyBypass(HttpClient.DefaultProxy, session);
+                        httpClientHandler.Proxy = bypass;
                         break;
                     default:
                         break;
                 }
             }));
+
+    // The language-model client builds its own handler (outside IHttpClientFactory),
+    // so it needs the bypass applied explicitly.
+    internal static HttpClient CreateLanguageModelHttpClient(IServiceProvider serviceProvider) =>
+        LanguageModelClientFactory.CreateHttpClient(CreateRetainedSystemProxyBypass(serviceProvider));
+
+    static RetainedSystemProxyBypass? CreateRetainedSystemProxyBypass(IServiceProvider serviceProvider) =>
+        serviceProvider.GetService<SystemProxySession>() is { } session
+            ? new RetainedSystemProxyBypass(HttpClient.DefaultProxy, session)
+            : null;
 
     static IServiceCollection AddApplicationServices(
         this IServiceCollection services,
@@ -113,7 +123,7 @@ static class IServiceCollectionExtensions
             // Share the hosted instance so the command can release its startup-output gate.
             .AddSingleton<InteractiveConsoleService>()
             .AddHostedService(sp => sp.GetRequiredService<InteractiveConsoleService>())
-            .AddKeyedSingleton(LanguageModelClientFactory.HttpClientServiceKey, (_, _) => LanguageModelClientFactory.CreateHttpClient())
+            .AddKeyedSingleton(LanguageModelClientFactory.HttpClientServiceKey, (sp, _) => CreateLanguageModelHttpClient(sp))
             .AddSingleton(sp => LanguageModelClientFactory.Create(sp, configuration))
             .AddSingleton<UpdateNotification>()
             .AddSingleton<DevProxyCommand>()
