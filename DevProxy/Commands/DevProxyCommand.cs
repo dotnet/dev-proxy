@@ -151,14 +151,36 @@ sealed class DevProxyCommand : RootCommand
             return false;
         }
 
-        return args switch
+        if (args.Length == 0)
         {
-            [var command, ..] when string.Equals(command, "validate", StringComparison.OrdinalIgnoreCase) => true,
-            [var command, var subcommand, ..] =>
-                string.Equals(command, "config", StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(subcommand, "validate", StringComparison.OrdinalIgnoreCase),
-            _ => false
-        };
+            return false;
+        }
+        if (string.Equals(args[0], "validate", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+        if (!string.Equals(args[0], "config", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        // Recursive options are allowed between 'config' and 'validate'
+        for (var i = 1; i < args.Length; i++)
+        {
+            var arg = args[i];
+            if (string.Equals(arg, OutputOptionName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(arg, LogLevelOptionName, StringComparison.OrdinalIgnoreCase))
+            {
+                i++;
+                continue;
+            }
+            if (arg.StartsWith('-', StringComparison.Ordinal))
+            {
+                continue;
+            }
+            return string.Equals(arg, "validate", StringComparison.OrdinalIgnoreCase);
+        }
+        return false;
     }
 
     public static bool IsPluginCommand
@@ -331,14 +353,7 @@ sealed class DevProxyCommand : RootCommand
 
         if (GetLeadingOptionsError(parseResult, args) is { } leadingOptionsError)
         {
-            if (IsJsonOutputRequested(parseResult))
-            {
-                WriteJsonErrors([leadingOptionsError]);
-            }
-            else
-            {
-                _logger.LogError("{ParseError}", leadingOptionsError);
-            }
+            WriteErrors([leadingOptionsError], IsJsonOutputRequested(parseResult));
             return 2;
         }
 
@@ -422,20 +437,25 @@ sealed class DevProxyCommand : RootCommand
     }
 
     internal static void WriteJsonParseErrors(ParseResult parseResult) =>
-        WriteJsonErrors(parseResult.Errors.Select(e => e.Message));
+        WriteErrors(parseResult.Errors.Select(e => e.Message), json: true);
 
-    private static void WriteJsonErrors(IEnumerable<string> errors)
+    private static void WriteErrors(IEnumerable<string> errors, bool json)
     {
         // Usage errors must still be visible when normal logging is disabled,
         // for example by the jwt command or --log-level None.
-        using var loggerFactory = LoggerFactory.Create(builder => builder
-            .SetMinimumLevel(LogLevel.Error)
-            .AddConsole(options =>
-            {
-                options.FormatterName = JsonConsoleFormatter.FormatterName;
-                options.LogToStandardErrorThreshold = LogLevel.Error;
-            })
-            .AddConsoleFormatter<JsonConsoleFormatter, ProxyConsoleFormatterOptions>());
+        using var loggerFactory = LoggerFactory.Create(builder =>
+        {
+            _ = builder
+                .SetMinimumLevel(LogLevel.Error)
+                .AddConsole(options =>
+                {
+                    options.FormatterName = json ? JsonConsoleFormatter.FormatterName : ProxyConsoleFormatter.DefaultCategoryName;
+                    options.LogToStandardErrorThreshold = LogLevel.Error;
+                });
+            _ = json
+                ? builder.AddConsoleFormatter<JsonConsoleFormatter, ProxyConsoleFormatterOptions>()
+                : builder.AddConsoleFormatter<ProxyConsoleFormatter, ProxyConsoleFormatterOptions>(options => options.PlainOutput = true);
+        });
         var logger = loggerFactory.CreateLogger<DevProxyCommand>();
 
         foreach (var error in errors)
