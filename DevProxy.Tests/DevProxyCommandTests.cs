@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using DevProxy.Commands;
+using System.CommandLine;
 
 using Xunit;
 
@@ -54,15 +55,39 @@ public class DevProxyCommandTests
 
     [Theory]
     [InlineData(true, "stdio", "npx", "@devproxy/mcp")]
-    [InlineData(true, "--log-level", "debug", "stdio", "npx")]
+    [InlineData(true, "stdio", "-c", "myconfig.json", "node", "app.js")]
+    [InlineData(false, "--log-level", "debug", "stdio", "npx")]
     [InlineData(false, "jwt", "create", "--name", "stdio", "--output", "json")]
-    [InlineData(true, "--env", "A=1", "B=2", "stdio", "node", "server.js")]
-    [InlineData(true, "-e", "A=1", "B=2", "--log-level", "debug", "stdio", "node")]
-    [InlineData(true, "--urls-to-watch", "https://a/*", "https://b/*", "stdio", "node")]
-    [InlineData(true, "--watch-pids", "1", "2", "stdio", "node")]
-    [InlineData(true, "--watch-process-names", "a", "b", "stdio", "node")]
     [InlineData(false, "config", "get", "stdio")]
     [InlineData(false)]
-    public void IsStdioSubcommand_DetectsSubcommandNotArgumentValues(bool expected, params string[] args) =>
+    public void IsStdioSubcommand_DetectsSubcommandOnlyAsFirstArgument(bool expected, params string[] args) =>
         Assert.Equal(expected, DevProxyCommand.IsStdioSubcommand(args));
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(null, "--port", "0")]
+    [InlineData(null, "--help")]
+    [InlineData(null, "api", "show", "--log-level", "debug")]
+    [InlineData("api show", "--log-level", "debug", "api", "show")]
+    [InlineData("api show", "--port", "1", "api", "show")]
+    [InlineData("api", "--output", "json", "api")]
+    public void GetLeadingOptionsError_RejectsOptionsBeforeSubcommand(string? expectedCommandPath, params string[] args)
+    {
+        var logLevelOption = new Option<string>(DevProxyCommand.LogLevelOptionName) { Recursive = true };
+        var outputOption = new Option<string>(DevProxyCommand.OutputOptionName) { Recursive = true };
+        var portOption = new Option<int?>(DevProxyCommand.PortOptionName);
+        var apiCommand = new Command("api") { new Command("show") };
+        var rootCommand = new RootCommand { logLevelOption, outputOption, portOption, apiCommand };
+
+        var error = DevProxyCommand.GetLeadingOptionsError(rootCommand.Parse(args), args);
+
+        if (expectedCommandPath is null)
+        {
+            Assert.Null(error);
+        }
+        else
+        {
+            Assert.Contains($"devproxy {expectedCommandPath} [options]", error, StringComparison.Ordinal);
+        }
+    }
 }

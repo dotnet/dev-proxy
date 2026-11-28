@@ -35,6 +35,21 @@ public class LoggingConfigurationTests
     }
 
     [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void ConfigureDevProxyLogging_UsesPlainOutputOnlyForSubcommands(bool isRootCommand, bool expectedPlainOutput)
+    {
+        using var configuration = new ConfigurationManager();
+        var services = new ServiceCollection();
+        services.AddLogging(builder => builder.ConfigureDevProxyLogging(configuration, new DevProxyConfigOptions(), isStdioCommand: false, isJwtCommand: false, isRootCommand));
+        using var provider = services.BuildServiceProvider();
+
+        var options = provider.GetRequiredService<IOptions<ProxyConsoleFormatterOptions>>().Value;
+
+        Assert.Equal(expectedPlainOutput, options.PlainOutput);
+    }
+
+    [Theory]
     [InlineData(LogLevel.Warning)]
     [InlineData(LogLevel.Error)]
     [InlineData(LogLevel.Critical)]

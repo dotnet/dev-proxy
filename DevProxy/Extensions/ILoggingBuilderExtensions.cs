@@ -110,8 +110,8 @@ static class ILoggingBuilderExtensions
             return builder;
         }
 
-        // For other subcommands (cert, config, outdated, msgraphdb), use rich logging
-        // but with plugin messages filtered out
+        // For other subcommands (cert, config, outdated, msgraphdb), use plain
+        // logging without level labels, with plugin messages filtered out
 
         // Structured results are logged at Information. When JSON output is
         // requested with a higher log level, let Information through the
@@ -138,6 +138,7 @@ static class ILoggingBuilderExtensions
                     formatterOptions.IncludeScopes = true;
                     formatterOptions.ShowSkipMessages = showSkipMessages;
                     formatterOptions.ShowTimestamps = showTimestamps;
+                    formatterOptions.PlainOutput = true;
                 }
             )
             .AddConsoleFormatter<JsonConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>

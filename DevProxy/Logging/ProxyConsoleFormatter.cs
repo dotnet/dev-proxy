@@ -196,11 +196,18 @@ sealed class ProxyConsoleFormatter : ConsoleFormatter
             return;
         }
 
-        var label = GetLogLevelString(logLevel);
-        var (bgColor, fgColor) = GetLogLevelColor(logLevel);
+        if (_options.PlainOutput)
+        {
+            textWriter.Write(GetPlainPrefix(logLevel));
+        }
+        else
+        {
+            var label = GetLogLevelString(logLevel);
+            var (bgColor, fgColor) = GetLogLevelColor(logLevel);
 
-        WriteLabel(textWriter, label, bgColor, fgColor);
-        textWriter.Write($"{_labelSpacing}{_boxSpacing}");
+            WriteLabel(textWriter, label, bgColor, fgColor);
+            textWriter.Write($"{_labelSpacing}{_boxSpacing}");
+        }
 
         if (_options.IncludeFullTimestamps)
         {
@@ -296,6 +303,15 @@ sealed class ProxyConsoleFormatter : ConsoleFormatter
 
     private static string GetLogLevelString(LogLevel logLevel) =>
         _logLevelStrings.TryGetValue(logLevel, out var str) ? str : throw new ArgumentOutOfRangeException(nameof(logLevel));
+
+    private static string GetPlainPrefix(LogLevel logLevel) => logLevel switch
+    {
+        LogLevel.Trace => "trace: ",
+        LogLevel.Debug => "debug: ",
+        LogLevel.Warning => "warning: ",
+        LogLevel.Error or LogLevel.Critical => "error: ",
+        _ => ""
+    };
 
     private static (ConsoleColor bg, ConsoleColor fg) GetLogLevelColor(LogLevel logLevel) =>
         _logLevelColors.TryGetValue(logLevel, out var color) ? color : (Console.BackgroundColor, Console.ForegroundColor);

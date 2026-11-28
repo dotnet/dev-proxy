@@ -15,6 +15,10 @@ sealed class ProxyConsoleFormatterOptions : ConsoleFormatterOptions
 
     public bool IncludeFullTimestamps { get; set; }
 
+    // Writes regular messages without level labels, for commands other than
+    // the root command. Messages other than information get a short prefix.
+    public bool PlainOutput { get; set; }
+
     // Minimum level for diagnostic messages. Structured output (command
     // results) is always written regardless of this level.
     public LogLevel MinimumLogLevel { get; set; } = LogLevel.Trace;
