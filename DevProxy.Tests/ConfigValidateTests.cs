@@ -383,10 +383,9 @@ public sealed class ConfigValidateTests : IDisposable
     [Theory]
     [InlineData(new[] { "validate" }, true)]
     [InlineData(new[] { "config", "validate" }, true)]
-    [InlineData(new[] { "--output", "json", "validate" }, true)]
-    [InlineData(new[] { "--output=json", "config", "validate" }, true)]
-    [InlineData(new[] { "--output:json", "validate" }, true)]
-    [InlineData(new[] { "--log-level:Warning", "validate" }, true)]
+    [InlineData(new[] { "validate", "--output", "json" }, true)]
+    [InlineData(new[] { "config", "validate", "--output=json" }, true)]
+    [InlineData(new[] { "--output", "json", "validate" }, false)]
     [InlineData(new[] { "validate", "--help" }, false)]
     [InlineData(new[] { "config", "get", "validate" }, false)]
     [InlineData(new[] { "--config-file", "validate" }, false)]
@@ -395,7 +394,7 @@ public sealed class ConfigValidateTests : IDisposable
 
     [Theory]
     [InlineData(new[] { "validate", "--config-file=my.json" }, "my.json")]
-    [InlineData(new[] { "--output", "json", "config", "validate", "-c", "my.json" }, "my.json")]
+    [InlineData(new[] { "config", "validate", "--output", "json", "-c", "my.json" }, "my.json")]
     public void ParsesValidateArgs(string[] args, string expectedConfigFile)
     {
         var parseResult = ConfigCommand.ParseValidateArgs(args, out var configFileOptions, out _);

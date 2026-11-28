@@ -102,46 +102,11 @@ sealed class DevProxyCommand : RootCommand
         }
     }
 
-    // Detects the stdio subcommand rather than any argument equal to "stdio"
-    // (e.g. `jwt create --name stdio`). Tokens before the subcommand may only be
-    // options or their values. args excludes the program name.
-    internal static bool IsStdioSubcommand(string[] args)
-    {
-        var inMultiValueOption = false;
-        for (var i = 0; i < args.Length; i++)
-        {
-            if (string.Equals(args[i], "stdio", StringComparison.Ordinal))
-            {
-                return true;
-            }
-
-            if (args[i].StartsWith('-', StringComparison.Ordinal))
-            {
-                inMultiValueOption = _multiValueRootOptions.Contains(args[i]);
-                continue;
-            }
-
-            var isOptionValue = inMultiValueOption || (i > 0 && args[i - 1].StartsWith('-', StringComparison.Ordinal));
-            if (!isOptionValue)
-            {
-                return false;
-            }
-        }
-
-        return false;
-    }
-
-    // Root options that accept multiple values per token, so every value
-    // following them precedes the subcommand.
-    private static readonly HashSet<string> _multiValueRootOptions =
-    [
-        EnvOptionName,
-        "-e",
-        UrlsToWatchOptionName,
-        "-u",
-        WatchPidsOptionName,
-        WatchProcessNamesOptionName
-    ];
+    // Subcommands must be the first argument (see GetLeadingOptionsError), so an
+    // argument equal to "stdio" elsewhere (e.g. `jwt create --name stdio`) isn't
+    // the subcommand. args excludes the program name.
+    internal static bool IsStdioSubcommand(string[] args) =>
+        args.Length > 0 && string.Equals(args[0], "stdio", StringComparison.Ordinal);
 
     public static bool IsJwtCommand
     {
@@ -176,9 +141,8 @@ sealed class DevProxyCommand : RootCommand
     }
 
     /// <summary>
-    /// Returns true when args invoke 'validate' or 'config validate', allowing
-    /// global options (like --output) before the command. Help is excluded so
-    /// it's rendered by the full command tree.
+    /// Returns true when args invoke 'validate' or 'config validate'. Help is
+    /// excluded so it's rendered by the full command tree.
     /// </summary>
     internal static bool IsValidateInvocation(string[] args)
     {
@@ -187,38 +151,14 @@ sealed class DevProxyCommand : RootCommand
             return false;
         }
 
-        var commandTokens = new List<string>(2);
-        for (var i = 0; i < args.Length && commandTokens.Count < 2; i++)
+        return args switch
         {
-            var arg = args[i];
-            if (string.Equals(arg, OutputOptionName, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(arg, LogLevelOptionName, StringComparison.OrdinalIgnoreCase))
-            {
-                i++;
-                continue;
-            }
-            if (arg.StartsWith(OutputOptionName + "=", StringComparison.OrdinalIgnoreCase) ||
-                arg.StartsWith(OutputOptionName + ":", StringComparison.OrdinalIgnoreCase) ||
-                arg.StartsWith(LogLevelOptionName + "=", StringComparison.OrdinalIgnoreCase) ||
-                arg.StartsWith(LogLevelOptionName + ":", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(arg, NoColorOptionName, StringComparison.OrdinalIgnoreCase) ||
-                (commandTokens.Count > 0 && arg.StartsWith('-', StringComparison.Ordinal)))
-            {
-                continue;
-            }
-            if (arg.StartsWith('-', StringComparison.Ordinal))
-            {
-                // other root options may take values, so we can't tell what follows
-                break;
-            }
-            commandTokens.Add(arg);
-        }
-
-        return commandTokens.Count > 0 &&
-            (string.Equals(commandTokens[0], "validate", StringComparison.OrdinalIgnoreCase) ||
-             (commandTokens.Count > 1 &&
-              string.Equals(commandTokens[0], "config", StringComparison.OrdinalIgnoreCase) &&
-              string.Equals(commandTokens[1], "validate", StringComparison.OrdinalIgnoreCase)));
+            [var command, ..] when string.Equals(command, "validate", StringComparison.OrdinalIgnoreCase) => true,
+            [var command, var subcommand, ..] =>
+                string.Equals(command, "config", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(subcommand, "validate", StringComparison.OrdinalIgnoreCase),
+            _ => false
+        };
     }
 
     public static bool IsPluginCommand
@@ -231,30 +171,7 @@ sealed class DevProxyCommand : RootCommand
             }
 
             var args = Environment.GetCommandLineArgs();
-            // skip global options supported by the standalone plugin command
-            // so that e.g. `devproxy --output json plugin list` is detected too
-            var i = 1;
-            while (i < args.Length)
-            {
-                if (string.Equals(args[i], OutputOptionName, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(args[i], LogLevelOptionName, StringComparison.OrdinalIgnoreCase))
-                {
-                    i += 2;
-                }
-                else if (args[i].StartsWith($"{OutputOptionName}=", StringComparison.OrdinalIgnoreCase) ||
-                    args[i].StartsWith($"{OutputOptionName}:", StringComparison.OrdinalIgnoreCase) ||
-                    args[i].StartsWith($"{LogLevelOptionName}=", StringComparison.OrdinalIgnoreCase) ||
-                    args[i].StartsWith($"{LogLevelOptionName}:", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(args[i], NoColorOptionName, StringComparison.OrdinalIgnoreCase))
-                {
-                    i++;
-                }
-                else
-                {
-                    break;
-                }
-            }
-            field = i < args.Length && string.Equals(args[i], "plugin", StringComparison.OrdinalIgnoreCase);
+            field = args.Length > 1 && string.Equals(args[1], "plugin", StringComparison.OrdinalIgnoreCase);
             _isPluginCommandResolved = true;
             return field;
         }
@@ -278,8 +195,8 @@ sealed class DevProxyCommand : RootCommand
 
     /// <summary>
     /// Determines if the root command (proxy itself) is being invoked.
-    /// Returns true when no subcommand is specified (only options or no args).
-    /// A subcommand is detected when the first non-program argument doesn't start with '-'.
+    /// Subcommands must be the first argument (enforced by GetLeadingOptionsError),
+    /// so it's the root command when there are no arguments or the first one is an option.
     /// </summary>
     public static bool IsRootCommand
     {
@@ -412,6 +329,19 @@ sealed class DevProxyCommand : RootCommand
             ? StdioCommand.ParseStdioArgs(this, args)
             : Parse(args);
 
+        if (GetLeadingOptionsError(parseResult, args) is { } leadingOptionsError)
+        {
+            if (IsJsonOutputRequested(parseResult))
+            {
+                WriteJsonErrors([leadingOptionsError]);
+            }
+            else
+            {
+                _logger.LogError("{ParseError}", leadingOptionsError);
+            }
+            return 2;
+        }
+
         if (parseResult.Action is ParseErrorAction parseErrorAction)
         {
             if (IsJsonOutputRequested(parseResult))
@@ -468,7 +398,33 @@ sealed class DevProxyCommand : RootCommand
         parseResult.GetResult(OutputOptionName) is OptionResult { Tokens: [var token, ..] } &&
         string.Equals(token.Value, nameof(OutputFormat.Json), StringComparison.OrdinalIgnoreCase);
 
-    internal static void WriteJsonParseErrors(ParseResult parseResult)
+    // Subcommands must be the first argument. This lets the root command be
+    // detected from the first argument (see IsRootCommand) before plugins,
+    // which can contribute their own subcommands, are loaded.
+    internal static string? GetLeadingOptionsError(ParseResult parseResult, string[] args)
+    {
+        if (args.Length == 0 ||
+            !args[0].StartsWith('-', StringComparison.Ordinal) ||
+            parseResult.CommandResult.Command is RootCommand)
+        {
+            return null;
+        }
+
+        var commandPath = new List<string>();
+        for (SymbolResult? result = parseResult.CommandResult;
+            result is CommandResult { Command: not RootCommand } commandResult;
+            result = result.Parent)
+        {
+            commandPath.Insert(0, commandResult.Command.Name);
+        }
+
+        return $"Options must follow the subcommand. Use: devproxy {string.Join(' ', commandPath)} [options]";
+    }
+
+    internal static void WriteJsonParseErrors(ParseResult parseResult) =>
+        WriteJsonErrors(parseResult.Errors.Select(e => e.Message));
+
+    private static void WriteJsonErrors(IEnumerable<string> errors)
     {
         // Usage errors must still be visible when normal logging is disabled,
         // for example by the jwt command or --log-level None.
@@ -482,9 +438,9 @@ sealed class DevProxyCommand : RootCommand
             .AddConsoleFormatter<JsonConsoleFormatter, ProxyConsoleFormatterOptions>());
         var logger = loggerFactory.CreateLogger<DevProxyCommand>();
 
-        foreach (var error in parseResult.Errors)
+        foreach (var error in errors)
         {
-            logger.LogError("{ParseError}", error.Message);
+            logger.LogError("{ParseError}", error);
         }
     }
 

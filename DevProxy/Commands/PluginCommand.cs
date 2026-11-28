@@ -75,6 +75,7 @@ sealed class PluginCommand : Command
                 .AddConsoleFormatter<ProxyConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
                 {
                     formatterOptions.ShowTimestamps = false;
+                    formatterOptions.PlainOutput = true;
                 })
                 .AddConsoleFormatter<JsonConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
                 {

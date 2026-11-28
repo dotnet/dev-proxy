@@ -111,6 +111,7 @@ sealed class ConfigCommand : Command
                     formatterOptions.IncludeScopes = false;
                     formatterOptions.ShowSkipMessages = true;
                     formatterOptions.ShowTimestamps = false;
+                    formatterOptions.PlainOutput = true;
                 })
                 .AddConsoleFormatter<JsonConsoleFormatter, ProxyConsoleFormatterOptions>(formatterOptions =>
                 {

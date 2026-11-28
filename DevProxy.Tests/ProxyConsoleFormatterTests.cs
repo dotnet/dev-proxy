@@ -35,6 +35,22 @@ public class ProxyConsoleFormatterTests
         Assert.DoesNotContain("https://first", output, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(LogLevel.Information, "Base URL: http://127.0.0.1:8897")]
+    [InlineData(LogLevel.Warning, "warning: Base URL: http://127.0.0.1:8897")]
+    [InlineData(LogLevel.Error, "error: Base URL: http://127.0.0.1:8897")]
+    [InlineData(LogLevel.Critical, "error: Base URL: http://127.0.0.1:8897")]
+    public void PlainOutput_WritesMessageWithoutLevelLabel(LogLevel level, string expected)
+    {
+        var formatter = new ProxyConsoleFormatter(Options.Create(new ProxyConsoleFormatterOptions { PlainOutput = true }));
+        using var writer = new StringWriter(CultureInfo.InvariantCulture);
+        var entry = new LogEntry<string>(level, "Tests", new EventId(0), "Base URL: http://127.0.0.1:8897", null, (state, _) => state);
+
+        formatter.Write(entry, null, writer);
+
+        Assert.Equal(expected + Environment.NewLine, writer.ToString());
+    }
+
     private static void Write(ProxyConsoleFormatter formatter, IExternalScopeProvider scopeProvider, TextWriter writer, string message, MessageType type)
     {
         var log = new RequestLog(message, type, context: null);

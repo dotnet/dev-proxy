@@ -23,14 +23,4 @@ public class DevProxyConfigOptionsTests
 
         Assert.Equal(expected, options.Discover);
     }
-
-    [Fact]
-    public void ParseOptions_MultipleEnvValuesBeforeStdio_SelectsStdio()
-    {
-        var options = new DevProxyConfigOptions();
-        options.ParseOptions(["--env", "A=1", "B=2", "stdio", "node", "server.js"]);
-
-        Assert.True(options.IsStdioMode);
-        Assert.Equal(new Dictionary<string, string> { ["A"] = "1", ["B"] = "2" }, options.Env);
-    }
 }
